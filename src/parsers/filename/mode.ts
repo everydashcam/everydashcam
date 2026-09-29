@@ -10,6 +10,7 @@ import {
     RX_70MAI_PREFIX_MODE,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_DVR_FOUR_CHANNEL,
     RX_CARCAM_PATH_EVENT,
     RX_CARCAM_PATH_PARKING,
     RX_DATE_SEQUENCE_CAM,
@@ -137,6 +138,13 @@ const carcamMode: FilenameModeTechnique = {
         if (RX_CARCAM_PATH_PARKING.test(lower)) return "parking";
         if (RX_CARCAM.test(file.file.name)) return "normal";
         return null;
+    },
+};
+
+const dvrFourChannelMode: FilenameModeTechnique = {
+    id: "dvr-four-channel-mode",
+    extract(file: VendorFile): RecordingMode | null {
+        return RX_DVR_FOUR_CHANNEL.test(file.file.name) ? "normal" : null;
     },
 };
 
@@ -475,6 +483,7 @@ export const FILENAME_MODE: readonly FilenameModeTechnique[] = [
     mai70Mode,
     blackvueMode,
     carcamMode,
+    dvrFourChannelMode,
     recSingleMode,
     ddpaiMode,
     eaceMode,

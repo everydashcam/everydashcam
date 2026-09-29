@@ -15,6 +15,7 @@ import {
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_DVR_FOUR_CHANNEL,
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
     RX_DDPAI_TIMELAPSE,
@@ -147,6 +148,14 @@ const carcamTime: FilenameTimeTechnique = {
         const m = file.file.name.match(RX_CARCAM);
         if (!m) return null;
         return ymdHmsFromSplit(m[1]!, m[2]!);
+    },
+};
+
+const dvrFourChannelTime: FilenameTimeTechnique = {
+    id: "dvr-four-channel-time",
+    extract(file: VendorFile): Date | null {
+        const m = file.file.name.match(RX_DVR_FOUR_CHANNEL);
+        return m ? ymdHmsFromSplit(m[1]!, m[2]!) : null;
     },
 };
 
@@ -403,6 +412,7 @@ export const FILENAME_TIME: readonly FilenameTimeTechnique[] = [
     beferichTime,
     blackvueTime,
     carcamTime,
+    dvrFourChannelTime,
     recSingleTime,
     seiDoubleGpsTime,
     ddpaiTime,

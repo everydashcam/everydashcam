@@ -21,6 +21,7 @@ import {
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_DVR_FOUR_CHANNEL,
     RX_CARCAM_PATH_FRONT,
     RX_CARCAM_PATH_INTERIOR,
     RX_CARCAM_PATH_REAR,
@@ -199,6 +200,26 @@ const carcamChannel: FilenameChannelTechnique = {
         if (RX_CARCAM_PATH_INTERIOR.test(lower)) return sure("interior");
         if (RX_CARCAM_PATH_SIDE.test(lower)) return sure("side");
         return m ? guess("side") : null;
+    },
+};
+
+const dvrFourChannel: FilenameChannelTechnique = {
+    id: "dvr-four-channel-channel",
+    extract(file: VendorFile): ChannelMatch | null {
+        const m = file.file.name.match(RX_DVR_FOUR_CHANNEL);
+        if (!m) return null;
+        switch (m[4]!.toLowerCase()) {
+            case "front":
+                return sure("front");
+            case "back":
+                return sure("rear");
+            case "left":
+                return sure("interior");
+            case "right":
+                return sure("side");
+            default:
+                return null;
+        }
     },
 };
 
@@ -602,6 +623,7 @@ export const FILENAME_CHANNEL: readonly FilenameChannelTechnique[] = [
     recSingleChannel,
     seiDoubleGpsChannel,
     carcamChannel,
+    dvrFourChannel,
     sstarChnChannel,
     ddpaiChannel,
     novatekViofoChannel,

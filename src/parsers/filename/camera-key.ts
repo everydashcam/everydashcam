@@ -29,6 +29,7 @@ import {
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_DVR_FOUR_CHANNEL,
     RX_DATE_SEQUENCE_CAM,
     RX_DATE_SEQUENCE_CAM_PATH,
     RX_DDPAI_EVENT,
@@ -207,6 +208,18 @@ const carcamCameraKey: FilenameCameraKeyTechnique = {
         // a single letter; strip it (and the `normal` parent stays as-is).
         const dir = strippedParentDir(file.relativePath, [], ["a", "b", "c", "d", m[4]!]);
         return `carcam|${dir}|${masked}`;
+    },
+};
+
+const dvrFourChannelCameraKey: FilenameCameraKeyTechnique = {
+    id: "dvr-four-channel-camera-key",
+    extract(file: VendorFile): string | null {
+        const m = file.file.name.match(RX_DVR_FOUR_CHANNEL);
+        if (!m) return null;
+        const segments = file.relativePath.split("/").filter(Boolean).slice(0, -1);
+        if (segments.at(-1)?.toLowerCase() === `${m[1]}_${m[2]}`) segments.pop();
+        const name = file.file.name.replace(/_(?:front|back|left|right)(?=\.mp4$)/i, "");
+        return `dvr-four-channel|${segments.join("/")}|${maskName(name)}`;
     },
 };
 
@@ -724,6 +737,7 @@ export const FILENAME_CAMERA_KEY: readonly FilenameCameraKeyTechnique[] = [
     beferichCameraKey,
     blackvueCameraKey,
     carcamCameraKey,
+    dvrFourChannelCameraKey,
     sstarChnCameraKey,
     recSingleCameraKey,
     seiDoubleGpsCameraKey,

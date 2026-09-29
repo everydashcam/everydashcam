@@ -6,6 +6,7 @@ import type { VendorFile } from "../types.js";
 import {
     RX_70MAI,
     RX_CARCAM,
+    RX_DVR_FOUR_CHANNEL,
     RX_DATE_SEQUENCE_CAM,
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
@@ -61,6 +62,14 @@ const carcamSequence: FilenameSequenceTechnique = {
     id: "carcam-sequence",
     extract(file: VendorFile): number | null {
         const m = file.file.name.match(RX_CARCAM);
+        return m ? Number(m[3]) : null;
+    },
+};
+
+const dvrFourChannelSequence: FilenameSequenceTechnique = {
+    id: "dvr-four-channel-sequence",
+    extract(file: VendorFile): number | null {
+        const m = file.file.name.match(RX_DVR_FOUR_CHANNEL);
         return m ? Number(m[3]) : null;
     },
 };
@@ -196,6 +205,7 @@ const teslaSequence: FilenameSequenceTechnique = {
 export const FILENAME_SEQUENCE: readonly FilenameSequenceTechnique[] = [
     mai70Sequence,
     carcamSequence,
+    dvrFourChannelSequence,
     recSingleSequence,
     ddpaiSequence,
     dateSequenceCamSequence,

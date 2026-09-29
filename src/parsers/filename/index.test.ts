@@ -41,6 +41,44 @@ function vf(name: string, relativePath: string = name): VendorFile {
     return { file: new File([new Uint8Array(0)], name), relativePath };
 }
 
+describe("four-channel DVR filenames", () => {
+    it.each([
+        ["front", "front"],
+        ["back", "rear"],
+        ["left", "interior"],
+        ["right", "side"],
+    ] as const)("classifies %s and pairs all four recordings", (direction, channel) => {
+        const name = `20260929_122553_3109_${direction}.mp4`;
+        const file = vf(name, `DVR-DCIM/LOOP/20260929_122553/${name}`);
+        expect(matchFilenameTime(file)).toEqual({
+            value: new Date("2026-09-29T12:25:53.000Z"),
+            matchedId: "dvr-four-channel-time",
+        });
+        expect(matchFilenameChannel(file)).toEqual({
+            value: { channel, confident: true },
+            matchedId: "dvr-four-channel-channel",
+        });
+        expect(matchFilenameSequence(file)).toEqual({ value: 3109, matchedId: "dvr-four-channel-sequence" });
+        expect(matchFilenameMode(file)).toEqual({ value: "normal", matchedId: "dvr-four-channel-mode" });
+        expect(cameraFingerprint(file)).toBe(
+            cameraFingerprint(
+                vf(
+                    "20260928_210808_3108_front.mp4",
+                    "DVR-DCIM/LOOP/20260928_210808/20260928_210808_3108_front.mp4",
+                ),
+            ),
+        );
+    });
+
+    it("keeps separate camera roots apart and rejects unsupported directions", () => {
+        const name = "20260817_084944_4463_front.mp4";
+        expect(cameraFingerprint(vf(name, `card-a/20260817_084944/${name}`))).not.toBe(
+            cameraFingerprint(vf(name, `card-b/20260817_084944/${name}`)),
+        );
+        expect(matchFilenameChannel(vf("20260817_084944_4463_top.mp4")).value).toBeNull();
+    });
+});
+
 describe("date-sequence-cam filenames", () => {
     it.each([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])("recognizes CAM%s and uses the folder for its mount", (index) => {
         const name = `20260923_0134_CAM${index}.MP4`;
