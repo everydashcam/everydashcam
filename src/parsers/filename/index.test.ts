@@ -62,10 +62,7 @@ describe("four-channel DVR filenames", () => {
         expect(matchFilenameMode(file)).toEqual({ value: "normal", matchedId: "dvr-four-channel-mode" });
         expect(cameraFingerprint(file)).toBe(
             cameraFingerprint(
-                vf(
-                    "20260928_210808_3108_front.mp4",
-                    "DVR-DCIM/LOOP/20260928_210808/20260928_210808_3108_front.mp4",
-                ),
+                vf("20260928_210808_3108_front.mp4", "DVR-DCIM/LOOP/20260928_210808/20260928_210808_3108_front.mp4"),
             ),
         );
     });

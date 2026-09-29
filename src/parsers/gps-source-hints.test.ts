@@ -22,6 +22,19 @@ function vf(name: string, relativePath: string = name): VendorFile {
 }
 
 describe("classifyGpsSource", () => {
+    it("skips embedded GPS reads for the four-channel DVR card layout", () => {
+        const name = "20260817_084944_4463_front.mp4";
+        const cardFile = vf(name, `DVR-DCIM/LOOP/20260817_084944/${name}`);
+        const loopFile = vf(name, `LOOP/20260817_084944/${name}`);
+        const emergencyFile = vf(name, `DVR-DCIM/EMERGENCY/20260817_084944/${name}`);
+        expect(classifyGpsSource(cardFile)).toBe("none");
+        expect(shouldTryEmbeddedGps(cardFile, false)).toBe(false);
+        expect(shouldTryEmbeddedGps(loopFile, false)).toBe(false);
+        expect(shouldTryEmbeddedGps(emergencyFile, false)).toBe(false);
+        expect(classifyGpsSource(vf(name))).toBe("unknown");
+        expect(shouldTryEmbeddedGps(vf(name, `other/LOOP/20260817_084944/${name}`), false)).toBe(true);
+    });
+
     it.each(["20260904_202849F.ts", "20260904_235813R_SOS.ts", "20260902_174435F_PARK.ts"])(
         "keeps embedded probing enabled for %s",
         (name) => {

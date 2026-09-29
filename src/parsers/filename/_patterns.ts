@@ -85,6 +85,7 @@ export function blackvueChannelGroupKey(name: string): string | null {
 export const RX_CARCAM = /^REC(\d{8})-(\d{6})-(\d{1,5})-([A-Z])\.mp4$/i;
 // Four files per clip under a matching YYYYMMDD_HHMMSS folder.
 export const RX_DVR_FOUR_CHANNEL = /^(\d{8})_(\d{6})_(\d{1,5})_(front|back|left|right)\.mp4$/i;
+export const RX_DVR_FOUR_CHANNEL_PATH = /(?:(?:^|\/)DVR-DCIM\/|^)(?:LOOP|EMERGENCY)\/\d{8}_\d{6}\/[^/]+$/i;
 // SigmaStar REC family: mode prefix + date - time - sequence, no channel suffix.
 // iZEEKER splits channels into Normal/A and Normal/B; iBox RoadScan uses
 // Normal|Event|Parking/F|R with REC|SOS|PAR prefixes. A bare REC name carries

@@ -25,6 +25,8 @@ import {
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
     RX_DDPAI_TIMELAPSE,
+    RX_DVR_FOUR_CHANNEL,
+    RX_DVR_FOUR_CHANNEL_PATH,
     RX_E_ACE,
     RX_ESCORT,
     RX_FITCAMX,
@@ -90,6 +92,13 @@ interface GpsSourceHint {
 
 const GPS_SOURCE_HINTS: readonly GpsSourceHint[] = [
     { id: "datetime-channel-ts", matches: (f) => RX_DATETIME_CHANNEL_TS.test(f.file.name), source: "embedded" },
+    // This card layout has video-only MP4s; avoid a 4 MB marker read for every
+    // channel while leaving similarly named files from other layouts probed.
+    {
+        id: "dvr-four-channel",
+        matches: (f) => RX_DVR_FOUR_CHANNEL.test(f.file.name) && RX_DVR_FOUR_CHANNEL_PATH.test(f.relativePath),
+        source: "none",
+    },
     {
         id: "sei-double-gps",
         matches: (f) => RX_SEI_DOUBLE_GPS.test(f.file.name),
