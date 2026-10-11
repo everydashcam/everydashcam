@@ -68,7 +68,7 @@
     "chartjs-plugin-zoom": "2.2.0",
     "idb": "^8.0.3",
     "intl-messageformat": "^11.2.15",
-    "maplibre-gl": "6.11.2",
+    "maplibre-gl": "6.13.0",
     "mediabunny": "1.61.3",
     "native-file-system-adapter": "3.0.1",
     "onnxruntime-web": "1.29.0"
