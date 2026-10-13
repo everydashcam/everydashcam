@@ -40,7 +40,9 @@ test.describe("export run", () => {
         await openExport(page);
     });
 
-    test("stream-copy single channel writes a valid MP4 with a GPMF track", async ({ page }) => {
+    test("stream-copy single channel writes a valid MP4 with a GPMF track", { tag: "@golden-export" }, async ({
+        page,
+    }) => {
         // Reduce to one channel -> canStreamCopy() is true (no re-encode). GPMF is
         // kept by default, so the
         // post-process meta-track injection must run and land a 'gpmd' handler.
@@ -211,7 +213,10 @@ test.describe("export run", () => {
         }
     });
 
-    test("re-encode split-screen writes a valid MP4 (compositing pipeline)", async ({ page, browserName }) => {
+    test("re-encode split-screen writes a valid MP4 (compositing pipeline)", { tag: "@golden-export" }, async ({
+        page,
+        browserName,
+    }) => {
         // Default multichannel keeps all 3 channels -> split-screen -> canStreamCopy
         // is false -> the decode/composite/re-encode WebCodecs pipeline runs. This
         // is the only coverage of the actual compositing path. Skip (not fail)

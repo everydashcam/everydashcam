@@ -47,7 +47,9 @@ test.describe("mobile portrait", () => {
         await shot(page, "mobile-01-browsing-list");
     });
 
-    test("export button is reachable and enabled after a trip loads", async ({ page }) => {
+    test("export button is reachable and enabled after a trip loads", {
+        tag: ["@golden-playback", "@golden-export"],
+    }, async ({ page }) => {
         await loadTrip(page, SAMPLE_70MAI);
         await expect(page.locator("#player-export")).toBeEnabled();
         await openMobileExport(page);

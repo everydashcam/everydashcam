@@ -73,10 +73,9 @@ async function runInference(page: Page) {
     );
 }
 
-test("split asyncify WASM runs real inference offline and repairs incomplete or corrupt caches", async ({
-    page,
-    context,
-}) => {
+test("split asyncify WASM runs real inference offline and repairs incomplete or corrupt caches", {
+    tag: ["@golden-blur", "@golden-offline"],
+}, async ({ page, context }) => {
     test.setTimeout(120_000);
     if (!("parts" in runtime.wasm)) throw new Error("this regression requires a split runtime");
     const parts = runtime.wasm.parts;

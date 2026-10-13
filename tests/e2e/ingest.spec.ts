@@ -24,7 +24,7 @@ test.describe("ingest", () => {
         await gotoApp(page, "en");
     });
 
-    test("70mai multichannel: indexes, activates, renders every panel", async ({ page }) => {
+    test("70mai multichannel: indexes, activates, renders every panel", { tag: "@golden-ingest" }, async ({ page }) => {
         await page.locator("#folder-input").setInputFiles(SAMPLE_70MAI);
 
         // Sidebar shows at least one real trip card (not the unindexed note).
@@ -62,7 +62,7 @@ test.describe("ingest", () => {
         await shot(page, "ingest-01-multichannel-active");
     });
 
-    test("gopro single-channel: no multichannel UI", async ({ page }) => {
+    test("gopro single-channel: no multichannel UI", { tag: "@golden-ingest" }, async ({ page }) => {
         await loadTrip(page, SAMPLE_GOPRO);
 
         // A single camera has no F/R/I split, so the channel switcher must stay

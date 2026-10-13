@@ -3,6 +3,32 @@
 Run `npm run test:e2e` from the repository root. It builds the app before testing.
 For browser installation, see [the CI workflow](../../.github/workflows/ci.yml).
 
+For a compact local golden set, run `npm run test:e2e:golden`. It selects
+representative individual scenarios with `@golden-<area>` tags. To focus on one
+area, use these shortcuts:
+
+| Command | Area |
+| --- | --- |
+| `npm run test:e2e:blur` | Region editing, exported masks, and inference assets |
+| `npm run test:e2e:export` | Stream copy, re-encoding, masks, and mobile export UI |
+| `npm run test:e2e:offline` | Cached boot, local playback/export, and asset recovery |
+| `npm run test:e2e:playback` | Play/pause, frame stepping, and mobile controls |
+| `npm run test:e2e:map` | Local route resilience and provider preferences |
+| `npm run test:e2e:ingest` | Single-channel and multichannel recording import |
+
+Each shortcut delegates to `test:e2e`, retaining its fresh build and shared
+Playwright configuration. Tags on the tests own membership; a scenario may belong
+to multiple areas and runs once in the combined golden set. Keep the set small:
+tag individual cases that exercise a distinct core flow, not whole suites or
+every regression. These are manual development shortcuts; the full suite remains
+the behavior-change gate, and CI continues to run it.
+
+Append Playwright options after `--`, for example
+`npm run test:e2e:blur -- --headed` or `npm run test:e2e:blur -- --list`.
+The latter builds and lists the selected tests without launching a browser.
+To run every scenario in a feature file, use the full entry point, for example
+`npm run test:e2e -- blur-regions.spec.ts`.
+
 Import `test` and `expect` from [`_fixtures.ts`](_fixtures.ts) to retain the shared
 runtime-error and network checks. For File System Access tests that persist OPFS
 handles in IndexedDB, import `persistentTest as test` from the same module. Keep

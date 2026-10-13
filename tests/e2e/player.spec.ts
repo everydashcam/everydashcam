@@ -77,7 +77,7 @@ test.describe("player", () => {
         await loadTrip(page, SAMPLE_70MAI);
     });
 
-    test("play/pause control toggles the playing state", async ({ page }) => {
+    test("play/pause control toggles the playing state", { tag: "@golden-playback" }, async ({ page }) => {
         const play = page.locator("#player-play");
         // The four-second fixture can finish while a busy full-suite worker is
         // still settling setup. A click at that point exercises the asynchronous
@@ -165,7 +165,9 @@ test.describe("player", () => {
         expect(await page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(true);
     });
 
-    test("frame-step buttons step the paused player frame by frame, both ways", async ({ page }) => {
+    test("frame-step buttons step the paused player frame by frame, both ways", { tag: "@golden-playback" }, async ({
+        page,
+    }) => {
         const play = page.locator("#player-play");
         await pausePlayback(page);
 

@@ -94,7 +94,9 @@ test.describe("blur regions", () => {
         await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
     });
 
-    test("draw zone: row appears, box editable, stream-copy tier relabels", async ({ page }) => {
+    test("draw zone: row appears, box editable, stream-copy tier relabels", { tag: "@golden-blur" }, async ({
+        page,
+    }) => {
         const topTier = page.locator('.export-panel__radio:has(input[value="original"]) strong');
         await expect(topTier).toHaveText("Original");
 
@@ -709,7 +711,9 @@ test.describe("blur regions", () => {
             ]);
     });
 
-    test("solid-cover zone is actually burned into the exported pixels", async ({ page, browserName }) => {
+    test("solid-cover zone is actually burned into the exported pixels", {
+        tag: ["@golden-blur", "@golden-export"],
+    }, async ({ page, browserName }) => {
         test.skip(browserName === "firefox", "Firefox WebCodecs H.264 encode is broken (Bugzilla 1918769)");
         test.skip(
             !(await canEncodeHighProfileH264(page)),

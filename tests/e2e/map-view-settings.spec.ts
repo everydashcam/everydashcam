@@ -218,7 +218,7 @@ test.describe("delayed marker assets", () => {
     });
 });
 
-test("map provider choice applies immediately and survives a reload", async ({ page }) => {
+test("map provider choice applies immediately and survives a reload", { tag: "@golden-map" }, async ({ page }) => {
     await loadTrip(page);
     await page.locator("#settings-btn").click();
     const provider = page.getByRole("combobox", { name: "Map provider" });

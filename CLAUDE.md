@@ -141,6 +141,9 @@ next to the key; copied English text is not a completed translation.
 Choose checks by the changed surface. Use focused tests while iterating; finish
 the applicable gates before calling the change done. Report failures or checks
 you could not run, with the reason; do not describe skipped coverage as passing.
+For quick browser feedback, use `npm run test:e2e:golden` or the area shortcuts
+in the [e2e guide](tests/e2e/README.md). They run a curated subset, rebuild before
+testing, and do not replace the full e2e gate below.
 
 | Change | Required verification |
 | --- | --- |

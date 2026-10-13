@@ -20,7 +20,9 @@ async function expectLocalTrack(page: Page, hasPendingBasemap = false): Promise<
         .toBe(true);
 }
 
-test("draws the local track while remote map bootstrap remains pending, including a theme swap", async ({ page }) => {
+test("draws the local track while remote map bootstrap remains pending, including a theme swap", {
+    tag: ["@golden-map", "@golden-offline"],
+}, async ({ page }) => {
     const heldRequests: Route[] = [];
     await page.route("https://tiles.openfreemap.org/planet", (route) => {
         heldRequests.push(route);

@@ -62,10 +62,9 @@ async function navigateOffline(navigate: () => Promise<unknown>): Promise<void> 
 }
 
 test.describe("offline", () => {
-    test("boots, ingests local recordings and exports a clip with all network requests blocked", async ({
-        page,
-        context,
-    }) => {
+    test("boots, ingests local recordings and exports a clip with all network requests blocked", {
+        tag: "@golden-offline",
+    }, async ({ page, context }) => {
         const errors: string[] = [];
         page.on("pageerror", (err) => errors.push(err.message));
         await installExportCapture(page);
@@ -149,7 +148,9 @@ test.describe("offline", () => {
         await expect(page).toHaveTitle(/everydashcam/i);
     });
 
-    test("offline reload serves the cached app shell, not the browser offline page", async ({ page, context }) => {
+    test("offline reload serves the cached app shell, not the browser offline page", {
+        tag: "@golden-offline",
+    }, async ({ page, context }) => {
         await installServiceWorker(page);
         await context.setOffline(true);
 
