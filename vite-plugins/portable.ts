@@ -122,10 +122,10 @@ export function portablePlugin(options: PortableOptions): Plugin {
                         );
                     } else if (/maplibre.*worker.*\.js$/.test(item.fileName)) {
                         const bytes = Buffer.from(item.source);
-                        // MapLibre selects classic workers by the .cjs suffix. The
-                        // bundled IIFE needs that path on file: opaque origins;
-                        // the fragment leaves the Blob's lookup URL unchanged.
-                        const expression = `(URL.createObjectURL(new Blob([${JSON.stringify(bytes.toString("utf8"))}],{type:"text/javascript"}))+"#worker.cjs")`;
+                        // File origins need a classic worker. MapLibre checks the
+                        // URL before its fragment, so end a data URL with a .cjs
+                        // comment to select classic mode for the bundled IIFE.
+                        const expression = `("data:text/javascript;charset=utf-8,"+encodeURIComponent(${JSON.stringify(bytes.toString("utf8"))})+"%0A%2F%2Fworker.cjs")`;
                         const paths = [`/${item.fileName}`, item.fileName];
                         let found = false;
                         for (const path of paths) {
@@ -201,7 +201,7 @@ export function portablePlugin(options: PortableOptions): Plugin {
                     "default-src 'none'",
                     `script-src blob: ${hashes.join(" ")}`,
                     "style-src 'unsafe-inline'",
-                    "worker-src blob:",
+                    "worker-src blob: data:",
                     "font-src data:",
                     `img-src data: blob: ${mapOrigins.join(" ")}`,
                     "media-src blob: data:",

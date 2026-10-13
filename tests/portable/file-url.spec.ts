@@ -54,7 +54,7 @@ test("plays and seeks offline, draws GPS and exports manual blur with a route ov
     expect(workerNames).toContain("ingest-worker");
     expect(workerNames).toContain("gps-extract-worker");
     expect(workerNames).toContain("indexer-worker");
-    expect(page.workers().every((worker) => worker.url().startsWith("blob:"))).toBe(true);
+    expect(page.workers().every((worker) => /^(blob:|data:)/.test(worker.url()))).toBe(true);
     await pausePlayback(page);
     await page.locator("#player-play").click();
     await expect.poll(() => masterVideoTime(page)).toBeGreaterThan(0.2);

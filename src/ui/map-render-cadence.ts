@@ -15,7 +15,7 @@ export interface MapRenderCadence {
 export function installMapRenderCadence(map: RenderTarget, appliedFrame: () => object | null): MapRenderCadence {
     // MapLibre has no scheduler API. Its internal repaint requests currently use
     // this public method; an engine upgrade must pass the real-render e2e gate.
-    if (map.version !== "6.11.2") return { enabled: false, refresh() {} };
+    if (map.version !== "6.14.0") return { enabled: false, refresh() {} };
 
     const nativeRepaint = map.triggerRepaint;
     let renderedFrame: object | null = null;
