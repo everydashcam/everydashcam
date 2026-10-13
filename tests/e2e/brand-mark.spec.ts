@@ -49,6 +49,7 @@ test("brand odometer rolls forward, starts and stops on the right, and respects 
     await expect(mark).toHaveAccessibleName("everydashcam");
     await expect(mark).toHaveRole("img");
     await expect(columns).toHaveCount(Math.max(...SUPPORTED_BRANDS.map((brand) => brand.displayName.length)));
+    const wheelSize = (await columns.first().locator(".edc-mark__letter").count()) / 2;
     await expect.poll(() => visibleWord(columns)).toBe("EVERY");
     await page.clock.install();
     await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
@@ -65,13 +66,13 @@ test("brand odometer rolls forward, starts and stops on the right, and respects 
     expect(second.slice(0, 3)).toEqual(initial.slice(0, 3));
     expect(second[3]).not.toBe(initial[3]);
 
-    // Actual travel per frame: every drum moves upward through the 37-character
+    // Actual travel per frame: every drum moves upward through its character
     // wheel, and every right drum moves farther in the same elapsed time.
     await page.clock.runFor(200);
     const before = await positions(columns);
     await page.clock.runFor(16);
     const after = await positions(columns);
-    const travel = after.slice(0, 5).map((position, index) => (position - before[index]! + 37) % 37);
+    const travel = after.slice(0, 5).map((position, index) => (position - before[index]! + wheelSize) % wheelSize);
     for (const distance of travel) {
         expect(distance).toBeGreaterThan(0);
         expect(distance).toBeLessThan(8);
@@ -97,7 +98,8 @@ test("brand odometer rolls forward, starts and stops on the right, and respects 
     await page.clock.runFor(180);
     await expect(mark).toHaveClass(/edc-mark--animated/);
     await page.clock.runFor(1100);
-    expect(await visibleWord(columns)).toBe("DDPAI");
+    // With a zero shuffle draw, the first brand is followed by the catalog tail in reverse order.
+    expect(await visibleWord(columns)).toBe(SUPPORTED_BRANDS.at(-1)!.displayName.toUpperCase());
     await expect(mark.locator(".edc-mark__word")).toHaveCSS("opacity", "0");
     await mark.dispatchEvent("mouseleave");
     await page.clock.runFor(1400);
@@ -110,7 +112,7 @@ test("brand odometer rolls forward, starts and stops on the right, and respects 
     await page.mouse.move(0, 200);
     await mark.hover();
     await page.clock.runFor(1400);
-    expect(await visibleWord(columns)).toBe("IBOX");
+    expect(await visibleWord(columns)).toBe(SUPPORTED_BRANDS.at(-2)!.displayName.toUpperCase());
     // Media-query changes are delivered by the browser's rendering cycle,
     // independently of Playwright's mocked animation-frame clock.
     await page.clock.resume();
@@ -144,6 +146,21 @@ test("brand odometer rolls forward, starts and stops on the right, and respects 
     await expect(mark.locator(".edc-mark__word")).toBeVisible();
     expect(await visibleWord(columns)).toBe("EVERY");
     await expect(mark.locator(".edc-mark__drums")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+});
+
+test("brand odometer displays the hyphen in E-ACE", async ({ page }) => {
+    await prepare(page);
+    const mark = page.locator(".topbar .edc-mark");
+    const columns = mark.locator(".edc-mark__column");
+    const brandIndex = SUPPORTED_BRANDS.findIndex((brand) => brand.displayName === "E-ACE");
+    expect(brandIndex).toBeGreaterThanOrEqual(0);
+    await page.clock.install();
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+    await hoverBrand(mark, (brandIndex + 0.5) / SUPPORTED_BRANDS.length);
+    await page.clock.runFor(1400);
+    expect(await visibleWord(columns)).toBe("E-ACE");
+    await expect(mark).not.toHaveClass(/edc-mark--animated/);
+    await page.clock.resume();
 });
 
 test("leaving and reentering the logo redirects the moving drums without stale timers", async ({ page }) => {

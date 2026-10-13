@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 
 import type { Page } from "@playwright/test";
+import { enDict } from "../../src/i18n/en.js";
 import { LANGS } from "../../src/i18n/languages.js";
 
 import { expect, gotoApp, loadTrip, presetLocalStorage, shot, test } from "./_fixtures.js";
@@ -20,9 +21,9 @@ test.describe("navigation & shell", () => {
     test("/en/ landing renders English hero copy", async ({ page }) => {
         await gotoApp(page, "en");
         await expect(page.locator("#landing")).toBeVisible();
-        // h1.hl resolves to "...map, speed, events." in the EN dictionary - a
-        // raw data-i18n key here would mean the runtime swap failed.
-        await expect(page.locator("#landing h1")).toContainText(/map/i);
+        await expect(page.locator("#landing h1")).toHaveText(
+            enDict["landing.hero.h1.before"] + enDict["landing.hero.h1.hl"] + enDict["landing.hero.h1.after"],
+        );
         await shot(page, "nav-01-landing-en");
     });
 

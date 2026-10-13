@@ -1,6 +1,6 @@
 import { SUPPORTED_BRANDS } from "../../vite-plugins/supported-brands.js";
 
-const ALPHABET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+export const BRAND_ALPHABET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
 const BRAND_WORD = "EVERY";
 const cameraBrands = SUPPORTED_BRANDS.map((brand) => brand.displayName.toUpperCase());
 const maxDrums = Math.max(BRAND_WORD.length, ...cameraBrands.map((word) => word.length));
@@ -65,9 +65,9 @@ export function initBrandMark(): void {
     const positions = columns.map(() => 0);
     root.classList.add("edc-mark--interactive");
     columns.forEach((column) => {
-        // A second alphabet makes the final digit -> blank -> A wrap seamless.
+        // A second alphabet makes the final character -> blank -> A wrap seamless.
         column.replaceChildren(
-            ...Array.from(ALPHABET.repeat(2), (letter) => {
+            ...Array.from(BRAND_ALPHABET.repeat(2), (letter) => {
                 const span = document.createElement("span");
                 span.className = "edc-mark__letter";
                 span.textContent = letter;
@@ -99,7 +99,7 @@ export function initBrandMark(): void {
     };
     const setWord = (word: string): void => {
         columns.forEach((_, index) => {
-            setPosition(index, ALPHABET.indexOf(word[index] ?? " "));
+            setPosition(index, BRAND_ALPHABET.indexOf(word[index] ?? " "));
         });
     };
     const setWordVisibility = (opacity: number): void => {
@@ -130,8 +130,8 @@ export function initBrandMark(): void {
         const fromCount = drumCount;
         let previousSpeed = 0;
         const rolls = positions.slice(0, Math.max(Math.ceil(fromCount), count)).map((start, index) => {
-            const target = ALPHABET.indexOf(word[index] ?? " ");
-            const delta = (target - start + ALPHABET.length) % ALPHABET.length;
+            const target = BRAND_ALPHABET.indexOf(word[index] ?? " ");
+            const delta = (target - start + BRAND_ALPHABET.length) % BRAND_ALPHABET.length;
             const across = Math.min(index, count - 1) / (count - 1);
             // Right starts first and stops last. Only add complete turns when
             // needed to keep every right drum faster than its left neighbor.
@@ -139,9 +139,9 @@ export function initBrandMark(): void {
             const duration = ROLL_MS * (0.5 + 0.5 * across);
             const turns = Math.max(
                 delta === 0 ? 1 : 0,
-                Math.ceil((previousSpeed * 1.08 * duration - delta) / ALPHABET.length),
+                Math.ceil((previousSpeed * 1.08 * duration - delta) / BRAND_ALPHABET.length),
             );
-            const distance = turns * ALPHABET.length + delta;
+            const distance = turns * BRAND_ALPHABET.length + delta;
             previousSpeed = distance / duration;
             return { index, start, target, delay, duration, distance };
         });
@@ -152,7 +152,7 @@ export function initBrandMark(): void {
                 for (const roll of rolls) {
                     const progress = Math.min(1, Math.max(0, elapsed - roll.delay) / roll.duration);
                     const position =
-                        progress === 1 ? roll.target : (roll.start + roll.distance * progress) % ALPHABET.length;
+                        progress === 1 ? roll.target : (roll.start + roll.distance * progress) % BRAND_ALPHABET.length;
                     setPosition(roll.index, position);
                 }
             },

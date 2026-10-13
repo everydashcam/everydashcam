@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SUPPORTED_BRANDS } from "../../vite-plugins/supported-brands.js";
-import { createBrandCycle } from "./brand-mark.js";
+import { BRAND_ALPHABET, createBrandCycle } from "./brand-mark.js";
 
 const brands = SUPPORTED_BRANDS.map((brand) => brand.displayName.toUpperCase());
 
@@ -32,6 +32,9 @@ describe("brand cycle", () => {
 
     it("represents each brand once using characters available on the drums", () => {
         expect(new Set(brands).size).toBe(brands.length);
-        for (const brand of brands) expect(brand).toMatch(/^[ A-Z0-9]{2,}$/);
+        for (const brand of brands) {
+            expect(brand.length).toBeGreaterThanOrEqual(2);
+            for (const letter of brand) expect(BRAND_ALPHABET, brand).toContain(letter);
+        }
     });
 });
