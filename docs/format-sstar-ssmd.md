@@ -89,7 +89,7 @@ does not produce plausible coordinates for this sample.
 
 ## DDmm coordinate dialect
 
-The iBox RoadScan 2K carries DDmm coordinates with the SStar day/time and
+The iBOX RoadScan 2K carries DDmm coordinates with the SStar day/time and
 course conventions. It cannot use the equally sized Rove decoder: Rove
 interprets the flags as a year/month and the speed as knots. Compare
 [ExifTool's RoveGPS decoder](https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/QuickTimeStream.pl).

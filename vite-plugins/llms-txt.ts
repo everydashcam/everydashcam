@@ -53,7 +53,7 @@ export function llmsTxtPlugin(): Plugin {
             lines.push("# everydashcam");
             lines.push("");
             lines.push(
-                `> Web-based dashcam recording viewer. Plays MP4, MOV and MPEG-TS footage from ${getAllBrandsCommaSeparated()} dashcams with a synchronized GPS map and speed/G-force chart. Joins the minute-long clips dashcams write into continuous trips and can save any selected range as a single merged MP4. Runs entirely in the user's browser - files are read locally via the File System Access API, nothing is uploaded.`,
+                `> Web-based dashcam recording viewer. Plays MP4, MOV and MPEG-TS footage from ${getAllBrandsCommaSeparated()} dashcams. A synchronized GPS map and speed/G-force chart are available when the recordings contain readable GPS or motion data; support varies by model and recording. Joins the minute-long clips dashcams write into continuous trips and can save any selected range as a single merged MP4. Runs entirely in the user's browser - files are read locally via the File System Access API, nothing is uploaded.`,
             );
             lines.push("");
             lines.push(

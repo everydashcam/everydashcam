@@ -1,6 +1,7 @@
 // BlackVue X-series GPS box extractor. NMEA payload inside a non-standard
-// `gps` box within the top-level `free` box (see
-// tests/testdata/blackvue-dr900x-plus/MOV.source.md). Parsing lives in
+// `gps` box within the top-level `free` box. The real DR900X Plus sample
+// verifies the carrier but has no satellite fixes; positive-fix coverage is
+// synthetic (see docs/gps-format-coverage.md). Parsing lives in
 // internal/free-gps-box-extract.ts.
 
 import { type ParsedRecords, type VendorFile, WrongFormatError } from "../types.js";

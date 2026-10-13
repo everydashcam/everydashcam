@@ -1,7 +1,7 @@
 # 360GPSINFO whole-session JSONL format
 
 GPS is stored in one preallocated text log for a continuous recording session,
-not inside each video. Verified on a Botslab G300H 2K card using G300HPro
+not inside each video. Verified on a Botslab G300H Pro card using G300HPro
 firmware. The public product documentation confirms built-in GPS but does not
 document the on-card format; the layout below comes from the real recording.
 

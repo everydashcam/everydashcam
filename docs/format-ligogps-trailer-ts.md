@@ -1,5 +1,9 @@
 # LigoGPS trailers on MPEG-TS
 
+Real recordings verify this family for Aspiring Expert 9, Blackview X5S PRO
+and INNOVV K3, plus an unidentified dual-camera sample. K3 uses the paired
+enciphered/plaintext dialect; N2 instead uses [Viidure PES records](format-viidure-ts.md).
+
 The GPS table follows the last complete TS packet. It is not packetized:
 demuxers must stop before it, while telemetry extraction reads the original
 file. Keep GPS-trailer detection shared between these consumers in

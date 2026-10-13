@@ -119,7 +119,7 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "viofo",
         displayName: "Viofo",
-        models: ["A119", "A119 V3", "A119 Mini 2", "A119 Mini Pro", "A329", "A329S", "T130"],
+        models: ["A119", "A119 V3", "A119 Mini 2", "A119M Pro", "A329", "A329S", "T130"],
         features: MULTI_CAMERA_FEATURES,
         locales: {
             en: {
@@ -196,69 +196,69 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "blackvue",
         displayName: "BlackVue",
-        models: ["DR900X Plus", "DR550DW"],
+        models: ["DR900X Plus", "DR550GW-2CH"],
         features: MULTI_CAMERA_FEATURES,
         locales: {
             en: {
-                lead: "Watch BlackVue DR900X Plus and DR550DW recordings with their route and speed. Open the card in your browser without a Cloud account.",
+                lead: "Watch BlackVue DR900X Plus and DR550GW-2CH recordings locally. Open the card in your browser without a Cloud account, keeping matching GPS files with the videos.",
                 compatibility:
-                    "DR900X Plus keeps GPS inside the video. DR550DW uses separate .gps and .3gf files. Keep these older companion files to retain the route and motion data.",
+                    "Routes and speed are checked on DR550GW-2CH .gps files; .3gf files supply motion data. The DR900X Plus sample contains embedded GPS data without a satellite fix, so its route has not yet been verified on a real recording.",
                 openTip:
                     "Open the BlackVue recording folder with the original front and rear clips. Include matching .gps and .3gf files and preserve their names so they can be paired with the videos.",
             },
             ru: {
-                lead: "Смотри записи BlackVue DR900X Plus и DR550DW с маршрутом и скоростью. Открой карту в браузере без аккаунта Cloud.",
+                lead: "Смотри записи BlackVue DR900X Plus и DR550GW-2CH локально. Открой карту в браузере без аккаунта Cloud, сохранив парные GPS-файлы вместе с видео.",
                 compatibility:
-                    "DR900X Plus хранит GPS внутри видео. DR550DW использует отдельные файлы .gps и .3gf: сохрани их для маршрута и данных движения.",
+                    "Маршрут и скорость проверены на файлах .gps DR550GW-2CH; данные движения хранятся в .3gf. В примере DR900X Plus GPS встроен в видео, но спутниковые координаты не определены: маршрут пока не проверен на реальной записи.",
                 openTip:
                     "Открой папку BlackVue с исходными передними и задними роликами. Добавь соответствующие .gps и .3gf и сохрани их имена, чтобы плеер сопоставил данные с видео.",
             },
             de: {
-                lead: "Sieh BlackVue-DR900X-Plus- und DR550DW-Aufnahmen mit Route und Tempo an. Öffne die Karte im Browser, ohne Cloud-Konto.",
+                lead: "Sieh BlackVue-DR900X-Plus- und DR550GW-2CH-Aufnahmen lokal an. Öffne die Karte im Browser ohne Cloud-Konto und behalte passende GPS-Dateien bei den Videos.",
                 compatibility:
-                    "DR900X Plus speichert GPS im Video. DR550DW nutzt separate .gps- und .3gf-Dateien. Behalte sie für Route und Bewegungsdaten.",
+                    "Route und Tempo wurden mit DR550GW-2CH-.gps-Dateien geprüft; .3gf-Dateien liefern Bewegungsdaten. Die Beispielaufnahme des DR900X Plus enthält GPS-Daten ohne Satellitenposition. Eine echte Route wurde damit noch nicht bestätigt.",
                 openTip:
                     "Öffne den BlackVue-Aufnahmeordner mit den ursprünglichen Front- und Heckvideos. Nimm passende .gps- und .3gf-Dateien mit und behalte ihre Namen, damit sie den Videos zugeordnet werden können.",
             },
             es: {
-                lead: "Mira grabaciones BlackVue DR900X Plus y DR550DW con ruta y velocidad. Abre la tarjeta en el navegador sin cuenta Cloud.",
+                lead: "Mira grabaciones BlackVue DR900X Plus y DR550GW-2CH localmente. Abre la tarjeta en el navegador sin cuenta Cloud y conserva los archivos GPS junto a los vídeos.",
                 compatibility:
-                    "DR900X Plus guarda el GPS dentro del vídeo. DR550DW usa archivos .gps y .3gf separados: consérvalos para mantener la ruta y los datos de movimiento.",
+                    "La ruta y la velocidad están verificadas con archivos .gps del DR550GW-2CH; los .3gf aportan datos de movimiento. La muestra DR900X Plus contiene GPS sin posición de satélite, por lo que su ruta aún no se ha verificado en una grabación real.",
                 openTip:
                     "Abre la carpeta BlackVue con los vídeos delanteros y traseros originales. Incluye los .gps y .3gf correspondientes y conserva sus nombres para asociarlos con los vídeos.",
             },
             fr: {
-                lead: "Regarde les vidéos BlackVue DR900X Plus et DR550DW avec trajet et vitesse. Ouvre la carte dans ton navigateur, sans compte Cloud.",
+                lead: "Regarde les vidéos BlackVue DR900X Plus et DR550GW-2CH localement. Ouvre la carte dans ton navigateur sans compte Cloud et garde les fichiers GPS avec les vidéos.",
                 compatibility:
-                    "Le DR900X Plus conserve le GPS dans la vidéo. Le DR550DW utilise des fichiers .gps et .3gf séparés : garde-les pour le trajet et les données de mouvement.",
+                    "Le trajet et la vitesse sont vérifiés avec les fichiers .gps du DR550GW-2CH ; les .3gf fournissent les données de mouvement. L’exemple DR900X Plus contient du GPS sans position satellite : son trajet n’a pas encore été vérifié sur une vraie vidéo.",
                 openTip:
                     "Ouvre le dossier BlackVue avec les vidéos avant et arrière originales. Ajoute les fichiers .gps et .3gf correspondants et garde leurs noms pour les associer aux vidéos.",
             },
             pl: {
-                lead: "Oglądaj nagrania BlackVue DR900X Plus i DR550DW z trasą i prędkością. Otwórz kartę w przeglądarce bez konta Cloud.",
+                lead: "Oglądaj nagrania BlackVue DR900X Plus i DR550GW-2CH lokalnie. Otwórz kartę w przeglądarce bez konta Cloud i zachowaj pasujące pliki GPS razem z filmami.",
                 compatibility:
-                    "DR900X Plus zapisuje GPS w filmie. DR550DW używa oddzielnych plików .gps i .3gf: zachowaj je, aby mieć trasę i dane o ruchu.",
+                    "Trasę i prędkość sprawdzono w plikach .gps z DR550GW-2CH; pliki .3gf dostarczają dane o ruchu. Próbka DR900X Plus zawiera GPS bez pozycji satelitarnej, więc trasa nie została jeszcze potwierdzona na prawdziwym nagraniu.",
                 openTip:
                     "Otwórz folder BlackVue z oryginalnymi nagraniami przodu i tyłu. Dodaj pasujące pliki .gps i .3gf i zachowaj ich nazwy, aby można je było połączyć z filmami.",
             },
             zh: {
-                lead: "查看 BlackVue DR900X Plus 和 DR550DW 的录像、路线和速度。在浏览器中打开存储卡，无需 Cloud 账户。",
+                lead: "在本机查看 BlackVue DR900X Plus 和 DR550GW-2CH 录像。在浏览器中打开存储卡，无需 Cloud 账户；请将配套 GPS 文件与视频一起保留。",
                 compatibility:
-                    "DR900X Plus 将 GPS 保存在视频内。DR550DW 使用独立的 .gps 和 .3gf 文件；保留这些文件才能保留路线和运动数据。",
+                    "已用 DR550GW-2CH 的 .gps 文件验证路线和速度；.3gf 文件提供运动数据。DR900X Plus 样本内含 GPS 数据，但没有卫星定位结果，因此尚未用真实录像验证其路线。",
                 openTip:
                     "打开含有原始前后录像的 BlackVue 文件夹。同时保留对应的 .gps 和 .3gf 文件及原始名称，让播放器将数据与视频配对。",
             },
             ja: {
-                lead: "BlackVue DR900X Plus と DR550DW の録画をルートや速度と確認。Cloud アカウントなしでカードをブラウザーから開けます。",
+                lead: "BlackVue DR900X Plus と DR550GW-2CH の録画を端末で確認。Cloud アカウントなしでカードをブラウザーから開き、対応する GPS ファイルも動画と一緒に残してください。",
                 compatibility:
-                    "DR900X Plus は GPS を動画内に保存します。DR550DW は別の .gps と .3gf ファイルを使うので、ルートや動きのデータのために残してください。",
+                    "DR550GW-2CH の .gps ファイルでルートと速度を確認済みです。.3gf は動きのデータです。DR900X Plus のサンプルには GPS データがありますが衛星測位ができておらず、実際の録画でルートはまだ確認されていません。",
                 openTip:
                     "元の前方・後方映像がある BlackVue フォルダーを開きます。対応する .gps と .3gf も含め、動画と結び付けられるようファイル名を変えないでください。",
             },
             ko: {
-                lead: "BlackVue DR900X Plus와 DR550DW 녹화를 경로와 속도와 함께 봐요. Cloud 계정 없이 브라우저에서 카드를 열 수 있어요.",
+                lead: "BlackVue DR900X Plus와 DR550GW-2CH 녹화를 기기에서 봐요. Cloud 계정 없이 브라우저에서 카드를 열고, 영상과 짝을 이루는 GPS 파일도 함께 보관해 주세요.",
                 compatibility:
-                    "DR900X Plus는 영상 안에 GPS를 저장해요. DR550DW는 별도의 .gps와 .3gf 파일을 사용하므로 경로와 움직임 데이터를 위해 함께 보관해 주세요.",
+                    "DR550GW-2CH의 .gps 파일에서 경로와 속도를 확인했어요. .3gf는 움직임 데이터를 제공해요. DR900X Plus 샘플에는 GPS 데이터가 있지만 위성 위치를 잡지 못해 실제 녹화의 경로는 아직 확인되지 않았어요.",
                 openTip:
                     "앞쪽·뒤쪽 원본 영상이 있는 BlackVue 폴더를 열어 주세요. 대응하는 .gps와 .3gf 파일도 포함하고 영상과 연결할 수 있도록 원래 이름을 유지하세요.",
             },
@@ -267,76 +267,76 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "gopro",
         displayName: "GoPro",
-        models: ["HERO6", "HERO7", "HERO8", "MAX"],
+        models: ["HERO5", "HERO6", "HERO7", "HERO8", "MAX"],
         features: GPS_FEATURES,
         locales: {
             en: {
-                lead: "Watch original GoPro HERO6, HERO7, HERO8 and MAX MP4 recordings with their GPS route and speed. Save a clip locally in your browser.",
+                lead: "Watch original GoPro MP4 recordings and save a clip locally in your browser. GPS routes and speed are checked on HERO5, HERO6 and MAX recordings.",
                 compatibility:
-                    "GPS has been checked in recordings from these cameras. Later HERO generations are not covered by that check; a GPS-capable camera still needs to record a satellite fix.",
+                    "The HERO7 and HERO8 samples contain GPS data without a satellite fix, so they do not verify a real route. GPS checks on HERO5, HERO6 and MAX do not confirm every model variant or later HERO generation.",
                 openTip:
                     "Open the original MP4s from the GoPro card and keep all numbered parts of a long recording. Edited or downloaded copies can lose GPS even when the picture looks unchanged.",
             },
             ru: {
-                lead: "Смотри исходные MP4 GoPro HERO6, HERO7, HERO8 и MAX с GPS-маршрутом и скоростью. Сохрани фрагмент локально в браузере.",
+                lead: "Смотри исходные MP4 GoPro и сохраняй фрагменты локально в браузере. GPS-маршрут и скорость проверены на записях HERO5, HERO6 и MAX.",
                 compatibility:
-                    "GPS проверен в записях этих камер. Проверка не охватывает более поздние поколения HERO; даже камера с GPS должна успеть записать спутниковые координаты.",
+                    "В примерах HERO7 и HERO8 есть GPS-данные, но нет спутниковых координат: реальный маршрут на них не проверен. Проверка HERO5, HERO6 и MAX не подтверждает все варианты моделей и более поздние поколения HERO.",
                 openTip:
                     "Открой исходные MP4 с карты GoPro и сохрани все пронумерованные части длинной записи. Изменённые или скачанные копии могут потерять GPS, даже если картинка выглядит так же.",
             },
             de: {
-                lead: "Sieh originale MP4-Aufnahmen von GoPro HERO6, HERO7, HERO8 und MAX mit GPS-Route und Tempo an. Speichere Ausschnitte lokal im Browser.",
+                lead: "Sieh originale GoPro-MP4-Aufnahmen an und speichere Ausschnitte lokal im Browser. GPS-Route und Tempo wurden an HERO5-, HERO6- und MAX-Aufnahmen geprüft.",
                 compatibility:
-                    "GPS wurde an Aufnahmen dieser Kameras geprüft. Spätere HERO-Generationen sind damit nicht bestätigt; auch eine GPS-Kamera muss Satellitenpositionen aufgezeichnet haben.",
+                    "Die HERO7- und HERO8-Beispiele enthalten GPS-Daten ohne Satellitenposition und bestätigen daher keine echte Route. Die Prüfungen mit HERO5, HERO6 und MAX bestätigen nicht jede Modellvariante oder spätere HERO-Generation.",
                 openTip:
                     "Öffne die originalen MP4s der GoPro-Karte und behalte alle nummerierten Teile langer Aufnahmen. Bearbeitete oder heruntergeladene Kopien können GPS verlieren, obwohl das Bild gleich aussieht.",
             },
             es: {
-                lead: "Mira MP4 originales de GoPro HERO6, HERO7, HERO8 y MAX con ruta GPS y velocidad. Guarda fragmentos localmente en el navegador.",
+                lead: "Mira MP4 originales de GoPro y guarda fragmentos localmente en el navegador. La ruta GPS y la velocidad están verificadas en grabaciones HERO5, HERO6 y MAX.",
                 compatibility:
-                    "El GPS se ha comprobado en grabaciones de estas cámaras. Esa comprobación no cubre generaciones HERO posteriores; la cámara debe haber registrado posiciones de satélite.",
+                    "Las muestras HERO7 y HERO8 contienen GPS sin posición de satélite, así que no verifican una ruta real. Las pruebas con HERO5, HERO6 y MAX no confirman todas las variantes ni generaciones HERO posteriores.",
                 openTip:
                     "Abre los MP4 originales de la tarjeta GoPro y conserva todas las partes numeradas de una grabación larga. Las copias editadas o descargadas pueden perder el GPS aunque la imagen parezca igual.",
             },
             fr: {
-                lead: "Regarde les MP4 originaux des GoPro HERO6, HERO7, HERO8 et MAX avec trajet GPS et vitesse. Enregistre un extrait localement dans ton navigateur.",
+                lead: "Regarde les MP4 originaux GoPro et enregistre un extrait localement dans ton navigateur. Le trajet GPS et la vitesse sont vérifiés sur HERO5, HERO6 et MAX.",
                 compatibility:
-                    "Le GPS a été vérifié sur des vidéos de ces caméras. Cela ne couvre pas les générations HERO suivantes ; la caméra doit avoir enregistré des positions satellite.",
+                    "Les exemples HERO7 et HERO8 contiennent du GPS sans position satellite : ils ne valident donc pas de trajet réel. Les tests sur HERO5, HERO6 et MAX ne confirment pas toutes les variantes ni les générations HERO suivantes.",
                 openTip:
                     "Ouvre les MP4 originaux de la carte GoPro et garde toutes les parties numérotées des longues vidéos. Les copies modifiées ou téléchargées peuvent perdre le GPS, même si l’image semble identique.",
             },
             pl: {
-                lead: "Oglądaj oryginalne MP4 z GoPro HERO6, HERO7, HERO8 i MAX z trasą GPS i prędkością. Zapisz fragment lokalnie w przeglądarce.",
+                lead: "Oglądaj oryginalne MP4 GoPro i zapisuj fragmenty lokalnie w przeglądarce. Trasę GPS i prędkość sprawdzono na nagraniach HERO5, HERO6 i MAX.",
                 compatibility:
-                    "GPS sprawdzono w nagraniach tych kamer. Nie obejmuje to późniejszych generacji HERO; kamera musi wcześniej zapisać pozycje z satelitów.",
+                    "Próbki HERO7 i HERO8 zawierają GPS bez pozycji satelitarnej, więc nie potwierdzają rzeczywistej trasy. Testy HERO5, HERO6 i MAX nie potwierdzają wszystkich wariantów modeli ani późniejszych generacji HERO.",
                 openTip:
                     "Otwórz oryginalne MP4 z karty GoPro i zachowaj wszystkie numerowane części długiego nagrania. Edytowane lub pobrane kopie mogą stracić GPS, mimo że obraz wygląda tak samo.",
             },
             pt: {
-                lead: "Veja MP4 originais de GoPro HERO6, HERO7, HERO8 e MAX com trajeto GPS e velocidade. Salve um trecho localmente no navegador.",
+                lead: "Veja MP4 originais GoPro e salve trechos localmente no navegador. O trajeto GPS e a velocidade foram verificados em gravações HERO5, HERO6 e MAX.",
                 compatibility:
-                    "O GPS foi verificado em gravações dessas câmeras. Isso não abrange gerações HERO posteriores; a câmera precisa ter gravado posições de satélite.",
+                    "As amostras HERO7 e HERO8 contêm GPS sem posição de satélite, por isso não verificam um trajeto real. Os testes com HERO5, HERO6 e MAX não confirmam todas as variantes nem gerações HERO posteriores.",
                 openTip:
                     "Abra os MP4 originais do cartão GoPro e preserve todas as partes numeradas de uma gravação longa. Cópias editadas ou baixadas podem perder o GPS mesmo quando a imagem parece igual.",
             },
             zh: {
-                lead: "查看 GoPro HERO6、HERO7、HERO8 和 MAX 的原始 MP4 录像、GPS 路线和速度。在浏览器中将片段保存到本机。",
+                lead: "查看 GoPro 原始 MP4 录像，在浏览器中将片段保存到本机。已在 HERO5、HERO6 和 MAX 录像中验证 GPS 路线和速度。",
                 compatibility:
-                    "已在这些摄像机的录像中验证 GPS。此验证不涵盖后续 HERO 型号；具备 GPS 的摄像机也需要实际记录到卫星定位。",
+                    "HERO7 和 HERO8 样本内含 GPS 数据，但没有卫星定位结果，因此未能验证真实路线。HERO5、HERO6 和 MAX 的测试不代表所有型号变体或后续 HERO 系列均已验证。",
                 openTip:
                     "打开 GoPro 存储卡中的原始 MP4，保留长录像的所有编号分段。编辑或下载的副本即使画面看起来相同，也可能丢失 GPS。",
             },
             ja: {
-                lead: "GoPro HERO6、HERO7、HERO8、MAX の元の MP4 を GPS ルートや速度と確認。ブラウザーで必要な部分を端末に保存できます。",
+                lead: "GoPro の元の MP4 を確認し、ブラウザーで必要な部分を端末に保存。GPS ルートと速度は HERO5、HERO6、MAX の録画で確認済みです。",
                 compatibility:
-                    "これらのカメラの録画で GPS を確認しています。後の HERO 世代はこの確認に含まれません。GPS 搭載機でも、衛星の位置情報が記録されている必要があります。",
+                    "HERO7 と HERO8 のサンプルには GPS データがありますが衛星測位ができておらず、実際のルートは未確認です。HERO5、HERO6、MAX の確認結果は、すべての派生モデルや後の HERO 世代には当てはまりません。",
                 openTip:
                     "GoPro カードの元の MP4 を開き、長い録画の番号付きファイルをすべて残してください。編集済みやダウンロードしたコピーは、映像が同じでも GPS が失われている場合があります。",
             },
             ko: {
-                lead: "GoPro HERO6, HERO7, HERO8, MAX의 원본 MP4를 GPS 경로와 속도와 함께 봐요. 브라우저에서 필요한 구간을 기기에 저장하세요.",
+                lead: "GoPro 원본 MP4를 보고 필요한 구간을 브라우저에서 기기에 저장해요. GPS 경로와 속도는 HERO5, HERO6, MAX 녹화에서 확인했어요.",
                 compatibility:
-                    "이 카메라들의 녹화에서 GPS를 확인했어요. 이후 HERO 세대는 이 확인에 포함되지 않아요. GPS 카메라도 실제 위성 위치를 기록해야 지도가 나와요.",
+                    "HERO7과 HERO8 샘플에는 GPS 데이터가 있지만 위성 위치를 잡지 못해 실제 경로는 확인하지 못했어요. HERO5, HERO6, MAX의 확인 결과가 모든 모델 변형이나 이후 HERO 세대까지 보장하지는 않아요.",
                 openTip:
                     "GoPro 카드의 원본 MP4를 열고 긴 녹화의 번호가 붙은 모든 파일을 보관해 주세요. 편집하거나 내려받은 사본은 화면이 같아 보여도 GPS가 사라질 수 있어요.",
             },
@@ -601,63 +601,63 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "redtiger",
         displayName: "REDTIGER",
-        models: ["F7NP-4K"],
+        models: ["F7NP-4K", "F17"],
         features: MULTI_CAMERA_FEATURES,
         locales: {
             en: {
-                lead: "Watch REDTIGER F7NP-4K front and rear recordings with a GPS map and speed. Save the part you need without uploading the drive.",
+                lead: "Watch REDTIGER F7NP-4K and F17 recordings with their camera views, GPS map and speed. Save the part you need without uploading the drive.",
                 compatibility:
-                    "Video, paired cameras and GPS are checked on F7NP-4K recordings. The older encrypted F7N GPS format is not readable; its speed stamp alone cannot provide a route map.",
+                    "Video, paired cameras and GPS are checked on F7NP-4K and F17 recordings. The older encrypted F7N GPS format is not readable; its speed stamp alone cannot provide a route map.",
                 openTip:
-                    "Open the common folder containing Movie_F, Movie_R and any Event or Parking folders. Preserve the F/R filename endings so front and rear recordings stay together.",
+                    "Open the common parent of Movie_F and Movie_R on F7NP-4K, or Video_Front, Video_Inside and Video_Rear on F17. Keep any Event or Parking folders and the original names so camera views stay together.",
             },
             ru: {
-                lead: "Смотри передние и задние записи REDTIGER F7NP-4K с GPS-картой и скоростью. Сохрани нужный участок без загрузки поездки на сервер.",
+                lead: "Смотри записи REDTIGER F7NP-4K и F17 с ракурсами камер, GPS-картой и скоростью. Сохрани нужный участок без загрузки поездки на сервер.",
                 compatibility:
-                    "Видео, парные камеры и GPS проверены на записях F7NP-4K. Старый зашифрованный GPS-формат F7N не читается; одного штампа скорости недостаточно для карты маршрута.",
+                    "Видео, парные камеры и GPS проверены на записях F7NP-4K и F17. Старый зашифрованный GPS-формат F7N не читается; одного штампа скорости недостаточно для карты маршрута.",
                 openTip:
-                    "Открой общую папку с Movie_F, Movie_R и папками Event или Parking, если они есть. Сохрани окончания F/R в именах, чтобы передние и задние записи оставались вместе.",
+                    "Открой общую родительскую папку для Movie_F и Movie_R у F7NP-4K или Video_Front, Video_Inside и Video_Rear у F17. Сохрани папки Event или Parking, если они есть, и исходные имена, чтобы ракурсы оставались вместе.",
             },
             de: {
-                lead: "Sieh Front- und Heckaufnahmen des REDTIGER F7NP-4K mit GPS-Karte und Tempo an. Speichere den benötigten Teil ohne Upload der Fahrt.",
+                lead: "Sieh REDTIGER-F7NP-4K- und F17-Aufnahmen mit Kameraansichten, GPS-Karte und Tempo an. Speichere den benötigten Teil ohne Upload der Fahrt.",
                 compatibility:
-                    "Video, Kamerapaare und GPS wurden an F7NP-4K-Aufnahmen geprüft. Das ältere verschlüsselte GPS-Format des F7N ist nicht lesbar; die Tempoanzeige im Bild liefert keine Routenkarte.",
+                    "Video, Kamerapaare und GPS wurden an F7NP-4K- und F17-Aufnahmen geprüft. Das ältere verschlüsselte GPS-Format des F7N ist nicht lesbar; die Tempoanzeige im Bild liefert keine Routenkarte.",
                 openTip:
-                    "Öffne den gemeinsamen Ordner mit Movie_F, Movie_R und vorhandenen Event- oder Parking-Ordnern. Behalte die F/R-Endungen, damit Front- und Heckvideos zusammenbleiben.",
+                    "Öffne den gemeinsamen übergeordneten Ordner von Movie_F und Movie_R beim F7NP-4K oder Video_Front, Video_Inside und Video_Rear beim F17. Behalte vorhandene Event- oder Parking-Ordner und die ursprünglichen Dateinamen, damit die Ansichten zusammenbleiben.",
             },
             es: {
-                lead: "Mira las cámaras delantera y trasera de REDTIGER F7NP-4K con mapa GPS y velocidad. Guarda lo que necesitas sin subir el viaje.",
+                lead: "Mira grabaciones REDTIGER F7NP-4K y F17 con las vistas de las cámaras, mapa GPS y velocidad. Guarda lo que necesitas sin subir el viaje.",
                 compatibility:
-                    "Vídeo, cámaras emparejadas y GPS se han comprobado en grabaciones F7NP-4K. El antiguo GPS cifrado del F7N no se puede leer; la velocidad dibujada no basta para mostrar una ruta.",
+                    "Vídeo, cámaras emparejadas y GPS se han comprobado en grabaciones F7NP-4K y F17. El antiguo GPS cifrado del F7N no se puede leer; la velocidad dibujada no basta para mostrar una ruta.",
                 openTip:
-                    "Abre la carpeta común con Movie_F, Movie_R y las carpetas Event o Parking disponibles. Conserva las terminaciones F/R para mantener juntas las grabaciones delanteras y traseras.",
+                    "Abre la carpeta común de Movie_F y Movie_R en F7NP-4K, o Video_Front, Video_Inside y Video_Rear en F17. Conserva las carpetas Event o Parking disponibles y los nombres originales para mantener juntas las vistas.",
             },
         },
     },
     {
         slug: "navitel",
         displayName: "NAVITEL",
-        models: ["R600"],
+        models: ["R600 GPS"],
         features: GPS_FEATURES,
         locales: {
             en: {
-                lead: "Watch original NAVITEL R600 recordings with the route and speed saved by the camera. Open the folder and save a clip in your browser.",
+                lead: "Watch original NAVITEL R600 GPS recordings with the route and speed saved by the camera. Open the folder and save a clip in your browser.",
                 compatibility:
-                    "GPS is checked on an original R600 MOV recording. Re-exported R600 review clips can lack GPS, so a playing picture or visible speed does not establish route support.",
+                    "GPS is checked on an original R600 GPS MOV recording. Re-exported R600 GPS review clips can lack GPS, so a playing picture or visible speed does not establish route support.",
                 openTip:
                     "Choose the original MOV files from the card, keeping their names. Keep these originals when making a shorter copy; an ordinary video export may leave the GPS behind.",
             },
             ru: {
-                lead: "Смотри исходные записи NAVITEL R600 с маршрутом и скоростью, сохранёнными камерой. Открой папку и сохрани фрагмент в браузере.",
+                lead: "Смотри исходные записи NAVITEL R600 GPS с маршрутом и скоростью, сохранёнными камерой. Открой папку и сохрани фрагмент в браузере.",
                 compatibility:
-                    "GPS проверен на исходной MOV-записи R600. В преобразованных роликах из обзоров R600 GPS может отсутствовать: видео и видимая скорость сами по себе не подтверждают карту.",
+                    "GPS проверен на исходной MOV-записи R600 GPS. В преобразованных роликах из обзоров R600 GPS GPS может отсутствовать: видео и видимая скорость сами по себе не подтверждают карту.",
                 openTip:
                     "Выбери исходные MOV с карты и сохрани их имена. Оставь оригиналы у себя, когда делаешь короткую копию: обычный экспорт видео может не сохранить GPS.",
             },
             pl: {
-                lead: "Oglądaj oryginalne nagrania NAVITEL R600 z trasą i prędkością zapisaną przez kamerę. Otwórz folder i zapisz fragment w przeglądarce.",
+                lead: "Oglądaj oryginalne nagrania NAVITEL R600 GPS z trasą i prędkością zapisaną przez kamerę. Otwórz folder i zapisz fragment w przeglądarce.",
                 compatibility:
-                    "GPS sprawdzono na oryginalnym pliku MOV z R600. Ponownie wyeksportowane filmy z recenzji R600 mogą nie mieć GPS; sam obraz i widoczna prędkość nie potwierdzają mapy.",
+                    "GPS sprawdzono na oryginalnym pliku MOV z R600 GPS. Ponownie wyeksportowane filmy z recenzji R600 GPS mogą nie mieć GPS; sam obraz i widoczna prędkość nie potwierdzają mapy.",
                 openTip:
                     "Wybierz oryginalne MOV z karty i zachowaj ich nazwy. Zostaw oryginały, gdy tworzysz krótszą kopię: zwykły eksport wideo może pominąć GPS.",
             },

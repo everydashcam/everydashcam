@@ -49,7 +49,7 @@ describe("supported camera catalog", () => {
         expect(card("avylet")).not.toContain("A1");
         expect(card("avylet")).toContain("Requer receptor GPS");
         expect(card("datakam")).toContain("GPS em gravações exportadas");
-        expect(card("botslab")).not.toContain("G300H 2K");
+        expect(card("botslab")).not.toContain("G300H Pro");
         expect(card("izeeker")).not.toContain("iD300");
         expect(card("izeeker")).toContain("Vídeo e GPS");
         expect(card("hp")).not.toContain("f969x");
@@ -57,6 +57,23 @@ describe("supported camera catalog", () => {
         expect(card("hp")).not.toContain("Vídeo e GPS");
         expect(card("ibox")).not.toContain("iCON");
         expect(card("ibox")).not.toContain("RoadScan");
+    });
+
+    it("retains verified GPS support on cards that link to English guidance", () => {
+        const html = renderCamerasIndexPage("pt", {});
+        for (const slug of ["blackvue", "vantrue", "thinkware", "nextbase", "redtiger", "navitel", "mio-mivue", "navman-mivue", "ddpai", "blackview", "innovv", "xega", "aspiring"]) {
+            const card = new RegExp(`<li id="camera-${slug}">([\\s\\S]*?)</li>`).exec(html)?.[1];
+            expect(card, slug).toContain("Vídeo e GPS");
+            expect(card, slug).toContain('hreflang="en"');
+        }
+        for (const slug of ["fitcamx", "hp", "jooyfact", "rexing", "e-ace", "fujida", "gku"]) {
+            const card = new RegExp(`<li id="camera-${slug}">([\\s\\S]*?)</li>`).exec(html)?.[1];
+            expect(card, slug).toContain("Reprodução de vídeo");
+            expect(card, slug).not.toContain("Vídeo e GPS");
+        }
+        const garmin = /<li id="camera-garmin">([\s\S]*?)<\/li>/.exec(renderCamerasIndexPage("ko", {}))?.[1];
+        expect(garmin).toContain("영상 재생");
+        expect(garmin).not.toContain("영상 및 GPS");
     });
 
     it("connects every published camera page to its catalog and retains the app destination", () => {
@@ -91,8 +108,10 @@ describe("supported camera catalog", () => {
         expect(page("sony")).toContain(".LOG");
         expect(page("botslab")).toContain("GPS.TXT");
         expect(page("hp")).toContain("do not contain readable GPS");
-        expect(page("hp")).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
-        expect(page("hp")).not.toContain('href="/en/combine-dashcam-cameras-into-one-video/"');
+        for (const slug of ["hp", "jooyfact", "rexing"]) {
+            expect(page(slug)).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
+            expect(page(slug)).not.toContain('href="/en/combine-dashcam-cameras-into-one-video/"');
+        }
         expect(page("fitcamx")).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
         expect(page("fitcamx")).toContain('href="/en/combine-dashcam-cameras-into-one-video/"');
         for (const slug of ["avylet", "sony", "hp"]) {
@@ -122,13 +141,22 @@ describe("supported camera catalog", () => {
     it("retains essential companion-file guidance in all published translations", () => {
         const requiredFiles: Record<string, string[]> = {
             "70mai": ["GPSData*.txt", "A510"],
-            blackvue: [".gps", ".3gf"],
+            blackvue: [".gps", ".3gf", "DR550GW-2CH", "DR900X Plus"],
+            gopro: ["HERO5", "HERO6", "HERO7", "HERO8", "MAX"],
             mio: [".NMEA", "FILE…F.mp4", "FILE…R.mp4"],
             navman: [".NMEA"],
             botslab: ["GPS.TXT", "360CARDVR/REC"],
             sony: [".LOG"],
             escort: [".map"],
-            ddpai: ["203gps", ".gpx"],
+            ddpai: ["203gps", ".gpx", ".git", "USB", "Z60 Pro"],
+            ibox: ["RoadScan 2K", "RoadScan 4K", "F", "R"],
+            redtiger: ["F17", "Video_Front", "Video_Inside", "Video_Rear"],
+            xega: ["InternalView", "ExteriorView"],
+            blackview: ["X5S PRO", ".TS", "F", "R"],
+            innovv: ["N2", "K3", ".TS"],
+            aspiring: ["Expert 9", ".TS"],
+            jooyfact: ["A1", ".MOV"],
+            rexing: ["SC4KS", ".TS"],
         };
         for (const entry of getVendorSitemapEntries()) {
             const route = matchVendorRoute(new URL(entry.loc).pathname);
@@ -141,13 +169,13 @@ describe("supported camera catalog", () => {
     });
 
     it("does not turn model lineups into confirmed recording compatibility", () => {
-        for (const slug of ["garmin", "fitcamx"]) {
+        for (const slug of ["garmin", "fitcamx", "compartir"]) {
             const route = matchVendorRoute(`/en/cameras/${slug}/`);
             if (route?.kind !== "vendor") throw new Error(`missing camera page: ${slug}`);
             const html = renderVendorPage(route.vendor, "en", {});
             expect(route.vendor.models).toEqual([]);
             expect(html).not.toContain('class="vp-models"');
-            expect(html).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
+            if (slug !== "compartir") expect(html).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
         }
         const redtiger = matchVendorRoute("/en/cameras/redtiger/");
         if (redtiger?.kind !== "vendor") throw new Error("missing REDTIGER page");

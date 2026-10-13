@@ -2,7 +2,7 @@
 
 ## Carrier and ownership
 
-RedTiger F7NP-4K recordings carry one telemetry record per second in fixed-size
+REDTIGER F7NP-4K and F17 recordings carry one telemetry record per second in fixed-size
 MP4 `free` atoms. The `moov/gps ` table points to those atoms, so the existing
 structural freeGPS path reads only the indexed blocks instead of scanning the
 video payload. The literal visible to the parser starts with `freeGPS ` and has
@@ -34,7 +34,8 @@ knots matched the displayed km/h.
 
 ## Evidence and fixture
 
-The real corpus is two synchronized front/rear pairs. Each file has a working
+The F7NP-4K corpus is two synchronized front/rear pairs. The F17 corpus adds
+two front/interior/rear sets; all six files decode with the same YOUQING variant. Each file has a working
 `gps ` table with one record per second; both channels produce the same clock
 window and plausible motion. A public MIT implementation independently
 identifies the `freeGPS ` carrier and `YOUQINGGPS` banner, but its published

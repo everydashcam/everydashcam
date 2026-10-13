@@ -94,25 +94,25 @@ const PAGES: CameraPage[] = [
     {
         slug: "compartir",
         displayName: "Compartir",
-        models: ["2"],
+        models: [],
         features: GPS_FEATURES,
         en: {
-            title: "Compartir 2 dashcam player with GPS",
+            title: "Compartir dashcam player with GPS",
             description:
-                "Play original Compartir 2 TS recordings with their GPS route in your browser. No conversion or recording upload needed.",
-            lead: "Open Compartir 2 recordings without converting them first. everydashcam plays the original TS files and shows the route and speed when the camera recorded GPS.",
+                "Play the checked Compartir TS recordings with their GPS route in your browser. No conversion or recording upload needed.",
+            lead: "Open Compartir recordings without converting them first. everydashcam plays the checked TS files and shows the route and speed when the camera recorded GPS.",
             compatibility:
-                "Support covers Compartir 2 recordings that keep GPS inside the TS video. A converted MP4 may play but no longer contain the route.",
+                "Video and GPS are checked on the supplied Compartir TS recordings. Their retail model is unconfirmed; this is recording-level evidence, not a model-wide promise. A converted MP4 can lose the route.",
             openTip:
                 "Choose the original folder from the SD card. Keep the .TS files and their names instead of making converted copies just to open them in a player.",
         },
         ru: {
-            title: "Плеер Compartir 2 с GPS-картой",
+            title: "Плеер Compartir с GPS-картой",
             description:
-                "Смотри исходные TS-записи Compartir 2 с маршрутом GPS в браузере. Без предварительного преобразования и загрузки видео на сервер.",
-            lead: "Открой записи Compartir 2 без предварительного преобразования. everydashcam воспроизводит исходные TS-файлы и показывает маршрут и скорость, если камера записала GPS.",
+                "Смотри проверенные TS-записи Compartir с маршрутом GPS в браузере. Без предварительного преобразования и загрузки видео на сервер.",
+            lead: "Открой записи Compartir без предварительного преобразования. everydashcam воспроизводит проверенные TS-файлы и показывает маршрут и скорость, если камера записала GPS.",
             compatibility:
-                "Поддерживаются записи Compartir 2 с GPS внутри TS-видео. Преобразованный MP4 может воспроизводиться, но уже не содержать маршрут.",
+                "Видео и GPS проверены на предоставленных TS-записях Compartir. Название модели не подтверждено: проверены именно эти записи, а не вся линейка. Преобразованный MP4 может потерять маршрут.",
             openTip:
                 "Выбери исходную папку с SD-карты. Сохрани файлы .TS и их имена: делать преобразованные копии ради просмотра не нужно.",
         },
@@ -146,25 +146,25 @@ const PAGES: CameraPage[] = [
     {
         slug: "botslab",
         displayName: "Botslab",
-        models: ["G300H 2K"],
+        models: ["G300H Pro"],
         features: GPS_FEATURES,
         en: {
-            title: "Botslab G300H recording and GPS player",
+            title: "Botslab G300H Pro recording and GPS player",
             description:
-                "Open Botslab G300H videos together with GPS.TXT to view the trip route and speed. Watch and trim locally in your browser.",
-            lead: "Watch a Botslab G300H trip with its route and speed. Keep GPS.TXT with the recordings: it holds the route for multiple clips, rather than just one video.",
+                "Open Botslab G300H Pro videos together with GPS.TXT to view the trip route and speed. Watch and trim locally in your browser.",
+            lead: "Watch a Botslab G300H Pro trip with its route and speed. Keep GPS.TXT with the recordings: it holds the route for multiple clips, rather than just one video.",
             compatibility:
-                "GPS support covers G300H 2K recordings using the G300HPro recording layout. Copying only the video folder leaves out the GPS log needed for the map.",
+                "GPS support covers G300H Pro recordings using the G300HPro recording layout. Copying only the video folder leaves out the GPS log needed for the map.",
             openTip:
                 "Open the common parent folder containing 360CARDVR/REC and GPS.TXT. Preserve the original folder structure so the route can be matched to the trip's clips.",
         },
         ru: {
-            title: "Плеер записей и GPS для Botslab G300H",
+            title: "Плеер записей и GPS для Botslab G300H Pro",
             description:
-                "Открой видео Botslab G300H вместе с GPS.TXT, чтобы увидеть маршрут и скорость. Просмотр и обрезка локально в браузере.",
-            lead: "Посмотри поездку с Botslab G300H вместе с маршрутом и скоростью. Сохрани GPS.TXT рядом с записями: этот файл хранит маршрут для нескольких роликов, а не одного видео.",
+                "Открой видео Botslab G300H Pro вместе с GPS.TXT, чтобы увидеть маршрут и скорость. Просмотр и обрезка локально в браузере.",
+            lead: "Посмотри поездку с Botslab G300H Pro вместе с маршрутом и скоростью. Сохрани GPS.TXT рядом с записями: этот файл хранит маршрут для нескольких роликов, а не одного видео.",
             compatibility:
-                "GPS поддерживается для записей G300H 2K с форматом G300HPro. Если скопировать только папку с видео, файл GPS для карты останется на устройстве.",
+                "GPS поддерживается для записей G300H Pro с форматом G300HPro. Если скопировать только папку с видео, файл GPS для карты останется на устройстве.",
             openTip:
                 "Открой общую родительскую папку с 360CARDVR/REC и GPS.TXT. Сохрани исходную структуру, чтобы маршрут сопоставился с роликами поездки.",
         },
@@ -223,26 +223,26 @@ const PAGES: CameraPage[] = [
     },
     {
         slug: "carcam",
-        displayName: "Carcam",
-        models: ["4CH"],
+        displayName: "CARCAM",
+        models: ["CC-365 (4CH)"],
         features: MULTI_CAMERA_FEATURES,
         en: {
-            title: "Carcam 4CH multi-camera recording player",
+            title: "CARCAM CC-365 multi-camera recording player",
             description:
-                "Review Carcam 4CH recordings together with GPS. Keep all camera folders to group the views into trips and save a clip in your browser.",
-            lead: "Review the different views from a Carcam 4CH recording together. Open all camera folders to keep the trip in one place, with a route when GPS was recorded.",
+                "Review CARCAM CC-365 recordings together with GPS. Keep all camera folders to group the views into trips and save a clip in your browser.",
+            lead: "Review the different views from a CARCAM CC-365 recording together. Open all camera folders to keep the trip in one place, with a route when GPS was recorded.",
             compatibility:
-                "Video and GPS support covers the Carcam 4CH recording layout. Camera letters identify the recorded views; their physical positions can depend on how the cameras were installed.",
+                "Video and GPS support covers the CARCAM CC-365 recording layout. Camera letters identify the recorded views; their physical positions can depend on how the cameras were installed.",
             openTip:
                 "Open the common folder containing the camera subfolders, such as Normal/A. Keep the A–D filename endings and folder names so the player can group the views.",
         },
         ru: {
-            title: "Плеер для нескольких камер Carcam 4CH",
+            title: "Плеер для нескольких камер CARCAM CC-365",
             description:
-                "Смотри записи Carcam 4CH вместе с GPS. Сохрани папки всех камер, чтобы объединить ракурсы в поездки и сохранить фрагмент в браузере.",
-            lead: "Смотри разные ракурсы записи Carcam 4CH вместе. Открой папки всех камер, чтобы собрать поездку на одном экране и увидеть маршрут, если GPS был записан.",
+                "Смотри записи CARCAM CC-365 вместе с GPS. Сохрани папки всех камер, чтобы объединить ракурсы в поездки и сохранить фрагмент в браузере.",
+            lead: "Смотри разные ракурсы записи CARCAM CC-365 вместе. Открой папки всех камер, чтобы собрать поездку на одном экране и увидеть маршрут, если GPS был записан.",
             compatibility:
-                "Видео и GPS поддерживаются для формата Carcam 4CH. Буквы камер обозначают ракурсы записи; их положение в автомобиле может зависеть от установки.",
+                "Видео и GPS поддерживаются для формата CARCAM CC-365. Буквы камер обозначают ракурсы записи; их положение в автомобиле может зависеть от установки.",
             openTip:
                 "Открой общую папку с подпапками камер, например Normal/A. Сохрани окончания A–D в именах файлов и названия папок, чтобы плеер сгруппировал ракурсы.",
         },
@@ -302,10 +302,10 @@ const PAGES: CameraPage[] = [
     {
         slug: "2e-drive",
         displayName: "2E Drive",
-        models: ["730"],
+        models: ["730 Magnet"],
         features: GPS_FEATURES,
         en: {
-            title: "2E Drive 730 recording player with GPS",
+            title: "2E-Drive 730 Magnet recording player with GPS",
             description:
                 "Play 2E Drive 730 recordings with their embedded GPS route and speed. Open original files locally in a free browser player.",
             lead: "Watch a 2E Drive 730 trip with the route and speed stored in the original recording. Find a moment on the timeline and save a shorter clip for sharing.",
@@ -315,7 +315,7 @@ const PAGES: CameraPage[] = [
                 "Use the original video files from the card, with their original names. The 730 layout carries GPS inside the recording, so a separately downloaded map file is not needed.",
         },
         ru: {
-            title: "Плеер записей 2E Drive 730 с GPS",
+            title: "Плеер записей 2E-Drive 730 Magnet с GPS",
             description:
                 "Смотри записи 2E Drive 730 с маршрутом и скоростью из исходных файлов. Открой видео локально в бесплатном браузерном плеере.",
             lead: "Посмотри поездку с 2E Drive 730 вместе с маршрутом и скоростью из исходной записи. Найди момент на шкале времени и сохрани короткий фрагмент для отправки.",
@@ -380,10 +380,10 @@ const PAGES: CameraPage[] = [
     {
         slug: "silverstone-f1",
         displayName: "SilverStone F1",
-        models: ["A80"],
+        models: ["A80-GPS Sky"],
         features: GPS_FEATURES,
         en: {
-            title: "SilverStone F1 A80 video and GPS player",
+            title: "SilverStone F1 A80-GPS Sky video and GPS player",
             description:
                 "Watch SilverStone F1 A80 recordings with the route and speed stored in the original files. Free browser playback, no recording uploads.",
             lead: "Review SilverStone F1 A80 recordings with a route map and speed chart. Open the card's folder to move through the trip without opening each short clip separately.",
@@ -393,7 +393,7 @@ const PAGES: CameraPage[] = [
                 "Open the original recordings together and keep their camera-generated names. A80 route data is carried inside the video; retain those originals when saving an edited clip for someone else.",
         },
         ru: {
-            title: "Плеер SilverStone F1 A80 с GPS-картой",
+            title: "Плеер SilverStone F1 A80-GPS Sky с GPS-картой",
             description:
                 "Смотри записи SilverStone F1 A80 с маршрутом и скоростью из исходных файлов. Бесплатный просмотр в браузере без отправки видео на сервер.",
             lead: "Смотри записи SilverStone F1 A80 с картой маршрута и графиком скорости. Открой папку с карты, чтобы перемещаться по поездке, не выбирая каждый короткий ролик отдельно.",
@@ -432,53 +432,209 @@ const PAGES: CameraPage[] = [
     {
         slug: "ibox",
         displayName: "iBOX",
-        models: ["iCON"],
-        features: GPS_FEATURES,
+        models: ["iCON", "RoadScan 2K WiFi GPS Dual"],
+        features: MULTI_CAMERA_FEATURES,
         en: {
-            title: "iBOX iCON recording player with GPS",
+            title: "iBOX iCON and RoadScan 2K recording player with GPS",
             description:
-                "Play iBOX iCON recordings with a GPS route and speed chart. Support is tied to the recording model; RoadScan 4K stores GPS differently.",
-            lead: "Watch iBOX iCON recordings with the route and speed saved by the camera. Open the original files locally and save a clip without installing a manufacturer player.",
+                "Play iBOX iCON and RoadScan 2K recordings with a GPS route and speed chart. Keep RoadScan 2K front and rear folders together.",
+            lead: "Watch iBOX iCON and RoadScan 2K recordings with the route and speed saved by the camera. Open the original files locally and save a clip without installing a manufacturer player.",
             compatibility:
-                "GPS support on this page covers iCON. RoadScan 4K uses a different recording layout, so its speed stamp does not establish support for a separate route map.",
+                "GPS is checked on iCON and RoadScan 2K recordings. This does not establish GPS support for RoadScan 4K, which uses a different recording layout.",
             openTip:
-                "Choose the iCON's original recording folder and keep its filenames. Start from the camera files, rather than a converted video with only the visible speed stamp left.",
+                "Open the original recording folder and keep its filenames. For RoadScan 2K, include the F and R folders: the folder names identify the camera views, and their file counters can differ.",
         },
         ru: {
-            title: "Плеер записей iBOX iCON с GPS",
+            title: "Плеер записей iBOX iCON и RoadScan 2K с GPS",
             description:
-                "Смотри записи iBOX iCON с маршрутом GPS и графиком скорости. Поддержка зависит от модели записи: RoadScan 4K хранит GPS иначе.",
-            lead: "Смотри записи iBOX iCON с маршрутом и скоростью, сохранёнными камерой. Открой исходные файлы локально и сохрани фрагмент без установки программы производителя.",
+                "Смотри записи iBOX iCON и RoadScan 2K с маршрутом GPS и графиком скорости. Открой переднюю и заднюю папки RoadScan 2K вместе.",
+            lead: "Смотри записи iBOX iCON и RoadScan 2K с маршрутом и скоростью, сохранёнными камерой. Открой исходные файлы локально и сохрани фрагмент без установки программы производителя.",
             compatibility:
-                "Поддержка GPS на этой странице относится к iCON. У RoadScan 4K другой формат записи, поэтому штамп скорости не подтверждает поддержку отдельной карты маршрута.",
+                "GPS проверен на записях iCON и RoadScan 2K. Это не подтверждает поддержку GPS у RoadScan 4K: у этой модели другой формат записи.",
             openTip:
-                "Выбери исходную папку с записями iCON и сохрани имена файлов. Используй файлы камеры, а не преобразованное видео, в котором остался только видимый штамп скорости.",
+                "Открой исходную папку с записями и сохрани имена файлов. У RoadScan 2K добавь папки F и R: именно они обозначают ракурсы, а счётчики в именах файлов могут различаться.",
         },
     },
     {
         slug: "ddpai",
         displayName: "DDPAI",
-        models: ["MOLA N3", "Z50"],
+        models: ["MOLA N3", "Z50", "Z60 Pro"],
         features: MULTI_CAMERA_FEATURES,
         en: {
-            title: "DDPAI recording player for MOLA N3 and Z50",
+            title: "DDPAI video and GPS player for MOLA N3, Z50 and Z60 Pro",
             description:
-                "Open DDPAI recordings locally in your browser. Keep matching GPS files with the videos when available; an MP4 alone may not contain a route.",
-            lead: "Review DDPAI recordings from the card without the phone app. Keep normal, event and parking recordings together, then choose the part of the trip to save.",
+                "Open DDPAI MOLA N3 and Z50 videos locally. Z60 Pro GPS files are supported too; keep matching route files with the original recordings.",
+            lead: "Review DDPAI MOLA N3 and Z50 videos in your browser. Z60 Pro stores readable GPS in separate files, which may need copying from the camera itself.",
             compatibility:
-                "Video playback covers MOLA N3 and Z50 recordings. These video samples do not establish embedded GPS: a route needs matching readable GPS files when the camera provides them.",
+                "Video playback is checked on MOLA N3 and Z50 recordings. Z60 Pro GPS reading and filename matching are checked on real .gpx files and .git archives; exact video synchronization still needs matching original videos.",
             openTip:
-                "Open the common parent of the video and GPS folders, such as 200video and 203gps, if both are available. Preserve .gpx files and subfolders; copying only the MP4s may leave the route behind.",
+                "Open 200video and 203gps from their common parent, preserving .gpx and .git files and subfolders. If Z60 Pro GPS files are missing from the SD card, connect the camera by USB and check its internal DCIM/203gps folder; storage can vary by firmware.",
         },
         ru: {
-            title: "Плеер записей DDPAI MOLA N3 и Z50",
+            title: "Плеер видео и GPS DDPAI MOLA N3, Z50 и Z60 Pro",
             description:
-                "Открой записи DDPAI локально в браузере. Сохрани соответствующие GPS-файлы вместе с видео: один MP4 может не содержать маршрут.",
-            lead: "Смотри записи DDPAI с карты без приложения на телефоне. Открой обычные записи, события и парковочные ролики вместе, затем выбери нужный фрагмент поездки.",
+                "Открой видео DDPAI MOLA N3 и Z50 локально. GPS-файлы Z60 Pro тоже поддерживаются: сохрани файлы маршрута вместе с исходными записями.",
+            lead: "Смотри видео DDPAI MOLA N3 и Z50 в браузере. У Z60 Pro GPS читается из отдельных файлов: их может потребоваться скопировать с самой камеры.",
             compatibility:
-                "Воспроизведение видео поддерживается для записей MOLA N3 и Z50. Эти примеры видео не подтверждают встроенный GPS: для маршрута нужны соответствующие читаемые GPS-файлы, если камера их создаёт.",
+                "Просмотр видео проверен на записях MOLA N3 и Z50. Чтение GPS Z60 Pro и сопоставление по именам проверены на реальных файлах .gpx и архивах .git; для проверки точной синхронизации ещё нужны соответствующие исходные видео.",
             openTip:
-                "Открой общую родительскую папку с видео и GPS, например 200video и 203gps, если обе доступны. Сохрани файлы .gpx и подпапки: при копировании только MP4 маршрут может остаться на камере.",
+                "Открой общую родительскую папку для 200video и 203gps, сохранив файлы .gpx и .git и подпапки. Если на SD-карте Z60 Pro нет GPS-файлов, подключи камеру по USB и проверь DCIM/203gps во внутренней памяти; расположение зависит от прошивки.",
+        },
+    },
+    {
+        slug: "blackview",
+        displayName: "Blackview",
+        models: ["X5S PRO"],
+        features: MULTI_CAMERA_FEATURES,
+        en: {
+            title: "Blackview X5S PRO video and GPS player",
+            description:
+                "Open Blackview X5S PRO TS recordings with their GPS route. Keep front and rear folders together to review the trip locally.",
+            lead: "Watch Blackview X5S PRO front and rear recordings together with the route saved by the camera. Open the original TS files in your browser and save the part you need.",
+            compatibility:
+                "Video and GPS are checked on X5S PRO recordings. Some parking and time-lapse clips contain no GPS fixes; those clips can play without adding a route to the map.",
+            openTip:
+                "Open the common parent of the F and R recording folders, including parking folders. Preserve the original .TS files and date-based names so both views stay associated with the trip.",
+        },
+        ru: {
+            title: "Плеер Blackview X5S PRO с видео и GPS",
+            description:
+                "Открой TS-записи Blackview X5S PRO с GPS-маршрутом. Сохрани переднюю и заднюю папки вместе для локального просмотра поездки.",
+            lead: "Смотри передние и задние записи Blackview X5S PRO вместе с маршрутом, сохранённым камерой. Открой исходные TS-файлы в браузере и сохрани нужный участок.",
+            compatibility:
+                "Видео и GPS проверены на записях X5S PRO. В некоторых парковочных и ускоренных записях нет GPS-координат: такие ролики воспроизводятся, но не добавляют маршрут на карту.",
+            openTip:
+                "Открой общую родительскую папку для F и R, включая парковочные записи. Сохрани исходные .TS и имена с датами, чтобы оба ракурса оставались привязаны к поездке.",
+        },
+    },
+    {
+        slug: "innovv",
+        displayName: "INNOVV",
+        models: ["N2", "K3"],
+        features: MULTI_CAMERA_FEATURES,
+        en: {
+            title: "INNOVV N2 and K3 motorcycle recording player",
+            description:
+                "Watch INNOVV N2 and K3 motorcycle recordings with GPS. Open original TS files and paired camera views locally in your browser.",
+            lead: "Review an INNOVV N2 or K3 ride with video, a route map and speed. Keep the original camera views together and save a clip without uploading the ride.",
+            compatibility:
+                "GPS is checked on original N2 and K3 TS recordings. The two models store GPS differently, and paired cameras can record different fixes; this does not confirm every INNOVV model or firmware.",
+            openTip:
+                "Open the original recording folder with both camera views. Preserve .TS files, subfolders and filename endings; converting the videos first can remove their GPS.",
+        },
+        ru: {
+            title: "Плеер записей мотокамер INNOVV N2 и K3",
+            description:
+                "Смотри записи мотокамер INNOVV N2 и K3 с GPS. Открой исходные TS-файлы и парные ракурсы локально в браузере.",
+            lead: "Посмотри поездку с INNOVV N2 или K3: видео, маршрут и скорость на одном экране. Открой исходные ракурсы вместе и сохрани фрагмент без загрузки поездки на сервер.",
+            compatibility:
+                "GPS проверен на исходных TS-записях N2 и K3. Модели хранят GPS по-разному, а парные камеры могут записывать разные координаты. Это не подтверждает все модели и прошивки INNOVV.",
+            openTip:
+                "Открой исходную папку с обоими ракурсами. Сохрани файлы .TS, подпапки и окончания имён: предварительное преобразование видео может удалить GPS.",
+        },
+    },
+    {
+        slug: "xega",
+        displayName: "XEGA",
+        models: ["XG-37-AU4G"],
+        features: MULTI_CAMERA_FEATURES,
+        en: {
+            title: "XEGA XG-37-AU4G recording and GPS player",
+            description:
+                "Watch XEGA XG-37-AU4G MP4 recordings with their GPS route. Keep InternalView, ExteriorView and dated folders for local playback.",
+            lead: "Review XEGA XG-37-AU4G interior and exterior recordings with the GPS positions saved inside the original videos. Open the card's folders directly in your browser.",
+            compatibility:
+                "GPS positions are checked on XG-37-AU4G recordings. Speed is estimated from changes in position, not read as a separate camera measurement; gaps or weak fixes can affect that estimate.",
+            openTip:
+                "Open the parent containing InternalView and ExteriorView. Keep their dated subfolders and original MP4 names: the folders supply the recording date and identify the camera views.",
+        },
+        ru: {
+            title: "Плеер записей и GPS XEGA XG-37-AU4G",
+            description:
+                "Смотри MP4-записи XEGA XG-37-AU4G с GPS-маршрутом. Сохрани InternalView, ExteriorView и папки с датами для локального просмотра.",
+            lead: "Смотри внутренний и внешний ракурсы XEGA XG-37-AU4G с GPS-координатами из исходных видео. Открой папки с карты прямо в браузере.",
+            compatibility:
+                "GPS-координаты проверены на записях XG-37-AU4G. Скорость оценивается по изменению положения, а не читается как отдельное измерение камеры; пропуски и неточные координаты могут влиять на оценку.",
+            openTip:
+                "Открой родительскую папку для InternalView и ExteriorView. Сохрани вложенные папки с датами и исходные имена MP4: папки задают дату записи и обозначают ракурсы.",
+        },
+    },
+    {
+        slug: "aspiring",
+        displayName: "ASPIRING",
+        models: ["Expert 9"],
+        features: GPS_FEATURES,
+        en: {
+            title: "ASPIRING Expert 9 video and GPS player",
+            description:
+                "Play ASPIRING Expert 9 TS recordings with the GPS route saved in the original files. Review and trim the trip locally in your browser.",
+            lead: "Watch ASPIRING Expert 9 recordings with their route and speed. The original TS files carry the GPS, so you can open the recording folder without exporting a separate track.",
+            compatibility:
+                "Video and GPS are checked on Expert 9 recordings. This confirms the sampled recording layout, not every ASPIRING model or a converted copy of the same video.",
+            openTip:
+                "Keep the original .TS files and their camera-generated names. Open the folder from the card before editing: an ordinary video conversion can preserve the picture while dropping the route.",
+        },
+        ru: {
+            title: "Плеер ASPIRING Expert 9 с видео и GPS",
+            description:
+                "Смотри TS-записи ASPIRING Expert 9 с GPS-маршрутом из исходных файлов. Просматривай и обрезай поездку локально в браузере.",
+            lead: "Смотри записи ASPIRING Expert 9 с маршрутом и скоростью. GPS хранится в исходных TS-файлах: можно открыть папку с записями без отдельного экспорта трека.",
+            compatibility:
+                "Видео и GPS проверены на записях Expert 9. Это подтверждает проверенный формат записи, а не все модели ASPIRING или преобразованные копии того же видео.",
+            openTip:
+                "Сохрани исходные файлы .TS и имена, заданные камерой. Открой папку с карты до редактирования: обычное преобразование видео может сохранить изображение, но удалить маршрут.",
+        },
+    },
+    {
+        slug: "jooyfact",
+        displayName: "JOOYFACT",
+        models: ["A1"],
+        features: VIDEO_FEATURES,
+        en: {
+            title: "JOOYFACT A1 MOV recording player",
+            description:
+                "Open JOOYFACT A1 MOV recordings locally in your browser. Watch the trip and save a shorter clip from the original camera files.",
+            lead: "Watch JOOYFACT A1 MOV recordings without converting them first. Open the original folder, find the moment you need and save a shorter clip locally.",
+            compatibility:
+                "Video playback is checked on A1 MOV recordings. The checked sample contains no readable GPS, so it does not provide a separate route map or establish GPS support for other JOOYFACT recordings.",
+            openTip:
+                "Choose the original .MOV files together and preserve their names. Use the video timeline to find an event; a visible date or speed stamp remains part of the picture.",
+        },
+        ru: {
+            title: "Плеер MOV-записей JOOYFACT A1",
+            description:
+                "Открой MOV-записи JOOYFACT A1 локально в браузере. Посмотри поездку и сохрани короткий фрагмент из исходных файлов камеры.",
+            lead: "Смотри MOV-записи JOOYFACT A1 без предварительного преобразования. Открой исходную папку, найди нужный момент и сохрани короткий фрагмент локально.",
+            compatibility:
+                "Просмотр видео проверен на MOV-записях A1. В проверенном примере нет читаемого GPS: он не даёт отдельную карту маршрута и не подтверждает GPS в других записях JOOYFACT.",
+            openTip:
+                "Выбери исходные файлы .MOV вместе и сохрани их имена. Ищи событие по шкале видео; видимый штамп даты или скорости остаётся частью изображения.",
+        },
+    },
+    {
+        slug: "rexing",
+        displayName: "Rexing",
+        models: ["SC4KS"],
+        features: VIDEO_FEATURES,
+        en: {
+            title: "Rexing SC4KS TS recording player",
+            description:
+                "Play Rexing SC4KS TS recordings in your browser. Review the original video and save a clip locally without uploading the trip.",
+            lead: "Open Rexing SC4KS TS recordings straight from the card. Watch the original video, move through the trip and save the part you need in your browser.",
+            compatibility:
+                "The checked SC4KS sample supports video playback but contains no readable GPS. A route map is not confirmed for this recording; other Rexing models can use different formats.",
+            openTip:
+                "Open the original recording folder and retain the .TS files, names and subfolders. Start with the files from the card; no conversion to MP4 is needed before opening them.",
+        },
+        ru: {
+            title: "Плеер TS-записей Rexing SC4KS",
+            description:
+                "Смотри TS-записи Rexing SC4KS в браузере. Просматривай исходное видео и сохраняй фрагменты локально без загрузки поездки на сервер.",
+            lead: "Открой TS-записи Rexing SC4KS прямо с карты. Смотри исходное видео, перемещайся по поездке и сохраняй нужный участок в браузере.",
+            compatibility:
+                "Проверенный пример SC4KS воспроизводится, но не содержит читаемого GPS. Карта маршрута для этой записи не подтверждена; другие модели Rexing могут использовать иные форматы.",
+            openTip:
+                "Открой исходную папку с записями и сохрани файлы .TS, имена и подпапки. Используй файлы с карты: преобразовывать их в MP4 перед открытием не нужно.",
         },
     },
 ];
