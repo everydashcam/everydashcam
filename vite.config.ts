@@ -137,13 +137,13 @@ const NO_INDEX =
     process.env.VITE_NO_INDEX === "true" ||
     profileRequiresGlobalNoIndex(SEO_DEPLOYMENT);
 
-// Sentry source maps are generated only when all three build-time secrets are
+// Sentry instrumentation is enabled only when all three build-time secrets are
 // present. The plugin injects release/debug IDs in the exact build that produces
 // the deployed assets, but the network upload runs as a bounded, non-fatal
 // workflow step after Vite exits. Keeping sentry-cli out of Vite's writeBundle
-// hook prevents a Sentry API outage from hanging the entire deploy. No token =>
-// no maps or plugin at all (local dev, CI and self-hosted artifacts).
-const SENTRY_SOURCE_MAPS = Boolean(
+// hook prevents a Sentry API outage from hanging the entire deploy. Public source
+// maps remain available for DevTools even without Sentry credentials.
+const SENTRY_INSTRUMENTATION = Boolean(
     process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
 );
 
@@ -292,12 +292,12 @@ export default defineConfig(({ command }) => {
         llmsTxtPlugin(),
         // Source-map preparation for the hosted builds. The plugin injects a
         // debug ID into every chunk, but deliberately performs no Sentry API
-        // calls: deploy/release workflows upload with a step timeout and remove
-        // every .map before Cloudflare sees dist. release.name = APP_VERSION
+        // calls: deploy/release workflows upload with a step timeout and retain
+        // maps in the published dist. release.name = APP_VERSION
         // (tag or short git SHA) matches the runtime release in sentry-init.ts.
         // The plugin only mangles chunk assets, not the inline bootstrap, so
         // the CSP hash above stays valid.
-        ...(SENTRY_SOURCE_MAPS
+        ...(SENTRY_INSTRUMENTATION
             ? [
                   sentryVitePlugin({
                       org: process.env.SENTRY_ORG,
@@ -319,11 +319,9 @@ export default defineConfig(({ command }) => {
     ],
     build: {
         target: "es2022",
-        // Hidden source maps only on hosted builds with Sentry credentials.
-        // Workflow steps upload them with a hard timeout and delete them before
-        // deployment, so they never ship to the client. No credentials
-        // (local/CI/fork/self-host artifact) => no maps at all.
-        sourcemap: SENTRY_SOURCE_MAPS ? "hidden" : false,
+        // Public sources let DevTools debug the deployed build without Sentry.
+        // Separate maps stay out of the runtime boot graph and PWA precache.
+        sourcemap: true,
         outDir: "dist",
         // SVG icons and small assets up to 8KB get inlined into JS/CSS - fewer HTTP requests.
         assetsInlineLimit: 8192,

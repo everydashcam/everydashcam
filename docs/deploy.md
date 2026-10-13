@@ -28,7 +28,8 @@ blocks and `.env.example` define the current contract:
   crash reporting out.
 - `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` enable production
   source-map upload; staging uses `SENTRY_PROJECT_STAGING`. Upload is bounded
-  and non-fatal, and hidden maps are removed before deployment.
+  and non-fatal. Web builds publish source maps for DevTools independently of
+  Sentry credentials; maps stay out of the PWA precache. Portable HTML omits them.
 - `INDEXNOW_KEY` enables the production ownership file and post-deploy ping.
   Its storage and rotation rules live in [the SEO guide](seo.md#indexnow).
 
@@ -250,8 +251,8 @@ Consequences the workflow is built around:
 ## What the repo ships for deployment
 
 - `vite.config.ts` - the production build (minifiers, vendor splitting, the
-  SEO/SW/CSP plugin chain, the `SENTRY_*`-gated source-map handling). Each
-  choice is commented at its site in the file.
+  SEO/SW/CSP plugin chain, public source maps and `SENTRY_*`-gated instrumentation).
+  Each choice is commented at its site in the file.
 - `public/_headers` - cache-control + security headers + CSP in enforce mode
   (the current allowlist and its rationale live in the file itself).
 - `public/sw.js` - service worker for the offline PWA precache (app shell). Minified
