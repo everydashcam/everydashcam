@@ -242,6 +242,7 @@ export type I18nKey =
     | "landing.works.title"
     | "landing.works.sub"
     | "landing.works.osLabel"
+    | "landing.works.browsersLabel"
     | "landing.works.note"
     | "landing.how.s1.num"
     | "landing.how.s1.title"
