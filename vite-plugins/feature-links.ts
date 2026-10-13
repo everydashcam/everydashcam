@@ -104,9 +104,10 @@ const FEATURE_LINKS: Record<Lang, FeatureLinksBlock> = {
 
 // Renders the feature-links section for one page. pathPrefix is the locale's
 // URL prefix ("/en", "/de", ...) as produced by pathPrefixFor().
-export function renderFeatureLinksHtml(lang: Lang, pathPrefix: string): string {
+export function renderFeatureLinksHtml(lang: Lang, pathPrefix: string, selected?: readonly FeatureSlug[]): string {
     const block = FEATURE_LINKS[lang];
     const items = (Object.entries(block.links) as [FeatureSlug, string][])
+        .filter(([slug]) => !selected || selected.includes(slug))
         .map(([slug, label]) => `<li><a href="${pathPrefix}/${slug}/">${escapeText(label)}</a></li>`)
         .join("\n");
     return `<section class="vp-section">

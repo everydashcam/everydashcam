@@ -78,6 +78,7 @@ import { zhDict } from "../src/i18n/zh.js";
 import { getGitMtimeIso, maxGitMtimeIso } from "./git-mtime.js";
 import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
 import { renderSeoLanguageLinks } from "./seo-navigation.js";
+import { getHomepageCameras } from "./camera-promotion.js";
 import { getAllBrandsCommaSeparated, getLandingBrands } from "./supported-brands.js";
 import { getAlternativeSitemapEntries } from "./alternative-pages.js";
 import { getFeatureListings, getFeatureSitemapEntries } from "./feature-pages.js";
@@ -98,6 +99,7 @@ const HOMEPAGE_SHARED_SOURCES = [
     "vite-plugins/dynamic-baseline.ts",
     "vite-plugins/seo-navigation.ts",
     "vite-plugins/supported-brands.ts",
+    "vite-plugins/camera-promotion.ts",
     // html-utils provides escapeAttr / escapeText / stringifyJsonLd -
     // any change to escaping rules mutates the rendered HTML, so it
     // counts as a content change for lastmod purposes.
@@ -701,6 +703,11 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     // is unchanged (lists all supported locales, not the page's language).
     out = rewriteWebApplicationJsonLd(out, locale, selfUrl, canonicalOrigin);
     out = rewriteWebsiteJsonLd(out, canonicalOrigin);
+
+    const cameraLinks = getHomepageCameras(locale.seo.lang)
+        .map((brand) => `<a class="landing-brand-link" href="/${locale.seo.urlSegment}/cameras/${brand.slug}/">${escapeText(brand.displayName)}</a>`)
+        .join(", ");
+    out = out.replace(/(<span\b[^>]*\bdata-camera-links(?:="[^"]*")?[^>]*>)[\s\S]*?<\/span>/g, `$1${cameraLinks}</span>`);
 
     // Camera links prefer the current locale, but each brand has an explicit
     // publication set. Falling back to English keeps homepage links valid when

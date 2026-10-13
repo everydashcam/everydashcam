@@ -950,3 +950,8 @@ body.no-trips .viewer {
         line-height: 1.5;
     }
 }
+
+/* Keep the open-ended catalog link readable when the examples wrap. */
+.landing-camera-more {
+    white-space: nowrap;
+}

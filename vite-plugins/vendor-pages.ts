@@ -59,9 +59,11 @@ export const BRAND_MARK_HTML = `<span class="edc-mark" role="img" aria-label="ev
 import { getLandingBrands, SUPPORTED_BRANDS, type VendorSlug } from "./supported-brands.js";
 
 import { renderFeatureLinksHtml } from "./feature-links.js";
+import type { FeatureSlug } from "./feature-pages.js";
+import { cameraPages } from "./vendor-pages-content.js";
 
 // Per-locale content for one vendor.
-interface VendorLocaleContent {
+export interface VendorLocaleContent {
     // <title> - long form, ≤70 chars ideally.
     title: string;
     // <meta name="description"> - ≤155 chars.
@@ -78,34 +80,30 @@ interface VendorLocaleContent {
     ctaPrimary: string;
     // Compatibility note under the models list.
     modelsCompat: string;
-    // Intro paragraph for the "How <vendor> stores recordings" section.
+    // Camera-specific instructions shown before the opening steps.
     formatIntro: string;
 }
 
-// Vendor static facts (technical, no translation needed) + per-locale prose.
-interface VendorContent {
+// Camera-specific recording guidance and localized marketing copy.
+export interface VendorContent {
     slug: VendorSlug;
     // Display name shown in titles, headings, breadcrumbs.
     displayName: string;
     // Search-relevant model families covered by this vendor page.
     models: string[];
-    // Technical facts for the format section. Plain strings, locale-agnostic
-    // (container/codec names don't translate).
-    format: {
-        container: string; // "MP4", "MPEG-TS"
-        codec: string; // "H.264 / H.265"
-        gpsStorage: string; // short label, e.g. "Embedded 'mkbx' box"
+    // File names and folders used by established community translations.
+    format?: {
         sdLayout: string; // "/Normal/, /Event/, /Parking/"
         filenamePattern: string; // example filename
     };
     // Hand-written per-locale content. The renderer can fall back to
     // VENDOR_TEMPLATES for established community pages; new locale rollouts
     // should carry reviewed direct copy before entering the published set.
-    locales: Partial<Record<Lang, VendorLocaleContent>>;
+    locales: Record<"en" | "ru", VendorLocaleContent> & Partial<Record<Lang, VendorLocaleContent>>;
+    features?: readonly FeatureSlug[];
 }
 
-// Vendor data. Order matches VENDOR_SLUGS - both define the sitemap order
-// and the "Other supported brands" cross-link order on each page.
+// Published vendor content. The support registry owns catalog order and locales.
 const VENDORS: VendorContent[] = [
     {
         slug: "70mai",
@@ -120,9 +118,6 @@ const VENDORS: VendorContent[] = [
             "Pro / Pro Plus+",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264",
-            gpsStorage: "Embedded in the MP4 or stored in a GPSData*.txt log, depending on model",
             sdLayout: "/Normal/, /Event/, /Lapse/ (+ Front/Back/Interior subfolders on multi-channel models)",
             filenamePattern: "NO20240821-180010-000123.mp4",
         },
@@ -135,11 +130,11 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Free online player for 70mai dashcam recordings. GPS map, speed chart and synchronized cameras. Works in any modern browser, nothing uploaded.",
                 h1: "70mai Dashcam Player Online — play recordings in your browser",
-                lead: "Open recordings from 70mai dashcams directly in your browser, on any PC or Mac — no Android emulator, no 70mai app. See the GPS route, speed and G-force chart, plus synchronized front, rear and cabin cameras. No upload, no account.",
+                lead: "Open 70mai recordings from the SD card to watch the trip and its cameras together. Follow the route and speed when GPS was saved, then keep the part you need.",
                 ctaPrimary: "Open 70mai recordings folder",
                 modelsCompat: "Covers common current and recent 70mai recording layouts. Standard MP4 video opens locally; GPS and camera grouping depend on the metadata written by the model.",
                 formatIntro:
-                    "70mai cameras record MP4 video and, depending on the generation, keep GPS inside the video or in a GPSData*.txt log on the SD card. everydashcam reads both layouts, groups front, rear and cabin files by time and shows the route when GPS is present.",
+                    "Open the whole card, including any GPSData*.txt files. Some 70mai models store the route in these separate files; others keep it inside the video. Keep the original front, rear and cabin filenames.",
             },
             ru: {
                 title: "Плеер 70mai — A810, A800S, A510, Omni | everydashcam",
@@ -149,11 +144,11 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Онлайн-плеер для записей с видеорегистратора 70mai. Карта GPS, график скорости и синхронный просмотр камер. Работает в любом современном браузере, ничего никуда не загружается.",
                 h1: "Плеер 70mai онлайн — записи в браузере, без установки",
-                lead: "Открывай записи с видеорегистраторов 70mai прямо в браузере на любом ПК или Mac — без Android-эмулятора и приложения 70mai. Смотри маршрут GPS, график скорости и перегрузок, а также переднюю, заднюю и салонную камеры синхронно. Без загрузки на сервер и аккаунта.",
+                lead: "Открой записи 70mai с SD-карты и смотри поездку со всех камер. Если сохранился GPS, рядом будут маршрут и скорость; нужный фрагмент можно сохранить.",
                 ctaPrimary: "Открыть папку с записями 70mai",
                 modelsCompat: "Поддерживает распространённые форматы актуальных и недавних моделей 70mai. Обычное MP4-видео открывается локально; GPS и группировка камер зависят от данных конкретной модели.",
                 formatIntro:
-                    "Регистраторы 70mai пишут MP4-видео, а GPS в зависимости от поколения хранят внутри файла или в логе GPSData*.txt на SD-карте. everydashcam читает оба варианта, группирует записи передней, задней и салонной камер по времени и показывает маршрут, когда GPS есть в записи.",
+                    "Открой карту целиком, включая файлы GPSData*.txt, если они есть. Одни модели 70mai сохраняют маршрут в этих отдельных файлах, другие — внутри видео. Сохрани исходные имена записей передней, задней и салонной камер.",
             },
         },
     },
@@ -169,9 +164,6 @@ const VENDORS: VendorContent[] = [
             "T130",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "Embedded freeGPS blocks (Novatek chipset)",
             sdLayout: "/Movie/, /Movie_Parking/, /Photo/",
             filenamePattern: "2024_0821_180010_062F.MP4",
         },
@@ -184,11 +176,11 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Free online player for Viofo dashcam recordings. GPS map, speed chart and synchronized cameras. Works in any modern browser, nothing uploaded.",
                 h1: "Viofo Dashcam Player Online — play recordings in your browser",
-                lead: "Open recordings from Viofo dashcams directly in your browser. See the synchronized GPS route, speed and G-force chart, plus front, rear and interior cameras together. Free, no upload, no install.",
+                lead: "Watch Viofo front, rear and interior recordings together in your browser. Review the trip with a route and speed when the recording contains GPS, then save a clip.",
                 ctaPrimary: "Open Viofo recordings folder",
                 modelsCompat: "Covers the common Viofo MP4 and TS recording layouts. Standard video opens locally; the GPS map and automatic camera sync depend on the data stored by the camera.",
                 formatIntro:
-                    "Viofo cameras record H.264 or H.265 video in MP4, with some models also offering TS mode. GPS is stored with the recording, while filename suffixes identify front, rear and interior channels. everydashcam uses those details to assemble a trip and keep the cameras, map and charts in sync.",
+                    "Open the original recording folder, including MP4 or TS videos. Keep the F, R or I endings in filenames: they identify the camera views, so a trip can include more than the front camera.",
             },
             ru: {
                 title: "Плеер Viofo — A119, A229, A329, T130 | everydashcam",
@@ -198,11 +190,11 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Онлайн-плеер для записей с видеорегистратора Viofo. Карта GPS, график скорости и синхронный просмотр камер. Работает в любом современном браузере.",
                 h1: "Плеер Viofo онлайн — записи в браузере, без установки",
-                lead: "Открывай записи с видеорегистраторов Viofo прямо в браузере. Смотри синхронный маршрут GPS, график скорости и перегрузок, а также переднюю, заднюю и салонную камеры одновременно. Бесплатно, без загрузки и установки.",
+                lead: "Смотри записи передней, задней и салонной камер Viofo вместе в браузере. Если в записи есть GPS, рядом будут маршрут и скорость. Нужный фрагмент можно сохранить.",
                 ctaPrimary: "Открыть папку с записями Viofo",
                 modelsCompat: "Поддерживает распространённые форматы записей Viofo в MP4 и TS. Обычное видео открывается локально; карта GPS и синхронизация камер зависят от данных в записи.",
                 formatIntro:
-                    "Viofo пишет H.264 или H.265 в MP4, а некоторые модели умеют записывать и в TS. GPS хранится вместе с записью, а суффиксы имён обозначают переднюю, заднюю и салонную камеры. everydashcam по этим данным собирает поездку и синхронизирует камеры, карту и графики.",
+                    "Открой исходную папку с записями MP4 или TS. Сохрани окончания F, R или I в именах файлов: они обозначают ракурсы, чтобы поездка включала не только переднюю камеру.",
             },
         },
     },
@@ -218,9 +210,6 @@ const VENDORS: VendorContent[] = [
             "DR550 / DR650 (legacy)",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "NMEA inside custom 'free' box (newer X-series) or .gps sidecar (legacy)",
             sdLayout: "/BlackVue/Record/, /BlackVue/Event/, /BlackVue/Parking/, /BlackVue/Manual/",
             filenamePattern: "20240821_180010_NF.mp4 (Normal Front)",
         },
@@ -233,11 +222,11 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Free online player for BlackVue dashcam recordings. GPS map, speed chart, front+rear in sync. Works in any browser, no BlackVue Cloud account needed.",
                 h1: "BlackVue Dashcam Player Online — play recordings in your browser",
-                lead: "Open BlackVue DR-series recordings directly in your browser. See the synchronized GPS route, speed and G-force chart, plus front and rear cameras together. No BlackVue Viewer install or BlackVue Cloud account.",
+                lead: "Review BlackVue front and rear recordings together, with the route and speed when GPS is available. Watch and save a clip without installing BlackVue Viewer or creating a Cloud account.",
                 ctaPrimary: "Open BlackVue recordings folder",
                 modelsCompat: "Covers modern BlackVue X-series recordings with embedded GPS and older DR-series layouts that keep GPS in matching sidecar files.",
                 formatIntro:
-                    "Modern BlackVue X-series cameras keep GPS inside the MP4, while older DR-series models use matching .gps and .3gf files. Their filenames carry the recording mode and camera channel. everydashcam reads both generations and groups front and rear recordings by time.",
+                    "Open the BlackVue recording folder with its .gps and .3gf files, if present. Older DR-series recordings use these companion files; modern X-series recordings can keep GPS inside the video.",
             },
             ru: {
                 title: "Плеер BlackVue — DR970X, DR900X, DR770X | everydashcam",
@@ -247,11 +236,11 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Онлайн-плеер для записей с BlackVue. Карта GPS, график скорости, передняя и задняя камеры синхронно. Работает в любом браузере, без аккаунта BlackVue Cloud.",
                 h1: "Плеер BlackVue онлайн — записи в браузере, без BlackVue Viewer",
-                lead: "Открывай записи BlackVue DR-серии прямо в браузере. Смотри синхронный маршрут GPS, график скорости и перегрузок, а также переднюю и заднюю камеры одновременно. Без BlackVue Viewer и аккаунта BlackVue Cloud.",
+                lead: "Смотри передние и задние записи BlackVue вместе с маршрутом и скоростью, если есть GPS. Просмотр и сохранение фрагмента доступны без установки BlackVue Viewer и аккаунта Cloud.",
                 ctaPrimary: "Открыть папку с записями BlackVue",
                 modelsCompat: "Поддерживает современные записи BlackVue X-серии со встроенным GPS и старые форматы DR-серии, где GPS лежит в парных служебных файлах.",
                 formatIntro:
-                    "Современные BlackVue X-серии хранят GPS внутри MP4, а старые DR-серии — в парных файлах .gps и .3gf. В имени записи зашиты режим и канал камеры. everydashcam читает оба поколения и группирует записи передней и задней камер по времени.",
+                    "Открой папку записей BlackVue вместе с файлами .gps и .3gf, если они есть. Старые записи DR-серии используют эти дополнительные файлы; современные записи X-серии могут хранить GPS внутри видео.",
             },
         },
     },
@@ -265,40 +254,37 @@ const VENDORS: VendorContent[] = [
             "MAX",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "GPMF metadata track (gpmd)",
             sdLayout: "/DCIM/100GOPRO/",
             filenamePattern: "GH010001.MP4",
         },
         locales: {
             en: {
-                title: "GoPro GPS Video Player — HERO, MAX and GPMF | everydashcam",
+                title: "GoPro HERO and MAX video player with GPS | everydashcam",
                 metaDescription:
-                    "Open GoPro HERO and MAX recordings with GPMF telemetry in your browser. GPS map, speed and G-force charts, trim and export. No upload or install.",
-                ogTitle: "GoPro GPS Video Player — HERO, MAX and GPMF",
+                    "Watch GoPro HERO and MAX originals with a route map when GPS was recorded. Review the trip and save clips locally in your browser.",
+                ogTitle: "GoPro HERO and MAX video player",
                 ogDescription:
-                    "Free online player for GoPro recordings with GPMF GPS. Map, speed and G-force chart from the gpmd track. Works in any modern browser.",
-                h1: "GoPro GPS video player — open GPMF recordings in your browser",
-                lead: "Open GoPro HERO and MAX recordings directly in your browser. The GPMF (gpmd) metadata track gives you GPS, speed, altitude and 3-axis acceleration — everydashcam renders all of it on a synchronized map and chart.",
+                    "Open original GoPro recordings, follow the GPS route when available, and save a clip. Video stays on your device.",
+                h1: "GoPro player — watch HERO and MAX recordings",
+                lead: "Review GoPro HERO and MAX recordings alongside the route and speed when GPS was recorded. Open the originals in your browser and save the part of the trip you want to share.",
                 ctaPrimary: "Open GoPro recordings folder",
-                modelsCompat: "GoPro telemetry varies by generation and recording settings. Standard video opens locally; the map and charts appear when the file contains compatible GPMF GPS data.",
+                modelsCompat: "GPS availability depends on the camera generation and recording settings. Video can play without GPS; the map needs compatible GPS data saved in the original file.",
                 formatIntro:
-                    "GoPro stores camera telemetry in a GPMF metadata track inside the MP4. Depending on the model and settings, it can include GPS, speed, altitude and acceleration. everydashcam reads that data locally and keeps the video, map and charts on the same timeline.",
+                    "Open the original MP4 folder from the GoPro card and keep all numbered parts of a long recording. Edited or downloaded copies can lose GPS even when the picture looks unchanged.",
             },
             ru: {
-                title: "GPS-плеер GoPro — HERO, MAX и GPMF | everydashcam",
+                title: "Плеер GoPro HERO и MAX с GPS-картой | everydashcam",
                 metaDescription:
-                    "Открывай записи GoPro HERO и MAX с телеметрией GPMF в браузере. Карта GPS, скорость, перегрузки, обрезка и экспорт. Без загрузки и установки.",
-                ogTitle: "GPS-плеер GoPro — HERO, MAX и GPMF",
+                    "Смотри исходные записи GoPro HERO и MAX с картой, если записан GPS. Просматривай поездки и сохраняй фрагменты локально в браузере.",
+                ogTitle: "Плеер видео GoPro HERO и MAX",
                 ogDescription:
-                    "Онлайн-плеер для записей GoPro с GPMF GPS. Карта, скорость и перегрузки из данных gpmd. Работает в любом современном браузере.",
-                h1: "Плеер GoPro онлайн — записи с GPMF прямо в браузере",
-                lead: "Открывай записи GoPro HERO и MAX прямо в браузере. Из метатрека GPMF (gpmd) everydashcam достаёт GPS, скорость, высоту и данные трёхосевого акселерометра — и рисует всё это на синхронной карте и графике.",
+                    "Открой исходные записи GoPro, посмотри маршрут при наличии GPS и сохрани фрагмент. Видео остаётся на устройстве.",
+                h1: "Плеер GoPro — записи HERO и MAX",
+                lead: "Смотри записи GoPro HERO и MAX рядом с маршрутом и скоростью, если записан GPS. Открой оригиналы в браузере и сохрани участок поездки, которым хочешь поделиться.",
                 ctaPrimary: "Открыть папку с записями GoPro",
-                modelsCompat: "Состав телеметрии GoPro зависит от поколения и настроек записи. Обычное видео открывается локально; карта и графики появляются, когда в файле есть совместимые GPS-данные GPMF.",
+                modelsCompat: "Наличие GPS зависит от поколения камеры и настроек записи. Видео воспроизводится и без GPS; для карты нужны совместимые GPS-данные в исходном файле.",
                 formatIntro:
-                    "GoPro хранит телеметрию камеры в метатреке GPMF внутри MP4. В зависимости от модели и настроек там могут быть GPS, скорость, высота и ускорение. everydashcam читает эти данные локально и держит видео, карту и графики на одной шкале времени.",
+                    "Открой папку с исходными MP4 с карты GoPro и сохрани все пронумерованные части длинной записи. Изменённые или скачанные копии могут потерять GPS, даже если изображение выглядит так же.",
             },
         },
     },
@@ -314,9 +300,6 @@ const VENDORS: VendorContent[] = [
             "Dash Cam Tandem",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264",
-            gpsStorage: "Embedded telemetry track (PNDM on compatible recordings)",
             sdLayout: "/Garmin/, /DCIM/",
             filenamePattern: "20240821-180010.mp4",
         },
@@ -333,7 +316,7 @@ const VENDORS: VendorContent[] = [
                 ctaPrimary: "Open Garmin recordings folder",
                 modelsCompat: "Covers the current X-series and Mini 3 lineup plus common recent Garmin Dash Cam generations. Standard MP4 video opens locally; GPS availability depends on the telemetry stored in the recording.",
                 formatIntro:
-                    "Garmin Dash Cam records MP4 video and can store location and speed in an embedded telemetry track. everydashcam reads the files locally, groups recordings into trips and uses compatible GPS data for the synchronized map and speed chart.",
+                    "Open the Garmin or DCIM recording folder from the card. Keep original filenames and neighbouring clips; the map uses GPS stored in compatible recordings, not a route downloaded from Garmin Drive.",
             },
             ru: {
                 title: "Плеер Garmin Dash Cam — X310, X210, Mini 3 | everydashcam",
@@ -347,7 +330,7 @@ const VENDORS: VendorContent[] = [
                 ctaPrimary: "Открыть папку с записями Garmin",
                 modelsCompat: "Поддерживает актуальную X-серию и Mini 3, а также распространённые недавние поколения Garmin Dash Cam. Обычное MP4-видео открывается локально; наличие GPS зависит от телеметрии в записи.",
                 formatIntro:
-                    "Garmin Dash Cam пишет MP4-видео и может хранить координаты и скорость во встроенном треке телеметрии. everydashcam читает файлы локально, группирует записи в поездки и использует совместимые GPS-данные для синхронной карты и графика скорости.",
+                    "Открой папку Garmin или DCIM с карты. Сохрани исходные имена и соседние ролики: карта использует GPS из совместимых записей, а не маршрут, скачанный из Garmin Drive.",
             },
         },
     },
@@ -363,9 +346,6 @@ const VENDORS: VendorContent[] = [
             "X4S",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "Embedded freeGPS blocks (Novatek chipset, NMEA-style payload)",
             sdLayout: "/Normal/, /Event/, /Parking/ (front/rear/interior split on multi-channel models)",
             filenamePattern: "20240821_180010_0001_N_A.MP4",
         },
@@ -378,12 +358,12 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Free online player and editor for Vantrue dashcam recordings. GPS map, speed chart, trim and export. Works in any modern browser, nothing uploaded.",
                 h1: "Vantrue Dashcam Player & Editor Online — play and trim in your browser",
-                lead: "Open Vantrue recordings directly in your browser. See the synchronized GPS route, speed and G-force charts and camera channels, then trim and export without the Vantrue Cam app, uploads or an account.",
+                lead: "Watch Vantrue front, rear and cabin recordings together. Follow the route when GPS is present and save the part you need, without the Vantrue Cam app.",
                 ctaPrimary: "Open Vantrue recordings folder",
                 modelsCompat:
                     "Covers common Vantrue recording layouts used across the N, E, S and X series. Models without GPS still play locally, just without a route on the map.",
                 formatIntro:
-                    "Vantrue cameras record H.264 or H.265 video in MP4 and commonly keep GPS inside the video file. Channel markers in the filenames distinguish front, rear and cabin views. everydashcam uses them to group each drive and keep the cameras, map and charts together.",
+                    "Open the whole recording folder and preserve the camera letters in filenames. They distinguish front, rear and cabin views; copying only one camera leaves the other views out of the trip.",
             },
             ru: {
                 title: "Плеер Vantrue — N4, N5, E3, N2X | everydashcam",
@@ -393,12 +373,12 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Онлайн-плеер и редактор для записей с Vantrue. Карта GPS, график скорости, обрезка и экспорт. Работает в любом современном браузере, ничего не загружается.",
                 h1: "Плеер и редактор Vantrue онлайн — смотри и режь в браузере",
-                lead: "Открывай записи Vantrue прямо в браузере. Смотри синхронный маршрут GPS, графики скорости и перегрузок и несколько камер одновременно, затем обрезай и экспортируй без Vantrue Cam, загрузки на сервер и аккаунта.",
+                lead: "Смотри записи передней, задней и салонной камер Vantrue вместе. Если есть GPS, рядом появится маршрут. Сохрани нужный фрагмент без приложения Vantrue Cam.",
                 ctaPrimary: "Открыть папку с записями Vantrue",
                 modelsCompat:
                     "Поддерживает распространённые форматы Vantrue серий N, E, S и X. Модели без GPS тоже воспроизводятся локально — просто без маршрута на карте.",
                 formatIntro:
-                    "Vantrue пишет H.264 или H.265 в MP4 и обычно хранит GPS прямо внутри видео. Метки в именах файлов обозначают переднюю, заднюю и салонную камеры. everydashcam по ним собирает поездку и синхронизирует камеры, карту и графики.",
+                    "Открой папку с записями целиком и сохрани буквы камер в именах файлов. Они различают передний, задний и салонный ракурсы; при копировании одной камеры остальные виды не попадут в поездку.",
             },
         },
     },
@@ -414,9 +394,6 @@ const VENDORS: VendorContent[] = [
             "X1000",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "NMEA-RMC sentences in a subtitle (sbtl) track",
             sdLayout: "/cont_rec/, /evt_rec/, /park_rec/, /manual_rec/",
             filenamePattern: "REC_20210101_120000_F.mp4",
         },
@@ -429,12 +406,12 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Free online player and editor for Thinkware dashcam recordings. GPS map, speed chart, trim and export. Works in any modern browser, nothing uploaded.",
                 h1: "Thinkware Dashcam Player & Editor Online — play and trim in your browser",
-                lead: "Open recordings from Thinkware dashcams directly in your browser. Synchronized GPS track, speed and G-force chart, front and rear playback, plus trim and export. No Thinkware Dashcam Viewer install, no upload, no account.",
+                lead: "Review Thinkware front and rear recordings together, then save the part you need. Compatible GPS from the front recording adds a shared route and speed chart to the trip.",
                 ctaPrimary: "Open Thinkware recordings folder",
                 modelsCompat:
                     "Covers common Thinkware F, Q, U and X-series recording layouts. Models without GPS still play locally, just without a route on the map.",
                 formatIntro:
-                    "Thinkware cameras store GPS with the MP4 recording and use F/R filename markers for front and rear channels. Recordings are split into continuous, event, parking and manual folders. everydashcam groups the matching files into one trip and applies the shared route to both views.",
+                    "Open the whole card, including continuous, event, parking and manual recording folders. Keep both F and R files: supported layouts carry the GPS in the front recording, even when you are watching the rear view.",
             },
             ru: {
                 title: "Плеер Thinkware — F800, Q1000, U3000 | everydashcam",
@@ -444,12 +421,12 @@ const VENDORS: VendorContent[] = [
                 ogDescription:
                     "Онлайн-плеер и редактор для записей с Thinkware. Карта GPS, график скорости, обрезка и экспорт. Работает в любом современном браузере, ничего не загружается.",
                 h1: "Плеер и редактор Thinkware онлайн — смотри и режь в браузере",
-                lead: "Открывай записи с видеорегистраторов Thinkware прямо в браузере. Смотри синхронный маршрут GPS, график скорости и перегрузок, а также переднюю и заднюю камеры. Обрезай и экспортируй без Thinkware Dashcam Viewer, загрузки на сервер и аккаунта.",
+                lead: "Смотри передние и задние записи Thinkware вместе и сохраняй нужные фрагменты. Совместимый GPS из передней записи добавляет к поездке общий маршрут и график скорости.",
                 ctaPrimary: "Открыть папку с записями Thinkware",
                 modelsCompat:
                     "Поддерживает распространённые форматы Thinkware серий F, Q, U и X. Модели без GPS тоже воспроизводятся локально — просто без маршрута на карте.",
                 formatIntro:
-                    "Thinkware хранит GPS вместе с MP4 и использует метки F/R в именах файлов с передней и задней камер. Записи разложены по папкам обычного, событийного, парковочного и ручного режимов. everydashcam объединяет парные файлы в поездку и применяет общий маршрут к обеим камерам.",
+                    "Открой карту целиком, включая папки обычных записей, событий, парковки и ручного сохранения. Сохрани файлы F и R: в поддерживаемых форматах GPS находится в передней записи и используется также при просмотре задней камеры.",
             },
         },
     },
@@ -464,9 +441,6 @@ const VENDORS: VendorContent[] = [
             "Series 2 Rear Camera Modules",
         ],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "Built into the recording on GPS models",
             sdLayout: "/DCIM/, /PROTECTED/",
             filenamePattern: "240821_180010_001_FH.MP4",
         },
@@ -553,9 +527,6 @@ const VENDORS: VendorContent[] = [
         displayName: "REDTIGER",
         models: ["F7NP / F7N", "F7NP-4K", "F9 / F9 4K", "F17 / F17 Elite", "F77"],
         format: {
-            container: "MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "Built into the recording on compatible models",
             sdLayout: "/Movie_F/, /Movie_R/, /Event_F/, /Event_R/, /Parking_F/, /Parking_R/",
             filenamePattern: "20260825093511_001359F.MP4",
         },
@@ -633,9 +604,6 @@ const VENDORS: VendorContent[] = [
             "MR-series",
         ],
         format: {
-            container: "MP4 / MOV / TS",
-            codec: "H.264 / H.265",
-            gpsStorage: "Inside the recording or in a matching .NMEA file, depending on model",
             sdLayout: "/DCIM/, /Movie/, /Event/",
             filenamePattern: "FILE201104-163014-000429F.mov",
         },
@@ -699,9 +667,6 @@ const VENDORS: VendorContent[] = [
             "MiVue 7 / 8 / 9 series",
         ],
         format: {
-            container: "MP4 / MOV",
-            codec: "H.264 / H.265",
-            gpsStorage: "A matching .NMEA file on compatible GPS models",
             sdLayout: "/Normal/, /Event/, /Parking/ (+ F/R folders on dual-camera models)",
             filenamePattern: "FILE260819-071804F.mp4",
         },
@@ -795,9 +760,6 @@ const VENDORS: VendorContent[] = [
             "MiVue 150 Safety and earlier series",
         ],
         format: {
-            container: "MP4 / MOV",
-            codec: "H.264 / H.265",
-            gpsStorage: "A matching .NMEA file on compatible GPS models",
             sdLayout: "/Normal/, /Event/, /Parking/ (+ F/R folders on dual-camera models)",
             filenamePattern: "FILE260819-071804F.mp4",
         },
@@ -837,6 +799,7 @@ const VENDORS: VendorContent[] = [
     {
         slug: "fitcamx",
         displayName: "FITCAMX",
+        features: ["blur-license-plate-in-dashcam-video", "combine-dashcam-cameras-into-one-video"],
         models: [
             "Toyota / Lexus systems",
             "Volvo / Polestar systems",
@@ -846,9 +809,6 @@ const VENDORS: VendorContent[] = [
             "Honda / Mazda / Nissan systems",
         ],
         format: {
-            container: "TS / MP4",
-            codec: "H.264 / H.265",
-            gpsStorage: "GPS depends on the model; many recordings contain video only",
             sdLayout: "/Movie/, /Movie_E/, /EMR/, /EMR_E/",
             filenamePattern: "20260807191037_000922AAE.MP4",
         },
@@ -915,6 +875,7 @@ const VENDORS: VendorContent[] = [
             },
         },
     },
+    ...cameraPages,
 ];
 
 const LANDING_BRANDS_BY_SLUG = new Map(
@@ -955,7 +916,6 @@ interface IndexLocale {
     ogDescription: string;
     h1: string;
     lead: string;
-    cardHintPrefix: string;
 }
 
 const INDEX_LOCALES: Record<Lang, IndexLocale> = {
@@ -968,7 +928,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "All dashcam brands supported by everydashcam. Pick yours - open recordings in your browser, no install needed.",
         h1: "Supported dashcam brands",
         lead: "everydashcam plays recordings from these brands directly in your browser. Pick yours for compatible model families and recording details. No install, upload or account.",
-        cardHintPrefix: "Format:",
     },
     ru: {
         title: "Поддерживаемые регистраторы | everydashcam",
@@ -979,7 +938,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "Все регистраторы, которые поддерживает everydashcam. Выбери свой и узнай подробности — записи в браузере, без установки.",
         h1: "Поддерживаемые регистраторы",
         lead: "everydashcam воспроизводит записи этих марок прямо в браузере. Выбери свою, чтобы узнать о совместимых моделях и форматах записей. Без установки, загрузки и аккаунта.",
-        cardHintPrefix: "Формат:",
     },
     de: {
         title: "Unterstützte Dashcam-Marken | everydashcam",
@@ -990,7 +948,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "Alle von everydashcam unterstützten Dashcam-Marken. Wähle deine - Aufnahmen direkt im Browser, ohne Installation.",
         h1: "Unterstützte Dashcam-Marken",
         lead: "everydashcam spielt Aufnahmen dieser Marken direkt im Browser ab. Wähle deine für kompatible Modellreihen und Aufnahmedetails. Keine Installation, kein Upload, kein Konto.",
-        cardHintPrefix: "Format:",
     },
     es: {
         title: "Marcas de dashcam compatibles | everydashcam",
@@ -1001,7 +958,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "Todas las marcas de dashcam compatibles con everydashcam. Elige la tuya - abre las grabaciones directamente en el navegador.",
         h1: "Marcas de dashcam compatibles",
         lead: "everydashcam reproduce grabaciones de estas marcas directamente en el navegador. Elige la tuya para ver familias de modelos compatibles y detalles de grabación. Sin instalar, subir archivos ni crear una cuenta.",
-        cardHintPrefix: "Formato:",
     },
     fr: {
         title: "Marques de dashcam compatibles | everydashcam",
@@ -1012,7 +968,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "Toutes les marques de dashcam prises en charge par everydashcam. Choisis la tienne - ouvre les enregistrements directement dans le navigateur.",
         h1: "Marques de dashcam prises en charge",
         lead: "everydashcam lit les enregistrements de ces marques directement dans le navigateur. Choisis la tienne pour voir les gammes compatibles et les détails d'enregistrement. Sans installation, téléversement ni compte.",
-        cardHintPrefix: "Format :",
     },
     pl: {
         title: "Obsługiwane marki wideorejestratorów | everydashcam",
@@ -1023,7 +978,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "Wszystkie obsługiwane przez everydashcam marki wideorejestratorów. Wybierz swoją - otwórz nagrania w przeglądarce, bez instalacji.",
         h1: "Obsługiwane marki wideorejestratorów",
         lead: "everydashcam odtwarza nagrania z tych marek prosto w przeglądarce. Wybierz swoją, aby zobaczyć zgodne rodziny modeli i szczegóły nagrań. Bez instalacji, wysyłania plików i konta.",
-        cardHintPrefix: "Format:",
     },
     pt: {
         title: "Marcas de dashcam compatíveis | everydashcam",
@@ -1034,7 +988,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "Todas as marcas de dashcam suportadas pelo everydashcam. Escolha a sua - abra as gravações direto no navegador, sem instalação.",
         h1: "Marcas de dashcam compatíveis",
         lead: "O everydashcam reproduz gravações dessas marcas direto no navegador. Escolha a sua para ver famílias de modelos compatíveis e detalhes das gravações. Sem instalação, upload ou conta.",
-        cardHintPrefix: "Formato:",
     },
     zh: {
         title: "支持的行车记录仪品牌 | everydashcam",
@@ -1045,7 +998,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "everydashcam 支持的所有行车记录仪品牌。选择你的品牌 — 直接在浏览器中打开录像，无需安装。",
         h1: "支持的行车记录仪品牌",
         lead: "everydashcam 直接在浏览器中播放这些品牌的录像。选择品牌即可查看兼容的型号系列和录像详情。无需安装、上传或账号。",
-        cardHintPrefix: "格式:",
     },
     ja: {
         title: "対応ドライブレコーダーブランド | everydashcam",
@@ -1056,7 +1008,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "everydashcam が対応している全ブランド。あなたのブランドを選んで、録画ファイルをブラウザでそのまま再生。インストール不要。",
         h1: "対応ドライブレコーダーブランド",
         lead: "everydashcam はこれらのブランドの録画をブラウザで直接再生します。ブランドを選ぶと、対応するモデルシリーズと録画の詳細を確認できます。インストール、アップロード、アカウント登録は不要です。",
-        cardHintPrefix: "形式:",
     },
     ko: {
         title: "지원되는 블랙박스 브랜드 | everydashcam",
@@ -1067,7 +1018,6 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
             "everydashcam가 지원하는 모든 블랙박스 브랜드. 본인의 브랜드를 선택해서 녹화를 브라우저에서 바로 재생하세요.",
         h1: "지원되는 블랙박스 브랜드",
         lead: "everydashcam는 이 브랜드들의 녹화를 브라우저에서 바로 재생해요. 브랜드를 골라 호환되는 모델 제품군과 녹화 정보를 살펴보세요. 설치, 업로드, 가입이 필요 없어요.",
-        cardHintPrefix: "형식:",
     },
 };
 
@@ -1076,17 +1026,11 @@ const INDEX_LOCALES: Record<Lang, IndexLocale> = {
 // repeat the same section headings for every vendor.
 const SHARED_LABELS: Record<Lang, SharedLabels> = {
     en: {
+        reassurance: "Free browser player. Recordings stay on your device.",
         backToPlayer: "← Back to player",
         breadcrumbHome: "Home",
         breadcrumbCameras: "Cameras",
         modelsHeading: "Supported {vendor} models",
-        formatHeading: "How {vendor} stores recordings",
-        formatFactsHeading: "Format facts",
-        formatLabelContainer: "Container",
-        formatLabelCodec: "Video codec",
-        formatLabelGps: "GPS storage",
-        formatLabelLayout: "Folder layout on SD",
-        formatLabelFilename: "Filename pattern",
         howHeading: "Playing {vendor} recordings in everydashcam",
         howSteps: [
             "Take the SD card out of the dashcam, plug it into your computer.",
@@ -1094,7 +1038,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Drag the whole SD-card folder onto the page — it'll detect, group and play.",
         ],
         howSecondaryCta: "Try it now",
-        otherVendorsHeading: "Other supported brands",
         footerPrivacy: "Privacy policy",
         footerTerms: "Terms of use",
         footerHome: "everydashcam.app",
@@ -1102,17 +1045,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Add your dashcam",
     },
     ru: {
+        reassurance: "Бесплатный плеер в браузере. Записи остаются на устройстве.",
         backToPlayer: "← К плееру",
         breadcrumbHome: "Главная",
         breadcrumbCameras: "Регистраторы",
         modelsHeading: "Поддерживаемые модели {vendor}",
-        formatHeading: "Как {vendor} хранит записи",
-        formatFactsHeading: "О формате записи",
-        formatLabelContainer: "Контейнер",
-        formatLabelCodec: "Кодек видео",
-        formatLabelGps: "Где хранятся GPS-данные",
-        formatLabelLayout: "Структура папок на SD-карте",
-        formatLabelFilename: "Шаблон имени файла",
         howHeading: "Как открыть записи {vendor} в everydashcam",
         howSteps: [
             "Достань SD-карту из регистратора, вставь в компьютер.",
@@ -1120,7 +1057,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Перетащи всю папку с SD-карты на страницу — она сама всё разберёт и проиграет.",
         ],
         howSecondaryCta: "Попробовать",
-        otherVendorsHeading: "Другие поддерживаемые бренды",
         footerPrivacy: "Политика конфиденциальности",
         footerTerms: "Условия использования",
         footerHome: "everydashcam.app",
@@ -1128,17 +1064,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Добавить свой регистратор",
     },
     de: {
+        reassurance: "Kostenloser Browser-Player. Aufnahmen bleiben auf deinem Gerät.",
         backToPlayer: "← Zurück zum Player",
         breadcrumbHome: "Start",
         breadcrumbCameras: "Kameras",
         modelsHeading: "Unterstützte {vendor}-Modelle",
-        formatHeading: "Wie {vendor} Aufnahmen speichert",
-        formatFactsHeading: "Format-Fakten",
-        formatLabelContainer: "Container",
-        formatLabelCodec: "Video-Codec",
-        formatLabelGps: "GPS-Speicherung",
-        formatLabelLayout: "Ordnerstruktur auf SD",
-        formatLabelFilename: "Dateinamenschema",
         howHeading: "{vendor}-Aufnahmen in everydashcam abspielen",
         howSteps: [
             "Nimm die SD-Karte aus der Dashcam und stecke sie in deinen Computer.",
@@ -1146,7 +1076,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Ziehe den gesamten SD-Karten-Ordner auf die Seite — sie erkennt, gruppiert und spielt ab.",
         ],
         howSecondaryCta: "Jetzt ausprobieren",
-        otherVendorsHeading: "Weitere unterstützte Marken",
         footerPrivacy: "Datenschutzerklärung",
         footerTerms: "Nutzungsbedingungen",
         footerHome: "everydashcam.app",
@@ -1154,17 +1083,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Deine Dashcam hinzufügen",
     },
     es: {
+        reassurance: "Reproductor gratuito en el navegador. Las grabaciones se quedan en tu dispositivo.",
         backToPlayer: "← Volver al reproductor",
         breadcrumbHome: "Inicio",
         breadcrumbCameras: "Cámaras",
         modelsHeading: "Modelos {vendor} compatibles",
-        formatHeading: "Cómo {vendor} guarda las grabaciones",
-        formatFactsHeading: "Datos del formato",
-        formatLabelContainer: "Contenedor",
-        formatLabelCodec: "Códec de vídeo",
-        formatLabelGps: "Almacenamiento GPS",
-        formatLabelLayout: "Estructura en la SD",
-        formatLabelFilename: "Patrón de nombre de archivo",
         howHeading: "Reproducir grabaciones de {vendor} en everydashcam",
         howSteps: [
             "Saca la tarjeta SD de la dashcam y conéctala al ordenador.",
@@ -1172,7 +1095,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Arrastra toda la carpeta de la SD a la página — detecta, agrupa y reproduce.",
         ],
         howSecondaryCta: "Pruébalo ya",
-        otherVendorsHeading: "Otras marcas compatibles",
         footerPrivacy: "Política de privacidad",
         footerTerms: "Términos de uso",
         footerHome: "everydashcam.app",
@@ -1180,17 +1102,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Añade tu cámara de coche",
     },
     fr: {
+        reassurance: "Lecteur gratuit dans le navigateur. Les enregistrements restent sur ton appareil.",
         backToPlayer: "← Retour au lecteur",
         breadcrumbHome: "Accueil",
         breadcrumbCameras: "Caméras",
         modelsHeading: "Modèles {vendor} compatibles",
-        formatHeading: "Comment {vendor} stocke les enregistrements",
-        formatFactsHeading: "Détails du format",
-        formatLabelContainer: "Conteneur",
-        formatLabelCodec: "Codec vidéo",
-        formatLabelGps: "Stockage GPS",
-        formatLabelLayout: "Structure des dossiers sur la SD",
-        formatLabelFilename: "Modèle de nom de fichier",
         howHeading: "Lire les enregistrements {vendor} dans everydashcam",
         howSteps: [
             "Sors la carte SD de la dashcam et branche-la sur ton ordinateur.",
@@ -1198,7 +1114,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Glisse tout le dossier de la carte SD sur la page — elle détecte, regroupe et lit.",
         ],
         howSecondaryCta: "Essayer maintenant",
-        otherVendorsHeading: "Autres marques prises en charge",
         footerPrivacy: "Politique de confidentialité",
         footerTerms: "Conditions d'utilisation",
         footerHome: "everydashcam.app",
@@ -1206,17 +1121,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Ajouter ta dashcam",
     },
     pl: {
+        reassurance: "Bezpłatny odtwarzacz w przeglądarce. Nagrania zostają na twoim urządzeniu.",
         backToPlayer: "← Wróć do odtwarzacza",
         breadcrumbHome: "Start",
         breadcrumbCameras: "Kamery",
         modelsHeading: "Obsługiwane modele {vendor}",
-        formatHeading: "Jak {vendor} zapisuje nagrania",
-        formatFactsHeading: "Informacje o formacie",
-        formatLabelContainer: "Kontener",
-        formatLabelCodec: "Kodek wideo",
-        formatLabelGps: "Zapis GPS",
-        formatLabelLayout: "Struktura folderów na SD",
-        formatLabelFilename: "Wzorzec nazwy pliku",
         howHeading: "Odtwarzanie nagrań {vendor} w everydashcam",
         howSteps: [
             "Wyjmij kartę SD z wideorejestratora i podłącz do komputera.",
@@ -1224,7 +1133,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Przeciągnij cały folder karty SD na stronę — sama wykryje, pogrupuje i odtworzy.",
         ],
         howSecondaryCta: "Wypróbuj teraz",
-        otherVendorsHeading: "Inne obsługiwane marki",
         footerPrivacy: "Polityka prywatności",
         footerTerms: "Warunki korzystania",
         footerHome: "everydashcam.app",
@@ -1232,17 +1140,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Dodaj swój wideorejestrator",
     },
     pt: {
+        reassurance: "Player gratuito no navegador. As gravações ficam no seu dispositivo.",
         backToPlayer: "← Voltar ao player",
         breadcrumbHome: "Início",
         breadcrumbCameras: "Câmeras",
         modelsHeading: "Modelos {vendor} compatíveis",
-        formatHeading: "Como a {vendor} armazena as gravações",
-        formatFactsHeading: "Dados do formato",
-        formatLabelContainer: "Contêiner",
-        formatLabelCodec: "Codec de vídeo",
-        formatLabelGps: "Armazenamento do GPS",
-        formatLabelLayout: "Estrutura na SD",
-        formatLabelFilename: "Padrão de nome de arquivo",
         howHeading: "Reproduzir gravações da {vendor} no everydashcam",
         howSteps: [
             "Tire o cartão SD da dashcam e conecte ao computador.",
@@ -1250,7 +1152,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "Arraste a pasta inteira do cartão SD para a página — ela detecta, agrupa e reproduz.",
         ],
         howSecondaryCta: "Experimente agora",
-        otherVendorsHeading: "Outras marcas compatíveis",
         footerPrivacy: "Política de privacidade",
         footerTerms: "Termos de uso",
         footerHome: "everydashcam.app",
@@ -1258,17 +1159,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "Adicione sua dashcam",
     },
     zh: {
+        reassurance: "免费的浏览器播放器。录像保留在你的设备上。",
         backToPlayer: "← 返回播放器",
         breadcrumbHome: "首页",
         breadcrumbCameras: "记录仪",
         modelsHeading: "支持的 {vendor} 型号",
-        formatHeading: "{vendor} 如何存储录像",
-        formatFactsHeading: "格式信息",
-        formatLabelContainer: "容器",
-        formatLabelCodec: "视频编码",
-        formatLabelGps: "GPS 存储",
-        formatLabelLayout: "SD 卡目录结构",
-        formatLabelFilename: "文件名规则",
         howHeading: "在 everydashcam 中播放 {vendor} 录像",
         howSteps: [
             "把 SD 卡从记录仪取出，插入电脑。",
@@ -1276,7 +1171,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "把整个 SD 卡文件夹拖到页面上 — 自动识别、分组并播放。",
         ],
         howSecondaryCta: "立即试用",
-        otherVendorsHeading: "其他支持的品牌",
         footerPrivacy: "隐私政策",
         footerTerms: "使用条款",
         footerHome: "everydashcam.app",
@@ -1284,17 +1178,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "添加你的行车记录仪",
     },
     ja: {
+        reassurance: "無料のブラウザプレーヤー。録画は端末内に残ります。",
         backToPlayer: "← プレーヤーに戻る",
         breadcrumbHome: "ホーム",
         breadcrumbCameras: "ドラレコ",
         modelsHeading: "対応する {vendor} モデル",
-        formatHeading: "{vendor} の録画保存方式",
-        formatFactsHeading: "フォーマット情報",
-        formatLabelContainer: "コンテナ",
-        formatLabelCodec: "映像コーデック",
-        formatLabelGps: "GPS 保存形式",
-        formatLabelLayout: "SD カードのフォルダ構成",
-        formatLabelFilename: "ファイル名パターン",
         howHeading: "{vendor} の録画を everydashcam で再生する",
         howSteps: [
             "ドライブレコーダーから SD カードを取り出してパソコンに接続します。",
@@ -1302,7 +1190,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "SD カードのフォルダ全体をページにドラッグすると、自動で認識・グループ化して再生されます。",
         ],
         howSecondaryCta: "今すぐ試す",
-        otherVendorsHeading: "対応している他のブランド",
         footerPrivacy: "プライバシーポリシー",
         footerTerms: "利用規約",
         footerHome: "everydashcam.app",
@@ -1310,17 +1197,11 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         notListedCta: "ドライブレコーダーを追加",
     },
     ko: {
+        reassurance: "무료 브라우저 플레이어예요. 녹화는 내 기기에만 보관돼요.",
         backToPlayer: "← 플레이어로 돌아가기",
         breadcrumbHome: "홈",
         breadcrumbCameras: "블랙박스",
         modelsHeading: "지원되는 {vendor} 모델",
-        formatHeading: "{vendor}는 녹화를 어떻게 저장하나요",
-        formatFactsHeading: "포맷 정보",
-        formatLabelContainer: "컨테이너",
-        formatLabelCodec: "비디오 코덱",
-        formatLabelGps: "GPS 저장 방식",
-        formatLabelLayout: "SD 카드 폴더 구조",
-        formatLabelFilename: "파일명 패턴",
         howHeading: "everydashcam에서 {vendor} 녹화 재생하기",
         howSteps: [
             "블랙박스에서 SD 카드를 빼서 컴퓨터에 연결하세요.",
@@ -1328,7 +1209,6 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
             "SD 카드 폴더 전체를 페이지로 끌어다 놓으면 — 자동으로 인식·그룹화하고 재생해요.",
         ],
         howSecondaryCta: "지금 사용해보기",
-        otherVendorsHeading: "지원하는 다른 브랜드",
         footerPrivacy: "개인정보 처리방침",
         footerTerms: "이용약관",
         footerHome: "everydashcam.app",
@@ -1338,21 +1218,14 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
 };
 
 interface SharedLabels {
+    reassurance: string;
     backToPlayer: string;
     breadcrumbHome: string;
     breadcrumbCameras: string;
     modelsHeading: string;
-    formatHeading: string;
-    formatFactsHeading: string;
-    formatLabelContainer: string;
-    formatLabelCodec: string;
-    formatLabelGps: string;
-    formatLabelLayout: string;
-    formatLabelFilename: string;
     howHeading: string;
     howSteps: [string, string, string];
     howSecondaryCta: string;
-    otherVendorsHeading: string;
     // "Not listed?" invitation into /add-my-camera - a coverage gap is a reason
     // to get in touch, never a dead end (voice.md).
     notListedText: string;
@@ -1366,7 +1239,7 @@ interface SharedLabels {
 // have hand-written vendor-specific copy. Each template has {vendor} placeholders
 // the renderer substitutes with displayName. The page has title, meta, og:*,
 // h1, lead, a model-family list,
-// format facts (vendor-agnostic technical strings) and the standard "how to use"
+// camera-specific folder guidance and the standard "how to use"
 // steps from SHARED_LABELS.
 interface VendorTemplate {
     title: string;
@@ -1389,12 +1262,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "Lokaler Browser-Player für {vendor}-Aufnahmen. GPS-Karte, Tempo-Diagramm und Clip-Export, wenn die Aufnahme GPS enthält.",
         h1: "{vendor} Video- und GPS-Player — Aufnahmen im Browser",
-        lead: "Öffne Aufzeichnungen deiner {vendor}-Kamera direkt im Browser. Enthält die Aufnahme GPS, zeigt everydashcam Strecke, Geschwindigkeit und G-Kräfte und exportiert Clips. Kein {vendor}-App-Setup, kein Upload, kein Konto.",
+        lead: "Öffne {vendor}-Aufnahmen direkt im Browser. Mit GPS in der Aufnahme siehst du Route und Geschwindigkeit neben dem Video und kannst den gewünschten Ausschnitt speichern.",
         ctaPrimary: "{vendor}-Aufnahmen öffnen",
         modelsCompat:
             "Aufnahmeformate können je nach Modell und Firmware variieren. Standardvideos lassen sich lokal öffnen; GPS und automatische Gruppierung hängen von den gespeicherten Kameradaten ab.",
         formatIntro:
-            "Kameras von {vendor} nehmen {codec}-Video in {container}-Dateien auf. Die Aufnahmen folgen dem Namensschema {filename} und werden auf der SD-Karte in die Ordner {layout} einsortiert. Zieh den gesamten SD-Karten-Ordner auf die Seite — everydashcam gruppiert die Dateien zu Fahrten und zeigt vorhandene GPS-Daten auf der Karte.",
+            "Öffne den gesamten Ordner der Speicherkarte, einschließlich {layout}. Lass Dateinamen wie {filename} unverändert, damit zusammengehörige Aufnahmen als Fahrt erkannt werden.",
     },
     es: {
         title: "Reproductor {vendor} | everydashcam",
@@ -1404,12 +1277,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "Reproductor local para grabaciones {vendor}. Mapa GPS, velocidad y exportación de clips cuando la grabación incluye GPS.",
         h1: "Reproductor {vendor} online — grabaciones en el navegador",
-        lead: "Abre las grabaciones de tu cámara {vendor} directamente en el navegador. Si incluyen GPS, everydashcam muestra la ruta, la velocidad y la fuerza G, y permite exportar clips. Sin instalar la app de {vendor}, subir archivos ni crear una cuenta.",
+        lead: "Abre grabaciones {vendor} directamente en el navegador. Si incluyen GPS, verás la ruta y la velocidad junto al vídeo y podrás guardar el fragmento que necesites.",
         ctaPrimary: "Abrir grabaciones de {vendor}",
         modelsCompat:
             "El formato puede variar según el modelo y el firmware. El vídeo estándar se abre localmente; el GPS y la agrupación dependen de los datos guardados por la cámara.",
         formatIntro:
-            "Las cámaras {vendor} graban vídeo {codec} en archivos {container}. Las grabaciones siguen el patrón de nombre {filename} y se ordenan en las carpetas {layout} de la tarjeta SD. Arrastra la carpeta entera a la página: everydashcam agrupa los archivos en trayectos y muestra en el mapa los datos GPS disponibles.",
+            "Abre la carpeta completa de la tarjeta, incluidas las carpetas {layout}. Conserva los nombres, como {filename}, para mantener juntas las grabaciones del trayecto.",
     },
     fr: {
         title: "Lecteur {vendor} | everydashcam",
@@ -1419,12 +1292,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "Lecteur local pour les enregistrements {vendor}. Carte GPS, vitesse et export de clips lorsque la vidéo contient des données GPS.",
         h1: "Lecteur {vendor} en ligne — enregistrements dans le navigateur",
-        lead: "Ouvre les enregistrements de ta caméra {vendor} directement dans le navigateur. S'ils contiennent des données GPS, everydashcam affiche le trajet, la vitesse et la force G, puis exporte des clips. Sans installer l'app {vendor}, téléverser les fichiers ni créer un compte.",
+        lead: "Ouvre les enregistrements {vendor} dans ton navigateur. Avec du GPS dans la vidéo, tu peux suivre le trajet et la vitesse, puis enregistrer le passage voulu.",
         ctaPrimary: "Ouvrir les enregistrements {vendor}",
         modelsCompat:
             "Le format peut varier selon le modèle et le firmware. La vidéo standard s'ouvre localement ; le GPS et le regroupement dépendent des données enregistrées par la caméra.",
         formatIntro:
-            "Les caméras {vendor} enregistrent de la vidéo {codec} dans des fichiers {container}. Les enregistrements suivent le modèle de nom {filename} et sont rangés dans les dossiers {layout} sur la carte SD. Glisse le dossier complet sur la page : everydashcam regroupe les fichiers en trajets et affiche les données GPS disponibles sur la carte.",
+            "Ouvre le dossier complet de la carte, y compris {layout}. Garde les noms comme {filename} pour que les enregistrements du même trajet restent ensemble.",
     },
     pl: {
         title: "Odtwarzacz {vendor} | everydashcam",
@@ -1434,12 +1307,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "Lokalny odtwarzacz nagrań {vendor}. Mapa GPS, prędkość i eksport klipów, gdy nagranie zawiera GPS.",
         h1: "Odtwarzacz {vendor} online — nagrania w przeglądarce",
-        lead: "Otwórz nagrania z kamery {vendor} prosto w przeglądarce. Jeśli zawierają GPS, everydashcam pokaże trasę, prędkość i przeciążenia oraz pozwoli wyeksportować klip. Bez instalowania aplikacji {vendor}, wysyłania plików i konta.",
+        lead: "Otwórz nagrania {vendor} bezpośrednio w przeglądarce. Jeśli zawierają GPS, zobaczysz trasę i prędkość obok filmu i zapiszesz wybrany fragment.",
         ctaPrimary: "Otwórz nagrania {vendor}",
         modelsCompat:
             "Format może się różnić zależnie od modelu i firmware'u. Standardowe wideo otwiera się lokalnie; GPS i grupowanie zależą od danych zapisanych przez kamerę.",
         formatIntro:
-            "Kamery {vendor} nagrywają obraz w kodeku {codec} do plików {container}. Nagrania mają nazwy według wzorca {filename} i są posortowane do folderów {layout} na karcie SD. Przeciągnij cały folder na stronę — everydashcam pogrupuje pliki w przejazdy i pokaże dostępne dane GPS na mapie.",
+            "Otwórz cały folder karty pamięci, razem z {layout}. Zachowaj nazwy takie jak {filename}, aby nagrania z tego samego przejazdu pozostały razem.",
     },
     pt: {
         title: "Player {vendor} | everydashcam",
@@ -1449,12 +1322,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "Player local para gravações {vendor}. Mapa GPS, velocidade e exportação de clipes quando a gravação tem GPS.",
         h1: "Player {vendor} online — gravações no navegador",
-        lead: "Abra as gravações da sua câmera {vendor} direto no navegador. Se tiverem GPS, o everydashcam mostra o trajeto, a velocidade e a força G e exporta clipes. Sem instalar o app da {vendor}, fazer upload ou criar conta.",
+        lead: "Abra as gravações da {vendor} direto no navegador. Se houver GPS na gravação, veja o trajeto e a velocidade junto do vídeo e salve o trecho que precisar.",
         ctaPrimary: "Abrir gravações da {vendor}",
         modelsCompat:
             "O formato pode variar conforme o modelo e o firmware. O vídeo padrão abre localmente; GPS e agrupamento dependem dos dados gravados pela câmera.",
         formatIntro:
-            "As câmeras da {vendor} gravam vídeo em {codec} dentro de arquivos {container}. As gravações seguem o padrão de nome {filename} e ficam organizadas nas pastas {layout} do cartão SD. Arraste a pasta inteira para a página — o everydashcam agrupa os arquivos em viagens e mostra no mapa os dados GPS disponíveis.",
+            "Abra a pasta inteira do cartão, incluindo {layout}. Mantenha nomes como {filename} para reunir as gravações da mesma viagem.",
     },
     zh: {
         title: "{vendor} GPS 视频播放器 | everydashcam",
@@ -1464,12 +1337,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "本地播放 {vendor} 录像。录像包含 GPS 时，可查看地图、速度并导出片段。",
         h1: "{vendor} 在线播放器 — 录像在浏览器中播放",
-        lead: "直接在浏览器中打开 {vendor} 摄像机录像。如果录像包含 GPS，everydashcam 会显示路线、速度和 G 力，并可导出片段。无需安装 {vendor} 应用、上传文件或注册账号。",
+        lead: "直接在浏览器中打开 {vendor} 录像。如果录像包含 GPS，即可在视频旁查看路线和速度，并保存需要的片段。",
         ctaPrimary: "打开 {vendor} 录像",
         modelsCompat:
             "录像格式可能因型号和固件而异。标准视频会在本地打开；GPS 和自动分组取决于摄像机保存的数据。",
         formatIntro:
-            "{vendor} 摄像机以 {container} 文件录制 {codec} 视频。录像按 {filename} 命名规则命名，并在 SD 卡上归入 {layout} 文件夹。把整个文件夹拖到页面上，everydashcam 会按行程分组文件，并在地图上显示可用的 GPS 数据。",
+            "打开存储卡的整个文件夹，包括 {layout}。保留 {filename} 这样的原始文件名，以便将同一行程的录像放在一起。",
     },
     ja: {
         title: "{vendor} GPS動画プレーヤー | everydashcam",
@@ -1479,12 +1352,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "{vendor} 録画をローカル再生。GPS が含まれていれば、地図、速度、クリップ書き出しを利用できます。",
         h1: "{vendor} オンラインプレーヤー — 録画をブラウザで再生",
-        lead: "{vendor} カメラの録画をブラウザで直接開けます。録画に GPS が含まれていれば、everydashcam がルート、速度、G フォースを表示し、クリップを書き出します。{vendor} 純正アプリのインストール、アップロード、アカウント登録は不要です。",
+        lead: "{vendor} の録画をブラウザーで直接開けます。録画に GPS が含まれていれば、動画とともにルートや速度を確認し、必要な部分を保存できます。",
         ctaPrimary: "{vendor} の録画を開く",
         modelsCompat:
             "録画形式はモデルやファームウェアで異なる場合があります。標準動画はローカルで開き、GPS と自動グループ化はカメラが保存したデータに応じて利用できます。",
         formatIntro:
-            "{vendor} のカメラは {codec} の映像を {container} ファイルで録画します。録画ファイルは {filename} という命名パターンに従い、SD カード上では {layout} のフォルダに振り分けられます。フォルダ全体をページにドラッグすると、everydashcam が走行ごとにまとめ、利用できる GPS データを地図に表示します。",
+            "{layout} を含むメモリーカードのフォルダー全体を開いてください。{filename} のような元のファイル名を残すと、同じ走行の録画をまとめられます。",
     },
     ko: {
         title: "{vendor} GPS 영상 플레이어 | everydashcam",
@@ -1494,12 +1367,12 @@ const VENDOR_TEMPLATES: Partial<Record<Lang, VendorTemplate>> = {
         ogDescription:
             "{vendor} 녹화를 로컬로 재생해요. GPS가 있으면 지도, 속도, 클립 내보내기를 사용할 수 있어요.",
         h1: "{vendor} 온라인 플레이어 — 브라우저에서 녹화 재생",
-        lead: "{vendor} 카메라 영상을 브라우저에서 바로 열어보세요. 영상에 GPS가 있으면 everydashcam가 경로, 속도, G-포스를 표시하고 클립을 내보내요. {vendor} 전용 앱 설치, 업로드, 회원가입이 필요 없어요.",
+        lead: "{vendor} 녹화를 브라우저에서 바로 열어 보세요. 녹화에 GPS가 있으면 영상과 함께 경로와 속도를 확인하고 필요한 부분을 저장할 수 있어요.",
         ctaPrimary: "{vendor} 녹화 열기",
         modelsCompat:
             "녹화 형식은 모델과 펌웨어에 따라 달라질 수 있어요. 표준 영상은 로컬에서 열리며 GPS와 자동 그룹화는 카메라가 저장한 데이터에 따라 제공돼요.",
         formatIntro:
-            "{vendor} 카메라는 {codec} 영상을 {container} 파일로 녹화해요. 녹화 파일은 {filename} 이름 규칙을 따르고, SD 카드의 {layout} 폴더로 정리돼요. 폴더 전체를 페이지로 드래그하면 everydashcam가 주행별로 묶고 사용 가능한 GPS 데이터를 지도에 보여줘요.",
+            "{layout} 폴더를 포함해 메모리 카드의 전체 폴더를 열어 주세요. {filename} 같은 원래 파일명을 유지하면 같은 주행의 녹화를 함께 볼 수 있어요.",
     },
 };
 
@@ -1516,20 +1389,15 @@ function resolveVendorContent(vendor: VendorContent, lang: Lang): VendorLocaleCo
         throw new Error(`vendor-pages: no localized content or template for lang="${lang}" vendor="${vendor.slug}"`);
     }
     const v = vendor.displayName;
-    // formatIntro weaves the vendor's actual format facts into the prose so each
-    // vendor's community page differs materially, not just by brand name
-    // (anti-doorway). filename/layout are injected prose-cleaned: their trailing
-    // English parenthetical (e.g. "(Normal Front)", "(+ Front/Back/...)") is
-    // stripped so it doesn't sit untranslated inside a German/Japanese sentence -
-    // the full annotated value still shows in the format-facts <dl>.
+    // A published community page must retain camera-specific opening guidance.
+    if (!vendor.format) throw new Error(`vendor-pages: missing recording guidance for ${vendor.slug}/${lang}`);
+    const format = vendor.format;
     const proseSafe = (s: string): string => s.replace(/\s*\([^)]*\)\s*$/, "").trim();
     const sub = (s: string): string =>
         s
             .replaceAll("{vendor}", v)
-            .replaceAll("{codec}", vendor.format.codec)
-            .replaceAll("{container}", vendor.format.container)
-            .replaceAll("{filename}", proseSafe(vendor.format.filenamePattern))
-            .replaceAll("{layout}", proseSafe(vendor.format.sdLayout));
+            .replaceAll("{filename}", proseSafe(format.filenamePattern))
+            .replaceAll("{layout}", proseSafe(format.sdLayout));
     const templated: VendorLocaleContent = {
         title: sub(template.title),
         metaDescription: sub(template.metaDescription),
@@ -1612,7 +1480,6 @@ export function renderVendorPage(vendor: VendorContent, lang: Lang, options: Seo
     const homeUrl = canonicalLocaleUrl(seoLocale);
     const camerasUrl = canonicalLocaleUrl(seoLocale, "cameras/");
     const ctaHref = `${pathPrefix}/?vendor=${vendor.slug}`;
-    const otherVendors = getVendorsForLang(lang).filter((v) => v.slug !== vendor.slug);
     const vendorLocales = getVendorSeoLocales(vendor);
     const ogImageUrl = `${canonicalOriginForLocale(seoLocale)}/${seoLocale.ogImage}`;
 
@@ -1681,6 +1548,7 @@ ${breadcrumb.html}
 <h1 class="vp-h1">${escapeText(content.h1)}</h1>
 <p class="vp-lead">${escapeText(content.lead)}</p>
 <a href="${ctaHref}" class="vp-cta">${escapeText(content.ctaPrimary)}</a>
+<p class="vp-reassurance">${escapeText(labels.reassurance)}</p>
 
 <section class="vp-section">
 <h2 class="vp-h2">${escapeText(labels.modelsHeading.replace("{vendor}", v))}</h2>
@@ -1688,42 +1556,24 @@ ${breadcrumb.html}
 ${vendor.models.map((m) => `<li>${escapeText(m)}</li>`).join("\n")}
 </ul>
 <p class="vp-note">${escapeText(content.modelsCompat)}</p>
-<p class="vp-note">${escapeText(BRAND_DISCLAIMER[lang])} <a href="/terms">${escapeText(labels.footerTerms)}</a></p>
-</section>
-
-<section class="vp-section">
-<h2 class="vp-h2">${escapeText(labels.formatHeading.replace("{vendor}", v))}</h2>
-<p>${escapeText(content.formatIntro)}</p>
-<dl class="vp-facts">
-<dt>${escapeText(labels.formatLabelContainer)}</dt><dd>${escapeText(vendor.format.container)}</dd>
-<dt>${escapeText(labels.formatLabelCodec)}</dt><dd>${escapeText(vendor.format.codec)}</dd>
-<dt>${escapeText(labels.formatLabelGps)}</dt><dd>${escapeText(vendor.format.gpsStorage)}</dd>
-<dt>${escapeText(labels.formatLabelLayout)}</dt><dd><code>${escapeText(vendor.format.sdLayout)}</code></dd>
-<dt>${escapeText(labels.formatLabelFilename)}</dt><dd><code>${escapeText(vendor.format.filenamePattern)}</code></dd>
-</dl>
 </section>
 
 <section class="vp-section">
 <h2 class="vp-h2">${escapeText(labels.howHeading.replace("{vendor}", v))}</h2>
+<p>${escapeText(content.formatIntro)}</p>
 <ol class="vp-steps">
 ${labels.howSteps.map((step) => `<li>${escapeText(step)}</li>`).join("\n")}
 </ol>
 <a href="${ctaHref}" class="vp-cta vp-cta--secondary">${escapeText(labels.howSecondaryCta)}</a>
 </section>
 
-${renderFeatureLinksHtml(lang, pathPrefix)}
+${renderFeatureLinksHtml(lang, pathPrefix, vendor.features)}
 </article>
 
 <aside class="vp-other-vendors">
-<h3 class="vp-h3">${escapeText(labels.otherVendorsHeading)}</h3>
-<ul>
-${otherVendors
-    .map(
-        (other) => `<li><a href="${pathPrefix}/cameras/${other.slug}/">${escapeText(other.displayName)}</a></li>`,
-    )
-    .join("\n")}
-</ul>
+<a href="${pathPrefix}/cameras/">${escapeText(INDEX_LOCALES[lang].h1)} →</a>
 <p class="vp-not-listed">${escapeText(labels.notListedText)} <a href="/add-my-camera">${escapeText(labels.notListedCta)}</a></p>
+<p class="vp-note">${escapeText(BRAND_DISCLAIMER[lang])} <a href="/terms">${escapeText(labels.footerTerms)}</a></p>
 </aside>
 </main>
 
@@ -1742,8 +1592,8 @@ ${languageLinks}
 `;
 }
 
-// Build the /cameras/ section index page. The hub lists only the vendor pages
-// published in its language, so every card resolves to a real localized page.
+// The catalog lists every supported brand and links to its localized page,
+// or explicitly to English when a translation has not been published.
 // Same chrome as vendor pages (header, footer, vendor-page.css). Loads no JS
 // app bundle.
 export function renderCamerasIndexPage(lang: Lang, options: SeoBuildOptions): string {
@@ -1757,8 +1607,7 @@ export function renderCamerasIndexPage(lang: Lang, options: SeoBuildOptions): st
     const url = canonicalLocaleUrl(seoLocale, "cameras/");
     const homeUrl = canonicalLocaleUrl(seoLocale);
     const ogImageUrl = `${canonicalOriginForLocale(seoLocale)}/${seoLocale.ogImage}`;
-    const localeVendors = getVendorsForLang(lang);
-    const linkedVendors = new Map(localeVendors.map((vendor) => [vendor.displayName, vendor]));
+    const vendorsByName = new Map(VENDORS.map((vendor) => [vendor.displayName, vendor]));
 
     const hreflangBlock = buildHreflangLinksHtml((loc) => {
         return canonicalLocaleUrl(loc, "cameras/");
@@ -1782,11 +1631,12 @@ export function renderCamerasIndexPage(lang: Lang, options: SeoBuildOptions): st
             "@type": "ItemList",
             numberOfItems: SUPPORTED_BRANDS.length,
             itemListElement: SUPPORTED_BRANDS.map((brand, idx) => {
-                const vendor = linkedVendors.get(brand.displayName);
+                const vendor = vendorsByName.get(brand.displayName);
+                const targetLocale = vendor && isVendorAvailableInLang(vendor, lang) ? seoLocale : getDefaultSeoLocale();
                 return {
                     "@type": "ListItem",
                     position: idx + 1,
-                    url: vendor ? canonicalLocaleUrl(seoLocale, `cameras/${vendor.slug}/`) : `${url}#${cameraCatalogAnchor(brand)}`,
+                    url: vendor ? canonicalLocaleUrl(targetLocale, `cameras/${vendor.slug}/`) : `${url}#${cameraCatalogAnchor(brand)}`,
                     name: brand.displayName,
                 };
             }),
@@ -1845,15 +1695,14 @@ ${breadcrumb.html}
 <p class="vp-lead">${escapeText(content.lead)}</p>
 <ul class="vp-vendor-grid">
 ${SUPPORTED_BRANDS.map((brand) => {
-    const vendor = linkedVendors.get(brand.displayName);
-    if (!vendor) {
-        const models = VENDORS.find((candidate) => candidate.displayName === brand.displayName)?.models.slice(0, 2);
-        return renderCameraBrandCard(brand, lang, models);
+    const vendor = vendorsByName.get(brand.displayName);
+    if (!vendor || !isVendorAvailableInLang(vendor, lang)) {
+        const englishHref = vendor ? `/en/cameras/${vendor.slug}/` : undefined;
+        return renderCameraBrandCard(brand, lang, vendor?.models.slice(0, 2), englishHref);
     }
-    return `<li><a class="vp-vendor-card" href="${pathPrefix}/cameras/${vendor.slug}/">
+    return `<li id="${cameraCatalogAnchor(brand)}"><a class="vp-vendor-card" href="${pathPrefix}/cameras/${vendor.slug}/">
 <span class="vp-vendor-card-name">${escapeText(vendor.displayName)}</span>
 <span class="vp-vendor-card-hint">${vendor.models.slice(0, 2).map(escapeText).join(" · ")}</span>
-<span class="vp-vendor-card-hint">${escapeText(content.cardHintPrefix)} ${escapeText(vendor.format.container)}</span>
 </a></li>`;
 }).join("\n")}
 </ul>

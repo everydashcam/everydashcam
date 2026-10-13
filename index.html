@@ -393,7 +393,7 @@
             the static prerender ever fails them.
          2. Users with JS disabled - they get a sentence and links to the
             English landing instead of a blank black page.
-         Content stays terse (3 sentences + 5 brand links + continue link)
+         Content stays terse (a description, selected camera links and a continue link)
          so it doesn't look like keyword stuffing relative to the rest of
          the prerendered DOM. data-i18n keys are reused from the existing
          meta description and continue-link, so prerender translates this
@@ -404,13 +404,7 @@
         <div>
             <h2 data-i18n="page.title">Dashcam Player & Editor Online — GPS map, trim & export | everydashcam</h2>
             <p data-i18n="meta.description">Free dashcam player and editor in your browser. Watch recordings with a GPS map, combine cameras and save clips. Files stay on your device. Open source.</p>
-            <p>
-                <a href="/cameras/70mai/">70mai</a> ·
-                <a href="/cameras/viofo/">Viofo</a> ·
-                <a href="/cameras/blackvue/">BlackVue</a> ·
-                <a href="/cameras/gopro/">GoPro</a> ·
-                <a href="/cameras/garmin/">Garmin</a>
-            </p>
+            <p><span data-camera-links><a href="/en/cameras/70mai/">70mai</a>, <a href="/en/cameras/viofo/">Viofo</a></span> <a href="/cameras/" data-i18n="landing.caps.a.more">and more →</a></p>
             <p><a href="/en/" data-i18n="noscript.continue">Continue to everydashcam</a></p>
         </div>
     </noscript>
@@ -1008,7 +1002,7 @@
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 12 2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.36 0 2.65.3 3.81.84"/></svg></span>
-                            <div><b data-i18n="landing.caps.a.title">Many dashcam brands</b><span data-i18n="landing.caps.a.body">70mai, Viofo, BlackVue, GoPro and other brands.</span></div>
+                            <div><b data-i18n="landing.caps.a.title">Many dashcam brands</b><span class="landing-camera-links" data-camera-links><a class="landing-brand-link" href="/en/cameras/70mai/">70mai</a>, <a class="landing-brand-link" href="/en/cameras/viofo/">Viofo</a></span> <a class="landing-brand-link landing-camera-more" href="/cameras/" data-i18n="landing.caps.a.more" data-i18n-attr="aria-label:landing.hero.allBrands" aria-label="Supported dashcams">and more →</a></div>
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
@@ -1076,7 +1070,6 @@
                         <div class="landing-works-body">
                             <p data-i18n="landing.works.sub">Use Chrome or Edge for editing and export.</p>
                             <p data-i18n="landing.works.note">Firefox and Safari support video playback, the map and saving original recordings.</p>
-                            <a class="landing-brand-link" href="/cameras/" data-i18n="landing.hero.allBrands">Supported dashcams →</a>
                         </div>
                     </section>
                     <!-- web-only:end -->

@@ -276,50 +276,6 @@ a:hover {
     font-style: italic;
 }
 
-/* ----- Format facts (dl) ----- */
-.vp-facts {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 8px 24px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 20px 24px;
-    margin: 16px 0;
-    font-size: 14px;
-}
-.vp-facts dt {
-    font-weight: 600;
-    color: var(--fg-dim);
-    text-transform: uppercase;
-    letter-spacing: var(--dc-tracking-wide, 0.05em);
-    font-size: 12px;
-    align-self: center;
-}
-.vp-facts dd {
-    color: var(--fg);
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-.vp-facts code {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    background: var(--bg);
-    padding: 2px 6px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-}
-
-@media (max-width: 540px) {
-    .vp-facts {
-        grid-template-columns: 1fr;
-        gap: 4px 0;
-    }
-    .vp-facts dd {
-        margin-bottom: 8px;
-    }
-}
-
 /* ----- Steps ----- */
 .vp-steps {
     list-style: none;
@@ -642,4 +598,17 @@ a.vp-vendor-card:hover {
 .vp-languages a[aria-current="page"] {
     color: var(--fg);
     font-weight: 600;
+}
+
+.vp-catalog-english {
+    margin-top: auto;
+    padding-top: 8px;
+    font-size: 14px;
+    text-decoration: underline;
+}
+
+.vp-reassurance {
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--fg-dim);
 }

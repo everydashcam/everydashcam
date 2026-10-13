@@ -26,9 +26,8 @@ import type { Lang } from "../src/i18n/index.js";
 //  - src/ui/brand-mark.ts: the hover animation cycles the full inventory.
 //
 // Adding a brand: append below. Set hasLandingPage=true ONLY if there's a
-// matching VendorContent in vendor-pages.ts ready to render. Order is meant
-// to be importance-descending (landing-page brands first), not alphabetical - SERP
-// scanners pick up the early items more often.
+// matching reviewed page content ready to render. Catalog order is stable;
+// homepage promotion is selected separately in camera-promotion.ts.
 
 // Discriminated union: when hasLandingPage=true the slug is mandatory, when
 // false it must NOT be set. The old shape ({ slug?, hasLandingPage: boolean })
@@ -44,10 +43,7 @@ export type SupportedBrand = {
     gpsSamples?: readonly string[];
     recordingCaveat?: RecordingCaveat;
     videoSamples?: readonly string[];
-} & (
-    | { hasLandingPage: true; slug: VendorSlug; locales: readonly Lang[] }
-    | { hasLandingPage: false; slug?: never }
-);
+} & ({ hasLandingPage: true; slug: VendorSlug; locales: readonly Lang[] } | { hasLandingPage: false; slug?: never });
 
 // VendorSlug enumerates the brands that have a dedicated landing page. Used
 // as a type narrowing in vendor-pages.ts where the VendorContent records are
@@ -65,12 +61,40 @@ export type VendorSlug =
     | "navitel"
     | "mio"
     | "navman"
-    | "fitcamx";
+    | "fitcamx"
+    | "avylet"
+    | "izeeker"
+    | "compartir"
+    | "vueroid"
+    | "botslab"
+    | "neoline"
+    | "escort"
+    | "carcam"
+    | "beferich"
+    | "datakam"
+    | "2e-drive"
+    | "sony"
+    | "hp"
+    | "silverstone-f1"
+    | "roadgid"
+    | "ibox"
+    | "ddpai";
 
 // A new product locale must not silently multiply every vendor page. The
 // rollout list is explicit per brand so only useful, reviewed translations
 // enter the sitemap and hreflang graph.
-const ALL_VENDOR_LOCALES = ["en", "ru", "de", "es", "fr", "pl", "pt", "zh", "ja", "ko"] as const satisfies readonly Lang[];
+const ALL_VENDOR_LOCALES = [
+    "en",
+    "ru",
+    "de",
+    "es",
+    "fr",
+    "pl",
+    "pt",
+    "zh",
+    "ja",
+    "ko",
+] as const satisfies readonly Lang[];
 const ALL_EXCEPT_PT = ["en", "ru", "de", "es", "fr", "pl", "zh", "ja", "ko"] as const satisfies readonly Lang[];
 
 export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
@@ -122,35 +146,65 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         hasLandingPage: true,
         locales: ["en", "ru", "de", "pl"],
     },
-    { displayName: "Avylet", hasLandingPage: false, gpsSamples: ["A1"], recordingCaveat: "optionalGps" },
-    { displayName: "iZEEKER", hasLandingPage: false, gpsSamples: ["iD300"] },
-    { displayName: "Compartir", hasLandingPage: false, gpsSamples: ["2"] },
-    { displayName: "Vueroid", hasLandingPage: false, gpsSamples: ["S1 4K Infinite"] },
-    { displayName: "Botslab", hasLandingPage: false, gpsSamples: ["G300H 2K"] },
-    { displayName: "Neoline", hasLandingPage: false, gpsSamples: ["Spectrum"] },
+    {
+        displayName: "Avylet",
+        slug: "avylet",
+        hasLandingPage: true,
+        locales: ["en", "ru"],
+        gpsSamples: ["A1"],
+        recordingCaveat: "optionalGps",
+    },
+    { displayName: "iZEEKER", slug: "izeeker", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["iD300"] },
+    { displayName: "Compartir", slug: "compartir", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["2"] },
+    {
+        displayName: "Vueroid",
+        slug: "vueroid",
+        hasLandingPage: true,
+        locales: ["en", "ru"],
+        gpsSamples: ["S1 4K Infinite"],
+    },
+    { displayName: "Botslab", slug: "botslab", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["G300H 2K"] },
+    { displayName: "Neoline", slug: "neoline", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["Spectrum"] },
     { displayName: "Juscar", hasLandingPage: false, gpsSamples: [] },
-    { displayName: "Escort", hasLandingPage: false, gpsSamples: ["M2"] },
-    { displayName: "Carcam", hasLandingPage: false, gpsSamples: ["4CH"] },
-    { displayName: "Beferich", hasLandingPage: false, gpsSamples: ["J18"] },
-    { displayName: "DATAKAM", hasLandingPage: false, gpsSamples: ["G5P"], recordingCaveat: "exportedRecording" },
-    { displayName: "2E Drive", hasLandingPage: false, gpsSamples: ["730"] },
+    { displayName: "Escort", slug: "escort", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["M2"] },
+    { displayName: "Carcam", slug: "carcam", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["4CH"] },
+    { displayName: "Beferich", slug: "beferich", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["J18"] },
+    {
+        displayName: "DATAKAM",
+        slug: "datakam",
+        hasLandingPage: true,
+        locales: ["en", "ru"],
+        gpsSamples: ["G5P"],
+        recordingCaveat: "exportedRecording",
+    },
+    { displayName: "2E Drive", slug: "2e-drive", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["730"] },
     { displayName: "Aspiring", hasLandingPage: false },
-    { displayName: "Sony", hasLandingPage: false, gpsSamples: ["HDR-AS30V"] },
+    { displayName: "Sony", slug: "sony", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["HDR-AS30V"] },
     { displayName: "JOOYFACT", hasLandingPage: false },
-    { displayName: "HP", hasLandingPage: false, videoSamples: ["f969x"] },
-    { displayName: "SilverStone F1", hasLandingPage: false, gpsSamples: ["A80"] },
-    { displayName: "Roadgid", hasLandingPage: false, gpsSamples: ["Tube"] },
-    { displayName: "iBOX", hasLandingPage: false, gpsSamples: ["iCON"] },
-    { displayName: "DDPAI", hasLandingPage: false, videoSamples: ["MOLA N3", "Z50"] },
+    { displayName: "HP", slug: "hp", hasLandingPage: true, locales: ["en", "ru"], videoSamples: ["f969x"] },
+    {
+        displayName: "SilverStone F1",
+        slug: "silverstone-f1",
+        hasLandingPage: true,
+        locales: ["en", "ru"],
+        gpsSamples: ["A80"],
+    },
+    { displayName: "Roadgid", slug: "roadgid", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["Tube"] },
+    { displayName: "iBOX", slug: "ibox", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["iCON"] },
+    {
+        displayName: "DDPAI",
+        slug: "ddpai",
+        hasLandingPage: true,
+        locales: ["en", "ru"],
+        videoSamples: ["MOLA N3", "Z50"],
+    },
 ];
 
 // Brands with a dedicated landing page.
 // The discriminated union on SupportedBrand guarantees `slug` is present in
 // the true branch.
 export function getLandingBrands(): ReadonlyArray<SupportedBrand & { hasLandingPage: true }> {
-    return SUPPORTED_BRANDS.filter(
-        (b): b is SupportedBrand & { hasLandingPage: true } => b.hasLandingPage,
-    );
+    return SUPPORTED_BRANDS.filter((b): b is SupportedBrand & { hasLandingPage: true } => b.hasLandingPage);
 }
 
 // Comma-separated list of all brand display names. Used in JSON-LD

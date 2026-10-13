@@ -204,7 +204,7 @@ export type I18nKey =
     | "notesStorageModal.file"
     | "notesStorageModal.error"
     | "landing.caps.a.title"
-    | "landing.caps.a.body"
+    | "landing.caps.a.more"
     | "landing.caps.b.title"
     | "landing.caps.b.body"
     | "landing.caps.c.title"

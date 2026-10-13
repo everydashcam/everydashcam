@@ -48,12 +48,10 @@ describe("SEO surface navigation", () => {
                 const route = matchVendorRoute(path!);
                 if (route?.kind !== "vendor") throw new Error(`camera card has no vendor page: ${path}`);
                 const hints = [...card!.matchAll(/<span class="vp-vendor-card-hint">([^<]+)<\/span>/g)].map((match) => decodeText(match[1]!));
-                expect(hints.length, path).toBe(2);
+                expect(hints.length, path).toBe(1);
                 const displayedModels = hints[0]!.split(" · ");
                 expect(displayedModels.length, path).toBeGreaterThan(0);
                 for (const model of displayedModels) expect(route.vendor.models, path).toContain(model);
-                expect(hints[1]?.endsWith(route.vendor.format.container), path).toBe(true);
-                expect(decodeText(card!), path).not.toContain(route.vendor.format.gpsStorage);
             }
         }
     });

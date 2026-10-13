@@ -1,4 +1,5 @@
 import { getLandingBrands } from "../../vite-plugins/supported-brands.js";
+import { getHomepageCameras } from "../../vite-plugins/camera-promotion.js";
 import { expect, gotoApp, presetLocalStorage, shot, test } from "./_fixtures.js";
 
 test.describe("landing layout", () => {
@@ -6,10 +7,17 @@ test.describe("landing layout", () => {
         await presetLocalStorage(page, { theme: "light" });
     });
 
-    for (const locale of ["en", "ru", "de"]) {
+    for (const locale of ["en", "ru", "de"] as const) {
         test(`FAQ keeps seven answers and matching structured data in ${locale}`, async ({ page }) => {
             await page.setViewportSize(locale === "en" ? { width: 1440, height: 900 } : { width: 390, height: 844 });
             await gotoApp(page, locale);
+            const cameraBlock = page.locator(".landing-caps li").filter({ has: page.locator("[data-camera-links]") });
+            await expect(cameraBlock.locator("[data-camera-links] a")).toHaveCount(getHomepageCameras(locale).length);
+            await expect(cameraBlock.locator('a[data-i18n="landing.caps.a.more"]')).toHaveAttribute(
+                "href",
+                `/${locale}/cameras/`,
+            );
+            await cameraBlock.screenshot({ path: `tests/e2e/screenshots/camera-examples-${locale}.png` });
             const faq = page.locator(".landing-faq");
             const items = faq.locator("details");
             await expect(items).toHaveCount(7);
@@ -114,6 +122,13 @@ test("home links to the camera catalog and comparison hub in every locale", asyn
         const response = await request.get(`/${locale}/`);
         expect(response.ok(), locale).toBe(true);
         const html = await response.text();
+        const featured = /<span[^>]*data-camera-links[^>]*>([\s\S]*?)<\/span>/.exec(html)?.[1] ?? "";
+        const featuredLinks = [...featured.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
+        expect(featuredLinks.length, locale).toBeGreaterThan(0);
+        expect(featuredLinks.length, locale).toBeLessThanOrEqual(6);
+        expect(featuredLinks, locale).toEqual(
+            getHomepageCameras(locale).map((brand) => `/${locale}/cameras/${brand.slug}/`),
+        );
         const anchors = html.match(/<a\b[^>]*>/g) ?? [];
         const links = anchors.flatMap((anchor) => /\bhref="([^"]+)"/.exec(anchor)?.[1] ?? []);
         expect(links, `${locale}: camera catalog`).toContain(`/${locale}/cameras/`);
