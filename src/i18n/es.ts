@@ -4,7 +4,6 @@
 // que también funciona en LatAm (sin "vosotros", sin coloquialismos
 // regionales).
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const esDict = {
@@ -42,11 +41,7 @@ export const esDict = {
     "landing.hero.h1.hl": "mapa, velocidad, eventos",
     "landing.hero.h1.after": ".",
     "landing.hero.kicker": "Todo tu trayecto, de principio a fin y de una sola vez.",
-    "landing.hero.lead.before": "Grabaciones en MP4, MOV o TS de la mayoría de dashcams — ",
-    "landing.hero.lead.brandsTail": " y más.",
-    "landing.hero.lead.after": " GPS y eventos — la app los lee directamente del vídeo y de los archivos que lo acompañan, sin configurar nada.",
     "landing.hero.allBrands": "Todas las marcas compatibles →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.es,
     "landing.hero.shot.alt": "everydashcam por dentro: dos cámaras lado a lado, el gráfico de velocidad con marcas de eventos y la ruta en el mapa",
     "landing.hero.shot.altPhone": "everydashcam en un móvil: el reproductor con el mapa de la ruta",
     "landing.dock.hint": "Suelta la carpeta de la tarjeta SD en cualquier parte — o",
@@ -56,7 +51,6 @@ export const esDict = {
     "landing.drop.t1Touch": "Elige toda la carpeta de la SD",
     "landing.drop.t2": "Mantén las subcarpetas y los nombres de archivo originales — así se unen los clips en trayectos",
     "landing.drop.cta": "Abrir carpeta",
-    "landing.drop.codecsHint": "+ los archivos que acompañan al vídeo — .gps, .nmea, .gpx, .map, .csv, .txt y más.",
     "landing.drop.freeNote": "Tus grabaciones se quedan en tu dispositivo — no se suben a internet",
     "recentFolders.title": "Carpetas recientes",
     "recentFolders.unavailableHint": "La carpeta no estaba disponible la última vez — vuelve a conectar la unidad y haz clic de nuevo.",
@@ -171,12 +165,9 @@ export const esDict = {
     "landing.safety.offline.title": "Funciona sin conexión.",
     "landing.safety.offline.body": "Ábrelo una vez y después mira y edita sin internet.",
     "landing.works.title": "En tu ordenador, tablet o móvil",
-    "landing.works.sub": "Sin instalaciones, complementos ni controladores.",
+    "landing.works.sub": "Para editar y exportar, usa Chrome o Edge.",
     "landing.works.osLabel": "Sistemas operativos",
-    "landing.works.browsersLabel": "Navegadores",
-    "landing.works.recommendedLabel": "Recomendados",
-    "landing.works.alsoLabel": "También compatibles",
-    "landing.works.note": "La reproducción depende del navegador y del formato de grabación. La edición y la exportación funcionan mejor en Chrome y otros navegadores basados en Chromium.",
+    "landing.works.note": "En Firefox y Safari puedes ver los vídeos y el mapa y guardar las grabaciones originales.",
     "landing.how.s1.num": "PASO 01",
     "landing.how.s1.title": "Saca la tarjeta SD",
     "landing.how.s1.body": "De la dashcam a tu dispositivo. Lector de tarjetas, USB u OTG — sirve cualquiera.",

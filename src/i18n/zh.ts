@@ -3,7 +3,6 @@
 // 没有复数形式（only "other"），因此带 plural 的模板里只用 other 分支
 // 即可。
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const zhDict = {
@@ -41,11 +40,7 @@ export const zhDict = {
     "landing.hero.h1.hl": "地图、速度、事件",
     "landing.hero.h1.after": "。",
     "landing.hero.kicker": "从出发到抵达，所有录像连成一段完整行程。",
-    "landing.hero.lead.before": "来自大多数行车记录仪的 MP4、MOV 或 TS 录像 — ",
-    "landing.hero.lead.brandsTail": " 等。",
-    "landing.hero.lead.after": " GPS 数据和事件 — 应用直接从视频和旁边的文件中读取，无需任何配置。",
     "landing.hero.allBrands": "查看所有支持的品牌 →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.zh,
     "landing.hero.shot.alt": "everydashcam 界面：两路摄像头并排显示、带事件标记的速度图表、地图上的路线",
     "landing.hero.shot.altPhone": "手机上的 everydashcam：带路线地图的播放器",
     "landing.dock.hint": "把 SD 卡文件夹拖到页面任意位置 — 或者",
@@ -55,7 +50,6 @@ export const zhDict = {
     "landing.drop.t1Touch": "选择整个 SD 卡文件夹",
     "landing.drop.t2": "保留子文件夹和原始文件名 — 应用会据此将片段拼成行程",
     "landing.drop.cta": "打开文件夹",
-    "landing.drop.codecsHint": "+ 同一文件夹中的其他文件 — .gps、.nmea、.gpx、.map、.csv、.txt 等。",
     "landing.drop.freeNote": "录像留在你的设备上，不会上传",
     "recentFolders.title": "最近的文件夹",
     "recentFolders.unavailableHint": "上次未能打开这个文件夹。重新连接存储卡或硬盘后，点击重试。",
@@ -170,12 +164,9 @@ export const zhDict = {
     "landing.safety.offline.title": "支持离线使用。",
     "landing.safety.offline.body": "打开一次，之后无需联网也能查看和编辑。",
     "landing.works.title": "电脑、平板和手机都能用",
-    "landing.works.sub": "无需安装、无需插件、无需驱动。",
+    "landing.works.sub": "编辑和导出请使用 Chrome 或 Edge。",
     "landing.works.osLabel": "操作系统",
-    "landing.works.browsersLabel": "浏览器",
-    "landing.works.recommendedLabel": "推荐",
-    "landing.works.alsoLabel": "同样支持",
-    "landing.works.note": "能否播放取决于浏览器和录像格式。使用 Chrome 或其他基于 Chromium 的浏览器，编辑与导出体验更好。",
+    "landing.works.note": "Firefox 和 Safari 支持观看录像、查看地图和保存原始录像。",
     "landing.how.s1.num": "步骤 01",
     "landing.how.s1.title": "取出 SD 卡",
     "landing.how.s1.body": "从记录仪取出，插入你的设备。读卡器、USB 或 OTG 都可以。",

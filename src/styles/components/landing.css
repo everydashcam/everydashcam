@@ -115,20 +115,6 @@ body.no-trips .viewer {
     text-wrap: balance;
 }
 
-.landing-compat-copy {
-    font-size: var(--dc-text-lg);
-    line-height: 1.55;
-    color: var(--fg-dim);
-    max-width: 72ch;
-    margin: 0;
-}
-.landing-brand-disclaimer {
-    max-width: 80ch;
-    margin: 0;
-    font-size: var(--dc-text-md);
-    line-height: 1.5;
-    color: var(--fg-dim);
-}
 /* Inline links stay recognizable in running text. */
 .landing-brand-link {
     color: var(--fg);
@@ -137,10 +123,6 @@ body.no-trips .viewer {
     transition:
         color var(--dc-dur-fast) var(--dc-ease),
         border-bottom-color var(--dc-dur-fast) var(--dc-ease);
-}
-/* The dedicated all-brands link keeps the brand list visually quiet. */
-.landing-compat-copy .landing-brand-link {
-    border-bottom-color: transparent;
 }
 .landing-brand-link:hover,
 .landing-brand-link:focus-visible {
@@ -217,28 +199,6 @@ body.no-trips .viewer {
        at mute (1.8:1 on the light theme) it was decoration, not text. */
     color: var(--fg-dim);
     line-height: 1.5;
-}
-.landing-codecs {
-    display: inline-flex;
-    gap: var(--dc-space-1);
-    align-items: center;
-    flex-wrap: wrap;
-    margin-top: var(--dc-space-1);
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-xs);
-    color: var(--fg-mute);
-}
-.landing-codec {
-    padding: 2px var(--dc-space-2);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--dc-radius-sm);
-    color: var(--fg);
-}
-.landing-codecs-hint {
-    /* Same contrast reasoning as .landing-drop-t2; the old mute + 0.85
-       opacity landed at 1.65:1 on light - illegible, not "subtle". */
-    color: var(--fg-dim);
 }
 /* Keep the privacy reassurance readable beside the primary action. */
 .landing-drop-foot {
@@ -667,28 +627,24 @@ body.no-trips .viewer {
 }
 
 /* ============================================================
-   COMPATIBILITY - recording formats, operating systems and browsers.
+   COMPATIBILITY - device support and browser capabilities.
    ============================================================ */
 .landing-works {
     margin-top: var(--dc-space-8);
     padding: var(--dc-space-7) 0;
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--dc-space-7);
+    align-items: start;
+}
+.landing-works-head,
+.landing-works-body {
     display: flex;
     flex-direction: column;
-    gap: var(--dc-space-4);
-}
-@media (max-width: 880px) {
-    .landing-works {
-        padding: var(--dc-space-6) 0;
-        gap: var(--dc-space-4);
-    }
-}
-.landing-works-head {
-    display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: var(--dc-space-3);
-    flex-wrap: wrap;
 }
 .landing-works-title {
     margin: 0;
@@ -697,123 +653,31 @@ body.no-trips .viewer {
     letter-spacing: var(--dc-tracking-tight);
     color: var(--fg);
 }
+.landing-works-platforms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--dc-space-1) var(--dc-space-3);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: var(--dc-text-md);
+    color: var(--fg-dim);
+}
+.landing-works-body p {
+    margin: 0;
+    font-size: var(--dc-text-lg);
+    line-height: 1.55;
+    color: var(--fg-dim);
+}
 @media (max-width: 880px) {
+    .landing-works {
+        grid-template-columns: 1fr;
+        padding: var(--dc-space-6) 0;
+        gap: var(--dc-space-4);
+    }
     .landing-works-title {
         font-size: var(--dc-text-xl);
     }
-}
-.landing-works-sub {
-    margin: 0;
-    font-size: var(--dc-text-base);
-    color: var(--fg-dim);
-    line-height: var(--dc-leading-normal);
-}
-.landing-works-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--dc-space-4);
-    align-items: start;
-}
-.landing-works-col {
-    min-width: 0;
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    align-items: center;
-    gap: var(--dc-space-4);
-    padding-top: var(--dc-space-3);
-    border-top: 1px solid var(--border);
-}
-.landing-works-col:first-child {
-    padding-top: 0;
-    border-top: none;
-}
-@media (max-width: 880px) {
-    .landing-works-col {
-        grid-template-columns: 1fr;
-        gap: var(--dc-space-2);
-    }
-}
-.landing-works-col-label {
-    font-family: var(--dc-font-ui);
-    font-size: var(--dc-text-sm);
-    font-weight: 600;
-    letter-spacing: var(--dc-tracking-wide);
-    text-transform: uppercase;
-    color: var(--fg-dim);
-}
-.landing-works-chips {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    gap: var(--dc-space-1);
-    flex-wrap: wrap;
-}
-.landing-plat {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--dc-space-2);
-    padding: var(--dc-space-1) var(--dc-space-3) var(--dc-space-1) var(--dc-space-2);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--dc-radius-md);
-    font-size: var(--dc-text-md);
-    color: var(--fg);
-    font-weight: 500;
-    white-space: nowrap;
-}
-.landing-plat svg {
-    width: 14px;
-    height: 14px;
-    flex: none;
-    opacity: 0.92;
-}
-
-/* Browser tiers. The chips still list every browser (SEO + the "opens
-   anywhere" claim); the tier labels carry the honest "best in the
-   Chrome family" nuance without dropping a name or scaring anyone off
-   Firefox/Safari. */
-.landing-works-col-browsers {
-    /* top-align the "Browsers" label with the first tier, not the
-       vertical centre of the taller two-tier cell */
-    align-items: start;
-}
-.landing-works-tier-label {
-    display: flex;
-    align-items: center;
-    gap: var(--dc-space-1);
-    margin: 0 0 var(--dc-space-2);
-    font-family: var(--dc-font-ui);
-    font-size: var(--dc-text-xs);
-    font-weight: 600;
-    letter-spacing: var(--dc-tracking-wide);
-    text-transform: uppercase;
-    color: var(--fg-dim);
-}
-/* gap above the second tier; tiers are flat siblings in one cell */
-.landing-works-chips + .landing-works-tier-label {
-    margin-top: var(--dc-space-3);
-}
-.landing-works-tier-rec {
-    color: var(--fg-dim);
-}
-/* accent star marks the recommended group as preferred - a positive cue,
-   not dimming the others (which would read as "broken") */
-.landing-works-tier-rec::before {
-    content: "\2605";
-    font-size: var(--dc-text-xs);
-    line-height: 1;
-    color: var(--accent);
-}
-/* faint warm border so the eye lands on the recommended chips first */
-.landing-works-chips-rec .landing-plat {
-    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
-}
-.landing-works-note {
-    margin: 0;
-    font-size: var(--dc-text-md);
-    line-height: 1.5;
-    color: var(--fg-dim);
 }
 
 /* ============================================================
@@ -1038,15 +902,6 @@ body.no-trips .viewer {
     outline: none;
 }
 
-.landing-format-info {
-    padding-bottom: var(--dc-space-4);
-    border-bottom: 1px solid var(--border);
-}
-.landing-codecs-hint {
-    font-family: var(--dc-font-body);
-    font-size: var(--dc-text-md);
-    line-height: 1.5;
-}
 .landing-faq-item summary:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 4px;

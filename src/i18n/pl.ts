@@ -4,7 +4,6 @@
 // CLDR (one/few/many/other) - są używane wszędzie tam, gdzie szablon
 // zawiera plural.
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const plDict = {
@@ -42,11 +41,7 @@ export const plDict = {
     "landing.hero.h1.hl": "mapa, prędkość, zdarzenia",
     "landing.hero.h1.after": ".",
     "landing.hero.kicker": "Cały przejazd, od początku do końca, jednym ciągiem.",
-    "landing.hero.lead.before": "Nagrania w MP4, MOV lub TS z większości wideorejestratorów — ",
-    "landing.hero.lead.brandsTail": " i innych.",
-    "landing.hero.lead.after": " GPS i zdarzenia — apka czyta je wprost z wideo i z plików obok, bez konfiguracji.",
     "landing.hero.allBrands": "Wszystkie obsługiwane marki →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.pl,
     "landing.hero.shot.alt": "everydashcam od środka: dwie kamery obok siebie, wykres prędkości ze znacznikami zdarzeń i trasa na mapie",
     "landing.hero.shot.altPhone": "everydashcam na telefonie: odtwarzacz z mapą trasy",
     "landing.dock.hint": "Upuść folder karty SD w dowolnym miejscu — albo",
@@ -56,7 +51,6 @@ export const plDict = {
     "landing.drop.t1Touch": "Wybierz cały folder z karty SD",
     "landing.drop.t2": "Zachowaj podfoldery i oryginalne nazwy plików — dzięki nim klipy łączą się w przejazdy",
     "landing.drop.cta": "Otwórz folder",
-    "landing.drop.codecsHint": "+ pliki towarzyszące nagraniom — .gps, .nmea, .gpx, .map, .csv, .txt i inne.",
     "landing.drop.freeNote": "Nagrania zostają na twoim urządzeniu — nic nie jest wysyłane",
     "recentFolders.title": "Ostatnie foldery",
     "recentFolders.unavailableHint": "Ostatnio nie udało się otworzyć tego folderu — podłącz dysk ponownie i kliknij jeszcze raz.",
@@ -171,12 +165,9 @@ export const plDict = {
     "landing.safety.offline.title": "Działa offline.",
     "landing.safety.offline.body": "Otwórz raz, potem oglądaj i edytuj bez internetu.",
     "landing.works.title": "Na komputerze, tablecie i telefonie",
-    "landing.works.sub": "Bez instalacji, wtyczek i sterowników.",
+    "landing.works.sub": "Do edycji i eksportu użyj Chrome lub Edge.",
     "landing.works.osLabel": "Systemy operacyjne",
-    "landing.works.browsersLabel": "Przeglądarki",
-    "landing.works.recommendedLabel": "Zalecane",
-    "landing.works.alsoLabel": "Też obsługiwane",
-    "landing.works.note": "Odtwarzanie zależy od przeglądarki i formatu nagrania. Edycja i eksport działają najlepiej w Chrome i innych przeglądarkach opartych na Chromium.",
+    "landing.works.note": "W Firefox i Safari możesz oglądać nagrania i mapę oraz zapisywać oryginalne nagrania.",
     "landing.how.s1.num": "KROK 01",
     "landing.how.s1.title": "Wyjmij kartę SD",
     "landing.how.s1.body": "Z wideorejestratora do twojego urządzenia. Czytnik kart, USB albo OTG — wszystko pasuje.",

@@ -14,7 +14,6 @@
 // では `{n} 件` の形で十分で、わざわざ plural ラッパーを書かなくても
 // 同じ結果になる - zh.ts と同じ方針。
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const jaDict = {
@@ -52,11 +51,7 @@ export const jaDict = {
     "landing.hero.h1.hl": "地図、速度、イベント",
     "landing.hero.h1.after": "。",
     "landing.hero.kicker": "ドライブの最初から最後までが、ひとつの走行につながります。",
-    "landing.hero.lead.before": "ほとんどのドラレコで撮った MP4・MOV・TS の動画 — ",
-    "landing.hero.lead.brandsTail": "など。",
-    "landing.hero.lead.after": " GPS とイベントは、動画や一緒に保存されているファイルから直接読み取ります。設定は不要です。",
     "landing.hero.allBrands": "対応ブランド一覧 →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.ja,
     "landing.hero.shot.alt": "everydashcam の画面：2 台のカメラを並べて表示、イベント付きの速度グラフ、地図上のルート",
     "landing.hero.shot.altPhone": "スマホの everydashcam：ルート地図付きのプレーヤー",
     "landing.dock.hint": "SD カードのフォルダーはどこへドロップしても OK — または",
@@ -66,7 +61,6 @@ export const jaDict = {
     "landing.drop.t1Touch": "SD カードのフォルダーごと選択",
     "landing.drop.t2": "サブフォルダーと元のファイル名はそのまま — それをもとにクリップが走行にまとまります",
     "landing.drop.cta": "フォルダーを開く",
-    "landing.drop.codecsHint": "+ 同じフォルダー内のファイル — .gps、.nmea、.gpx、.map、.csv、.txt ほか。",
     "landing.drop.freeNote": "録画はこの端末内に残り、アップロードされません",
     "recentFolders.title": "最近のフォルダー",
     "recentFolders.unavailableHint": "前回このフォルダーを開けませんでした。ドライブを接続し直してからもう一度クリックしてください。",
@@ -181,12 +175,9 @@ export const jaDict = {
     "landing.safety.offline.title": "オフラインで使えます。",
     "landing.safety.offline.body": "一度開けば、インターネットなしで視聴・編集できます。",
     "landing.works.title": "パソコンでも、タブレットでも、スマホでも",
-    "landing.works.sub": "インストール不要、プラグイン不要、ドライバー不要。",
+    "landing.works.sub": "編集や書き出しには Chrome または Edge を使ってね。",
     "landing.works.osLabel": "OS",
-    "landing.works.browsersLabel": "ブラウザ",
-    "landing.works.recommendedLabel": "おすすめ",
-    "landing.works.alsoLabel": "こちらも対応",
-    "landing.works.note": "再生できるかどうかは、ブラウザと録画形式によります。編集と書き出しには、Chrome などの Chromium 系ブラウザがおすすめです。",
+    "landing.works.note": "Firefox と Safari では、動画の再生、地図の表示、元の録画の保存ができるよ。",
     "landing.how.s1.num": "STEP 01",
     "landing.how.s1.title": "SD カードを取り出す",
     "landing.how.s1.body": "ドラレコから端末へ。カードリーダー、USB、OTG どれでも OK。",

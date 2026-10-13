@@ -142,16 +142,16 @@ const OG_OVERRIDES: Partial<Record<Lang, OgOverride>> = {
     en: {
         ogTitle: "Free Dashcam Player & Editor — GPS map, trim & export",
         ogDescription:
-            "Free, open-source dashcam player and editor. View, trim and export 70mai, Viofo, BlackVue, GoPro, Garmin and Vantrue recordings in your browser. GPS map, speed chart, overlay. No upload, no install, no ads.",
+            "Watch dashcam recordings with a route map and speed chart. Combine cameras and save clips in your browser. Free and open source.",
         twitterDescription:
-            "Free, open-source dashcam player and editor. View, trim and export recordings from 70mai, Viofo, BlackVue, GoPro and more, right in your browser.",
+            "Watch and edit dashcam recordings in your browser, with a route map and speed chart. Free and open source.",
     },
     ru: {
         ogTitle: "Бесплатный плеер и редактор видеорегистратора — GPS, обрезка",
         ogDescription:
-            "Бесплатный плеер и редактор видео с регистратора в браузере, с открытым кодом. Смотри, обрезай и экспортируй записи 70mai, Viofo, BlackVue, GoPro, Garmin и Vantrue. Карта GPS, график скорости. Без загрузки, установки и рекламы.",
+            "Смотри записи регистратора с картой маршрута и графиком скорости. Объединяй камеры и сохраняй фрагменты в браузере. Бесплатно, с открытым кодом.",
         twitterDescription:
-            "Бесплатный плеер и редактор видео с регистратора, с открытым кодом. 70mai, Viofo, BlackVue, GoPro и другие — прямо в браузере.",
+            "Смотри и редактируй записи регистратора в браузере, с картой маршрута и графиком скорости. Бесплатно, с открытым кодом.",
     },
 };
 

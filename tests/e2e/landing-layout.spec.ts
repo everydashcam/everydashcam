@@ -109,19 +109,24 @@ test.describe("landing layout", () => {
     });
 });
 
-test("home keeps direct links to every camera page and the comparison hub in every locale", async ({ request }) => {
+test("home links to the camera catalog and comparison hub in every locale", async ({ request }) => {
     for (const locale of ["en", "ru", "de", "es", "fr", "pl", "pt", "zh", "ja", "ko"] as const) {
         const response = await request.get(`/${locale}/`);
         expect(response.ok(), locale).toBe(true);
         const html = await response.text();
         const anchors = html.match(/<a\b[^>]*>/g) ?? [];
         const links = anchors.flatMap((anchor) => /\bhref="([^"]+)"/.exec(anchor)?.[1] ?? []);
-        for (const brand of getLandingBrands()) {
-            const targetLocale = brand.locales.includes(locale) ? locale : "en";
-            expect(links, `${locale}: ${brand.displayName}`).toContain(`/${targetLocale}/cameras/${brand.slug}/`);
-        }
         expect(links, `${locale}: camera catalog`).toContain(`/${locale}/cameras/`);
         expect(links, `${locale}: comparisons`).toContain(`/${locale}/alternatives/`);
+
+        const catalog = await request.get(`/${locale}/cameras/`);
+        expect(catalog.ok(), `${locale}: camera catalog`).toBe(true);
+        const catalogHtml = await catalog.text();
+        const catalogAnchors = catalogHtml.match(/<a\b[^>]*>/g) ?? [];
+        const catalogLinks = catalogAnchors.flatMap((anchor) => /\bhref="([^"]+)"/.exec(anchor)?.[1] ?? []);
+        for (const brand of getLandingBrands().filter((brand) => brand.locales.includes(locale))) {
+            expect(catalogLinks, `${locale}: ${brand.displayName}`).toContain(`/${locale}/cameras/${brand.slug}/`);
+        }
     }
 });
 

@@ -4,7 +4,6 @@
 // para o Brasil ("vídeo", "tela", "celular"); funciona razoavelmente
 // também em PT-PT.
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const ptDict = {
@@ -42,11 +41,7 @@ export const ptDict = {
     "landing.hero.h1.hl": "mapa, velocidade, eventos",
     "landing.hero.h1.after": ".",
     "landing.hero.kicker": "A viagem inteira, do início ao fim, sem interrupções.",
-    "landing.hero.lead.before": "Gravações em MP4, MOV ou TS da maioria das câmeras veiculares — ",
-    "landing.hero.lead.brandsTail": " e outras.",
-    "landing.hero.lead.after": " GPS e eventos — o app lê direto do vídeo e dos arquivos que vêm com ele, sem configurar nada.",
     "landing.hero.allBrands": "Todas as marcas compatíveis →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.pt,
     "landing.hero.shot.alt": "everydashcam por dentro: duas câmeras lado a lado, o gráfico de velocidade com marcas de eventos e a rota no mapa",
     "landing.hero.shot.altPhone": "everydashcam no celular: o player com o mapa da rota",
     "landing.dock.hint": "Solte a pasta do cartão SD em qualquer lugar — ou",
@@ -56,7 +51,6 @@ export const ptDict = {
     "landing.drop.t1Touch": "Escolha a pasta inteira do cartão SD",
     "landing.drop.t2": "Mantenha as subpastas e os nomes originais dos arquivos — é assim que os clipes viram viagens",
     "landing.drop.cta": "Abrir pasta",
-    "landing.drop.codecsHint": "+ os arquivos que acompanham o vídeo — .gps, .nmea, .gpx, .map, .csv, .txt e outros.",
     "landing.drop.freeNote": "As gravações ficam no seu dispositivo — nada é enviado",
     "recentFolders.title": "Pastas recentes",
     "recentFolders.unavailableHint": "Da última vez a pasta não estava acessível — conecte a unidade de novo e clique para tentar outra vez.",
@@ -171,12 +165,9 @@ export const ptDict = {
     "landing.safety.offline.title": "Funciona offline.",
     "landing.safety.offline.body": "Abra uma vez, depois assista e edite sem internet.",
     "landing.works.title": "No computador, tablet ou celular",
-    "landing.works.sub": "Sem instalação, sem plugins, sem drivers.",
+    "landing.works.sub": "Para editar e exportar, use o Chrome ou o Edge.",
     "landing.works.osLabel": "Sistemas operacionais",
-    "landing.works.browsersLabel": "Navegadores",
-    "landing.works.recommendedLabel": "Recomendados",
-    "landing.works.alsoLabel": "Também funcionam",
-    "landing.works.note": "A reprodução depende do navegador e do formato da gravação. A edição e a exportação funcionam melhor no Chrome e em outros navegadores baseados em Chromium.",
+    "landing.works.note": "No Firefox e no Safari, você pode assistir aos vídeos, ver o mapa e salvar as gravações originais.",
     "landing.how.s1.num": "PASSO 01",
     "landing.how.s1.title": "Tire o cartão SD",
     "landing.how.s1.body": "Da câmera para o seu dispositivo. Leitor de cartão, USB ou OTG — qualquer um serve.",

@@ -4,8 +4,7 @@
 
    Visual language mirrors the drop card above it: same elevated card shell
    (solid border where the drop target is dashed - this one is not a drop
-   zone), and chips in the .landing-codec pill idiom - mono font, bg over
-   bg-elev, accent border on hover. */
+   zone), with monospace chips, bg over bg-elev and an accent border on hover. */
 
 .recent-folders {
     display: flex;

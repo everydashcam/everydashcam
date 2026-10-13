@@ -2,7 +2,6 @@
 // kurze Sätze, direkt und freundlich, ohne Floskeln, Emojis nur dort,
 // wo sie schon im RU/EN Bedeutung trugen (Warnung, Häkchen).
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const deDict = {
@@ -40,11 +39,7 @@ export const deDict = {
     "landing.hero.h1.hl": "Karte, Geschwindigkeit, Ereignisse",
     "landing.hero.h1.after": ".",
     "landing.hero.kicker": "Die komplette Fahrt am Stück, von Anfang bis Ende.",
-    "landing.hero.lead.before": "Aufnahmen als MP4, MOV oder TS aus den meisten Dashcams — ",
-    "landing.hero.lead.brandsTail": " und mehr.",
-    "landing.hero.lead.after": " GPS und Ereignisse — die App liest sie direkt aus dem Video und den Dateien daneben, ohne Einrichtung.",
     "landing.hero.allBrands": "Alle unterstützten Marken →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.de,
     "landing.hero.shot.alt": "everydashcam von innen: zwei Kameras nebeneinander, das Geschwindigkeitsdiagramm mit Ereignismarkern und die Route auf der Karte",
     "landing.hero.shot.altPhone": "everydashcam auf dem Handy: der Player mit der Routenkarte",
     "landing.dock.hint": "Den SD-Karten-Ordner irgendwo ablegen — oder",
@@ -54,7 +49,6 @@ export const deDict = {
     "landing.drop.t1Touch": "Den ganzen SD‑Karten-Ordner auswählen",
     "landing.drop.t2": "Behalte die Unterordner und Originaldateinamen bei — so werden Clips zu Fahrten zusammengefügt",
     "landing.drop.cta": "Ordner öffnen",
-    "landing.drop.codecsHint": "+ alle zugehörigen Dateien — .gps, .nmea, .gpx, .map, .csv, .txt und mehr.",
     "landing.drop.freeNote": "Deine Aufnahmen bleiben auf deinem Gerät — keine Uploads",
     "recentFolders.title": "Zuletzt verwendete Ordner",
     "recentFolders.unavailableHint": "Der Ordner war zuletzt nicht erreichbar — Laufwerk wieder anschließen und erneut klicken.",
@@ -169,12 +163,9 @@ export const deDict = {
     "landing.safety.offline.title": "Funktioniert offline.",
     "landing.safety.offline.body": "Einmal öffnen, danach ohne Internet ansehen und bearbeiten.",
     "landing.works.title": "Auf Computer, Tablet oder Handy",
-    "landing.works.sub": "Keine Installation, keine Plugins, keine Treiber.",
+    "landing.works.sub": "Zum Bearbeiten und Exportieren eignen sich Chrome oder Edge.",
     "landing.works.osLabel": "Betriebssysteme",
-    "landing.works.browsersLabel": "Browser",
-    "landing.works.recommendedLabel": "Empfohlen",
-    "landing.works.alsoLabel": "Ebenfalls unterstützt",
-    "landing.works.note": "Ob sich eine Aufnahme abspielen lässt, hängt vom Browser und Videoformat ab. Bearbeiten und Export funktionieren in Chrome und anderen Chromium-Browsern am besten.",
+    "landing.works.note": "In Firefox und Safari kannst du Videos und die Karte ansehen und Originalaufnahmen speichern.",
     "landing.how.s1.num": "SCHRITT 01",
     "landing.how.s1.title": "SD-Karte rausnehmen",
     "landing.how.s1.body": "Nimm die Karte aus der Dashcam und schließe sie an dein Gerät an — über einen Kartenleser, USB oder einen passenden OTG-Adapter.",

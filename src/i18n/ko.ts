@@ -13,7 +13,6 @@
 // "{n} 개" 형태로 충분하며 plural 래퍼를 굳이 쓸 필요가 없어요 -
 // zh.ts / ja.ts 와 같은 방침입니다.
 
-import { BRAND_DISCLAIMER } from "./brand-disclaimer.js";
 import type { I18nKey } from "./keys.js";
 
 export const koDict = {
@@ -51,11 +50,7 @@ export const koDict = {
     "landing.hero.h1.hl": "지도, 속도, 이벤트",
     "landing.hero.h1.after": ".",
     "landing.hero.kicker": "주행 전체가 처음부터 끝까지 하나로 이어져요.",
-    "landing.hero.lead.before": "대부분의 블랙박스에서 나온 MP4, MOV, TS 녹화 — ",
-    "landing.hero.lead.brandsTail": " 등.",
-    "landing.hero.lead.after": " GPS와 이벤트는 영상이나 함께 저장된 파일에서 바로 읽어 와요. 따로 설정할 필요 없어요.",
     "landing.hero.allBrands": "지원되는 모든 브랜드 →",
-    "landing.brands.disclaimer": BRAND_DISCLAIMER.ko,
     "landing.hero.shot.alt": "everydashcam 화면: 두 카메라 나란히, 이벤트 표시가 있는 속도 그래프, 지도 위의 경로",
     "landing.hero.shot.altPhone": "휴대폰의 everydashcam: 경로 지도가 있는 플레이어",
     "landing.dock.hint": "SD 카드 폴더는 아무 데나 놓아도 돼요 — 또는",
@@ -65,7 +60,6 @@ export const koDict = {
     "landing.drop.t1Touch": "SD 카드 폴더를 통째로 선택하세요",
     "landing.drop.t2": "하위 폴더와 원래 파일 이름을 유지해 주세요 — 이 정보를 바탕으로 클립을 하나의 주행으로 묶어요",
     "landing.drop.cta": "폴더 열기",
-    "landing.drop.codecsHint": "+ 같은 폴더에 있는 파일 — .gps, .nmea, .gpx, .map, .csv, .txt 등.",
     "landing.drop.freeNote": "녹화는 이 기기에만 보관돼요 — 업로드하지 않아요",
     "recentFolders.title": "최근 폴더",
     "recentFolders.unavailableHint": "지난번에 폴더를 열지 못했어요. 드라이브를 다시 연결한 뒤 클릭해 다시 시도해 주세요.",
@@ -180,12 +174,9 @@ export const koDict = {
     "landing.safety.offline.title": "오프라인에서도 작동해요.",
     "landing.safety.offline.body": "한 번 열면 인터넷 없이 보고 편집할 수 있어요.",
     "landing.works.title": "컴퓨터, 태블릿, 휴대폰에서",
-    "landing.works.sub": "설치 없음, 플러그인 없음, 드라이버 없음.",
+    "landing.works.sub": "편집과 내보내기에는 Chrome이나 Edge를 사용해 주세요.",
     "landing.works.osLabel": "운영 체제",
-    "landing.works.browsersLabel": "브라우저",
-    "landing.works.recommendedLabel": "추천",
-    "landing.works.alsoLabel": "그 외 지원",
-    "landing.works.note": "재생 가능 여부는 브라우저와 녹화 형식에 따라 달라요. 편집과 내보내기는 Chrome 등 Chromium 기반 브라우저에서 가장 잘 동작해요.",
+    "landing.works.note": "Firefox와 Safari에서는 영상과 지도를 보고 원본 녹화를 저장할 수 있어요.",
     "landing.how.s1.num": "STEP 01",
     "landing.how.s1.title": "SD 카드 빼기",
     "landing.how.s1.body": "블랙박스에서 내 기기로. 카드 리더기, USB, OTG — 뭐든 돼요.",

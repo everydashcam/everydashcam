@@ -129,7 +129,7 @@
          For the static /ru/ version, the prerender plugin in vite.config.ts puts
          Russian content here - so Yandex/Google.ru sees Russian without JS. -->
     <meta name="description"
-          content="Free, open-source online dashcam player & editor. Combine multiple cameras into one video, overlay speed, GPS and a moving map, then export — right in your browser. No upload, no install, no ads."
+          content="Free dashcam player and editor in your browser. Watch recordings with a GPS map, combine cameras and save clips. Files stay on your device. Open source."
           data-i18n-attr="content:meta.description">
 
     <!-- Open Graph and Twitter Card. Without them, unfurl bots (Slack, Discord,
@@ -150,7 +150,7 @@
          comment guards against. The meta name="description" tag above DOES keep
          data-i18n-attr; only the social cards intentionally diverge. -->
     <meta property="og:description"
-          content="Free, open-source dashcam player. Open recordings from 70mai, Viofo, BlackVue, GoPro and more in your browser. Synchronized GPS map and speed chart. No upload, no install, no ads.">
+          content="Watch dashcam recordings with a route map and speed chart. Combine cameras and save clips in your browser. Free and open source.">
     <meta property="og:image" content="https://everydashcam.app/og-cover.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -169,7 +169,7 @@
     <!-- twitter:description: no data-i18n-attr, same reason as og:description
          above - seo-prerender sets it per locale (twitterDescription override). -->
     <meta name="twitter:description"
-          content="Free, open-source dashcam player. Open recordings from 70mai, Viofo, BlackVue, GoPro and more in your browser.">
+          content="Watch and edit dashcam recordings in your browser, with a route map and speed chart. Free and open source.">
     <meta name="twitter:image" content="https://everydashcam.app/og-cover.png">
 
     <!-- Preconnect to OpenFreeMap: the handshake to the tile CDN starts in
@@ -221,7 +221,7 @@
         "url": "https://everydashcam.app/",
         "isPartOf": { "@id": "https://everydashcam.app/#website" },
         "publisher": { "@id": "https://everydashcam.app/#organization" },
-        "description": "Free, open-source online dashcam player & editor. Combine multiple cameras into one video, overlay speed, GPS and a moving map, then export — right in your browser. No upload, no install, no ads.",
+        "description": "Free dashcam player and editor in your browser. Watch recordings with a GPS map, combine cameras and save clips. Files stay on your device. Open source.",
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "Web",
         "browserRequirements": "Works in any current browser; the GPS map needs WebGL2, and edited exports need WebCodecs",
@@ -299,7 +299,7 @@
                 "name": "Which dashcams are supported?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "70mai, Viofo, BlackVue, GoPro and many others — see all supported brands. GPS availability depends on the recording format."
+                    "text": "70mai, Viofo, BlackVue, GoPro and others. See all supported brands."
                 }
             },
             {
@@ -307,7 +307,7 @@
                 "name": "Which devices and browsers does it work on?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "On Windows, macOS, Linux, Android and iOS, right in your browser. Chrome or Edge is best for editing; Firefox and Safari support playback, the map and saving the original video. You can also install everydashcam from a supported browser and use it offline."
+                    "text": "Windows, macOS, Linux, Android and iOS. Use Chrome or Edge for editing. Firefox and Safari support video playback, the map and saving original recordings."
                 }
             },
             {
@@ -315,7 +315,7 @@
                 "name": "Are my recordings uploaded anywhere?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "No. everydashcam opens your recordings right on your device — they are never uploaded anywhere."
+                    "text": "No. Video and GPS data are processed on your device."
                 }
             },
             {
@@ -323,7 +323,7 @@
                 "name": "Can I watch separate clips as one trip?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Yes. Open the SD-card folder and the clips join into continuous trips, with one timeline and one route on the map."
+                    "text": "Yes. Open the entire SD-card folder: the app groups clips into trips with a shared timeline."
                 }
             },
             {
@@ -331,7 +331,7 @@
                 "name": "Can I save a clip and hide plates or faces?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Yes. Select a trip range, combine cameras, add speed or a mini-map, and save it as MP4. You can hide plates and faces with blur, pixels or a solid fill, all on your device."
+                    "text": "Yes. Save a selected time range as MP4 and cover plates and faces with blur, pixels or a solid fill."
                 }
             },
             {
@@ -339,7 +339,7 @@
                 "name": "Trips or cameras won't join, or GPS is missing?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Tell us what went wrong and send sample recordings — we'll look into the format and help add support for your dashcam."
+                    "text": "Tell us your dashcam model, describe the problem and send sample recordings."
                 }
             },
             {
@@ -347,7 +347,7 @@
                 "name": "Is it free? How can I help?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Free, with no ads, sign-up or subscriptions. If everydashcam has been useful, share a link and a few words about your experience — it helps others find the project. A GitHub star is welcome too."
+                    "text": "Yes, everydashcam is free. To support the project, share a link or leave a GitHub star."
                 }
             }
         ]
@@ -403,7 +403,7 @@
     <noscript>
         <div>
             <h2 data-i18n="page.title">Dashcam Player & Editor Online — GPS map, trim & export | everydashcam</h2>
-            <p data-i18n="meta.description">Free online dashcam player and editor. View, trim and export 70mai, Viofo, BlackVue, GoPro recordings in your browser — GPS map, speed chart, overlay. No upload, no install, no ads.</p>
+            <p data-i18n="meta.description">Free dashcam player and editor in your browser. Watch recordings with a GPS map, combine cameras and save clips. Files stay on your device. Open source.</p>
             <p>
                 <a href="/cameras/70mai/">70mai</a> ·
                 <a href="/cameras/viofo/">Viofo</a> ·
@@ -863,8 +863,8 @@
                                  in i18n values), so the highlight is a DOM sibling, not a tag
                                  inside a translated string. -->
                             <!-- web-only:start -->
-                            <h1 class="landing-hero-h1"><span data-i18n="landing.hero.h1.before">Dashcam player in your browser — </span><span class="landing-hero-h1-hl" data-i18n="landing.hero.h1.hl">map, speed, events</span><span data-i18n="landing.hero.h1.after">.</span></h1>
-                            <p class="landing-hero-kicker" data-i18n="landing.hero.kicker">The whole drive, start to finish, as one trip.</p>
+                            <h1 class="landing-hero-h1"><span data-i18n="landing.hero.h1.before">Dashcam player in your browser: </span><span class="landing-hero-h1-hl" data-i18n="landing.hero.h1.hl">video, route, speed</span><span data-i18n="landing.hero.h1.after">.</span></h1>
+                            <p class="landing-hero-kicker" data-i18n="landing.hero.kicker">Open your SD-card folder to watch a trip and save the part you need.</p>
                             <!-- web-only:end -->
                             <!-- Drop-CTA. The outer <label> is the click+drop target wired to
                                  #folder-input (lives in <body>). The inner <button id="landing-cta">
@@ -888,7 +888,7 @@
                                         <span class="landing-copy-pointer" data-i18n="landing.drop.t1">Drop the entire SD-card folder here</span>
                                         <span class="landing-copy-touch" data-i18n="landing.drop.t1Touch">Choose the entire SD-card folder</span>
                                     </span>
-                                    <span class="landing-drop-t2" data-i18n="landing.drop.t2">Keep the subfolders and original filenames — that's how clips get stitched into trips</span>
+                                    <span class="landing-drop-t2" data-i18n="landing.drop.t2">Keep the original filenames and subfolders: the app uses them to group recordings into trips.</span>
 
                                 </div>
                                 <button type="button" id="landing-cta" class="landing-cta dc-btn dc-btn--primary is-pending" aria-busy="true" disabled>
@@ -900,7 +900,7 @@
                                      row bolted to the button, not as fine print below the card. -->
                                 <p class="landing-drop-foot">
                                     <svg class="landing-privacy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-                                    <span data-i18n="landing.drop.freeNote">Recordings stay on your device — no uploads</span>
+                                    <span data-i18n="landing.drop.freeNote">Recordings stay on your device</span>
                                 </p>
                             </label>
 
@@ -958,7 +958,7 @@
                                          srcset="/landing/app-desktop-1240.webp 1240w, /landing/app-desktop-2480.webp 2480w"
                                          sizes="(max-width: 880px) 88vw, (max-width: 1440px) 50vw, 700px"
                                          width="1240" height="689" fetchpriority="high" decoding="async"
-                                         alt="Inside everydashcam: two cameras side by side, the speed chart with event marks and the route on the map"
+                                         alt="everydashcam showing two cameras, a speed chart with event marks and a route map"
                                          data-i18n-attr="alt:landing.hero.shot.alt">
                                 </button>
                                 <button type="button" class="landing-hero-shot-phone-btn" id="landing-shot-open-phone" aria-haspopup="dialog">
@@ -980,21 +980,21 @@
                     <section class="landing-how" id="landing-how" aria-label="How it works">
                         <div class="landing-step">
                             <span class="landing-step-num" data-i18n="landing.how.s1.num">STEP 01</span>
-                            <h3 data-i18n="landing.how.s1.title">Take out the SD card</h3>
-                            <p data-i18n="landing.how.s1.body">From the dashcam into your device. Card reader, USB or OTG — anything works.</p>
+                            <h3 data-i18n="landing.how.s1.title">Connect the SD card</h3>
+                            <p data-i18n="landing.how.s1.body">Use a card reader or adapter for your computer or phone.</p>
                             <div class="landing-step-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
                         </div>
                         <div class="landing-step">
                             <span class="landing-step-num" data-i18n="landing.how.s2.num">STEP 02</span>
                             <!-- Pointer/touch copy pair - same mechanism as the drop-card t1 above. -->
                             <h3><span class="landing-copy-pointer" data-i18n="landing.how.s2.title">Drop the folder</span><span class="landing-copy-touch" data-i18n="landing.how.s2.titleTouch">Pick the folder</span></h3>
-                            <p><span class="landing-copy-pointer" data-i18n="landing.how.s2.body">The whole card folder — anywhere on the page. Or via the button above.</span><span class="landing-copy-touch" data-i18n="landing.how.s2.bodyTouch">The whole card folder — via the button above.</span></p>
+                            <p><span class="landing-copy-pointer" data-i18n="landing.how.s2.body">Drag the entire recording folder onto the page or click “Open folder”.</span><span class="landing-copy-touch" data-i18n="landing.how.s2.bodyTouch">Tap “Open folder” and select the entire recording folder on the card.</span></p>
                             <div class="landing-step-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
                         </div>
                         <div class="landing-step">
                             <span class="landing-step-num" data-i18n="landing.how.s3.num">STEP 03</span>
-                            <h3 data-i18n="landing.how.s3.title">Watch</h3>
-                            <p data-i18n="landing.how.s3.body">Video, route on the map, speed and events — all on one screen with a shared timeline.</p>
+                            <h3 data-i18n="landing.how.s3.title">Choose a trip</h3>
+                            <p data-i18n="landing.how.s3.body">Use the shared timeline to seek through the trip and switch between cameras.</p>
                         </div>
                     </section>
                     <!-- web-only:end -->
@@ -1004,11 +1004,11 @@
                     <ul class="landing-caps">
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span>
-                            <div><b data-i18n="landing.caps.g.title">Trips, not clips</b><span data-i18n="landing.caps.g.body">Minute-long clips join into one continuous trip — one timeline, one route. Any stretch saves as a single MP4.</span></div>
+                            <div><b data-i18n="landing.caps.g.title">The whole trip</b><span data-i18n="landing.caps.g.body">Short recordings are grouped into trips with a shared timeline.</span></div>
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 12 2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.36 0 2.65.3 3.81.84"/></svg></span>
-                            <div><b data-i18n="landing.caps.a.title">Many dashcam brands</b><span data-i18n="landing.caps.a.body">.mp4 .mov .ts files open as-is — no drivers, no vendor software.</span></div>
+                            <div><b data-i18n="landing.caps.a.title">Many dashcam brands</b><span data-i18n="landing.caps.a.body">70mai, Viofo, BlackVue, GoPro and other brands.</span></div>
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
@@ -1016,15 +1016,15 @@
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4Z"/></svg></span>
-                            <div><b data-i18n="landing.caps.c.title">All cameras at once</b><span data-i18n="landing.caps.c.body">Front, rear, cabin — in sync. Enlarge any of them.</span></div>
+                            <div><b data-i18n="landing.caps.c.title">All cameras at once</b><span data-i18n="landing.caps.c.body">Watch the front, rear and cabin cameras in sync. Enlarge any camera.</span></div>
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="m9 14 2 2 4-4"/></svg></span>
-                            <div><b data-i18n="landing.caps.e.title">Edit, combine &amp; export</b><span data-i18n="landing.caps.e.body.lead">Trim, </span><a class="landing-brand-link" href="/combine-dashcam-cameras-into-one-video/" data-i18n="landing.caps.e.link.combine">combine cameras into one video</a><span data-i18n="landing.caps.e.body.mid"> and </span><a class="landing-brand-link" href="/add-data-overlay-to-dashcam-video/" data-i18n="landing.caps.e.link.overlay">burn speed, coordinates or a moving map</a><span data-i18n="landing.caps.e.body.tail"> onto the export. GPS inside the file or as a separate .gpx.</span></div>
+                            <div><b data-i18n="landing.caps.e.title">Save a clip</b><span data-i18n="landing.caps.e.body.lead">Save part of a trip as MP4. You can </span><a class="landing-brand-link" href="/combine-dashcam-cameras-into-one-video/" data-i18n="landing.caps.e.link.combine">combine cameras into one video</a><span data-i18n="landing.caps.e.body.mid"> and </span><a class="landing-brand-link" href="/add-data-overlay-to-dashcam-video/" data-i18n="landing.caps.e.link.overlay">add speed, coordinates or a map</a><span data-i18n="landing.caps.e.body.tail">.</span></div>
                         </li>
                         <li>
                             <span class="landing-cap-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg></span>
-                            <div><b data-i18n="landing.caps.d.title">Hide plates &amp; faces</b><span data-i18n="landing.caps.d.body.lead">You can </span><a class="landing-brand-link" href="/blur-license-plate-in-dashcam-video/" data-i18n="landing.caps.d.link">blur a license plate or a face</a><span data-i18n="landing.caps.d.body.tail"> before sharing — the cover follows the object as it moves.</span></div>
+                            <div><b data-i18n="landing.caps.d.title">Hide plates &amp; faces</b><span data-i18n="landing.caps.d.body.lead">You can </span><a class="landing-brand-link" href="/blur-license-plate-in-dashcam-video/" data-i18n="landing.caps.d.link">blur a license plate or a face</a><span data-i18n="landing.caps.d.body.tail"> before sharing a video. The blur follows the selected object as it moves.</span></div>
                         </li>
                     </ul>
                     <!-- web-only:end -->
@@ -1035,21 +1035,21 @@
                     <!-- web-only:start -->
                     <aside class="landing-safety" aria-labelledby="landing-safety-h2">
                         <div class="landing-safety-head">
-                            <p class="landing-safety-eyebrow"><span class="landing-safety-dot"></span><span data-i18n="landing.safety.eyebrow">Privacy by default</span></p>
+                            <p class="landing-safety-eyebrow"><span class="landing-safety-dot"></span><span data-i18n="landing.safety.eyebrow">Your recordings</span></p>
                             <h2 id="landing-safety-h2"><span data-i18n="landing.safety.h2.before">Your recordings stay </span><em data-i18n="landing.safety.h2.hl">on your device</em><span data-i18n="landing.safety.h2.after">.</span></h2>
                         </div>
                         <ul class="landing-guarantees">
                             <li>
                                 <span class="landing-guarantee-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><path d="M2 14a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><path d="M6 8h.01"/><path d="M6 16h.01"/><path d="m2 2 20 20"/></svg></span>
-                                <div><b data-i18n="landing.safety.uploads.title">Recordings aren’t uploaded.</b> <span data-i18n="landing.safety.uploads.body">Open them straight from your SD card.</span></div>
+                                <div><b data-i18n="landing.safety.uploads.title">View and edit in your browser.</b> <span data-i18n="landing.safety.uploads.body">The app reads files directly from your SD card or drive.</span></div>
                             </li>
                             <li>
                                 <span class="landing-guarantee-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.7 5.1a10.7 10.7 0 0 1 11.2 6.6 1 1 0 0 1 0 .7 10.7 10.7 0 0 1-1.4 2.5"/><path d="M14.1 14.2a3 3 0 0 1-4.2-4.3"/><path d="M17.5 17.5a10.8 10.8 0 0 1-15.4-5.2 1 1 0 0 1 0-.7 10.8 10.8 0 0 1 4.4-5.1"/><path d="m2 2 20 20"/></svg></span>
-                                <div><b data-i18n="landing.safety.tracking.title">Trips aren’t tracked.</b> <span data-i18n="landing.safety.tracking.body">everydashcam doesn’t collect where you drove.</span></div>
+                                <div><b data-i18n="landing.safety.tracking.title">GPS data stays on your device.</b> <span data-i18n="landing.safety.tracking.body">everydashcam doesn’t collect your trip history.</span></div>
                             </li>
                             <li>
                                 <span class="landing-guarantee-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.7"/><path d="M19 12.9a10 10 0 0 0-2-1.5"/><path d="M2 8.8a15 15 0 0 1 4.2-2.6"/><path d="M22 8.8a15 15 0 0 0-11.6-3.8"/><path d="m2 2 20 20"/></svg></span>
-                                <div><b data-i18n="landing.safety.offline.title">Works offline.</b> <span data-i18n="landing.safety.offline.body">Open it once, then watch and edit without internet.</span></div>
+                                <div><b data-i18n="landing.safety.offline.title">Works offline.</b> <span data-i18n="landing.safety.offline.body">Open the app and the recordings you want to watch before going offline.</span></div>
                             </li>
                         </ul>
 
@@ -1061,59 +1061,23 @@
                     </aside>
                     <!-- web-only:end -->
 
-                    <!-- "Runs anywhere a browser runs": two stacked rows of monochrome
-                         brand chips (currentColor fill). 5 OSes + 9 browsers. -->
                     <!-- web-only:start -->
                     <section class="landing-works" aria-labelledby="landing-works-title">
                         <div class="landing-works-head">
                             <h2 id="landing-works-title" class="landing-works-title" data-i18n="landing.works.title">On your computer, tablet or phone</h2>
-                            <p class="landing-works-sub" data-i18n="landing.works.sub">No installs, no plugins, no drivers.</p>
+                            <ul class="landing-works-platforms" aria-label="Operating systems" data-i18n-attr="aria-label:landing.works.osLabel">
+                                <li>Windows</li>
+                                <li>macOS</li>
+                                <li>Linux</li>
+                                <li>Android</li>
+                                <li>iOS</li>
+                            </ul>
                         </div>
-                        <!-- Brand links use locale paths in the prerendered pages. -->
-                        <p class="landing-compat-copy"><span data-i18n="landing.hero.lead.before">Recordings in MP4, MOV or TS from most dashcams — </span><a class="landing-brand-link" href="/cameras/70mai/">70mai</a>, <a class="landing-brand-link" href="/cameras/viofo/">Viofo</a>, <a class="landing-brand-link" href="/cameras/blackvue/">BlackVue</a>, <a class="landing-brand-link" href="/cameras/gopro/">GoPro</a>, <a class="landing-brand-link" href="/cameras/garmin/">Garmin</a>, <a class="landing-brand-link" href="/cameras/vantrue/">Vantrue</a>, <a class="landing-brand-link" href="/cameras/thinkware/">Thinkware</a>, <a class="landing-brand-link" href="/cameras/nextbase/">Nextbase</a>, <a class="landing-brand-link" href="/cameras/redtiger/">REDTIGER</a>, <a class="landing-brand-link" href="/cameras/navitel/">NAVITEL</a>, <a class="landing-brand-link" href="/cameras/mio/">Mio MiVue</a>, <a class="landing-brand-link" href="/cameras/navman/">Navman MiVue</a>, <a class="landing-brand-link" href="/cameras/fitcamx/">FITCAMX</a><span data-i18n="landing.hero.lead.brandsTail"> and more.</span><span data-i18n="landing.hero.lead.after"> GPS and events — the app reads them straight from the video and the files next to it, no setup.</span> <a class="landing-brand-link" href="/cameras/" data-i18n="landing.hero.allBrands">All supported brands →</a></p>
-                        <p class="landing-brand-disclaimer"><span data-i18n="landing.brands.disclaimer">everydashcam is independent and not affiliated with camera manufacturers. Brand names identify products and describe compatibility; trademarks belong to their owners.</span> <a class="landing-brand-link" href="/terms" data-i18n="footer.terms">Terms of use</a></p>
-                        <div class="landing-format-info">
-                            <span class="landing-codecs">
-                                <span class="landing-codec">.mp4</span>
-                                <span class="landing-codec">.mov</span>
-                                <span class="landing-codec">.ts</span>
-                                <span class="landing-codec">.mkv</span>
-                                <span class="landing-codecs-hint" data-i18n="landing.drop.codecsHint">+ any neighboring files — .gps, .nmea, .gpx, .map, .csv, .txt and more.</span>
-                            </span>
+                        <div class="landing-works-body">
+                            <p data-i18n="landing.works.sub">Use Chrome or Edge for editing and export.</p>
+                            <p data-i18n="landing.works.note">Firefox and Safari support video playback, the map and saving original recordings.</p>
+                            <a class="landing-brand-link" href="/cameras/" data-i18n="landing.hero.allBrands">Supported dashcams →</a>
                         </div>
-                        <div class="landing-works-grid">
-                            <div class="landing-works-col">
-                                <div class="landing-works-col-label" data-i18n="landing.works.osLabel">Operating systems</div>
-                                <ul class="landing-works-chips">
-                                    <li class="landing-plat"><svg viewBox="0 0 4875 4875" fill="currentColor" aria-hidden="true"><path d="M0 0h2311v2310H0zm2564 0h2311v2310H2564zM0 2564h2311v2311H0zm2564 0h2311v2311H2564"/></svg>Windows</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>macOS</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z"/></svg>Linux</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.4395 5.5586c-.675 1.1664-1.352 2.3318-2.0274 3.498-.0366-.0155-.0742-.0286-.1113-.043-1.8249-.6957-3.484-.8-4.42-.787-1.8551.0185-3.3544.4643-4.2597.8203-.084-.1494-1.7526-3.021-2.0215-3.4864a1.1451 1.1451 0 0 0-.1406-.1914c-.3312-.364-.9054-.4859-1.379-.203-.475.282-.7136.9361-.3886 1.5019 1.9466 3.3696-.0966-.2158 1.9473 3.3593.0172.031-.4946.2642-1.3926 1.0177C2.8987 12.176.452 14.772 0 18.9902h24c-.119-1.1108-.3686-2.099-.7461-3.0683-.7438-1.9118-1.8435-3.2928-2.7402-4.1836a12.1048 12.1048 0 0 0-2.1309-1.6875c.6594-1.122 1.312-2.2559 1.9649-3.3848.2077-.3615.1886-.7956-.0079-1.1191a1.1001 1.1001 0 0 0-.8515-.5332c-.5225-.0536-.9392.3128-1.0488.5449zm-.0391 8.461c.3944.5926.324 1.3306-.1563 1.6503-.4799.3197-1.188.0985-1.582-.4941-.3944-.5927-.324-1.3307.1563-1.6504.4727-.315 1.1812-.1086 1.582.4941zM7.207 13.5273c.4803.3197.5506 1.0577.1563 1.6504-.394.5926-1.1038.8138-1.584.4941-.48-.3197-.5503-1.0577-.1563-1.6504.4008-.6021 1.1087-.8106 1.584-.4941z"/></svg>Android</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>iOS</li>
-                                </ul>
-                            </div>
-                            <div class="landing-works-col landing-works-col-browsers">
-                                <div class="landing-works-col-label" data-i18n="landing.works.browsersLabel">Browsers</div>
-                                <div class="landing-works-tiers">
-                                    <span class="landing-works-tier-label landing-works-tier-rec" data-i18n="landing.works.recommendedLabel">Recommended</span>
-                                    <ul class="landing-works-chips landing-works-chips-rec">
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 6.848A5.454 5.454 0 0 1 12 6.545h10.691A12 12 0 0 0 12 0zM1.931 5.47A11.943 11.943 0 0 0 0 12c0 6.012 4.42 10.991 10.189 11.864l3.953-6.847a5.45 5.45 0 0 1-6.865-2.29zm13.342 2.166a5.446 5.446 0 0 1 1.45 7.09l.002.001h-.002l-5.344 9.257c.206.01.413.016.621.016 6.627 0 12-5.373 12-12 0-1.54-.29-3.011-.818-4.364zM12 16.364a4.364 4.364 0 1 1 0-8.728 4.364 4.364 0 0 1 0 8.728Z"/></svg>Chrome</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M235.7 195.5a93.7 93.7 0 0 1-10.6 4.7 101.9 101.9 0 0 1-35.9 6.4c-47.3 0-88.5-32.5-88.5-74.3a31.5 31.5 0 0 1 16.4-27.3c-42.8 1.8-53.8 46.4-53.8 72.5 0 74 68.1 81.4 82.8 81.4 7.9 0 19.8-2.3 27-4.6l1.3-.4a128.3 128.3 0 0 0 66.6-52.8 4 4 0 0 0-5.3-5.6Z"/><path d="M110.3 246.3A79.2 79.2 0 0 1 87.6 225a80.7 80.7 0 0 1 29.5-120c3.2-1.5 8.5-4.1 15.6-4a32.4 32.4 0 0 1 25.7 13 31.9 31.9 0 0 1 6.3 18.7c0-.2 24.5-79.6-80-79.6-43.9 0-80 41.6-80 78.2a130.2 130.2 0 0 0 12.1 56 128 128 0 0 0 156.4 67 75.5 75.5 0 0 1-62.8-8Z"/><path d="M157 153.8c-.9 1-3.4 2.5-3.4 5.6 0 2.6 1.7 5.2 4.8 7.3 14.3 10 41.4 8.6 41.5 8.6a59.6 59.6 0 0 0 30.3-8.3 61.4 61.4 0 0 0 30.4-52.9c.3-22.4-8-37.3-11.3-43.9C228 28.8 182.3 5 132.6 5a128 128 0 0 0-128 126.2c.5-36.5 36.8-66 80-66 3.5 0 23.5.3 42 10a72.6 72.6 0 0 1 30.9 29.3c6.1 10.6 7.2 24.1 7.2 29.5s-2.7 13.3-7.8 19.9Z"/></svg>Edge</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.051 5.238c-1.328 1.566-2.186 3.883-2.246 6.48v.564c.061 2.598.918 4.912 2.246 6.479 1.721 2.236 4.279 3.654 7.139 3.654 1.756 0 3.4-.537 4.807-1.471C17.879 22.846 15.074 24 12 24c-.192 0-.383-.004-.57-.014C5.064 23.689 0 18.436 0 12 0 5.371 5.373 0 12 0h.045c3.055.012 5.84 1.166 7.953 3.055-1.408-.93-3.051-1.471-4.81-1.471-2.858 0-5.417 1.42-7.14 3.654h.003zM24 12c0 3.556-1.545 6.748-4.002 8.945-3.078 1.5-5.946.451-6.896-.205 3.023-.664 5.307-4.32 5.307-8.74 0-4.422-2.283-8.075-5.307-8.74.949-.654 3.818-1.703 6.896-.205C22.455 5.25 24 8.445 24 12z"/></svg>Opera</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.68 0l2.096 2.38s1.84-.512 2.709.358c.868.87 1.584 1.638 1.584 1.638l-.562 1.381.715 2.047s-2.104 7.98-2.35 8.955c-.486 1.919-.818 2.66-2.198 3.633-1.38.972-3.884 2.66-4.293 2.916-.409.256-.92.692-1.38.692-.46 0-.97-.436-1.38-.692a185.796 185.796 0 01-4.293-2.916c-1.38-.973-1.712-1.714-2.197-3.633-.247-.975-2.351-8.955-2.351-8.955l.715-2.047-.562-1.381s.716-.768 1.585-1.638c.868-.87 2.708-.358 2.708-.358L8.321 0h7.36zm-3.679 14.936c-.14 0-1.038.317-1.758.69-.72.373-1.242.637-1.409.742-.167.104-.065.301.087.409.152.107 2.194 1.69 2.393 1.866.198.175.489.464.687.464.198 0 .49-.29.688-.464.198-.175 2.24-1.759 2.392-1.866.152-.108.254-.305.087-.41-.167-.104-.689-.368-1.41-.741-.72-.373-1.617-.69-1.757-.69zm0-11.278s-.409.001-1.022.206-1.278.46-1.584.46c-.307 0-2.581-.434-2.581-.434S4.119 7.152 4.119 7.849c0 .697.339.881.68 1.243l2.02 2.149c.192.203.59.511.356 1.066-.235.555-.58 1.26-.196 1.977.384.716 1.042 1.194 1.464 1.115.421-.08 1.412-.598 1.776-.834.364-.237 1.518-1.19 1.518-1.554 0-.365-1.193-1.02-1.413-1.168-.22-.15-1.226-.725-1.247-.95-.02-.227-.012-.293.284-.851.297-.559.831-1.304.742-1.8-.089-.495-.95-.753-1.565-.986-.615-.232-1.799-.671-1.947-.74-.148-.068-.11-.133.339-.175.448-.043 1.719-.212 2.292-.052.573.16 1.552.403 1.632.532.079.13.149.134.067.579-.081.445-.5 2.581-.541 2.96-.04.38-.12.63.288.724.409.094 1.097.256 1.333.256s.924-.162 1.333-.256c.408-.093.329-.344.288-.723-.04-.38-.46-2.516-.541-2.961-.082-.445-.012-.45.067-.579.08-.129 1.059-.372 1.632-.532.573-.16 1.845.009 2.292.052.449.042.487.107.339.175-.148.069-1.332.508-1.947.74-.615.233-1.476.49-1.565.986-.09.496.445 1.241.742 1.8.297.558.304.624.284.85-.02.226-1.026.802-1.247.95-.22.15-1.413.804-1.413 1.169 0 .364 1.154 1.317 1.518 1.554.364.236 1.355.755 1.776.834.422.079 1.08-.4 1.464-1.115.384-.716.039-1.422-.195-1.977-.235-.555.163-.863.355-1.066l2.02-2.149c.341-.362.68-.546.68-1.243 0-.697-2.695-3.96-2.695-3.96s-2.274.436-2.58.436c-.307 0-.972-.256-1.585-.461-.613-.205-1.022-.206-1.022-.206z"/></svg>Brave</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C6.75 0 3.817 0 1.912 1.904.007 3.81 0 6.75 0 12s0 8.175 1.912 10.08C3.825 23.985 6.75 24 12 24c5.25 0 8.183 0 10.088-1.904C23.993 20.19 24 17.25 24 12s0-8.175-1.912-10.08C20.175.015 17.25 0 12 0zm-.168 3a9 9 0 016.49 2.648 9 9 0 010 12.704A9 9 0 1111.832 3zM7.568 7.496a1.433 1.433 0 00-.142.004A1.5 1.5 0 006.21 9.75l1.701 3c.93 1.582 1.839 3.202 2.791 4.822a1.417 1.417 0 001.41.75 1.5 1.5 0 001.223-.81l4.447-7.762A1.56 1.56 0 0018 8.768a1.5 1.5 0 10-2.828.914 2.513 2.513 0 01.256 1.119v.246a2.393 2.393 0 01-2.52 2.13 2.348 2.348 0 01-1.965-1.214c-.307-.51-.6-1.035-.9-1.553-.42-.72-.826-1.41-1.246-2.16a1.433 1.433 0 00-1.229-.754Z"/></svg>Vivaldi</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.9371 8.5089c.1471-.7147.0367-1.4661-.3364-2.0967-.4203-.7094-1.1035-1.1876-1.9075-1.3506a2.9178 2.9178 0 0 0-.5623-.0578h-.0105c-1.3768 0-2.5329.988-2.8061 2.3385-.1629.7935-.4782 1.5607-.9196 2.2701a.263.263 0 0 1-.2363.1205.2627.2627 0 0 1-.2209-.1468l-2.8587-5.9906c-.3626-.762-1.0142-1.361-1.8235-1.5975-1.3873-.4099-2.8166.2838-3.4052 1.524L5.897 9.7333c-.0788.1629-.31.1576-.3784-.0053v-.0052a2.8597 2.8597 0 0 0-2.6642-1.7972c-.3784 0-.7515.0736-1.1088.2207-1.4714.6148-2.1283 2.349-1.5187 3.8203.557 1.3295 1.4714 2.5855 2.659 3.668.084.0788.1103.1997.063.3048l-.9563 2.0074c-.6727 1.4188-.1314 3.1477 1.2664 3.8571.4099.2049.846.31 1.298.31 1.1035 0 2.123-.6411 2.5959-1.6395l.825-1.7289a.254.254 0 0 1 .3048-.1366c1.0037.2732 2.0127.4204 3.0058.4204 1.1193 0 2.2229-.1682 3.2896-.4782a.2626.2626 0 0 1 .3101.1366l.8145 1.7131c.4834 1.0195 1.4924 1.7131 2.6169 1.7184.4572 0 .8986-.0999 1.3138-.3101 1.403-.7094 1.939-2.4435 1.2664-3.8676L19.875 15.787c-.0473-.1051-.0263-.226.0578-.3048 1.9864-1.8497 3.4525-4.2723 4.0043-6.9733ZM6.2121 20.0172a1.835 1.835 0 0 1-.6764.7622 1.8352 1.8352 0 0 1-.9788.2835c-.2733 0-.5518-.063-.8093-.1891-.9038-.4467-1.2454-1.5713-.8093-2.4804l.7935-1.6658c.0684-.1471.2575-.1997.3837-.1051.1681.1209.3415.2365.5202.3521.6989.4467 1.4293.825 2.1808 1.1351.1419.0578.205.2154.1419.352l-.7462 1.5555Zm5.0763-2.0442c-4.2092 0-8.6548-2.8534-10.1262-6.4951a1.8286 1.8286 0 0 1 1.009-2.3805c.2259-.0893.4571-.1366.683-.1366.7252 0 1.4084.431 1.6974 1.1456.9196 2.2806 4.0043 4.2092 6.7368 4.2092.4204 0 .8408-.042 1.256-.1156a.2643.2643 0 0 1 .2837.1419l1.3768 2.9007c.0683.1471-.0105.3205-.1629.3626-.8986.2365-1.8182.3678-2.7536.3678Zm-.599-4.9291l.6358-1.3348c.0526-.1051.205-.1051.2575 0l.6201 1.3033c.042.0841-.0158.1891-.1051.2049-.268.0368-.536.0578-.7988.0578a5.0634 5.0634 0 0 1-.4887-.0263c-.1103-.0157-.1629-.1208-.1208-.2049Zm8.4604 7.8246a1.831 1.831 0 0 1-2.0329-.2788 1.8292 1.8292 0 0 1-.4316-.5778l-4.987-10.4836c-.0998-.2102-.3994-.2102-.4939 0l-1.545 3.2529a.2623.2623 0 0 1-.3205.1366c-1.051-.3626-2.0495-.9774-2.7904-1.7184a.2552.2552 0 0 1-.0473-.2943l3.3421-7.031c.1156-.247.2943-.4677.5203-.6201 1.051-.6884 2.2806-.2575 2.7378.7041l6.8577 14.4248c.4309.9144.0946 2.0389-.8093 2.4856Zm-1.4451-9.6481a.258.258 0 0 1 .0315-.2732c.783-1.0037 1.3558-2.1756 1.6028-3.421.1734-.867.9354-1.4714 1.7919-1.4714.1472 0 .2943.0158.4467.0526.9722.2417 1.5344 1.2507 1.3295 2.2333-.4835 2.3017-1.6816 4.3879-3.3159 6.0222-.1313.1314-.3468.0946-.4256-.0683l-1.4609-3.0742Z"/></svg>Arc</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 48 48" fill="currentColor" aria-hidden="true"><path d="m 12.85,9.508 -4.242,4.242 12.4,12.401 v 14.742 h 6 V 26.135 L 39.393,13.75 35.151,9.508 24,20.659 12.85,9.508"/></svg>Yandex Browser</li>
-                                    </ul>
-                                    <span class="landing-works-tier-label" data-i18n="landing.works.alsoLabel">Also supported</span>
-                                    <ul class="landing-works-chips">
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.824 7.287c.008 0 .004 0 0 0zm-2.8-1.4c.006 0 .003 0 0 0zm16.754 2.161c-.505-1.215-1.53-2.528-2.333-2.943.654 1.283 1.033 2.57 1.177 3.53l.002.02c-1.314-3.278-3.544-4.6-5.366-7.477-.091-.147-.184-.292-.273-.446a3.545 3.545 0 01-.13-.24 2.118 2.118 0 01-.172-.46.03.03 0 00-.027-.03.038.038 0 00-.021 0l-.006.001a.037.037 0 00-.01.005L15.624 0c-2.585 1.515-3.657 4.168-3.932 5.856a6.197 6.197 0 00-2.305.587.297.297 0 00-.147.37c.057.162.24.24.396.17a5.622 5.622 0 012.008-.523l.067-.005a5.847 5.847 0 011.957.222l.095.03a5.816 5.816 0 01.616.228c.08.036.16.073.238.112l.107.055a5.835 5.835 0 01.368.211 5.953 5.953 0 012.034 2.104c-.62-.437-1.733-.868-2.803-.681 4.183 2.09 3.06 9.292-2.737 9.02a5.164 5.164 0 01-1.513-.292 4.42 4.42 0 01-.538-.232c-1.42-.735-2.593-2.121-2.74-3.806 0 0 .537-2 3.845-2 .357 0 1.38-.998 1.398-1.287-.005-.095-2.029-.9-2.817-1.677-.422-.416-.622-.616-.8-.767a3.47 3.47 0 00-.301-.227 5.388 5.388 0 01-.032-2.842c-1.195.544-2.124 1.403-2.8 2.163h-.006c-.46-.584-.428-2.51-.402-2.913-.006-.025-.343.176-.389.206-.406.29-.787.616-1.136.974-.397.403-.76.839-1.085 1.303a9.816 9.816 0 00-1.562 3.52c-.003.013-.11.487-.19 1.073-.013.09-.026.181-.037.272a7.8 7.8 0 00-.069.667l-.002.034-.023.387-.001.06C.386 18.795 5.593 24 12.016 24c5.752 0 10.527-4.176 11.463-9.661.02-.149.035-.298.052-.448.232-1.994-.025-4.09-.753-5.844z"/></svg>Firefox</li>
-                                    <li class="landing-plat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm-.004.953h.006c.063 0 .113.05.113.113v1.842c0 .063-.05.113-.113.113h-.006a.112.112 0 0 1-.113-.113V1.066c0-.063.05-.113.113-.113zm-.941.041c.056.001.104.046.11.104l.077.918a.112.112 0 0 1-.101.12h-.01a.11.11 0 0 1-.12-.1l-.08-.919a.112.112 0 0 1 .102-.12h.01l.012-.003zm1.892 0H12.965a.113.113 0 0 1 .103.121l-.08.92a.111.111 0 0 1-.12.102h-.009a.111.111 0 0 1-.101-.121l.078-.92a.112.112 0 0 1 .111-.102zM12 21.94c-2.737 0-5.214-1.106-7.018-2.895C6.787 20.768 9.262 21.94 12 21.94zm-9.93-9.94c0 5.518 4.412 9.93 9.93 9.93s9.93-4.412 9.93-9.93S17.518 2.07 12 2.07 2.07 6.482 2.07 12z"/></svg>Safari</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                        <p class="landing-works-note" data-i18n="landing.works.note">Playback depends on your browser and recording format. Editing and export work best in Chrome and other Chromium-based browsers.</p>
                     </section>
                     <!-- web-only:end -->
 
@@ -1122,36 +1086,36 @@
                     <section class="landing-faq" aria-labelledby="landing-faq-title">
                         <div class="landing-faq-head">
                             <span class="landing-faq-eyebrow" data-i18n="landing.faq.eyebrow">FAQ</span>
-                            <h2 id="landing-faq-title" class="landing-faq-h2" data-i18n="landing.faq.h2">Short answers</h2>
+                            <h2 id="landing-faq-title" class="landing-faq-h2" data-i18n="landing.faq.h2">Questions about everydashcam</h2>
                         </div>
                         <div class="landing-faq-list">
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q2">Which dashcams are supported?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body"><span data-i18n="landing.faq.a2.before">70mai, Viofo, BlackVue, GoPro and many others — see </span><a class="landing-brand-link" href="/cameras/" data-i18n="landing.faq.a2.link">all supported brands</a><span data-i18n="landing.faq.a2.after">. GPS availability depends on the recording format.</span></div>
+                                <div class="landing-faq-body"><span data-i18n="landing.faq.a2.before">70mai, Viofo, BlackVue, GoPro and others. See </span><a class="landing-brand-link" href="/cameras/" data-i18n="landing.faq.a2.link">all supported brands</a><span data-i18n="landing.faq.a2.after">.</span></div>
                             </details>
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q4">Which devices and browsers does it work on?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body" data-i18n="landing.faq.a4">On Windows, macOS, Linux, Android and iOS, right in your browser. Chrome or Edge is best for editing; Firefox and Safari support playback, the map and saving the original video. You can also install everydashcam from a supported browser and use it offline.</div>
+                                <div class="landing-faq-body" data-i18n="landing.faq.a4">Windows, macOS, Linux, Android and iOS. Use Chrome or Edge for editing. Firefox and Safari support video playback, the map and saving original recordings.</div>
                             </details>
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q3">Are my recordings uploaded anywhere?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body" data-i18n="landing.faq.a3">No. everydashcam opens your recordings right on your device — they are never uploaded anywhere.</div>
+                                <div class="landing-faq-body" data-i18n="landing.faq.a3">No. Video and GPS data are processed on your device.</div>
                             </details>
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q9">Can I watch separate clips as one trip?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body" data-i18n="landing.faq.a9">Yes. Open the SD-card folder and the clips join into continuous trips, with one timeline and one route on the map.</div>
+                                <div class="landing-faq-body" data-i18n="landing.faq.a9">Yes. Open the entire SD-card folder: the app groups clips into trips with a shared timeline.</div>
                             </details>
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q6">Can I save a clip and hide plates or faces?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body" data-i18n="landing.faq.a6">Yes. Select a trip range, combine cameras, add speed or a mini-map, and save it as MP4. You can hide plates and faces with blur, pixels or a solid fill, all on your device.</div>
+                                <div class="landing-faq-body" data-i18n="landing.faq.a6">Yes. Save a selected time range as MP4 and cover plates and faces with blur, pixels or a solid fill.</div>
                             </details>
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q13">Trips or cameras won't join, or GPS is missing?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body"><span data-i18n="landing.faq.a13.before">Tell us what went wrong and </span><a class="landing-brand-link" href="/add-my-camera" target="_blank" rel="noopener noreferrer" data-i18n="landing.faq.a13.link">send sample recordings</a><span data-i18n="landing.faq.a13.after"> — we'll look into the format and help add support for your dashcam.</span></div>
+                                <div class="landing-faq-body"><span data-i18n="landing.faq.a13.before">Tell us your dashcam model, describe the problem and </span><a class="landing-brand-link" href="/add-my-camera" target="_blank" rel="noopener noreferrer" data-i18n="landing.faq.a13.link">send sample recordings</a><span data-i18n="landing.faq.a13.after">.</span></div>
                             </details>
                             <details class="landing-faq-item">
                                 <summary><span data-i18n="landing.faq.q12">Is it free? How can I help?</span><svg class="landing-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                                <div class="landing-faq-body"><span data-i18n="landing.faq.a12.before">Free, with no ads, sign-up or subscriptions. If everydashcam has been useful, share a link and a few words about your experience — it helps others find the project. A </span><a class="landing-brand-link" href="https://github.com/everydashcam/everydashcam" target="_blank" rel="noopener noreferrer" data-i18n="landing.faq.a12.link">GitHub star</a><span data-i18n="landing.faq.a12.after"> is welcome too.</span></div>
+                                <div class="landing-faq-body"><span data-i18n="landing.faq.a12.before">Yes, everydashcam is free. To support the project, share a link or leave a </span><a class="landing-brand-link" href="https://github.com/everydashcam/everydashcam" target="_blank" rel="noopener noreferrer" data-i18n="landing.faq.a12.link">GitHub star</a><span data-i18n="landing.faq.a12.after">.</span></div>
                             </details>
                         </div>
                     </section>
@@ -1258,7 +1222,7 @@
                     <!-- Drag copy is meaningless on touch - reuse the drop card's
                          CSS gate (landing-copy-pointer): on coarse pointers the bar
                          is just the folder icon + the button. -->
-                    <span class="landing-dock-hint landing-copy-pointer" data-i18n="landing.dock.hint">Drop your SD-card folder anywhere — or</span>
+                    <span class="landing-dock-hint landing-copy-pointer" data-i18n="landing.dock.hint">Open your SD-card folder to view recordings</span>
                     <button type="button" class="landing-dock-cta dc-btn dc-btn--primary">
                         <span data-i18n="landing.drop.cta">Open folder</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -3075,7 +3039,7 @@
     <!-- web-only:start -->
     <div data-nosnippet class="landing-shot-lightbox" id="landing-shot-lightbox" role="dialog" aria-modal="true" tabindex="-1"
          data-i18n-attr="aria-label:landing.hero.shot.alt"
-         aria-label="Inside everydashcam: two cameras side by side, the speed chart with event marks and the route on the map" hidden>
+         aria-label="everydashcam showing two cameras, a speed chart with event marks and a route map" hidden>
         <img class="landing-shot-lightbox-desktop" src="/landing/app-desktop-2480.webp"
              width="2480" height="1378" loading="lazy" decoding="async" alt="">
         <img class="landing-shot-lightbox-phone" src="/landing/app-phone-600.webp"

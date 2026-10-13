@@ -98,11 +98,7 @@ export type I18nKey =
     | "landing.hero.h1.hl"
     | "landing.hero.h1.after"
     | "landing.hero.kicker"
-    | "landing.hero.lead.before"
-    | "landing.hero.lead.brandsTail"
-    | "landing.hero.lead.after"
     | "landing.hero.allBrands"
-    | "landing.brands.disclaimer"
     // alts of the hero-column product composite (.landing-hero-shot in
     // index.html): the desktop shot + the phone shot overlapping its corner
     | "landing.hero.shot.alt"
@@ -116,7 +112,6 @@ export type I18nKey =
     | "landing.drop.t1Touch"
     | "landing.drop.t2"
     | "landing.drop.cta"
-    | "landing.drop.codecsHint"
     | "landing.drop.freeNote"
     // recent-folder chips + remember flow (persistent-folder mode)
     | "recentFolders.title"
@@ -247,9 +242,6 @@ export type I18nKey =
     | "landing.works.title"
     | "landing.works.sub"
     | "landing.works.osLabel"
-    | "landing.works.browsersLabel"
-    | "landing.works.recommendedLabel"
-    | "landing.works.alsoLabel"
     | "landing.works.note"
     | "landing.how.s1.num"
     | "landing.how.s1.title"
