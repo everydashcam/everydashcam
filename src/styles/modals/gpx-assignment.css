@@ -54,7 +54,7 @@
 
 .gpx-assignment-track:hover .gpx-assignment-path,
 .gpx-assignment-track:focus-visible .gpx-assignment-path {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .gpx-assignment-track:focus-visible {

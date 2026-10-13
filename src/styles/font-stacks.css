@@ -1,0 +1,26 @@
+:root {
+    --dc-font-local: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --dc-font-body: "Inter", var(--dc-font-local);
+    --dc-font-ui: var(--dc-font-body);
+    --dc-font-display: var(--dc-font-body);
+    --dc-font-heavy: var(--dc-font-body);
+    --dc-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, var(--dc-font-local);
+}
+
+/* Inter covers Latin/Cyrillic; local CJK faces keep text native to its language. */
+:root:lang(ja) {
+    --dc-font-local: "Hiragino Sans", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+}
+:root:lang(ko) {
+    --dc-font-local: "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+}
+:root:lang(zh) {
+    --dc-font-local: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+:root:lang(ja),
+:root:lang(ko),
+:root:lang(zh) {
+    --dc-tracking-tight: 0;
+    --dc-tracking-wide: 0;
+    --dc-tracking-caps: 0;
+}

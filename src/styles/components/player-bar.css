@@ -182,7 +182,7 @@
    accent so the toggle state is glanceable, matching .player-btn.active
    conventions elsewhere in the bar. */
 #player-map[aria-pressed="true"] {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .player-btn[hidden] {
     display: none;
@@ -215,7 +215,7 @@
 }
 
 .player-btn[aria-pressed="true"] {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .player-btn-text {
@@ -351,7 +351,7 @@
     outline-offset: -2px;
 }
 .player-speed-menu li.active {
-    color: var(--accent);
+    color: var(--accent-ink);
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     font-weight: 700;
 }
@@ -438,8 +438,8 @@
     font-size: var(--dc-text-xs);
 }
 .view-menu-button.is-open {
-    background: var(--accent-dim);
-    color: var(--fg);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+    color: var(--accent-ink);
 }
 .view-menu-button__chevron {
     font-size: var(--dc-text-3xs);
@@ -646,7 +646,7 @@
 }
 .player-metrics .pm-unit {
     font-size: var(--dc-text-3xs);
-    color: var(--accent);
+    color: var(--accent-ink);
     text-transform: uppercase;
     letter-spacing: var(--dc-tracking-wide);
     /* Localized speed units like "mph" / "km/h" contain a slash, a soft

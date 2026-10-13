@@ -69,7 +69,7 @@ body:not(.has-offline-banner) .topbar-whats-slot:has(#whats-new-btn[data-overflo
 }
 .offline-banner-icon {
     flex-shrink: 0;
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .offline-banner-label {
     font-weight: 600;
@@ -99,7 +99,7 @@ body:not(.has-offline-banner) .topbar-whats-slot:has(#whats-new-btn[data-overflo
 }
 .offline-banner-info:hover,
 .offline-banner-info.is-open {
-    color: var(--accent);
+    color: var(--accent-ink);
     background: var(--bg-hover);
 }
 .offline-banner-info:focus-visible {

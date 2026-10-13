@@ -12,6 +12,58 @@ import {
     test,
 } from "./_fixtures.js";
 
+for (const locale of ["ru", "de"]) {
+    test(`camera controls stay reachable beside the export panel in ${locale}`, async ({ page }) => {
+        await presetLocalStorage(page);
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, locale);
+        await loadTrip(page, SAMPLE_70MAI);
+        await page.locator("#player-export").click();
+        await expect(page.locator("#export-panel")).toBeVisible();
+
+        for (const width of [1024, 768]) {
+            await page.setViewportSize({ width, height: 900 });
+            const camera = page.locator('.top-panel__channel-chip[data-channel="interior"] input');
+            await camera.click({ trial: true });
+            const panel = await boxOf(page, "#top-panel");
+            for (const chip of await page.locator(".top-panel__channel-chip").all()) {
+                const bounds = await chip.boundingBox();
+                expect(bounds).not.toBeNull();
+                expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(panel.x + panel.width + 1);
+            }
+            await camera.uncheck();
+            await expect(camera).not.toBeChecked();
+            await camera.check();
+            await expect(camera).toBeChecked();
+        }
+    });
+}
+
+for (const viewport of [MOBILE, { width: 844, height: 390 }, { width: 568, height: 320 }]) {
+    test(`export actions leave playback controls usable at ${viewport.width}px`, async ({ page }) => {
+        await presetLocalStorage(page);
+        await page.setViewportSize(viewport);
+        await gotoApp(page);
+        await loadTrip(page, SAMPLE_70MAI);
+        await openExport(page, false);
+        await page.locator(".viewer").evaluate((viewer) => {
+            viewer.scrollTop = 0;
+        });
+        if (viewport.height < 360) {
+            await page.locator("#player-bar").evaluate((bar) => {
+                bar.scrollIntoView({ block: "start" });
+            });
+        }
+        const play = page.locator("#player-play");
+        await play.click({ trial: true });
+        const bar = await boxOf(page, "#player-bar");
+        const actions = await boxOf(page, ".export-panel__actions");
+        expect(bar.y + bar.height).toBeLessThanOrEqual(actions.y + 1);
+        await play.click();
+        await expect(play).toHaveAttribute("data-paused", "false");
+    });
+}
+
 for (const viewport of [DESKTOP, MOBILE, { width: 360, height: 800 }, { width: 844, height: 390 }]) {
     test(`save remains reachable while editing at ${viewport.width}px`, async ({ page }) => {
         await presetLocalStorage(page);

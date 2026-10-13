@@ -39,9 +39,11 @@
     --border-strong: var(--vp-ash-4);
     --accent: var(--vp-orange);
     --accent-hot: var(--vp-orange-hot);
+    --accent-ink: var(--vp-orange);
+    --accent-ink-hover: var(--vp-orange-hot);
 
-    --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-body: var(--dc-font-body);
+    --font-mono: var(--dc-font-mono);
 }
 
 @media (prefers-color-scheme: light) {
@@ -53,6 +55,8 @@
         --fg-dim: #6f6a5c;
         --border: var(--vp-stone-2);
         --border-strong: var(--vp-stone-3);
+        --accent-ink: #995000;
+        --accent-ink-hover: #864600;
     }
 }
 
@@ -80,11 +84,11 @@ body {
 }
 
 a {
-    color: var(--accent);
+    color: var(--accent-ink);
     text-decoration: none;
 }
 a:hover {
-    color: var(--accent-hot);
+    color: var(--accent-ink-hover);
     text-decoration: underline;
 }
 
@@ -116,7 +120,7 @@ a:hover {
     color: var(--fg-dim);
 }
 .vp-back:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 /* ----- Main layout ----- */
@@ -163,7 +167,7 @@ a:hover {
     font-size: clamp(28px, 4vw, 40px);
     font-weight: 700;
     line-height: 1.15;
-    letter-spacing: -0.02em;
+    letter-spacing: var(--dc-tracking-tight, -0.02em);
     margin-bottom: 16px;
 }
 
@@ -193,7 +197,7 @@ a:hover {
 }
 .vp-cta--secondary {
     background: transparent;
-    color: var(--accent);
+    color: var(--accent-ink);
     border: 1px solid var(--accent);
     margin-top: 12px;
 }
@@ -222,7 +226,7 @@ a:hover {
     font-size: clamp(20px, 2.4vw, 26px);
     font-weight: 700;
     line-height: 1.2;
-    letter-spacing: -0.01em;
+    letter-spacing: var(--dc-tracking-tight, -0.01em);
     margin-bottom: 16px;
 }
 
@@ -230,7 +234,7 @@ a:hover {
     font-size: 16px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: var(--dc-tracking-caps, 0.1em);
     color: var(--fg-dim);
     margin-bottom: 12px;
 }
@@ -238,6 +242,14 @@ a:hover {
 .vp-section p {
     margin-bottom: 12px;
     max-width: 65ch;
+}
+
+.vp-feature-list {
+    max-width: 65ch;
+    padding-inline-start: 1.5em;
+}
+.vp-feature-list li + li {
+    margin-top: 12px;
 }
 
 /* ----- Models list ----- */
@@ -280,7 +292,7 @@ a:hover {
     font-weight: 600;
     color: var(--fg-dim);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: var(--dc-tracking-wide, 0.05em);
     font-size: 12px;
     align-self: center;
 }
@@ -368,14 +380,14 @@ a:hover {
     transform: translateY(-50%);
     font-size: 20px;
     line-height: 1;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 400;
 }
 .vp-faq[open] summary::after {
     content: "−";
 }
 .vp-faq summary:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .vp-faq p {
     padding: 0 18px 18px;
@@ -418,7 +430,7 @@ a.vp-vendor-card:hover {
 .vp-vendor-card-name {
     font-size: 18px;
     font-weight: 700;
-    letter-spacing: -0.01em;
+    letter-spacing: var(--dc-tracking-tight, -0.01em);
 }
 .vp-vendor-card-hint {
     font-size: 13px;
@@ -435,7 +447,7 @@ a.vp-vendor-card:hover {
     margin: 12px 0 0;
 }
 .vp-feature-links li a {
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 500;
 }
 .vp-feature-links li a:hover {
@@ -466,7 +478,7 @@ a.vp-vendor-card:hover {
 }
 .vp-other-vendors li a:hover {
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--accent-ink);
     text-decoration: none;
 }
 
@@ -477,7 +489,7 @@ a.vp-vendor-card:hover {
     font-size: 14px;
 }
 .vp-not-listed a {
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 600;
 }
 .vp-not-listed a:hover {
@@ -506,6 +518,10 @@ a.vp-vendor-card:hover {
     font-size: 14px;
     min-width: 480px;
 }
+.alt-compare-wrap:focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: 3px;
+}
 .alt-compare th,
 .alt-compare td {
     text-align: left;
@@ -521,7 +537,7 @@ a.vp-vendor-card:hover {
 .alt-compare thead th {
     font-size: 12px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: var(--dc-tracking-wide, 0.05em);
     color: var(--fg-dim);
     background: var(--bg-elev);
     font-weight: 700;
@@ -538,7 +554,7 @@ a.vp-vendor-card:hover {
     color: var(--fg);
 }
 .alt-compare thead .alt-col-us {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .alt-compare .alt-col-them {
     color: var(--fg-dim);
@@ -547,7 +563,7 @@ a.vp-vendor-card:hover {
 /* Compact feature markers inside a comparison cell. */
 .alt-yes::before {
     content: "✓ ";
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 700;
 }
 .alt-no::before {
@@ -592,7 +608,7 @@ a.vp-vendor-card:hover {
     color: var(--fg-dim);
 }
 .vp-footer a:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .vp-footer span {
     margin: 0 8px;
@@ -604,7 +620,6 @@ a.vp-vendor-card:hover {
     margin: 0 auto 10px;
     font-size: 12px;
     line-height: 1.5;
-    opacity: 0.75;
 }
 .vp-footer-links {
     margin-top: 4px;

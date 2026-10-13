@@ -20,6 +20,7 @@ import { redirectsPlugin } from "./vite-plugins/redirects.js";
 import { rootStubPlugin } from "./vite-plugins/root-stub.js";
 import { portableDownloadsPlugin } from "./vite-plugins/portable-downloads.js";
 import { staticSearchMetaPlugin } from "./vite-plugins/static-search-meta.js";
+import { standaloneFontsPlugin } from "./vite-plugins/standalone-fonts.js";
 import { computeTrackerAssets, trackerAssetsPlugin } from "./vite-plugins/tracker-assets.js";
 import { swPrecachePlugin } from "./vite-plugins/sw-precache.js";
 import { getSeoLocales, i18nPrerenderPlugin, sitemapPlugin } from "./vite-plugins/seo-prerender.js";
@@ -215,6 +216,7 @@ export default defineConfig(({ command }) => {
         indexnowKeyPlugin(),
         minifyHtmlPlugin(),
         lazyBoundariesPlugin(),
+        standaloneFontsPlugin(),
         // SEO build pipeline. All three plugins run in closeBundle, AFTER vite
         // has written dist/index.html and html-minifier has minified it. See
         // vite-plugins/seo-prerender.ts for the rationale (hreflang, two

@@ -1663,6 +1663,7 @@ ${ogLocaleAlternatesBlock}
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/vendor-page.css">
 <link rel="stylesheet" href="/brand-mark.css">
 <script type="application/ld+json">${breadcrumb.jsonLd}</script>
@@ -1824,6 +1825,7 @@ ${ogLocaleAlternatesBlock}
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/vendor-page.css">
 <link rel="stylesheet" href="/brand-mark.css">
 <script type="application/ld+json">${breadcrumb.jsonLd}</script>

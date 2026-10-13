@@ -11,8 +11,9 @@
     --accent: #ff9000;
     --border: #d8d5cf;
     --bg-elev: #ffffff;
-    --link: #b35e00;
+    --link: #995000;
 }
+
 @media (prefers-color-scheme: dark) {
     :root {
         --bg: #0d0e10;
@@ -31,7 +32,7 @@ html, body {
     padding: 0;
     background: var(--bg);
     color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    font-family: var(--dc-font-body);
     font-size: 16px;
     line-height: 1.6;
 }
@@ -98,8 +99,9 @@ code {
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 1px 6px;
-    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+    font-family: var(--dc-font-mono);
     font-size: 0.9em;
+    overflow-wrap: anywhere;
 }
 
 table {

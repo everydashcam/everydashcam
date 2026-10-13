@@ -624,7 +624,7 @@ ${renderCompareCell(row.them, "alt-col-them")}
 </tr>`,
         )
         .join("\n");
-    return `<div class="alt-compare-wrap">
+    return `<div class="alt-compare-wrap" role="region" aria-labelledby="comparison-heading" tabindex="0">
 <table class="alt-compare">
 <thead>
 <tr>
@@ -701,6 +701,7 @@ ${ogLocaleAlternatesBlock}
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/vendor-page.css">
 <link rel="stylesheet" href="/brand-mark.css">
 <script type="application/ld+json">${breadcrumb.jsonLd}</script>
@@ -726,7 +727,7 @@ ${breadcrumb.html}
 </section>
 
 <section class="vp-section">
-<h2 class="vp-h2">${escapeText(labels.comparisonHeading.replace("{name}", name))}</h2>
+<h2 id="comparison-heading" class="vp-h2">${escapeText(labels.comparisonHeading.replace("{name}", name))}</h2>
 <p>${escapeText(content.comparisonIntro)}</p>
 ${renderComparisonTable(content, labels, name)}
 <div class="alt-when">
@@ -857,6 +858,7 @@ ${ogLocaleAlternatesBlock}
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/vendor-page.css">
 <link rel="stylesheet" href="/brand-mark.css">
 <script type="application/ld+json">${breadcrumb.jsonLd}</script>

@@ -175,15 +175,8 @@
     <!-- Preconnect to OpenFreeMap: the handshake to the tile CDN starts in
          parallel with HTML parsing, speeds up first map render by ~50-200ms. -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
-    <!-- Fonts are self-hosted in public/fonts/, @font-face is wired via
-         src/styles/fonts.css (imported in app.ts). There used to be a <link>
-         to fonts.googleapis.com here - removed for privacy and to tighten CSP to 'self'.
-         /fonts/*.woff2 files get immutable-cache on CF via the /assets/* rule
-         (see public/_headers). Regenerate with node scripts/fetch-fonts.mjs. -->
-    <!-- Preload only the latin-subset Inter (variable, covers all weights 400-900).
-         Cyrillic/Greek/Vietnamese and JetBrains Mono load lazily via
-         font-display: swap - until they load, the UI renders with the system fallback
-         (acceptable flash, ~100ms faster first paint than preloading everything). -->
+    <!-- Preload the shared Latin subset; other scripts and technical fonts load
+         only when used. Font definitions: src/styles/fonts.css. -->
     <link rel="preload" href="/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
     <!-- Search crawlers need an explicit raster icon without reading the app
          manifest. Regenerate assets with scripts/generate-favicons.mjs. -->

@@ -5,13 +5,7 @@
    plus semantic aliases; component styles use the semantics, never the raw
    colors. Prefix --dc-* to avoid colliding with any other CSS vars.
 
-   Fonts are defined in fonts.css (self-hosted woff2 in public/fonts/, no
-   external requests - see CLAUDE.md). fonts.css is loaded via a separate
-   <link> in index.html, NOT via @import here: @import would block parsing
-   of the rest of this file until the fonts loaded, and the :root{--dc-*}
-   block might not finish parsing by the time JS reads CSS vars in Chart.js
-   (chart lines came out black in dark theme). A separate <link> parallelizes
-   the request and does not block tokens.css.
+   Font faces and language-aware stacks are defined in fonts.css.
    ========================================================================= */
 
 :root {
@@ -25,19 +19,19 @@
     --dc-orange: #ff9000; /* accent, primary CTA */
     --dc-orange-hot: #ffa31a; /* hover / press */
     --dc-orange-dim: #3d2200; /* tinted background of active elements on dark */
-    /* Orange used AS TEXT on light surfaces. Raw --dc-orange on bone is
-       ~2.1:1 - below even the 3:1 display-text floor; this darker cut is
-       3.5:1. Only for text/ink roles (see --accent-ink); fills, borders and
-       text-on-dark keep --dc-orange. */
-    --dc-orange-ink: #c76a00;
+    /* Text variants preserve contrast on light surfaces without changing fills. */
+    --dc-orange-ink: #944b00;
+    --dc-orange-display: #c76a00;
 
     /* ----- GREYS (dark surface scale) ----- */
     --dc-ash-1: #1a1a1a; /* surface elev 1 (sidebar in dark) */
     --dc-ash-2: #222222; /* surface elev 2 (cards) */
     --dc-ash-3: #2a2a2a; /* borders on dark */
     --dc-ash-4: #3a3a3a; /* divider, hover-border */
-    --dc-ash-5: #5c5c5c; /* mut text */
+    --dc-ash-5: #5c5c5c; /* neutral decoration */
     --dc-ash-6: #8a8a8a; /* dimmed text on dark */
+    --dc-ash-muted-ink: #929292;
+    --dc-ash-dim-ink: #a3a3a3;
 
     /* ----- GREYS (light surface scale) ----- */
     --dc-stone-1: #eceae3;
@@ -45,8 +39,8 @@
     --dc-stone-3: #bdb7a6;
     /* Muted text needs its own darker cut: stone-3 is suitable for borders and
        decoration, but only reaches 2:1 against the elevated white surface. */
-    --dc-stone-3-ink: #756f61;
-    --dc-stone-4: #6f6a5c;
+    --dc-stone-3-ink: #696357;
+    --dc-stone-4: #5c574b;
     --dc-stone-5: #2d2a23;
 
     /* ----- SEMANTIC ----- */
@@ -65,17 +59,7 @@
     --dc-track-halo: var(--dc-white);
 
     /* ----- TYPE ----- */
-    --dc-font-brand: "Chakra Petch", "Inter", system-ui, sans-serif;
-    --dc-font-display: "Inter", system-ui, sans-serif;
-    --dc-font-heavy: "Inter", system-ui, sans-serif;
-    --dc-font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    /* Semantic alias for small UI chrome (chips, badges, tile labels). Same
-       stack as body; exists so chip-like components can opt out of a local
-       mono/heavy context (e.g. .channel-tag inside the mono .file-name)
-       without hard-coding the stack. Was referenced but undefined before -
-       the declarations silently inherited. */
-    --dc-font-ui: var(--dc-font-body);
-    --dc-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --dc-font-brand: "Chakra Petch", "Inter", var(--dc-font-local);
 
     /* type scale (px) */
     --dc-text-3xs: 9px; /* dense micro-labels (chip counts, axis ticks) - below xs */
@@ -154,8 +138,8 @@
        as "pressed" - the primary touch-feedback channel where :hover never fires. */
     --bg-active: var(--dc-ash-4);
     --fg: var(--dc-white);
-    --fg-dim: var(--dc-ash-6);
-    --fg-mute: var(--dc-ash-5);
+    --fg-dim: var(--dc-ash-dim-ink);
+    --fg-mute: var(--dc-ash-muted-ink);
     --accent: var(--dc-orange);
     --accent-hot: var(--dc-orange-hot);
     --accent-contrast: var(--dc-black);
@@ -164,12 +148,16 @@
        themes for contrast (see --dc-orange-ink). Use for orange words on
        --bg/--bg-elev; never for fills or the always-dark safety card. */
     --accent-ink: var(--dc-orange);
+    --accent-ink-display: var(--dc-orange);
     --border: var(--dc-ash-3);
     --border-strong: var(--dc-ash-4);
 
     --warn: var(--dc-yellow);
     --err: var(--dc-red);
     --ok: var(--dc-green);
+    --warn-ink: var(--dc-yellow);
+    --err-ink: #ff7a8a;
+    --info-ink: var(--dc-blue);
 
     /* ----- INFERRED EVENTS (strip + scrub-thumb) -----
        Semantic aliases for bar colors of events inferred from speed/bearing
@@ -295,6 +283,10 @@
         --fg-dim: var(--dc-stone-4);
         --fg-mute: var(--dc-stone-3-ink);
         --accent-ink: var(--dc-orange-ink);
+        --accent-ink-display: var(--dc-orange-display);
+        --warn-ink: #805500;
+        --err-ink: #b71023;
+        --info-ink: #006393;
         --border: var(--dc-stone-2);
         --border-strong: var(--dc-stone-3);
         --dc-marker-stroke: var(--dc-ink);
@@ -317,6 +309,10 @@ html.dc-light {
     --fg-dim: var(--dc-stone-4);
     --fg-mute: var(--dc-stone-3-ink);
     --accent-ink: var(--dc-orange-ink);
+    --accent-ink-display: var(--dc-orange-display);
+    --warn-ink: #805500;
+    --err-ink: #b71023;
+    --info-ink: #006393;
     --border: var(--dc-stone-2);
     --border-strong: var(--dc-stone-3);
     --dc-marker-stroke: var(--dc-ink);
@@ -331,9 +327,13 @@ html.dc-dark {
     --bg-hover: var(--dc-ash-3);
     --bg-active: var(--dc-ash-4);
     --fg: var(--dc-white);
-    --fg-dim: var(--dc-ash-6);
-    --fg-mute: var(--dc-ash-5);
+    --fg-dim: var(--dc-ash-dim-ink);
+    --fg-mute: var(--dc-ash-muted-ink);
     --accent-ink: var(--dc-orange);
+    --accent-ink-display: var(--dc-orange);
+    --warn-ink: var(--dc-yellow);
+    --err-ink: #ff7a8a;
+    --info-ink: var(--dc-blue);
     --border: var(--dc-ash-3);
     --border-strong: var(--dc-ash-4);
     --dc-marker-stroke: var(--dc-white);

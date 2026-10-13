@@ -91,20 +91,17 @@ body.no-trips .viewer {
 
 .landing-hero-h1 {
     font-family: var(--dc-font-body);
-    font-weight: 800;
+    font-weight: 700;
     font-size: clamp(30px, 3.25vw, 46px);
-    line-height: 1.1;
-    letter-spacing: -0.04em;
+    line-height: 1.15;
+    letter-spacing: var(--dc-tracking-tight);
     overflow-wrap: break-word;
     margin: 0;
     text-wrap: balance;
     color: var(--fg);
 }
 .landing-hero-h1-hl {
-    /* --accent-ink, not --accent: raw orange on the light bone background is
-       ~2.1:1 - under even the 3:1 display-text floor. The ink variant darkens
-       only when orange is used AS TEXT on light surfaces (see tokens.css). */
-    color: var(--accent-ink);
+    color: var(--accent-ink-display);
 }
 
 .landing-hero-kicker {
@@ -112,7 +109,7 @@ body.no-trips .viewer {
     font-weight: 400;
     font-size: clamp(16px, 1.5vw, 19px);
     line-height: 1.5;
-    letter-spacing: -0.01em;
+    letter-spacing: var(--dc-tracking-normal);
     color: var(--fg);
     margin: -6px 0 0 0;
     text-wrap: balance;
@@ -122,13 +119,13 @@ body.no-trips .viewer {
     font-size: var(--dc-text-lg);
     line-height: 1.55;
     color: var(--fg-dim);
-    max-width: 82ch;
+    max-width: 72ch;
     margin: 0;
 }
 .landing-brand-disclaimer {
-    max-width: 100ch;
+    max-width: 80ch;
     margin: 0;
-    font-size: var(--dc-text-sm);
+    font-size: var(--dc-text-md);
     line-height: 1.5;
     color: var(--fg-dim);
 }
@@ -335,9 +332,9 @@ body.no-trips .viewer {
    links share the body metrics (the brand-link class only adds the affordance). */
 .landing-caps span,
 .landing-caps a {
-    font-size: var(--dc-text-base);
+    font-size: var(--dc-text-lg);
     color: var(--fg-dim);
-    line-height: 1.65;
+    line-height: var(--dc-leading-loose);
 }
 
 /* ============================================================
@@ -517,9 +514,10 @@ body.no-trips .viewer {
 }
 
 .landing-safety-eyebrow {
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-xs);
-    letter-spacing: var(--dc-tracking-caps);
+    font-family: var(--dc-font-ui);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+    letter-spacing: var(--dc-tracking-wide);
     text-transform: uppercase;
     color: var(--accent);
     display: inline-flex;
@@ -539,7 +537,7 @@ body.no-trips .viewer {
     font-family: var(--dc-font-body);
     font-weight: 700;
     font-size: clamp(24px, 2.5vw, 36px);
-    letter-spacing: -0.025em;
+    letter-spacing: var(--dc-tracking-tight);
     line-height: 1.18;
     color: var(--dc-white);
     margin: 0;
@@ -572,8 +570,8 @@ body.no-trips .viewer {
     padding: var(--dc-space-3) 0;
     border-top: 1px solid #1b1b1b;
     color: #dadada;
-    font-size: var(--dc-text-base);
-    line-height: 1.65;
+    font-size: var(--dc-text-lg);
+    line-height: var(--dc-leading-loose);
     align-items: flex-start;
 }
 .landing-guarantees li:first-child {
@@ -696,7 +694,7 @@ body.no-trips .viewer {
     margin: 0;
     font-size: var(--dc-text-3xl);
     font-weight: 700;
-    letter-spacing: -0.025em;
+    letter-spacing: var(--dc-tracking-tight);
     color: var(--fg);
 }
 @media (max-width: 880px) {
@@ -706,7 +704,7 @@ body.no-trips .viewer {
 }
 .landing-works-sub {
     margin: 0;
-    font-size: var(--dc-text-md);
+    font-size: var(--dc-text-base);
     color: var(--fg-dim);
     line-height: var(--dc-leading-normal);
 }
@@ -736,9 +734,10 @@ body.no-trips .viewer {
     }
 }
 .landing-works-col-label {
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-xs);
-    letter-spacing: var(--dc-tracking-caps);
+    font-family: var(--dc-font-ui);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+    letter-spacing: var(--dc-tracking-wide);
     text-transform: uppercase;
     color: var(--fg-dim);
 }
@@ -784,9 +783,10 @@ body.no-trips .viewer {
     align-items: center;
     gap: var(--dc-space-1);
     margin: 0 0 var(--dc-space-2);
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-2xs);
-    letter-spacing: 0.09em;
+    font-family: var(--dc-font-ui);
+    font-size: var(--dc-text-xs);
+    font-weight: 600;
+    letter-spacing: var(--dc-tracking-wide);
     text-transform: uppercase;
     color: var(--fg-dim);
 }
@@ -811,8 +811,8 @@ body.no-trips .viewer {
 }
 .landing-works-note {
     margin: 0;
-    font-size: var(--dc-text-sm);
-    line-height: 1.45;
+    font-size: var(--dc-text-md);
+    line-height: 1.5;
     color: var(--fg-dim);
 }
 
@@ -844,9 +844,10 @@ body.no-trips .viewer {
     }
 }
 .landing-step-num {
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-xs);
-    letter-spacing: 0.12em;
+    font-family: var(--dc-font-ui);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+    letter-spacing: var(--dc-tracking-wide);
     color: var(--accent-ink);
 }
 .landing-step h3 {
@@ -859,7 +860,7 @@ body.no-trips .viewer {
 .landing-step p {
     margin: 0;
     color: var(--fg-dim);
-    font-size: var(--dc-text-md);
+    font-size: var(--dc-text-base);
     line-height: 1.5;
 }
 .landing-step-arrow {
@@ -917,9 +918,10 @@ body.no-trips .viewer {
     display: inline-flex;
     align-items: center;
     gap: var(--dc-space-2);
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-xs);
-    letter-spacing: 0.08em;
+    font-family: var(--dc-font-ui);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+    letter-spacing: var(--dc-tracking-wide);
     text-transform: uppercase;
     color: var(--fg-dim);
     margin: 0;
@@ -988,7 +990,7 @@ body.no-trips .viewer {
 }
 .landing-faq-body {
     padding: 0 var(--dc-space-1) var(--dc-space-4) var(--dc-space-1);
-    font-size: var(--dc-text-base);
+    font-size: var(--dc-text-lg);
     line-height: var(--dc-leading-loose);
     color: var(--fg-dim);
     max-width: 62ch;
@@ -1078,7 +1080,7 @@ body.no-trips .viewer {
         gap: var(--dc-space-4);
     }
     .landing-drop-foot {
-        font-size: var(--dc-text-sm);
+        font-size: var(--dc-text-md);
         line-height: 1.5;
         font-weight: 400;
     }

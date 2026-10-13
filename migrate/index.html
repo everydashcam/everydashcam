@@ -2,10 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>Save your dashcamigo notes</title>
+    <!-- The parent build emits shared fonts outside this recovery bundle. -->
+    <link rel="stylesheet" href="/fonts.css" vite-ignore>
     <script type="module" src="../src/migrate/page.ts"></script>
   </head>
   <body>

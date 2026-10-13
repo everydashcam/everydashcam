@@ -88,7 +88,7 @@
     background: var(--bg-active);
 }
 .overflow-menu-btn[aria-pressed="true"] {
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 600;
 }
 
@@ -107,7 +107,7 @@
 
 .overflow-menu-check {
     flex-shrink: 0;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 700;
 }
 

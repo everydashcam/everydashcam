@@ -591,7 +591,7 @@ fieldset.export-panel__group {
 .export-panel__warn {
     font-size: var(--dc-text-sm);
     line-height: var(--dc-leading-normal);
-    color: var(--warn);
+    color: var(--warn-ink);
     border: 1px solid var(--warn);
     border-radius: var(--dc-radius-md);
     padding: var(--dc-space-2) var(--dc-space-3);
@@ -601,7 +601,7 @@ fieldset.export-panel__group {
 /* Hard-blocking variant (device cannot encode at this resolution): error tone,
    shown alongside a disabled Save - not just caution. */
 .export-panel__warn.is-error {
-    color: var(--err);
+    color: var(--err-ink);
     border-color: var(--err);
 }
 
@@ -632,7 +632,7 @@ fieldset.export-panel__group {
     width: 16px;
     height: 16px;
     flex: none;
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .export-panel__chromium-banner-text {
     flex: 1 1 auto;
@@ -688,7 +688,7 @@ fieldset.export-panel__group {
 /* Error-phase message: export failed, with a "Back to settings" button below. */
 .export-panel__error-status {
     font-size: var(--dc-text-md);
-    color: var(--err);
+    color: var(--err-ink);
     margin-bottom: var(--dc-space-3);
 }
 
@@ -820,7 +820,7 @@ fieldset.export-panel__group {
     border: 1px solid transparent;
     border-radius: var(--dc-radius-sm);
     background: transparent;
-    color: var(--accent);
+    color: var(--accent-ink);
     font: inherit;
     font-size: var(--dc-text-sm);
     font-weight: 600;
@@ -930,7 +930,7 @@ fieldset.export-panel__group {
 
 .export-panel__ov-row.is-selected .export-panel__ov-name {
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .export-panel__ov-row.is-disabled {
@@ -1246,5 +1246,19 @@ fieldset.export-panel__group {
     }
     body.export-mode .export-panel {
         padding-bottom: var(--dc-export-actions-h, 160px);
+    }
+    body.export-mode .player-wrap:not(.player-expanded) .player-bar {
+        bottom: var(--dc-export-actions-h, 160px);
+    }
+    body.export-mode
+        .player-wrap:not(.player-expanded)
+        :is(.player-speed-menu, .view-menu-popover, #player-overflow-menu) {
+        max-height: calc(
+            100dvh -
+            var(--dc-topbar-h-mobile) -
+            var(--mobile-bar-h, 60px) -
+            var(--dc-export-actions-h, 160px) -
+            var(--dc-space-3)
+        );
     }
 }

@@ -26,7 +26,7 @@
 .whats-new-modal-title {
     font-family: var(--dc-font-display);
     font-size: var(--dc-text-2xl);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: var(--dc-tracking-tight);
     margin-bottom: var(--dc-space-4);
     color: var(--fg);
@@ -40,7 +40,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: var(--dc-tracking-caps);
-    color: var(--accent);
+    color: var(--accent-ink);
     margin: 0 0 var(--dc-space-2);
 }
 .whats-new-group ul {

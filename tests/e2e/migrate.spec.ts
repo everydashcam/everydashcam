@@ -130,8 +130,13 @@ test.describe("standalone notes recovery", () => {
             expect(await databaseSnapshot(page)).toEqual(before);
             expect(requests.length).toBeGreaterThanOrEqual(3);
             expect(
-                requests.every((path) => path.startsWith("/migrate/")),
-                "recovery loads only its own assets",
+                requests.every(
+                    (path) =>
+                        path.startsWith("/migrate/") ||
+                        path === "/fonts.css" ||
+                        /^\/fonts\/[a-z0-9-]+\.woff2$/.test(path),
+                ),
+                "recovery loads only its own assets and shared fonts",
             ).toBe(true);
             await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
             expect(await page.evaluate(() => "__everydashcam" in window), "the viewer is not initialized").toBe(false);

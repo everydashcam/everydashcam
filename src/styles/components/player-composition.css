@@ -53,7 +53,7 @@
 }
 
 .camera-flipped .camera-settings-button {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .video-grid[data-channel-count="1"] .camera-settings-button,
@@ -102,7 +102,7 @@ body.export-mode .camera-settings-button {
 
 .camera-settings-menu button[aria-checked="true"] {
     background: color-mix(in srgb, var(--accent) 16%, transparent);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .camera-settings-menu button:hover,
@@ -449,7 +449,7 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
     color: var(--fg-dim);
 }
 .export-trim-bar__feedback.is-error {
-    color: var(--err);
+    color: var(--err-ink);
 }
 .export-trim-bar__feedback:empty {
     display: none;
@@ -1557,7 +1557,7 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
 /* "· check end": the last follow lost the target early, so the tail may miss a
    moved/reappearing subject - caution tone until the user verifies or re-follows. */
 .export-panel__blur-row-state.is-warn {
-    color: var(--warn);
+    color: var(--warn-ink);
     border-color: var(--warn);
 }
 
@@ -1599,7 +1599,7 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
 }
 
 .export-panel__blur-del-btn:hover {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 
 @media (pointer: coarse) {

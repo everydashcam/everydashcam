@@ -76,6 +76,7 @@
 .export-modal-title {
     font-family: var(--dc-font-display);
     font-size: var(--dc-text-2xl);
+    font-weight: 700;
     letter-spacing: var(--dc-tracking-tight);
     margin-bottom: var(--dc-space-3);
     color: var(--fg);
@@ -100,7 +101,7 @@
     font-size: var(--dc-text-sm);
     color: var(--fg-dim);
     margin-bottom: var(--dc-space-3);
-    font-family: var(--dc-font-mono);
+    font-family: var(--dc-font-body);
     font-variant-numeric: tabular-nums;
     line-height: var(--dc-leading-snug);
 }

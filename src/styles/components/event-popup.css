@@ -75,7 +75,7 @@
     font-size: var(--dc-text-sm);
     font-weight: 600;
     background: transparent;
-    color: var(--accent);
+    color: var(--accent-ink);
     border: 1px solid var(--accent);
     border-radius: var(--dc-radius-sm);
     cursor: pointer;

@@ -71,13 +71,13 @@
     color: var(--fg-mute);
 }
 .dc-toast--info .dc-toast__icon {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .dc-toast--warn .dc-toast__icon {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 .dc-toast--error .dc-toast__icon {
-    color: var(--err);
+    color: var(--err-ink);
 }
 .dc-toast__body {
     flex: 1;
@@ -91,7 +91,7 @@
     padding: 0;
     background: transparent;
     border: none;
-    color: var(--accent);
+    color: var(--accent-ink);
     font: inherit;
     font-weight: 600;
     cursor: pointer;
@@ -207,7 +207,7 @@
     padding: var(--dc-space-1) var(--dc-space-1);
 }
 .notif-drawer-clear:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .notif-drawer-list {
     max-height: 50vh;
@@ -239,13 +239,13 @@
     color: var(--fg-mute);
 }
 .notif-drawer-item--info .notif-drawer-item__icon {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .notif-drawer-item--warn .notif-drawer-item__icon {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 .notif-drawer-item--error .notif-drawer-item__icon {
-    color: var(--err);
+    color: var(--err-ink);
 }
 .notif-drawer-item__text {
     flex: 1;

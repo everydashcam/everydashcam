@@ -385,7 +385,7 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
     // collapse".
     measure();
 
-    // The Space Grotesk font for the brand mark loads asynchronously (woff2 in
+    // The Chakra Petch font for the brand mark loads asynchronously (woff2 in
     // public/fonts). Before it loads, .dc-mark renders with the Inter fallback
     // of a different width - the first measure catches the wrong content size,
     // and the buttons can "drift" until the frame after fonts.ready recomputes.

@@ -48,7 +48,7 @@
 .drop-overlay-icon {
     margin: 0 auto var(--dc-space-3);
     line-height: 1;
-    color: var(--accent);
+    color: var(--accent-ink);
     display: inline-flex;
 }
 .drop-overlay-title {

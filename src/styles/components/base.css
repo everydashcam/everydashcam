@@ -67,6 +67,13 @@ body {
     overflow: hidden;
 }
 
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
 /* On WebKit-based browsers (iOS Safari / Chrome) long-press on <img>
    opens a haptic preview / the "Save image" menu. In our UI images are
    thumbnails and icons, they don't need a preview. Drag isn't needed either. */
@@ -85,11 +92,11 @@ main.layout {
 }
 
 a {
-    color: var(--accent);
+    color: var(--accent-ink);
     text-decoration: none;
 }
 a:hover {
-    color: var(--accent-hot);
+    color: var(--accent-ink);
     text-decoration: underline;
 }
 

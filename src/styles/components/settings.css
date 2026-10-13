@@ -74,7 +74,7 @@
     padding-top: var(--dc-space-4);
 }
 .settings-danger .settings-section-title {
-    color: var(--err);
+    color: var(--err-ink);
 }
 
 /* Settings-row context: action buttons in a flex column are left-aligned

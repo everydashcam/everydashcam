@@ -158,7 +158,7 @@
 }
 .gps-sync-outside {
     margin: var(--dc-space-2) 0 0 46px;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-size: var(--dc-text-sm);
     line-height: 1.5;
 }

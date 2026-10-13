@@ -9,20 +9,12 @@
 <link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
 <link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/brand-mark.css">
 <style>
 /* Standalone page - the prod CSS bundle is hashed (assets/index-*.css), so we
    cannot link to it from a long-lived static file. Inline the minimum the
    page needs and use the same --dc-* tokens as the rest of the app. */
-@font-face {
-    font-family: "Inter";
-    font-style: normal;
-    font-weight: 400 900;
-    font-display: swap;
-    src: url("/fonts/inter-var-latin.woff2") format("woff2");
-    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
 :root {
     --dc-black: #000;
     --dc-white: #fff;
@@ -34,9 +26,6 @@
     --dc-ash-5: #5c5c5c;
     --dc-yellow: #f5c518;
     --dc-radius-sm: 4px;
-    --dc-font-display: "Inter", system-ui, sans-serif;
-    --dc-font-heavy: "Inter", system-ui, sans-serif;
-    --dc-font-mono: ui-monospace, "SF Mono", Menlo, monospace;
     --dc-ease: cubic-bezier(0.4, 0, 0.2, 1);
     --dc-dur-base: 120ms;
 }

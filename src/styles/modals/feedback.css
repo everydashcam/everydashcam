@@ -20,7 +20,7 @@
 .feedback-modal-title {
     font-family: var(--dc-font-display);
     font-size: var(--dc-text-2xl);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: var(--dc-tracking-tight);
     color: var(--fg);
 }
@@ -129,7 +129,7 @@
     color: var(--fg-dim);
 }
 .feedback-contact-direct-link {
-    color: var(--accent);
+    color: var(--accent-ink);
     text-decoration: none;
     font-weight: 600;
     word-break: break-all;

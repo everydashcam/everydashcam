@@ -131,7 +131,7 @@
 }
 
 .recent-folder-chip__forget:hover {
-    color: var(--err);
+    color: var(--err-ink);
 }
 
 /* "Forget all" sits in the card header's right corner; quiet by default,
@@ -147,7 +147,7 @@
 }
 
 .recent-folders-forget-all:hover {
-    color: var(--err);
+    color: var(--err-ink);
     text-decoration: underline;
     text-underline-offset: 2px;
 }

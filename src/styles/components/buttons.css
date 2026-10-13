@@ -99,10 +99,10 @@
 /* Danger: outlined in the error color, fills on hover (Reset everything). */
 .dc-btn--danger {
     background: transparent;
-    color: var(--err);
-    border-color: var(--err);
+    color: var(--err-ink);
+    border-color: var(--err-ink);
 }
 .dc-btn--danger:hover:not(:disabled) {
-    background: var(--err);
-    color: var(--dc-black);
+    background: var(--err-ink);
+    color: var(--bg);
 }

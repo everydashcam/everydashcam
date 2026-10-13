@@ -260,5 +260,5 @@ body:has(.modal-overlay:not([hidden])) #migration-banner {
     align-self: flex-start;
 }
 .settings-policy-link:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }

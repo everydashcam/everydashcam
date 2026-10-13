@@ -79,7 +79,7 @@
 }
 .player-readout .pm-unit {
     font-size: var(--dc-text-3xs);
-    color: var(--accent);
+    color: var(--accent-ink);
     text-transform: uppercase;
     letter-spacing: var(--dc-tracking-wide);
     /* "km/h" carries a slash, which is a soft break opportunity - the tail
@@ -262,7 +262,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 /* Export and a wide sidebar can narrow the desktop player independently of

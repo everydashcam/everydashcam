@@ -139,7 +139,7 @@
 }
 .map-control-btn:hover {
     background: var(--bg-hover);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 /* Pressed feedback - the only press signal on touch, where :hover never fires. */
 .map-control-btn:active {
@@ -201,7 +201,7 @@
     text-decoration: underline;
 }
 .dc-map-attrib-text a:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 /* UX-18: segmented control - 3 follow-mode buttons (off/follow/rotate)
    glued into one group. The active one is highlighted orange. Lucide stroke
@@ -404,7 +404,7 @@
 }
 .map-settings-seg-btn:hover:not(:disabled) {
     background: var(--bg-hover);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .map-settings-seg-btn:active:not(:disabled) {
     background: var(--bg-active);
@@ -575,7 +575,7 @@
 }
 #map-unavailable svg {
     flex: 0 0 auto;
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 #map-unavailable span {
     max-width: 30ch;
@@ -674,7 +674,7 @@ body.map-unavailable #player-map {
 .mini-map-close:hover {
     background: var(--bg-hover);
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .mini-map-close[hidden] {
     display: none;
@@ -692,7 +692,7 @@ body.map-unavailable #player-map {
     box-sizing: border-box;
     overflow: hidden;
     pointer-events: none;
-    color: var(--accent);
+    color: var(--accent-ink);
     background: color-mix(in srgb, var(--bg-elev) 90%, var(--accent));
     border: 1px solid var(--accent);
     box-shadow: var(--dc-shadow-popup);

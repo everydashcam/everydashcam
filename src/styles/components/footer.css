@@ -56,7 +56,7 @@
 .site-footer .vp-languages a:hover,
 .site-footer .vp-languages a:focus-visible,
 .site-footer .vp-languages a[aria-current="page"] {
-    color: var(--accent);
+    color: var(--accent-ink);
     text-decoration: underline;
     text-underline-offset: 3px;
 }
@@ -87,7 +87,7 @@
 }
 .site-footer-link:hover,
 .site-footer-link:focus-visible {
-    color: var(--accent);
+    color: var(--accent-ink);
     text-decoration-color: currentColor;
     opacity: 1;
 }
@@ -145,7 +145,6 @@
    its width (tag vs commit vs -dirty) never shifts the rows around it. */
 .site-footer-version {
     color: var(--fg-mute);
-    opacity: 0.55;
-    font-size: 0.85em;
+    font-size: var(--dc-text-xs);
     margin: 0;
 }

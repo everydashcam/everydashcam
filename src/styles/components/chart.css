@@ -484,11 +484,11 @@
 }
 .chart-axis-label--speed {
     left: 6px;
-    color: var(--dc-blue);
+    color: var(--info-ink);
 }
 .chart-axis-label--accel {
     right: 6px;
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 /* In no-gps mode the scales are hidden (see rebuildChartFromTrip), so unit
    labels are useless too - hide them. */

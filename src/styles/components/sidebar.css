@@ -160,7 +160,7 @@
 }
 .trip-analysis-status__percent {
     flex: 0 0 auto;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-size: var(--dc-text-2xs);
     font-variant-numeric: tabular-nums;
 }
@@ -202,7 +202,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: var(--dc-tracking-caps);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .sort-controls {
@@ -468,7 +468,7 @@
 }
 .trip-header:not(.has-preview) .trip-chevron:hover {
     background: var(--bg-hover);
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 .trip.expanded .trip-chevron {
     transform: rotate(90deg);
@@ -486,7 +486,7 @@
     background: transparent;
 }
 .unindexed-note .trip-meta {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 
 .trip-meta {
@@ -581,12 +581,12 @@
 }
 .trip-header:not(.has-preview) .trip-vendor-badge.warn {
     background: color-mix(in srgb, var(--accent) 8%, transparent);
-    color: var(--warn);
+    color: var(--warn-ink);
     border-color: var(--warn);
 }
 .trip-header:not(.has-preview) .trip-vendor-badge.parking {
     background: color-mix(in srgb, var(--dc-blue) 8%, transparent);
-    color: var(--dc-blue);
+    color: var(--info-ink);
     border-color: var(--dc-blue);
 }
 
@@ -615,7 +615,7 @@
 .trip-header:not(.has-preview) > .trip-event-chip {
     background: transparent;
     border-color: var(--err);
-    color: var(--err);
+    color: var(--err-ink);
 }
 .trip-header:not(.has-preview) > .trip-event-chip:hover {
     background: var(--err);
@@ -713,7 +713,7 @@
     background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .trip-files li.no-gps {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 
 .trip-files .file-name {
@@ -863,7 +863,7 @@
    "No GPS" and "⚠ mixed formats" signals - both need the user's
    attention, but aren't critical. */
 .vendor-chip.warn {
-    color: var(--warn);
+    color: var(--warn-ink);
     border-color: var(--warn);
     /* A slightly transparent warn background, for a tint without a bright block. */
     background: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -879,7 +879,7 @@
     padding: var(--dc-space-1) var(--dc-space-1);
     background: transparent;
     border: 1px solid var(--err);
-    color: var(--err);
+    color: var(--err-ink);
     font-family: var(--dc-font-mono);
     font-size: var(--dc-text-xs);
     font-weight: 600;
@@ -920,7 +920,7 @@
     line-height: 1.2;
     letter-spacing: var(--dc-tracking-wide);
     text-transform: uppercase;
-    color: var(--accent);
+    color: var(--accent-ink);
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     border-radius: var(--dc-radius-pill);

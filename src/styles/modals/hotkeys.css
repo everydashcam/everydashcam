@@ -26,7 +26,7 @@
 .hotkeys-modal-title {
     font-family: var(--dc-font-display);
     font-size: var(--dc-text-2xl);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: var(--dc-tracking-tight);
     margin-bottom: var(--dc-space-4);
     color: var(--fg);
@@ -40,7 +40,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: var(--dc-tracking-caps);
-    color: var(--accent);
+    color: var(--accent-ink);
     margin: 0 0 var(--dc-space-2);
 }
 .hotkeys-modal-group dl {
@@ -60,6 +60,15 @@
     margin: 0;
     font-size: var(--dc-text-sm);
     color: var(--fg-dim);
+}
+@media (max-width: 480px) {
+    .hotkeys-modal-group dl {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: var(--dc-space-1);
+    }
+    .hotkeys-modal-group dt:not(:first-child) {
+        margin-top: var(--dc-space-2);
+    }
 }
 .hotkeys-modal-group kbd {
     font-family: var(--dc-font-mono);

@@ -24,7 +24,7 @@
     gap: var(--dc-space-3);
 }
 .capability-gate-icon {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 .capability-gate-title {
     margin: 0;

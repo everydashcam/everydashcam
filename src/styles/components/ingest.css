@@ -155,7 +155,7 @@
 
 .ingest-overlay-queue {
     font-size: var(--dc-text-xs);
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 600;
     margin-bottom: var(--dc-space-3);
 }

@@ -4,6 +4,7 @@
    Hidden on single-channel casual. See src/ui/top-panel.ts. */
 
 .top-panel {
+    container: top-panel / inline-size;
     display: flex;
     align-items: center;
     /* Wrap on any width: in export-mode the player column is narrowed by the
@@ -38,6 +39,8 @@
     display: flex;
     align-items: center;
     gap: var(--dc-space-2);
+    min-width: 0;
+    max-width: 100%;
 }
 
 .top-panel__group[hidden] {
@@ -90,8 +93,10 @@
 /* Channel chips list: draggable pills showing the slot order. */
 .top-panel__channels-list {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--dc-space-1);
+    min-width: 0;
     list-style: none;
     padding: 0;
     margin: 0;
@@ -208,9 +213,6 @@
         padding: var(--dc-space-2);
         gap: var(--dc-space-2);
     }
-    .top-panel__channels-list {
-        flex-wrap: wrap;
-    }
     .top-panel__label {
         font-size: var(--dc-text-xs);
     }
@@ -259,6 +261,25 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
+}
+/* Export and a resized sidebar can leave a narrow panel on a wide screen. */
+@container top-panel (max-width: 767px) {
+    .top-panel__controls {
+        flex-basis: 100%;
+    }
+    #top-panel-channels:not([hidden]) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        flex-basis: 100%;
+    }
+    #top-panel-channels .top-panel__channels-list {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+    #top-panel-channels .recognition-help-link {
+        grid-column: 2;
+        grid-row: 1;
+    }
 }
 @media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
     .top-panel__controls {

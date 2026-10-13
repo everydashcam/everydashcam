@@ -201,7 +201,7 @@
 }
 .empty-state-report:hover,
 .empty-state-report:focus-visible {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 /* Codec-unsupported overlay - the same visual pattern as .empty-state, but
@@ -270,7 +270,7 @@
         border-color var(--dc-dur-fast) var(--dc-ease);
 }
 .codec-unsupported-feedback:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
     border-color: var(--accent);
 }
 

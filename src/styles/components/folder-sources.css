@@ -172,7 +172,7 @@
 
 .folder-source__load:hover,
 .folder-source__remember:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .folder-source__remember:disabled {
@@ -312,7 +312,7 @@
 }
 
 .notes-file-status.is-problem .notes-file-status__label {
-    color: var(--warn);
+    color: var(--warn-ink);
 }
 
 .notes-file-status__action {
@@ -328,7 +328,7 @@
 }
 
 .notes-file-status__action:hover {
-    color: var(--accent);
+    color: var(--accent-ink);
 }
 
 .notes-file-status__action:disabled {

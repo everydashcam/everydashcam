@@ -230,7 +230,7 @@ body.no-trips .topbar-iconbtn {
     background: var(--bg-hover);
 }
 .lang-menu button[aria-checked="true"] {
-    color: var(--accent);
+    color: var(--accent-ink);
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     font-weight: 700;
 }
