@@ -20,8 +20,8 @@ Each shortcut delegates to `test:e2e`, retaining its fresh build and shared
 Playwright configuration. Tags on the tests own membership; a scenario may belong
 to multiple areas and runs once in the combined golden set. Keep the set small:
 tag individual cases that exercise a distinct core flow, not whole suites or
-every regression. These are manual development shortcuts; the full suite remains
-the behavior-change gate, and CI continues to run it.
+every regression. Choose the local verification scope using
+[CLAUDE.md](../../CLAUDE.md#verification). CI runs the full suite.
 
 Append Playwright options after `--`, for example
 `npm run test:e2e:blur -- --headed` or `npm run test:e2e:blur -- --list`.

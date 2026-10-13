@@ -138,21 +138,28 @@ next to the key; copied English text is not a completed translation.
 
 ## Verification
 
-Choose checks by the changed surface. Use focused tests while iterating; finish
-the applicable gates before calling the change done. Report failures or checks
-you could not run, with the reason; do not describe skipped coverage as passing.
-For quick browser feedback, use `npm run test:e2e:golden` or the area shortcuts
-in the [e2e guide](tests/e2e/README.md). They run a curated subset, rebuild before
-testing, and do not replace the full e2e gate below.
+Match local verification to the scope and risk of the change. Start with the
+smallest useful check; expand only when failures or shared behavior warrant it.
+Full suites run in CI. Run them locally for broad changes whose effects cannot
+be covered by focused checks, or when the user asks. A small edit does not
+require a full run just because it touches application files.
 
-| Change | Required verification |
+During copy or design iteration, review the changed content and screen. Save
+automated checks and baseline updates for when the wording or layout is settled.
+Report what was actually checked and any relevant gaps; do not describe unrun
+coverage as passing.
+
+| Change | Local verification |
 | --- | --- |
-| Application code, tests, dependencies, or build configuration | `npm run typecheck`, `npm run check:ci`, then `npm run build` **before** `npm test`; artifact integration tests need fresh `dist/` |
-| UI or user-observable behavior | Also `npm run test:e2e`; the script rebuilds before running Playwright |
-| Portable edition or shared viewer behavior used by it | Also `npm run test:portable`; follow the portable guide below for artifact validation and configured-provider cases |
-| Intended changes to deterministic visual surfaces | `npm run test:vrt`; inspect baseline changes under the testing guide |
-| Encoder diagnostic tool | `npm run test:encoder-test` |
-| SEO, CSP, service worker, or deployment profile | Exercise the relevant build/integration tests and synthetic deployment-profile job from CI |
+| Wording only, including translations and page metadata | Review copy, locale consistency, and matching HTML/structured data. Check the affected screen if text length changes layout. No application suite required. Changed keys, placeholders, or rendering logic follow the code rows below. |
+| Small styling or layout change | Inspect the affected screen at relevant desktop/mobile sizes. Use focused layout tests or VRT when they help verify the change; a visual edit alone does not require full e2e or portable suites. |
+| Application logic or tests | `npm run typecheck`, `npm run check:ci`, and relevant tests, e.g. `npm test -- src/parsers/registry.test.ts` |
+| UI behavior | Relevant browser tests, e.g. `npm run test:e2e -- landing-layout.spec.ts`, or an area shortcut from the [e2e guide](tests/e2e/README.md) |
+| Portable behavior or shared behavior affecting it | Relevant tests via `npm run test:portable -- <spec>`; follow the portable guide below for artifact validation and configured-provider cases |
+| Dependencies or build configuration | Build the affected edition and run checks covering the changed dependency or build behavior; broaden for shared runtime or bundling changes |
+| Deterministic visual baselines | Run the affected cases via `npm run test:vrt -- --grep <pattern>`; inspect intended baseline changes under the testing guide |
+| Encoder diagnostic tool | Relevant cases via `npm run test:encoder-test` |
+| SEO generation, CSP, service worker, or deployment logic | Relevant build/integration tests; exercise the synthetic deployment profile when profile behavior is affected |
 | Map style JSON | `npm run validate:styles` |
 | Changelog data | Regenerate through its skill; `node scripts/generate-changelog-md.mjs --check` |
 | Documentation/instructions only | Check diff, linked paths, and documented commands against their sources; no application suite needed |
@@ -160,6 +167,8 @@ testing, and do not replace the full e2e gate below.
 `npm run check:ci` checks lint **and** formatting without edits. `npm run check`
 fixes files with `--write`; use deliberately and review its diff. These npm checks
 target `src/` and `tests/`; check edited scripts explicitly with Biome.
+Tests that read `dist/` require a fresh `npm run build` first; unit tests that
+only exercise source code do not. Browser test scripts rebuild automatically.
 Never run bare Playwright against stale output. `test:perf` does not rebuild;
 build first. Perf, benchmarks, and coverage are diagnostics, not universal gates.
 
