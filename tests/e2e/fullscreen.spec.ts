@@ -1000,8 +1000,14 @@ test("video above panels preserves editor range, composition, overlays, crop and
     await expect(page.locator("#export-panel-ov-speed")).toBeChecked();
     await expect(page.locator("#export-panel-ov-coords")).toBeChecked();
     expect(await page.evaluate(() => window.__everydashcam.state.composition)).toEqual(editedComposition);
-    const restoredBlur = await readBlurPlacement();
-    for (const key of ["x", "y", "width", "height"] as const) expect(restoredBlur[key]).toBeCloseTo(editedBlur[key], 2);
+    // ResizeObserver schedules blur geometry for the next animation frame;
+    // the export controls can already be visible before that paint completes.
+    await expect.poll(readBlurPlacement).toEqual({
+        x: expect.closeTo(editedBlur.x, 2),
+        y: expect.closeTo(editedBlur.y, 2),
+        width: expect.closeTo(editedBlur.width, 2),
+        height: expect.closeTo(editedBlur.height, 2),
+    });
     await page.locator(".export-panel__crop-btn").click();
     await expect(page.locator(".crop-editor")).toBeVisible();
 });
