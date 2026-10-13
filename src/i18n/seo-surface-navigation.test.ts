@@ -39,7 +39,7 @@ beforeAll(() => {
 });
 
 describe("SEO surface navigation", () => {
-    it("helps visitors choose cameras using real model families instead of untranslated GPS descriptions", () => {
+    it("links brand cards to recording guidance without truncated model lists", () => {
         for (const locale of getIndexableSeoLocales()) {
             const html = surfaces.get(`/${locale.urlSegment}/cameras/`)!;
             const cards = [...html.matchAll(/<a class="vp-vendor-card" href="([^"]+)">([\s\S]*?)<\/a>/g)];
@@ -49,9 +49,8 @@ describe("SEO surface navigation", () => {
                 if (route?.kind !== "vendor") throw new Error(`camera card has no vendor page: ${path}`);
                 const hints = [...card!.matchAll(/<span class="vp-vendor-card-hint">([^<]+)<\/span>/g)].map((match) => decodeText(match[1]!));
                 expect(hints.length, path).toBe(1);
-                const displayedModels = hints[0]!.split(" · ");
-                expect(displayedModels.length, path).toBeGreaterThan(0);
-                for (const model of displayedModels) expect(route.vendor.models, path).toContain(model);
+                expect(hints[0], path).toMatch(/ →$/);
+                for (const model of route.vendor.models) expect(hints[0], path).not.toContain(model);
             }
         }
     });

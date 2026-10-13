@@ -75,8 +75,8 @@ Google `Indexing API` (closed to non-JobPosting / non-BroadcastEvent). Google `F
 
 - **SEO config (locales, hreflang, og:locale)** - `src/i18n/seo-config.ts`.
 - **Sitemap + per-locale prerender** - `vite-plugins/seo-prerender.ts`.
-- **Vendor pages (per-vendor landing)** - `vite-plugins/vendor-pages.ts`, `vite-plugins/vendor-pages-content.ts`, `vite-plugins/supported-brands.ts`; public copy targets model-family searches, while parser evidence stays in `docs/gps-format-coverage.md`.
-- **Homepage camera selection** - `vite-plugins/camera-promotion.ts`; keep the examples local to the page language and link to the full catalog as “and more”. Catalog cards without a local landing explicitly link to English through `vite-plugins/camera-catalog.ts`.
+- **Vendor pages (per-vendor landing)** - `vite-plugins/vendor-pages.ts`, `vite-plugins/vendor-pages-content.ts`, `vite-plugins/vendor-pages-established-content.ts`, `vite-plugins/supported-brands.ts`; model claims follow `docs/gps-format-coverage.md` and its linked fixtures. Every published locale needs reviewed camera-specific copy; missing translations fail instead of generating generic brand-swapped pages.
+- **Homepage camera selection** - `vite-plugins/camera-promotion.ts`; keep the examples local to the page language and link to the full catalog as “and more”. Catalog cards link brands to recording guidance instead of showing partial model lists. Cards without a local landing explicitly link to English through `vite-plugins/camera-catalog.ts`.
 - **Competitor pages (`/alternatives/`)** - `vite-plugins/alternative-pages.ts` (+ community translations in `vite-plugins/alternative-pages-content.ts`).
 - **Feature/guide pages** - `vite-plugins/feature-pages.ts`.
 - **Legacy `/cameras/` 301 redirects** - `vite-plugins/redirects.ts` (writes `dist/_redirects`).

@@ -43,19 +43,19 @@ describe("supported camera catalog", () => {
         }
     });
 
-    it("keeps useful model caveats on cards without a local page", () => {
+    it("keeps recording caveats without presenting sample models as a compatibility list", () => {
         const html = renderCamerasIndexPage("pt", {});
         const card = (slug: string) => new RegExp(`<li id="camera-${slug}">([\\s\\S]*?)</li>`).exec(html)?.[1];
-        expect(card("avylet")).toContain("A1");
+        expect(card("avylet")).not.toContain("A1");
         expect(card("avylet")).toContain("Requer receptor GPS");
         expect(card("datakam")).toContain("GPS em gravações exportadas");
-        expect(card("botslab")).toContain("G300H 2K");
-        expect(card("izeeker")).toContain("iD300");
+        expect(card("botslab")).not.toContain("G300H 2K");
+        expect(card("izeeker")).not.toContain("iD300");
         expect(card("izeeker")).toContain("Vídeo e GPS");
-        expect(card("hp")).toContain("f969x");
+        expect(card("hp")).not.toContain("f969x");
         expect(card("hp")).toContain("Reprodução de vídeo");
         expect(card("hp")).not.toContain("Vídeo e GPS");
-        expect(card("ibox")).toContain("iCON");
+        expect(card("ibox")).not.toContain("iCON");
         expect(card("ibox")).not.toContain("RoadScan");
     });
 
@@ -103,5 +103,56 @@ describe("supported camera catalog", () => {
             expect(html).toContain(`hreflang="ru" href="https://everydashcam.app/ru/cameras/${slug}/"`);
             expect(html).not.toContain('hreflang="de"');
         }
+    });
+
+    it("requires reviewed copy for every published language instead of a generic fallback", () => {
+        for (const entry of getVendorSitemapEntries()) {
+            const route = matchVendorRoute(new URL(entry.loc).pathname);
+            if (route?.kind !== "vendor") continue;
+            expect(route.vendor.locales[route.lang], entry.loc).toBeDefined();
+            expect(Object.values(route.vendor.locales[route.lang]!), entry.loc).not.toContain("");
+        }
+        const route = matchVendorRoute("/de/cameras/70mai/");
+        if (route?.kind !== "vendor") throw new Error("missing German camera page");
+        const incomplete = { ...route.vendor, locales: { ...route.vendor.locales } };
+        delete incomplete.locales.de;
+        expect(() => renderVendorPage(incomplete, "de", {})).toThrow("missing reviewed copy");
+    });
+
+    it("retains essential companion-file guidance in all published translations", () => {
+        const requiredFiles: Record<string, string[]> = {
+            "70mai": ["GPSData*.txt", "A510"],
+            blackvue: [".gps", ".3gf"],
+            mio: [".NMEA", "FILE…F.mp4", "FILE…R.mp4"],
+            navman: [".NMEA"],
+            botslab: ["GPS.TXT", "360CARDVR/REC"],
+            sony: [".LOG"],
+            escort: [".map"],
+            ddpai: ["203gps", ".gpx"],
+        };
+        for (const entry of getVendorSitemapEntries()) {
+            const route = matchVendorRoute(new URL(entry.loc).pathname);
+            if (route?.kind !== "vendor") continue;
+            const content = route.vendor.locales[route.lang]!;
+            for (const term of requiredFiles[route.vendor.slug] ?? []) {
+                expect(`${content.modelsCompat} ${content.formatIntro}`, entry.loc).toContain(term);
+            }
+        }
+    });
+
+    it("does not turn model lineups into confirmed recording compatibility", () => {
+        for (const slug of ["garmin", "fitcamx"]) {
+            const route = matchVendorRoute(`/en/cameras/${slug}/`);
+            if (route?.kind !== "vendor") throw new Error(`missing camera page: ${slug}`);
+            const html = renderVendorPage(route.vendor, "en", {});
+            expect(route.vendor.models).toEqual([]);
+            expect(html).not.toContain('class="vp-models"');
+            expect(html).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
+        }
+        const redtiger = matchVendorRoute("/en/cameras/redtiger/");
+        if (redtiger?.kind !== "vendor") throw new Error("missing REDTIGER page");
+        const html = renderVendorPage(redtiger.vendor, "en", {});
+        expect(html).toContain("older encrypted F7N GPS format is not readable");
+        expect(html).not.toContain("F77");
     });
 });
