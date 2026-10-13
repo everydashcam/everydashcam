@@ -1,5 +1,5 @@
 // VitTrack single-object tracker on onnxruntime-web (WASM EP, single thread; the
-// build is chosen by the caller via loadOrt - see VitTrackerSession.create).
+// build is chosen by the caller via createOrtSession - see VitTrackerSession.create).
 //
 // The ORT session is stateless (template is passed on every run - see the
 // contract note below), so ONE VitTrackerSession can drive MANY VitTrack
@@ -34,7 +34,8 @@
 //
 // Runs in a worker. No logging - per-frame hot path.
 
-import { loadOrt, type OrtModule, type OrtRuntime } from "./ort-runtime.js";
+import type { OrtAssets } from "./ort-assets.js";
+import { createOrtSession, type OrtModule, type OrtRuntime } from "./ort-runtime.js";
 import type { TrackBox } from "./track-guards.js";
 import { TrackGeometry } from "./track-state.js";
 import { packBgrPlanarStandardized } from "./vittrack-pixels.js";
@@ -190,10 +191,9 @@ export class VitTrackerSession {
      *  build; the detection pass passes "webgpu" so the tracker reuses the
      *  asyncify runtime the detectors already loaded, sparing a second ~13 MB wasm
      *  download (the wasm-EP kernels are identical between the two builds). Thread
-     *  count + wasmPaths are set by loadOrt (single thread - see ort-runtime.ts). */
-    static async create(ortRuntime: OrtRuntime, modelUrl: string, wasmDir: string): Promise<VitTrackerSession> {
-        const ort = await loadOrt(ortRuntime, wasmDir);
-        const session = await ort.InferenceSession.create(modelUrl, { executionProviders: ["wasm"] });
+     *  count + wasmPaths are set by createOrtSession (single thread - see ort-runtime.ts). */
+    static async create(ortRuntime: OrtRuntime, modelUrl: string, assets: OrtAssets): Promise<VitTrackerSession> {
+        const { ort, session } = await createOrtSession(ortRuntime, assets, modelUrl, { executionProviders: ["wasm"] });
         return new VitTrackerSession(new VitTrackerRuntime(ort, session));
     }
 

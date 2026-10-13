@@ -70,7 +70,7 @@ test("real Follow keeps a moving textured target covered across a resolution cha
                         seedRect,
                         endContentSec,
                         modelUrl: new URL(assets.models.tracker, location.origin).href,
-                        ortWasmDir: new URL(assets.ortDir, location.origin).href,
+                        ortAssets: assets.ort.wasm,
                     };
                     worker.postMessage({ __k: "req", id: 1, type: "track", data } satisfies WireRequest);
                 });

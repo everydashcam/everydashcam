@@ -65,6 +65,8 @@ export function initSentryClient(opts: SentryClientOptions): SentryClient {
         dsn: opts.dsn,
         release: opts.release,
         environment: opts.environment,
+        // TODO: migrate this privacy policy to explicit dataCollection settings
+        // before upgrading to SDK 11, which removes sendDefaultPii.
         sendDefaultPii: false,
         transportOptions: { fetchOptions: { signal: requests.signal } },
         defaultIntegrations: false,

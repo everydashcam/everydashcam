@@ -6,6 +6,7 @@
 // box. Results come back as decimated keyframes on the trip content axis,
 // ready for replaceGeneratedKeyframes.
 
+import type { OrtAssets } from "../tracking/ort-assets.js";
 import type { TimeInterval } from "../tracking/interval-set.js";
 import type { CropRect } from "../transcode/compose.js";
 
@@ -31,8 +32,8 @@ export interface TrackRequestData {
     /** Same-origin URL of the vittrack ONNX model. Resolved on the main
      *  thread so the worker stays free of app config. */
     modelUrl: string;
-    /** Same-origin directory of the onnxruntime-web wasm artifacts ("/ort/"). */
-    ortWasmDir: string;
+    /** Same-origin module and verified WASM parts for this runtime. */
+    ortAssets: OrtAssets;
 }
 
 /** Push notification: pass progress, 0..1 of the requested time span. */
@@ -87,8 +88,8 @@ export interface DetectRequestData {
     plateModelUrl: string;
     faceModelUrl: string;
     trackerModelUrl: string;
-    /** Same-origin directory of the onnxruntime-web wasm artifacts ("/ort/"). */
-    ortWasmDir: string;
+    /** Same-origin module and verified WASM parts for this runtime. */
+    ortAssets: OrtAssets;
 }
 
 /** Push notification: pass progress, 0..1 of the requested time span. */

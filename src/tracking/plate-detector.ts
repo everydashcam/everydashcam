@@ -19,6 +19,7 @@
 //
 // Runs in a worker. No logging - per-frame hot path.
 
+import type { OrtAssets } from "./ort-assets.js";
 import type { RawDetection } from "./detect-common.js";
 import type { OrtRuntime } from "./ort-runtime.js";
 import { type DetectionTileOutput, TiledDetector } from "./tiled-detector.js";
@@ -70,8 +71,8 @@ export function collectPlateDetections(
     }
 }
 
-export function createPlateDetector(runtime: OrtRuntime, modelUrl: string, wasmDir: string): Promise<TiledDetector> {
-    return TiledDetector.create(runtime, modelUrl, wasmDir, {
+export function createPlateDetector(runtime: OrtRuntime, modelUrl: string, assets: OrtAssets): Promise<TiledDetector> {
+    return TiledDetector.create(runtime, modelUrl, assets, {
         name: "plate",
         inputSize: INPUT_SIZE,
         overlapIou: DEDUPE_IOU,

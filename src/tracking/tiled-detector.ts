@@ -1,3 +1,4 @@
+import type { OrtAssets } from "./ort-assets.js";
 import {
     letterboxInto,
     type LetterboxMap,
@@ -7,7 +8,7 @@ import {
     type TileRect,
     tileRects,
 } from "./detect-common.js";
-import { loadOrt, type OrtModule, type OrtRuntime } from "./ort-runtime.js";
+import { createOrtSession, type OrtModule, type OrtRuntime } from "./ort-runtime.js";
 
 type OrtTensor = InstanceType<OrtModule["Tensor"]>;
 type OrtSession = Awaited<ReturnType<OrtModule["InferenceSession"]["create"]>>;
@@ -56,11 +57,10 @@ export class TiledDetector {
     static async create(
         runtime: OrtRuntime,
         modelUrl: string,
-        wasmDir: string,
+        assets: OrtAssets,
         model: DetectorModel,
     ): Promise<TiledDetector> {
-        const ort = await loadOrt(runtime, wasmDir);
-        const session = await ort.InferenceSession.create(modelUrl, {
+        const { ort, session } = await createOrtSession(runtime, assets, modelUrl, {
             executionProviders: [runtime],
             // In-graph NMS can fall back to CPU; per-node warnings are expected.
             logSeverityLevel: 3,

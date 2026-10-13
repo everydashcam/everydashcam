@@ -29,6 +29,7 @@
 //
 // Runs in a worker. No logging - per-frame hot path.
 
+import type { OrtAssets } from "./ort-assets.js";
 import type { RawDetection } from "./detect-common.js";
 import type { OrtRuntime } from "./ort-runtime.js";
 import { type DetectionTileOutput, TiledDetector } from "./tiled-detector.js";
@@ -77,8 +78,8 @@ export function collectFaceDetections({ data, dims, lb, tile }: DetectionTileOut
     }
 }
 
-export function createFaceDetector(runtime: OrtRuntime, modelUrl: string, wasmDir: string): Promise<TiledDetector> {
-    return TiledDetector.create(runtime, modelUrl, wasmDir, {
+export function createFaceDetector(runtime: OrtRuntime, modelUrl: string, assets: OrtAssets): Promise<TiledDetector> {
+    return TiledDetector.create(runtime, modelUrl, assets, {
         name: "face",
         inputSize: INPUT_SIZE,
         overlapIou: NMS_IOU,

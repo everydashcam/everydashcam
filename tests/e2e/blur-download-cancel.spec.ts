@@ -3,12 +3,13 @@ import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import { DESKTOP, expect, gotoApp, loadTrip, openExport, presetLocalStorage, test } from "./_fixtures.js";
 
 const assets = computeTrackerAssets("build");
-const runtimeUrl = `${assets.app.ortDir}ort-wasm-simd-threaded.asyncify.wasm`;
+const wasm = assets.app.ort.webgpu.wasm;
+const runtimeUrl = "parts" in wasm ? wasm.parts[0]!.url : wasm.url;
 const faceUrl = assets.app.models.face;
 
 test.use({ serviceWorkers: "block" });
 
-async function openDetection(page: Page, { delayedCache = false } = {}): Promise<void> {
+async function openDetection(page: Page, { delayedCache = false, gatedRuntimeUrl = runtimeUrl } = {}): Promise<void> {
     await page.clock.install();
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
@@ -66,7 +67,7 @@ async function openDetection(page: Page, { delayedCache = false } = {}): Promise
                 });
             };
         },
-        { urls: assets.urls, gatedUrls: [runtimeUrl, faceUrl], delayedCache },
+        { urls: assets.urls, gatedUrls: [gatedRuntimeUrl, faceUrl], delayedCache },
     );
     await gotoApp(page, "en");
     await loadTrip(page);
@@ -91,6 +92,28 @@ test("Cancel stops a remembered download and its queued checkbox without startin
     await page.clock.fastForward(2000);
     await expect(page.locator("html")).toHaveAttribute("data-blur-warm-requests", JSON.stringify([runtimeUrl]));
     expect(trackerWorkers, "Cancel also prevents the queued detection pass").toEqual([]);
+});
+
+test("cancelling the second WASM part keeps the first part ready for retry", async ({ page }) => {
+    if (!("parts" in wasm)) throw new Error("this regression requires a split runtime");
+    const first = wasm.parts[0]!.url;
+    const second = wasm.parts[1]!.url;
+    await openDetection(page, { gatedRuntimeUrl: second });
+    const checkbox = page.locator("#export-panel-blur-plates");
+    const strip = page.locator(".export-panel__blur-detect-strip");
+    await checkbox.check();
+    await expect(page.locator("html")).toHaveAttribute("data-blur-warm-requests", JSON.stringify([first, second]));
+    await strip.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-blur-warm-aborted", JSON.stringify([second]));
+    await expect(strip).toBeHidden();
+    await checkbox.uncheck();
+    await checkbox.check();
+    await expect(page.locator("html")).toHaveAttribute(
+        "data-blur-warm-requests",
+        JSON.stringify([first, second, second]),
+    );
+    await strip.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(strip).toBeHidden();
 });
 
 test("a second checkbox warms its model after the first download and remains cancellable", async ({ page }) => {

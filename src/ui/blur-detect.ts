@@ -41,7 +41,7 @@ import {
     FACE_MODEL_URL,
     PLATE_MODEL_URL,
     TRACKER_MODEL_URL,
-    TRACKER_ORT_WASM_DIR,
+    TRACKER_ORT_ASSETS,
 } from "./blur-assets.js";
 import { exportPanelState, notifyExportStateChanged, subscribeExportState } from "./export-state.js";
 import { subscribeBlurTripRegroup } from "./blur-regions-state.js";
@@ -651,7 +651,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         plateModelUrl: PLATE_MODEL_URL,
                         faceModelUrl: FACE_MODEL_URL,
                         trackerModelUrl: TRACKER_MODEL_URL,
-                        ortWasmDir: TRACKER_ORT_WASM_DIR,
+                        ortAssets: TRACKER_ORT_ASSETS.webgpu,
                     };
                     const result = await trackerWorkerClient().request<DetectResult>(DETECT_REQUEST, request, {
                         signal: AbortSignal.any([controller.signal, timeoutCtrl.signal]),

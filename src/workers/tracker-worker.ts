@@ -31,6 +31,7 @@ import {
 } from "../tracking/detect-track.js";
 import { type TimeInterval, totalIntervalSec, unionIntervals } from "../tracking/interval-set.js";
 import { createFaceDetector } from "../tracking/face-detector.js";
+import type { OrtAssets } from "../tracking/ort-assets.js";
 import { type OrtRuntime } from "../tracking/ort-runtime.js";
 import { createPlateDetector } from "../tracking/plate-detector.js";
 import { boxVisibleFraction, EXIT_CONFIRM_SEC, EXIT_VISIBLE_FRACTION } from "../tracking/track-guards.js";
@@ -89,12 +90,12 @@ const cachedSessions = new Map<string, VitTrackerSession>();
 async function getTrackerSession(
     ortRuntime: OrtRuntime,
     modelUrl: string,
-    wasmDir: string,
+    assets: OrtAssets,
 ): Promise<VitTrackerSession> {
-    const key = `${ortRuntime}|${wasmDir}|${modelUrl}`;
+    const key = `${ortRuntime}|${assets.moduleUrl}|${modelUrl}`;
     const cached = cachedSessions.get(key);
     if (cached) return cached;
-    const session = await VitTrackerSession.create(ortRuntime, modelUrl, wasmDir);
+    const session = await VitTrackerSession.create(ortRuntime, modelUrl, assets);
     // Follow and detection use separate runtime builds. Retain both sessions:
     // replacing one on every mode switch leaks its native ORT allocation.
     cachedSessions.set(key, session);
@@ -111,11 +112,11 @@ async function getTrackerSession(
 const detectorFactories = { plate: createPlateDetector, face: createFaceDetector };
 const cachedDetectors = new Map<DetectKind, { key: string; detector: FrameDetector }>();
 
-async function getDetector(kind: DetectKind, modelUrl: string, wasmDir: string): Promise<FrameDetector> {
-    const key = `${wasmDir}|${modelUrl}`;
+async function getDetector(kind: DetectKind, modelUrl: string, assets: OrtAssets): Promise<FrameDetector> {
+    const key = `${assets.moduleUrl}|${modelUrl}`;
     const cached = cachedDetectors.get(kind);
     if (cached?.key === key) return cached.detector;
-    const detector = await detectorFactories[kind]("webgpu", modelUrl, wasmDir);
+    const detector = await detectorFactories[kind]("webgpu", modelUrl, assets);
     cachedDetectors.set(kind, { key, detector });
     return detector;
 }
@@ -135,7 +136,7 @@ async function runTrackPass(
     notifyProgress: (fractionDone: number) => void,
 ): Promise<TrackResult> {
     // Follow runs the tracker on the plain wasm build (where it is validated).
-    const vitTrack = await getTrackerSession("wasm", req.modelUrl, req.ortWasmDir).then((s) => s.newTrack());
+    const vitTrack = await getTrackerSession("wasm", req.modelUrl, req.ortAssets).then((s) => s.newTrack());
     const span = Math.max(1e-6, req.endContentSec - req.seedContentSec);
 
     const keyframes: TrackResultKeyframe[] = [];
@@ -413,7 +414,7 @@ async function runDetectPass(
 
     // The tracker rides the detectors' webgpu (asyncify) runtime on its wasm EP,
     // so the pass loads ONE ort build (see VitTrackerSession.create).
-    const trackerSession = await getTrackerSession("webgpu", req.trackerModelUrl, req.ortWasmDir);
+    const trackerSession = await getTrackerSession("webgpu", req.trackerModelUrl, req.ortAssets);
     const detectors = new Map<DetectKind, FrameDetector>();
     const live = new Map<DetectKind, LiveTrack[]>();
     const finished = new Map<DetectKind, DetectedTrack[]>();
@@ -422,7 +423,7 @@ async function runDetectPass(
     for (const kind of req.kinds) {
         detectors.set(
             kind,
-            await getDetector(kind, kind === "plate" ? req.plateModelUrl : req.faceModelUrl, req.ortWasmDir),
+            await getDetector(kind, kind === "plate" ? req.plateModelUrl : req.faceModelUrl, req.ortAssets),
         );
         live.set(kind, []);
         finished.set(kind, []);

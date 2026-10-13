@@ -319,11 +319,16 @@ async function cacheFirst(req, evt) {
 
 async function trackerCacheFirst(req, evt) {
     const tracker = await openCache(TRACKER);
-    const hit = await matchCache(tracker, req);
-    if (hit && !isHtmlResponse(hit)) return hit;
+    // These versioned same-origin files have identical bytes for main-thread
+    // warming and worker imports, even when the server sends Vary: Origin.
+    const hit = await matchCache(tracker, req, { ignoreVary: true });
+    // Only the loader's integrity repair bypasses this immutable cache. Browser
+    // reloads/tooling can set Request.cache=reload on otherwise ordinary reads.
+    // Discard poisoned bytes even if offline, so a later download can repair them.
+    if (hit && req.headers.get("x-everydashcam-wasm-repair") !== "1" && !isHtmlResponse(hit)) return hit;
     if (hit) {
         try {
-            await tracker.delete(req);
+            await tracker.delete(req, { ignoreVary: true });
         } catch {
             /* Storage is optional. */
         }

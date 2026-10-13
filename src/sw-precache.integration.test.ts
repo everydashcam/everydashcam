@@ -143,10 +143,28 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
         for (const url of assets.urls) {
             const emitted = readFileSync(resolve(DIST_DIR, url.slice(1)));
             const model = assets.modelEmit.find((entry) => entry.url === url);
-            const source = model
-                ? resolve(root, "public", model.rel)
-                : resolve(root, "node_modules/onnxruntime-web/dist", url.slice(url.lastIndexOf("/") + 1));
-            expect(emitted.equals(readFileSync(source)), `tracker asset ${url} matches its source bytes`).toBe(true);
+            const runtime = assets.ortEmit.find((entry) => url.endsWith(`/${entry.name}`));
+            const source = model ? resolve(root, "public", model.rel) : runtime!.source;
+            const original = readFileSync(source);
+            const expected = runtime ? original.subarray(runtime.offset, runtime.offset + runtime.bytes) : original;
+            expect(emitted.equals(expected), `tracker asset ${url} matches its source bytes`).toBe(true);
+            expect(emitted.length, `tracker asset ${url} fits Cloudflare Pages`).toBeLessThanOrEqual(25 * 1024 * 1024);
+        }
+        for (const runtime of Object.values(assets.app.ort)) {
+            const wasm = runtime.wasm;
+            if (!("parts" in wasm)) continue;
+            const assembled = Buffer.concat(
+                wasm.parts.map((part) => readFileSync(resolve(DIST_DIR, part.url.slice(1)))),
+            );
+            const source = assets.ortEmit.find((entry) => wasm.parts[0]!.url.endsWith(`/${entry.name}`))!;
+            expect(
+                assembled.equals(readFileSync(source.source)),
+                "all WASM pieces reconstruct the original binary",
+            ).toBe(true);
+            expect(
+                existsSync(resolve(DIST_DIR, runtime.moduleUrl.replace(/\.mjs$/, ".wasm").slice(1))),
+                "oversized original is not published",
+            ).toBe(false);
         }
     });
 });

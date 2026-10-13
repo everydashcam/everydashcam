@@ -22,7 +22,7 @@ import {
 import { notifyBlurRegionsChanged, subscribeBlurTripRegroup } from "./blur-regions-state.js";
 import { captureBlurTripSource, matchesBlurTripSource, type BlurTripSource } from "./blur-trip-source.js";
 import { notify } from "./notifications.js";
-import { TRACKER_MODEL_URL, TRACKER_ORT_WASM_DIR } from "./blur-assets.js";
+import { TRACKER_MODEL_URL, TRACKER_ORT_ASSETS } from "./blur-assets.js";
 import { subscribeTrackerWorkerNotifications, trackerWorkerClient } from "./tracker-worker-client.js";
 
 const log = createLogger("blur-track");
@@ -200,7 +200,7 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
             seedRect: { ...seed.rect },
             endContentSec: toSec,
             modelUrl: TRACKER_MODEL_URL,
-            ortWasmDir: TRACKER_ORT_WASM_DIR,
+            ortAssets: TRACKER_ORT_ASSETS.wasm,
         };
         let result: TrackResult;
         try {

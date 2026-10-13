@@ -17,6 +17,7 @@
 // remembered per FILE in localStorage. No UI here - the panel subscribes.
 
 import { createLogger } from "../log.js";
+import type { OrtAssets } from "../tracking/ort-assets.js";
 
 const log = createLogger("blur-assets");
 
@@ -30,14 +31,23 @@ const log = createLogger("blur-assets");
 // where the exact URL is functionally irrelevant. See src/version.ts for the
 // same pattern.
 declare const __DC_TRACKER_ASSETS__:
-    | { ortDir: string; models: { tracker: string; plate: string; face: string } }
+    | { ort: { wasm: OrtAssets; webgpu: OrtAssets }; models: { tracker: string; plate: string; face: string } }
     | undefined;
 
 const TRACKER_ASSETS =
     typeof __DC_TRACKER_ASSETS__ !== "undefined"
         ? __DC_TRACKER_ASSETS__
         : {
-              ortDir: "/ort/",
+              ort: {
+                  wasm: {
+                      moduleUrl: "/ort/ort-wasm-simd-threaded.mjs",
+                      wasm: { url: "/ort/ort-wasm-simd-threaded.wasm", bytes: 13.6 * 1024 * 1024 },
+                  },
+                  webgpu: {
+                      moduleUrl: "/ort/ort-wasm-simd-threaded.asyncify.mjs",
+                      wasm: { url: "/ort/ort-wasm-simd-threaded.asyncify.wasm", bytes: 25.6 * 1024 * 1024 },
+                  },
+              },
               models: {
                   tracker: "/models/vittrack/object_tracking_vittrack_2023sep.onnx",
                   plate: "/models/plate/yolo-v9-s-608-license-plates-end2end-fp16.onnx",
@@ -48,7 +58,7 @@ const TRACKER_ASSETS =
 export const TRACKER_MODEL_URL = TRACKER_ASSETS.models.tracker;
 export const PLATE_MODEL_URL = TRACKER_ASSETS.models.plate;
 export const FACE_MODEL_URL = TRACKER_ASSETS.models.face;
-export const TRACKER_ORT_WASM_DIR = TRACKER_ASSETS.ortDir;
+export const TRACKER_ORT_ASSETS = TRACKER_ASSETS.ort;
 
 /** Feature-facing asset groups: Follow needs the tracker model, each detect
  *  checkbox needs its detector model; all three need the shared ORT runtime. */
@@ -62,17 +72,17 @@ interface AssetSpec {
     approxMb: number;
 }
 
-const ORT_WASM_ASSETS: readonly AssetSpec[] = [
-    { url: `${TRACKER_ORT_WASM_DIR}ort-wasm-simd-threaded.wasm`, approxMb: 13.3 },
-    { url: `${TRACKER_ORT_WASM_DIR}ort-wasm-simd-threaded.mjs`, approxMb: 0.1 },
-];
+function runtimeAssets(assets: OrtAssets): AssetSpec[] {
+    const wasm = assets.wasm;
+    const files = "parts" in wasm ? wasm.parts : [wasm];
+    return [
+        ...files.map((file) => ({ url: file.url, approxMb: file.bytes / (1024 * 1024) })),
+        { url: assets.moduleUrl, approxMb: 0.1 },
+    ];
+}
 
-// What ort's WebGPU EP loads (the asyncify build). Bigger than the plain wasm
-// pair, but it buys a ~7x faster detection pass (see tracking/ort-runtime.ts).
-const ORT_WEBGPU_ASSETS: readonly AssetSpec[] = [
-    { url: `${TRACKER_ORT_WASM_DIR}ort-wasm-simd-threaded.asyncify.wasm`, approxMb: 24.2 },
-    { url: `${TRACKER_ORT_WASM_DIR}ort-wasm-simd-threaded.asyncify.mjs`, approxMb: 0.1 },
-];
+const ORT_WASM_ASSETS = runtimeAssets(TRACKER_ORT_ASSETS.wasm);
+const ORT_WEBGPU_ASSETS = runtimeAssets(TRACKER_ORT_ASSETS.webgpu);
 
 function groupAssets(group: BlurAssetGroupId): readonly AssetSpec[] {
     switch (group) {
@@ -159,7 +169,9 @@ async function checkCachedAssets(): Promise<void> {
     if (typeof caches === "undefined") return;
     try {
         for (const { url } of assetsOf(["track", "detect-plate", "detect-face"])) {
-            const response = await caches.match(url);
+            // Main-thread fetches and worker imports can send different Origin
+            // headers; these versioned static files always contain the same bytes.
+            const response = await caches.match(url, { ignoreVary: true });
             if (response && isAssetResponse(response)) cachedAssets.add(url);
         }
         // Download history can be missing even though Cache Storage survived.
