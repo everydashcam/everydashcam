@@ -177,6 +177,7 @@ describe("meta CSP in built HTML (META_CSP flavor)", () => {
                 "default-src 'none'",
                 "script-src 'self'",
                 "style-src 'self' 'unsafe-inline'",
+                "font-src 'self'",
                 "connect-src 'none'",
                 "base-uri 'none'",
                 "form-action 'none'",

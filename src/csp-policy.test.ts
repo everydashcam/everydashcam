@@ -27,7 +27,6 @@ describe("CSP policy", () => {
             new Set([
                 "'self'",
                 "https://tiles.openfreemap.org",
-                "https://*.openfreemap.org",
                 "https://vector.openstreetmap.org",
                 "https://tile.openstreetmap.org",
                 "https://tiles.api-maps.yandex.ru",

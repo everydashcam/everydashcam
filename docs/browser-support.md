@@ -191,9 +191,10 @@ version. The API existing does not mean a codec decodes - always probe.
 - **WebGL2 is also a hardware floor** - `getContext("webgl2")` can return null on
   an old/blocklisted GPU no matter how new the browser. The map degradation path
   covers this.
-- **WASM + CSP** - WebAssembly compilation needs `'wasm-unsafe-eval'` in
-  `script-src`. If a future feature relies on WASM (mediabunny/MapLibre core do
-  not), the CSP in `public/_headers` must be updated.
+- **WASM + CSP** - the hosted tracker uses ONNX Runtime Web and needs
+  `'wasm-unsafe-eval'` in `script-src`; JavaScript evaluation remains blocked.
+  Runtime modules and weights are self-hosted. Portable omits tracking and
+  that permission. Policies live in `public/_headers` and `vite-plugins/portable.ts`.
 
 ## Manual verification (not automated)
 
