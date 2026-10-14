@@ -1,4 +1,11 @@
 const TIMESTAMP_EPSILON_SEC = 1e-6;
+export const PROPAGATION_INTERVAL_SEC = 1 / 15;
+
+/** The inference clock is independent of detector reanchors. Use source
+ * timestamps in either direction; skipped frames still retain mask coverage. */
+export function isPropagationUpdateDue(previousSec: number, contentSec: number): boolean {
+    return Math.abs(contentSec - previousSec) + TIMESTAMP_EPSILON_SEC >= PROPAGATION_INTERVAL_SEC;
+}
 
 /** Select at most one source frame per call on an anchored time grid. The first
  * frame always fills the initial position; force includes an off-grid endpoint.

@@ -129,6 +129,14 @@ export interface DetectPassStats {
     backwardUpdates: number;
     /** Wall ms inside the tracker, in both directions. */
     trackMs: number;
+    /** Detector proposals that created a new trajectory. */
+    seededTracks?: number;
+    /** Seeded trajectories rejected for insufficient detector evidence. */
+    unconfirmedTracks?: number;
+    /** Off-grid updates with a motion, recovery or calibration reason. */
+    highMotionUpdates?: number;
+    recoveryUpdates?: number;
+    calibrationUpdates?: number;
 }
 
 export interface DetectResult {
@@ -150,6 +158,13 @@ export interface DetectResult {
         forwardMs: number;
         backwardMs: number;
         decodeWaitMs: number;
+        /** Delivered samples by phase, excluding internal decoder preroll. */
+        forwardSamples: number;
+        backwardSamples: number;
+        /** Reverse batches; each backwards timestamp jump can replay a GOP prefix. */
+        reverseBlocks: number;
+        /** Last-packet lookups needed to verify a held video tail. */
+        sourceEndQueries: number;
         /** Shared display-canvas draw calls, excluding later GPU readback.
          * Per-object crop preparation is included in each kind's trackMs. */
         drawMs: number;

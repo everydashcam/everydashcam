@@ -172,7 +172,7 @@ const cases = [
     {
         ...longPlateCase,
         quality: "fast" as const,
-        label: "a small plate while reverse tracking crosses a frame-buffer block boundary",
+        label: "a small plate while sparse reverse tracking fits a frame-buffer block",
         motion: {
             ...slowSmallPlateMotion,
             frames: slowSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
@@ -182,8 +182,8 @@ const cases = [
         singleSeedSec: 2.8,
         expectedBeforeSeed: 12,
         expectedAfterSeed: 11,
-        // Twelve earlier 1080p frames exceed the eight-frame 64 MiB buffer.
-        minimumBackwardUpdates: 8,
+        // Twelve source frames fit one eight-sample buffer at 15 Hz.
+        minimumBackwardUpdates: 5,
         maxMaskArea: 2.5,
         tilesPerScan: 4,
     },
@@ -197,9 +197,9 @@ const cases = [
         },
         startSec: 0.3,
         expectedScans: 24,
-        // More than eight reverse updates cross both a discovery interval
-        // and the bounded 1080p frame buffer; rejected scans must not clip coverage.
-        minimumBackwardUpdates: 8,
+        // Sparse reverse updates cross a discovery interval; rejected scans
+        // must not clip the twelve earlier displayed frames.
+        minimumBackwardUpdates: 5,
         maxMaskArea: 2.5,
         tilesPerScan: 4,
     },
@@ -384,8 +384,22 @@ self.postMessage = function(message, ...args) {
             expect(fetchedPlainRuntime, "automatic tracking reuses the detector runtime").toEqual([]);
             const stats = result.statsByKind[kind];
             expect(stats, "requested detector reports its work").toBeDefined();
+            expect(result.timings!.forwardSamples + result.timings!.backwardSamples).toBe(result.decodedFrames);
+            expect(result.timings!.sourceEndQueries, "ordinary trims need no last-packet scan").toBe(
+                motion.filename === "face-held-tail.mp4" ? 1 : 0,
+            );
             const recoveryScans = stats!.recoveryScans ?? 0;
             const recoveryTiles = stats!.recoveryTiles ?? 0;
+            if (
+                quality === "thorough" &&
+                splitSec === null &&
+                ["plate-motion.mp4", "face-motion.mp4"].includes(motion.filename)
+            ) {
+                expect(
+                    stats!.trackUpdates,
+                    "frequent detector anchors retain the 15 Hz inference budget",
+                ).toBeLessThanOrEqual(8);
+            }
             expect(stats!.scans - recoveryScans, "detector follows the selected discovery policy").toBe(expectedScans);
             expect(stats!.tiles - recoveryTiles, "discovery retains the source-resolution tile grid").toBe(
                 expectedScans * tilesPerScan,
@@ -444,16 +458,24 @@ self.postMessage = function(message, ...args) {
                 );
                 expect(
                     (result.tracksByKind[kind] ?? []).reduce((sum, track) => sum + track.detHits, 0),
-                    "one real detector observation seeds coverage in both temporal directions",
-                ).toBe(1);
+                    "one discovery hit plus bounded recovery evidence supports both directions",
+                ).toBeLessThanOrEqual(1 + recoveryScans);
+                expect(stats!.seededTracks, "recovery retains the original discovery trajectory").toBe(1);
             }
             if (measuresReverseDecode) {
-                // This GOP-30 fixture needs 180 forward packets. Including the
-                // seed in its first reverse block adds 25 + 17, within 64 MiB
-                // and eight retained surfaces, without a separate seed seek.
-                expect(result.nativeDecodeCalls, "the reverse seed shares its block's GOP preroll").toBeLessThanOrEqual(
-                    222,
-                );
+                // This GOP-30 fixture needs 180 forward packets. At 15 Hz its
+                // reverse prefix fits one block (25 packets), down from two
+                // blocks (25 + 17), within the same native-surface budget.
+                expect(
+                    result.nativeDecodeCalls,
+                    "sparse reverse samples avoid a repeated GOP prefix",
+                ).toBeLessThanOrEqual(205);
+            }
+            if (motion.filename === "small-plate-crisp-slow-motion.mp4" && quality !== "fast") {
+                expect(
+                    result.timings!.reverseBlocks,
+                    "detector anchors still exercise multiple reverse blocks",
+                ).toBeGreaterThanOrEqual(2);
             }
             for (const [frameIndex, frame] of motion.frames.entries()) {
                 const masks = regions.flatMap((region) => {
@@ -476,7 +498,7 @@ self.postMessage = function(message, ...args) {
                                 (region) => region.startSec === frame.contentSec && region.endSec > splitSec!,
                             ),
                         ).toHaveLength(1);
-                    } else {
+                    } else if (frame.boxes.length > 0) {
                         expect(masks, `one mask per visible object at ${frame.contentSec.toFixed(3)}s`).toHaveLength(
                             frame.boxes.length,
                         );
@@ -494,10 +516,17 @@ self.postMessage = function(message, ...args) {
                     );
                 }
                 if (frame.boxes.length === 0) {
-                    expect(
-                        masks,
-                        `absent ${kind} leaves no projected mask at ${frame.contentSec.toFixed(3)}s`,
-                    ).toHaveLength(0);
+                    // At 15 Hz the last accepted position may cover a skipped
+                    // frame next to an entrance/exit. Bound that uncertainty;
+                    // a distant absent frame must still have no frozen mask.
+                    const isNearVisibleFrame = motion.frames.some(
+                        (candidate) =>
+                            candidate.boxes.length > 0 &&
+                            Math.abs(candidate.contentSec - frame.contentSec) < 1 / 15 + 1e-6,
+                    );
+                    expect(masks.length, `bounded ${kind} hold at ${frame.contentSec.toFixed(3)}s`).toBeLessThanOrEqual(
+                        isNearVisibleFrame ? 1 : 0,
+                    );
                 }
             }
         },

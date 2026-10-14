@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planReverseCohorts } from "./reverse-decode-plan.js";
+import { planReverseCohorts, planReverseFrameIndices } from "./reverse-decode-plan.js";
 
 const group = (seedIndex: number, branchCount = 1, startIndex = 0) => ({ seedIndex, startIndex, branchCount });
 const seeds = (cohorts: ReturnType<typeof planReverseCohorts>) =>
@@ -85,5 +85,137 @@ describe("planReverseCohorts", () => {
         group(3, Number.MAX_SAFE_INTEGER + 1),
     ])("rejects invalid indices or branch counts: %j", (invalid) => {
         expect(() => planReverseCohorts([invalid])).toThrow("reverse decode group is invalid");
+    });
+});
+
+const framesAtRate = (count: number, fps: number) =>
+    Array.from({ length: count }, (_, index) => ({ contentSec: index / fps, durationSec: 1 / fps }));
+
+describe("planReverseFrameIndices", () => {
+    it("returns no pixels for an empty cohort", () => {
+        expect(planReverseFrameIndices([], [])).toEqual([]);
+        expect(planReverseFrameIndices(framesAtRate(10, 30), [], [2, 5])).toEqual([]);
+    });
+
+    it.each([
+        { fps: 30, seedIndex: 6, expected: [0, 2, 4, 6] },
+        { fps: 30, seedIndex: 7, expected: [0, 1, 3, 5, 7] },
+        { fps: 60, seedIndex: 12, expected: [0, 4, 8, 12] },
+        { fps: 60, seedIndex: 13, expected: [0, 1, 5, 9, 13] },
+    ])("retains the seed phase and first endpoint at $fps fps from $seedIndex", ({ fps, seedIndex, expected }) => {
+        expect(planReverseFrameIndices(framesAtRate(seedIndex + 1, fps), [group(seedIndex)])).toEqual(expected);
+    });
+
+    it("uses timestamps rather than a frame-count stride for variable-rate sources", () => {
+        const frames = [0, 0.019, 0.053, 0.081, 0.097, 0.141, 0.2].map((contentSec) => ({
+            contentSec,
+            durationSec: 0.01,
+        }));
+        expect(planReverseFrameIndices(frames, [group(6)])).toEqual([0, 1, 4, 6]);
+    });
+
+    it("unites independent seed phases without resampling either group", () => {
+        expect(planReverseFrameIndices(framesAtRate(14, 60), [group(13), group(12)])).toEqual([
+            0, 1, 4, 5, 8, 9, 12, 13,
+        ]);
+    });
+
+    it("adds recovery warmup pixels without shifting the normal reverse cadence", () => {
+        const frames = framesAtRate(13, 60);
+        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 0 }])).toEqual([0, 4, 8, 12]);
+        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 2 }])).toEqual([
+            0, 4, 8, 10, 11, 12,
+        ]);
+        expect(planReverseFrameIndices(frames, [{ ...group(12, 1, 10), recoveryWarmupFrames: 5 }])).toEqual([
+            10, 11, 12,
+        ]);
+    });
+
+    it("retains normal and recovery phases in a mixed cohort", () => {
+        const groups = [group(12), { ...group(13), recoveryWarmupFrames: 2 }];
+        expect(planReverseFrameIndices(framesAtRate(14, 60), groups)).toEqual([0, 1, 4, 5, 8, 9, 11, 12, 13]);
+        expect(planReverseCohorts(groups)).toEqual([groups]);
+    });
+
+    it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+        "rejects invalid recovery warmup %s",
+        (warmup) => {
+            const invalid = { ...group(10), recoveryWarmupFrames: warmup };
+            expect(() => planReverseCohorts([invalid])).toThrow("reverse decode recovery warmup is invalid");
+            expect(() => planReverseFrameIndices(framesAtRate(20, 30), [invalid])).toThrow(
+                "reverse decode recovery warmup is invalid",
+            );
+        },
+    );
+
+    it("retains every high-motion frame while keeping other groups sparse", () => {
+        const frames = framesAtRate(14, 60);
+        expect(planReverseFrameIndices(frames, [{ ...group(12), hasHighMotion: false }])).toEqual([0, 4, 8, 12]);
+        expect(planReverseFrameIndices(frames, [group(12), { ...group(13, 1, 9), hasHighMotion: true }])).toEqual([
+            0, 4, 8, 9, 10, 11, 12, 13,
+        ]);
+    });
+
+    it("retains an intermediate long-held VFR sample without shifting inference", () => {
+        const frames = framesAtRate(13, 60);
+        frames[10]!.durationSec = 2;
+        expect(planReverseFrameIndices(frames, [group(12)])).toEqual([0, 4, 8, 10, 12]);
+    });
+
+    it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid frame duration %s", (durationSec) => {
+        const frames = framesAtRate(13, 60);
+        frames[10]!.durationSec = durationSec;
+        expect(() => planReverseFrameIndices(frames, [group(12)])).toThrow(
+            "reverse decode frame duration must be finite and positive",
+        );
+    });
+
+    it("retains off-grid detector and branch endpoints without shifting inference", () => {
+        const groups = Object.freeze([Object.freeze(group(12, 1, 3))]);
+        const required = Object.freeze([6, 5, 6, 2, 18]);
+        expect(planReverseFrameIndices(framesAtRate(20, 60), groups, required)).toEqual([3, 4, 5, 6, 8, 12]);
+        expect(required).toEqual([6, 5, 6, 2, 18]);
+        expect(groups).toEqual([group(12, 1, 3)]);
+    });
+
+    it("keeps low-rate source frames and distant reverse history", () => {
+        const frames = framesAtRate(1001, 10);
+        expect(planReverseFrameIndices(frames, [group(1000)])).toEqual(frames.map((_, index) => index));
+    });
+
+    it("lets eight retained samples cover more source time at high frame rates", () => {
+        for (const fps of [30, 60]) {
+            const selected = planReverseFrameIndices(framesAtRate(fps + 1, fps), [group(fps)]);
+            expect(selected).toHaveLength(16);
+            const block = selected.slice(-8);
+            expect(block.at(-1)! - block[0]!).toBe((7 * fps) / 15);
+        }
+    });
+
+    it.each([group(0), group(20), group(3, 1, -1), group(3.5), group(3, 1, 3)])(
+        "rejects invalid source frame bounds: %j",
+        (invalid) => {
+            expect(() => planReverseFrameIndices(framesAtRate(20, 30), [invalid])).toThrow(
+                "reverse decode group frame bounds are invalid",
+            );
+        },
+    );
+
+    it.each([-1, 20, 1.5, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid required frame %s", (index) => {
+        expect(() => planReverseFrameIndices(framesAtRate(20, 30), [group(10)], [index])).toThrow(
+            "reverse decode required frame index is invalid",
+        );
+    });
+
+    it.each([
+        [0, 0],
+        [1, 0],
+        [0, Number.NaN],
+        [0, Number.POSITIVE_INFINITY],
+    ])("rejects invalid presentation order: %j", (...timestamps) => {
+        const frames = timestamps.map((contentSec) => ({ contentSec, durationSec: 1 / 30 }));
+        expect(() => planReverseFrameIndices(frames, [group(1)])).toThrow(
+            "reverse decode frame timestamps must be finite and increasing",
+        );
     });
 });

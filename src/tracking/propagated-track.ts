@@ -62,7 +62,7 @@ function sameRect(a: CropRect, b: CropRect): boolean {
     return a.xPct === b.xPct && a.yPct === b.yPct && a.wPct === b.wPct && a.hPct === b.hPct;
 }
 
-function interpolateRect(a: CropRect, b: CropRect, fraction: number): CropRect {
+export function interpolateRect(a: CropRect, b: CropRect, fraction: number): CropRect {
     return {
         xPct: a.xPct + (b.xPct - a.xPct) * fraction,
         yPct: a.yPct + (b.yPct - a.yPct) * fraction,
@@ -196,16 +196,6 @@ export function duplicatePropagationPrefixEndIndex(
     current: PropagationPrefix,
     olderTrajectories: readonly PropagationPrefix[],
 ): number | null {
-    // Early reverse checks run on each frame. Until an older detector anchor
-    // is reached, there is no reason to scan the accumulated trajectories.
-    const reachesOlderAnchor = olderTrajectories.some((older) => {
-        if (older.seedIndex >= current.seedIndex) return false;
-        for (const index of older.detectorAnchors.keys()) {
-            if (current.observations.has(index)) return true;
-        }
-        return false;
-    });
-    if (!reachesOlderAnchor) return null;
     const currentBounds = observationIndexBounds(current.observations);
     if (!currentBounds || !current.observations.has(current.seedIndex)) return null;
     // The overlap only reads indices at or after the current prefix's first

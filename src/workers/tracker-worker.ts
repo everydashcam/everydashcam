@@ -11,7 +11,7 @@
 // is ~200 ms; re-tracks after a correction are the common case). The DECODE
 // side opens fresh per request - files change between passes.
 
-import { CanvasSink, Input, type VideoSample, VideoSampleSink } from "mediabunny";
+import { CanvasSink, EncodedPacketSink, Input, type VideoSample, VideoSampleSink } from "mediabunny";
 import { getInputTimeOrigin } from "../media-time.js";
 
 import { boxToRect, visibleBoxRect } from "../tracking/box-geometry.js";
@@ -28,10 +28,11 @@ import {
 } from "../tracking/detection-recovery.js";
 import { DetectionScanCache, type DetectionScanEntry } from "../tracking/detection-scan-cache.js";
 import { createDetectionSampler } from "../tracking/detection-sampling.js";
+import { detectionSampleTiming, withFinalSample } from "../tracking/detection-decode.js";
 import { DetectionPropagation, type SeedDetection } from "../tracking/detection-propagation.js";
 import type { SourceFrameTiming } from "../tracking/propagated-track.js";
 import { createNativeTrackingFrame, NativeTrackingFrameWorkspace } from "../tracking/tracking-frame.js";
-import { planReverseCohorts } from "../tracking/reverse-decode-plan.js";
+import { planReverseCohorts, planReverseFrameIndices } from "../tracking/reverse-decode-plan.js";
 import { canSeedDetection, DETECTION_POLICIES } from "../tracking/detector-policy.js";
 import { type TimeInterval, totalIntervalSec, unionIntervals } from "../tracking/interval-set.js";
 import { createFaceDetector } from "../tracking/face-detector.js";
@@ -354,7 +355,16 @@ async function runDetectPass(
     notifyProgress: (fractionDone: number) => void,
 ): Promise<DetectResult> {
     const passStartMs = performance.now();
-    const timings = { forwardMs: 0, backwardMs: 0, decodeWaitMs: 0, drawMs: 0 };
+    const timings = {
+        forwardMs: 0,
+        backwardMs: 0,
+        decodeWaitMs: 0,
+        forwardSamples: 0,
+        backwardSamples: 0,
+        reverseBlocks: 0,
+        sourceEndQueries: 0,
+        drawMs: 0,
+    };
     const trackingFrames = new NativeTrackingFrameWorkspace();
     const statsByKind: DetectResult["statsByKind"] = {};
     const tracksByKind: DetectResult["tracksByKind"] = {};
@@ -370,6 +380,11 @@ async function runDetectPass(
             trackUpdates: 0,
             backwardUpdates: 0,
             trackMs: 0,
+            seededTracks: 0,
+            unconfirmedTracks: 0,
+            highMotionUpdates: 0,
+            recoveryUpdates: 0,
+            calibrationUpdates: 0,
         };
         tracksByKind[kind] = [];
         intervalsByKind.set(
@@ -430,10 +445,7 @@ async function runDetectPass(
                     return displayCanvas;
                 };
                 const timeOrigin = await getInputTimeOrigin(input);
-                const [firstTimestamp, endTimestamp] = await Promise.all([
-                    vtrack.getFirstTimestamp(),
-                    vtrack.computeDuration(),
-                ]);
+                const firstTimestamp = await vtrack.getFirstTimestamp();
                 const expectedStartSec = seg.tripStart + Math.max(startLocal, firstTimestamp - timeOrigin);
                 const expectedEndSec = seg.tripStart + endLocal;
                 if (expectedEndSec <= expectedStartSec) continue;
@@ -463,16 +475,6 @@ async function runDetectPass(
                 let decodedStartSec = Number.POSITIVE_INFINITY;
                 let decodedEndSec = Number.NEGATIVE_INFINITY;
 
-                const frameTiming = (timestamp: number, duration: number) => {
-                    const contentSec = seg.tripStart + timestamp - timeOrigin;
-                    // Export holds the verified final video sample through an
-                    // audio tail. A partial decode never earns that extension.
-                    const isFinalSourceFrame = timestamp + duration >= endTimestamp - 1e-4;
-                    const endSec = isFinalSourceFrame
-                        ? expectedEndSec
-                        : Math.min(contentSec + duration, expectedEndSec);
-                    return { contentSec, durationSec: endSec - contentSec };
-                };
                 const isActive = (kind: DetectKind, timing: { contentSec: number; durationSec: number }) =>
                     intervalsByKind
                         .get(kind)!
@@ -555,141 +557,144 @@ async function runDetectPass(
                 const forwardStartedAt = performance.now();
                 // VideoSampleSink yields presentation order, including B-frame
                 // inputs; decode-order packet timestamps never enter tracking.
-                for await (const sample of measureDecode(
-                    sink.samples(startLocal + timeOrigin, endLocal + timeOrigin),
-                    timings,
+                // Look ahead by one borrowed sample. Only an underfilled final
+                // sample needs a last-packet query; ordinary trims avoid a full
+                // container duration scan, and EOF decode has warmed the index.
+                for await (const { sample, isLast } of withFinalSample(
+                    measureDecode(sink.samples(startLocal + timeOrigin, endLocal + timeOrigin), timings),
                 )) {
-                    try {
-                        signal.throwIfAborted();
-                        const timing = frameTiming(sample.timestamp, sample.duration);
-                        if (!(timing.durationSec > 0)) continue;
-                        // Retain only a size hint, not another native surface.
-                        // Reverse can decode its seed with the first block.
-                        reverseSampleBytesHint = Math.max(reverseSampleBytesHint, reverseSampleBytes(sample));
-                        const frameEndSec = timing.contentSec + timing.durationSec;
-                        const frame = createNativeTrackingFrame(sample, trackingFrames);
-                        let displayFrame: OffscreenCanvas | null = null;
-                        decodedFrames++;
-                        const frameIndex = frameTimings.length;
-                        const previous = frameTimings[frameIndex - 1];
-                        if (previous && timing.contentSec > previous.contentSec + previous.durationSec + 1e-6) {
-                            forwardWindowStartIndex = frameIndex;
-                        }
-                        frameTimings.push(timing);
-                        // Disjoint analysis windows can decode the same displayed
-                        // predecessor. Keep its longest verified support once;
-                        // never infer a duration from the next window's start.
-                        const cachedTiming = sourceFrames.get(timing.contentSec);
-                        if (!cachedTiming || timing.durationSec > cachedTiming.durationSec) {
-                            sourceFrames.set(timing.contentSec, timing);
-                        }
-                        decodedStartSec = Math.min(decodedStartSec, timing.contentSec);
-                        decodedEndSec = Math.max(decodedEndSec, frameEndSec);
-                        for (const kind of req.kinds) {
-                            if (!isActive(kind, timing)) continue;
-                            if (!samplers.get(kind)!(timing.contentSec, frameEndSec >= expectedEndSec - 1e-6)) continue;
-                            displayFrame ??= drawDisplaySample(sample);
-                            await infer(kind, displayFrame, timing);
-                        }
-                        const liveCount = propagationEntries.reduce(
-                            (count, { state, propagation }) =>
-                                timing.contentSec < state.bounds.endSec && frameEndSec > state.bounds.startSec
-                                    ? count + propagation.forwardTrackCount()
-                                    : count,
-                            0,
-                        );
-                        // Multiple native crops repeat YUV conversion and
-                        // resize the ROI workspace. Share display pixels
-                        // once when several objects need this frame.
-                        if (!displayFrame && liveCount > 1) displayFrame = drawDisplaySample(sample);
-                        // Discovery and forward tracking consume the same source
-                        // frame. Keep timing/anchors for the later reverse pass,
-                        // but never decode this whole window a second time.
-                        // Verify every source frame: 15 Hz interpolation can miss
-                        // a small fast target or a one-frame identity switch.
-                        for (const kind of req.kinds) {
-                            const seeds = observations.get(kind)!.get(timing.contentSec)?.seeds;
-                            for (const state of intervalsByKind.get(kind)!) {
-                                if (timing.contentSec >= state.bounds.endSec || frameEndSec <= state.bounds.startSec)
-                                    continue;
-                                let propagation = propagationByState.get(state);
-                                if (!propagation) {
-                                    if (!seeds?.some((seed) => canSeedDetection(seed.score, DETECTION_POLICIES[kind])))
-                                        continue;
-                                    const firstIndex = frameTimings.findIndex(
-                                        (frame) =>
-                                            frame.contentSec < state.bounds.endSec &&
-                                            frame.contentSec + frame.durationSec > state.bounds.startSec,
-                                    );
-                                    // No positive seed means no tracker session. Reuse
-                                    // the detector runtime; ViTTrack still uses its WASM EP.
-                                    trackerSession ??= await getTrackerSession(
-                                        "webgpu",
-                                        req.trackerModelUrl,
-                                        req.ortAssets,
-                                    );
-                                    signal.throwIfAborted();
-                                    propagation = new DetectionPropagation(trackerSession, {
-                                        margin: DETECT_MARGIN_PCT[kind],
-                                        ...DETECTION_POLICIES[kind],
-                                        frames: frameTimings,
-                                        bounds: {
-                                            startSec: frameTimings[firstIndex]!.contentSec,
-                                            endSec: Math.min(expectedEndSec, state.bounds.endSec),
-                                        },
-                                        stats: statsByKind[kind]!,
-                                        signal,
-                                    });
-                                    propagation.beginForwardWindow(Math.max(firstIndex, forwardWindowStartIndex));
-                                    propagationByState.set(state, propagation);
-                                    propagationEntries.push({ kind, state, propagation });
-                                }
-                                // Detector scan frames already have display
-                                // pixels; reuse them for crops and templates.
-                                await propagation.forward(displayFrame ?? frame, frameIndex, seeds, async (lost) => {
-                                    const plan = planDetectionRecovery(
-                                        lost,
-                                        frame.width,
-                                        frame.height,
-                                        tileCache.forFrame(frame.width, frame.height),
-                                    );
-                                    if (plan.tiles.length === 0) return [];
-                                    displayFrame ??= drawDisplaySample(sample);
-                                    const scan = await scanTiles(
-                                        kind,
-                                        displayFrame,
-                                        timing.contentSec,
-                                        plan.tiles,
-                                        true,
-                                    );
-                                    const previousPlan = recoveryPlans.get(scan);
-                                    const combinedPlan = previousPlan
-                                        ? { regions: [...previousPlan.regions, ...plan.regions], tiles: [] }
-                                        : plan;
-                                    recoveryPlans.set(scan, combinedPlan);
-                                    // Always merge original per-tile proposals. Feeding a
-                                    // previous envelope back into NMS would make grouping
-                                    // depend on which loss requested its tiles first.
-                                    const accepted = filterRecoveryDetections(
-                                        detectors.get(kind)!.merge(scan.boxes),
-                                        combinedPlan,
-                                        Math.max(
-                                            DETECTION_POLICIES[kind].seedScoreMin,
-                                            DETECTION_POLICIES[kind].strongScore,
-                                        ),
-                                        frame.width,
-                                        frame.height,
-                                    );
-                                    const observation = makeObservation(kind, displayFrame, timing, accepted);
-                                    observations.get(kind)!.set(timing.contentSec, observation);
-                                    return observation.seeds;
-                                });
-                            }
-                        }
-                        progress(frameEndSec, "forward");
-                    } finally {
-                        sample.close();
+                    signal.throwIfAborted();
+                    decodedFrames++;
+                    timings.forwardSamples++;
+                    const sourceTiming = await detectionSampleTiming(sample, isLast, endLocal + timeOrigin, () => {
+                        timings.sourceEndQueries++;
+                        return new EncodedPacketSink(vtrack).getPacket(Infinity, { metadataOnly: true });
+                    });
+                    const timing = {
+                        contentSec: seg.tripStart + sourceTiming.timestamp - timeOrigin,
+                        durationSec: sourceTiming.duration,
+                    };
+                    if (!(timing.durationSec > 0)) continue;
+                    // Retain only a size hint, not another native surface.
+                    // Reverse can decode its seed with the first block.
+                    reverseSampleBytesHint = Math.max(reverseSampleBytesHint, reverseSampleBytes(sample));
+                    const frameEndSec = timing.contentSec + timing.durationSec;
+                    const frame = createNativeTrackingFrame(sample, trackingFrames);
+                    let displayFrame: OffscreenCanvas | null = null;
+                    const frameIndex = frameTimings.length;
+                    const previous = frameTimings[frameIndex - 1];
+                    if (previous && timing.contentSec > previous.contentSec + previous.durationSec + 1e-6) {
+                        forwardWindowStartIndex = frameIndex;
                     }
+                    frameTimings.push(timing);
+                    // Disjoint analysis windows can decode the same displayed
+                    // predecessor. Keep its longest verified support once;
+                    // never infer a duration from the next window's start.
+                    const cachedTiming = sourceFrames.get(timing.contentSec);
+                    if (!cachedTiming || timing.durationSec > cachedTiming.durationSec) {
+                        sourceFrames.set(timing.contentSec, timing);
+                    }
+                    decodedStartSec = Math.min(decodedStartSec, timing.contentSec);
+                    decodedEndSec = Math.max(decodedEndSec, frameEndSec);
+                    for (const kind of req.kinds) {
+                        if (!isActive(kind, timing)) continue;
+                        if (!samplers.get(kind)!(timing.contentSec, frameEndSec >= expectedEndSec - 1e-6)) continue;
+                        displayFrame ??= drawDisplaySample(sample);
+                        await infer(kind, displayFrame, timing);
+                    }
+                    const liveCount = propagationEntries.reduce(
+                        (count, { state, propagation }) =>
+                            timing.contentSec < state.bounds.endSec && frameEndSec > state.bounds.startSec
+                                ? count + propagation.forwardTrackCount()
+                                : count,
+                        0,
+                    );
+                    // Multiple native crops repeat YUV conversion and
+                    // resize the ROI workspace. Share display pixels
+                    // once when several objects need this frame.
+                    const trackingFrame = () => {
+                        if (!displayFrame && liveCount > 1) displayFrame = drawDisplaySample(sample);
+                        return displayFrame ?? frame;
+                    };
+                    // Discovery and forward tracking consume the same source
+                    // frame. Keep timing/anchors for the later reverse pass,
+                    // but never decode this whole window a second time.
+                    // Retain every source frame's timing. Propagation uses
+                    // 15 Hz with explicit fast-motion/recovery safeguards.
+                    for (const kind of req.kinds) {
+                        const seeds = observations.get(kind)!.get(timing.contentSec)?.seeds;
+                        for (const state of intervalsByKind.get(kind)!) {
+                            if (timing.contentSec >= state.bounds.endSec || frameEndSec <= state.bounds.startSec)
+                                continue;
+                            let propagation = propagationByState.get(state);
+                            if (!propagation) {
+                                if (!seeds?.some((seed) => canSeedDetection(seed.score, DETECTION_POLICIES[kind])))
+                                    continue;
+                                const firstIndex = frameTimings.findIndex(
+                                    (frame) =>
+                                        frame.contentSec < state.bounds.endSec &&
+                                        frame.contentSec + frame.durationSec > state.bounds.startSec,
+                                );
+                                // No positive seed means no tracker session. Reuse
+                                // the detector runtime; ViTTrack still uses its WASM EP.
+                                trackerSession ??= await getTrackerSession(
+                                    "webgpu",
+                                    req.trackerModelUrl,
+                                    req.ortAssets,
+                                );
+                                signal.throwIfAborted();
+                                propagation = new DetectionPropagation(trackerSession, {
+                                    margin: DETECT_MARGIN_PCT[kind],
+                                    ...DETECTION_POLICIES[kind],
+                                    frames: frameTimings,
+                                    bounds: {
+                                        startSec: frameTimings[firstIndex]!.contentSec,
+                                        endSec: Math.min(expectedEndSec, state.bounds.endSec),
+                                    },
+                                    stats: statsByKind[kind]!,
+                                    signal,
+                                });
+                                propagation.beginForwardWindow(Math.max(firstIndex, forwardWindowStartIndex));
+                                propagationByState.set(state, propagation);
+                                propagationEntries.push({ kind, state, propagation });
+                            }
+                            // Detector scan frames already have display
+                            // pixels; reuse them for crops and templates.
+                            await propagation.forward(trackingFrame, frameIndex, seeds, async (lost) => {
+                                const plan = planDetectionRecovery(
+                                    lost,
+                                    frame.width,
+                                    frame.height,
+                                    tileCache.forFrame(frame.width, frame.height),
+                                );
+                                if (plan.tiles.length === 0) return [];
+                                displayFrame ??= drawDisplaySample(sample);
+                                const scan = await scanTiles(kind, displayFrame, timing.contentSec, plan.tiles, true);
+                                const previousPlan = recoveryPlans.get(scan);
+                                const combinedPlan = previousPlan
+                                    ? { regions: [...previousPlan.regions, ...plan.regions], tiles: [] }
+                                    : plan;
+                                recoveryPlans.set(scan, combinedPlan);
+                                // Always merge original per-tile proposals. Feeding a
+                                // previous envelope back into NMS would make grouping
+                                // depend on which loss requested its tiles first.
+                                const accepted = filterRecoveryDetections(
+                                    detectors.get(kind)!.merge(scan.boxes),
+                                    combinedPlan,
+                                    Math.max(
+                                        DETECTION_POLICIES[kind].seedScoreMin,
+                                        DETECTION_POLICIES[kind].strongScore,
+                                    ),
+                                    frame.width,
+                                    frame.height,
+                                );
+                                const observation = makeObservation(kind, displayFrame, timing, accepted);
+                                observations.get(kind)!.set(timing.contentSec, observation);
+                                return observation.seeds;
+                            });
+                        }
+                    }
+                    progress(frameEndSec, "forward");
                 }
                 timings.forwardMs += performance.now() - forwardStartedAt;
                 // An empty decode is not a successfully scanned interval; do
@@ -706,19 +711,36 @@ async function runDetectPass(
                 // Nearby groups share decoded frames within a bounded cohort.
                 const reverseGroups = new Map<
                     number,
-                    { startIndex: number; branchCount: number; propagations: DetectionPropagation[] }
+                    {
+                        startIndex: number;
+                        branchCount: number;
+                        recoveryWarmupFrames: number;
+                        hasHighMotion: boolean;
+                        propagations: DetectionPropagation[];
+                    }
                 >();
+                const requiredReverseIndices = new Set<number>();
+                for (const [index, timing] of frameTimings.entries()) {
+                    if (req.kinds.some((kind) => observations.get(kind)!.get(timing.contentSec)?.seeds.length)) {
+                        requiredReverseIndices.add(index);
+                    }
+                }
                 for (const { propagation } of propagationEntries) {
                     for (const job of propagation.backwardJobs()) {
+                        requiredReverseIndices.add(job.startIndex);
                         const group = reverseGroups.get(job.seedIndex);
                         if (group) {
                             group.startIndex = Math.min(group.startIndex, job.startIndex);
                             group.branchCount++;
+                            group.recoveryWarmupFrames = Math.max(group.recoveryWarmupFrames, job.recoveryWarmupFrames);
+                            group.hasHighMotion ||= job.hasHighMotion;
                             if (!group.propagations.includes(propagation)) group.propagations.push(propagation);
                         } else {
                             reverseGroups.set(job.seedIndex, {
                                 startIndex: job.startIndex,
                                 branchCount: 1,
+                                recoveryWarmupFrames: job.recoveryWarmupFrames,
+                                hasHighMotion: job.hasHighMotion,
                                 propagations: [propagation],
                             });
                         }
@@ -751,6 +773,10 @@ async function runDetectPass(
                         group.started = true;
                         if (!hasWork(group)) reverseDone += group.seedIndex - group.startIndex;
                     };
+                    // Retain pixels on each branch's inference grid, detector
+                    // anchors and safety exceptions. Still consume every source
+                    // timing so holds, gaps and identity boundaries stay exact.
+                    const decodeIndices = planReverseFrameIndices(frameTimings, cohort, [...requiredReverseIndices]);
                     let sampleBytesHint = reverseSampleBytesHint;
                     // Include the seed in the first bounded block. A separate
                     // getSample would decode the same GOP prefix an extra time.
@@ -763,23 +789,30 @@ async function runDetectPass(
                                 Math.floor(REVERSE_FRAME_BUDGET_BYTES / sampleBytesHint),
                             ),
                         );
-                        const iteratorEndIndex = endIndex;
+                        let iteratorEndPosition = decodeIndices.length;
+                        while (iteratorEndPosition > 0 && decodeIndices[iteratorEndPosition - 1]! >= endIndex) {
+                            iteratorEndPosition--;
+                        }
+                        let blockEndPosition = iteratorEndPosition;
                         // Each block decodes forwards and is consumed backwards.
                         // A single nonmonotonic iterator keeps its decoder alive;
                         // mediabunny flushes it at each backwards timestamp jump.
                         // Do not gate this generator on block consumption: the
                         // decoder needs the next timestamp to flush this block.
                         const timestamps = function* () {
-                            for (let blockEnd = iteratorEndIndex; blockEnd > startIndex; ) {
-                                const blockStart = Math.max(startIndex, blockEnd - capacity);
-                                for (let index = blockStart; index < blockEnd; index++) {
-                                    yield frameTimings[index]!.contentSec - seg.tripStart + timeOrigin + 1e-6;
+                            for (let blockEnd = iteratorEndPosition; blockEnd > 0; ) {
+                                const blockStart = Math.max(0, blockEnd - capacity);
+                                for (let position = blockStart; position < blockEnd; position++) {
+                                    yield frameTimings[decodeIndices[position]!]!.contentSec -
+                                        seg.tripStart +
+                                        timeOrigin +
+                                        1e-6;
                                 }
                                 blockEnd = blockStart;
                             }
                         };
-                        let blockStartIndex = Math.max(startIndex, endIndex - capacity);
-                        let index = blockStartIndex;
+                        let blockStartPosition = Math.max(0, blockEndPosition - capacity);
+                        let position = blockStartPosition;
                         const retained: Array<{ index: number; sample: VideoSample; bytes: number }> = [];
                         let retainedBytes = 0;
                         let stoppedEarly = false;
@@ -791,6 +824,7 @@ async function runDetectPass(
                                 timings,
                             )) {
                                 if (!sample) throw new Error("detect: backward frame is unavailable");
+                                const index = decodeIndices[position]!;
                                 let isRetained = false;
                                 try {
                                     signal.throwIfAborted();
@@ -819,15 +853,17 @@ async function runDetectPass(
                                         discarded.sample.close();
                                     }
                                     decodedFrames++;
-                                    index++;
+                                    timings.backwardSamples++;
+                                    position++;
                                 } finally {
                                     if (!isRetained) sample.close();
                                 }
-                                if (index < endIndex) continue;
+                                if (position < blockEndPosition) continue;
+                                timings.reverseBlocks++;
                                 const nextEndIndex = retained[0]!.index;
-                                for (let item = retained.length - 1; item >= 0; item--) {
+                                const samplesByIndex = new Map(retained.map(({ index, sample }) => [index, sample]));
+                                for (let index = endIndex - 1; index >= nextEndIndex; index--) {
                                     signal.throwIfAborted();
-                                    const { index, sample } = retained[item]!;
                                     // Older groups settle this frame first.
                                     // Their ready prefix can then safely stop
                                     // younger duplicates without waiting for
@@ -846,18 +882,26 @@ async function runDetectPass(
                                                   )),
                                         0,
                                     );
-                                    const frame =
-                                        liveCount > 1
-                                            ? drawDisplaySample(sample)
-                                            : createNativeTrackingFrame(sample, trackingFrames);
+                                    let frame: OffscreenCanvas | ReturnType<typeof createNativeTrackingFrame> | null =
+                                        null;
+                                    const trackingFrame = () => {
+                                        if (frame) return frame;
+                                        const sample = samplesByIndex.get(index);
+                                        if (!sample) throw new Error("detect: unplanned backward frame requested");
+                                        frame =
+                                            liveCount > 1
+                                                ? drawDisplaySample(sample)
+                                                : createNativeTrackingFrame(sample, trackingFrames);
+                                        return frame;
+                                    };
                                     for (const group of cohort) {
                                         if (group.seedIndex === index) {
-                                            startGroup(group, frame);
+                                            startGroup(group, trackingFrame());
                                         } else if (hasWork(group)) {
                                             for (const propagation of group.propagations) {
                                                 const kind = propagationKinds.get(propagation)!;
                                                 await propagation.backward(
-                                                    frame,
+                                                    trackingFrame,
                                                     index,
                                                     observations.get(kind)!.get(frameTimings[index]!.contentSec)?.seeds,
                                                     group.seedIndex,
@@ -880,14 +924,15 @@ async function runDetectPass(
                                     const nextSeed = cohort.filter((group) => !group.started).at(-1);
                                     endIndex = nextSeed ? Math.min(endIndex, nextSeed.seedIndex + 1) : startIndex;
                                 }
-                                if (nextEndIndex > blockStartIndex || endIndex !== nextEndIndex) {
+                                if (nextEndIndex > decodeIndices[blockStartPosition]! || endIndex !== nextEndIndex) {
                                     // Closing this iterator also releases its
                                     // lookahead queue before a size-change retry.
                                     stoppedEarly = true;
                                     break;
                                 }
-                                blockStartIndex = Math.max(startIndex, endIndex - capacity);
-                                index = blockStartIndex;
+                                blockEndPosition = blockStartPosition;
+                                blockStartPosition = Math.max(0, blockEndPosition - capacity);
+                                position = blockStartPosition;
                             }
                             if (!stoppedEarly && endIndex > startIndex) {
                                 throw new Error("detect: backward tracking decode ended early");
@@ -921,6 +966,10 @@ async function runDetectPass(
             forwardMs: Math.round(timings.forwardMs),
             backwardMs: Math.round(timings.backwardMs),
             decodeWaitMs: Math.round(timings.decodeWaitMs),
+            forwardSamples: timings.forwardSamples,
+            backwardSamples: timings.backwardSamples,
+            reverseBlocks: timings.reverseBlocks,
+            sourceEndQueries: timings.sourceEndQueries,
             drawMs: Math.round(timings.drawMs),
         },
     };
