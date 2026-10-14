@@ -750,7 +750,7 @@ export class DetectionPropagation {
             const earliestSeed = this.earliestSeedByAnchorFrame.get(frameIndex);
             branch.hasOlderAnchorOverlap ||= earliestSeed !== undefined && earliestSeed < groupSeedIndex;
             let duplicateEndIndex: number | null = null;
-            if (branch.hasOlderAnchorOverlap && candidate.observed) {
+            if (branch.hasOlderAnchorOverlap) {
                 // All branches here share a seed index. Older groups cannot
                 // change during this call, so build their readiness once.
                 older ??= this.trajectories

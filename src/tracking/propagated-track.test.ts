@@ -430,6 +430,42 @@ describe("duplicatePropagationPrefixEndIndex", () => {
         expect(duplicatePropagationPrefixEndIndex(current, [{ ...completed, observations }])).toBe(6);
     });
 
+    it("uses the settled overlap when reverse cadence phases leave a provisional leading hold", () => {
+        const current = { ...prefix(8, 20, 13), backwardKnownFromIndex: 9 };
+        const older = { ...prefix(8, 11, 10), backwardComplete: false, backwardKnownFromIndex: 8 };
+        expect(duplicatePropagationPrefixEndIndex(current, [older])).toBe(11);
+        const kept = [...current.observations.keys()].filter((index) => index > 11);
+        expect([...older.observations.keys(), ...kept]).toEqual(Array.from({ length: 13 }, (_, index) => index + 8));
+    });
+
+    it("never counts provisional holds or their anchors toward settled duplicate evidence", () => {
+        const older = { ...prefix(2, 6, 3), backwardComplete: false, backwardKnownFromIndex: 2 };
+        const current = { ...prefix(2, 10, 9), backwardKnownFromIndex: 5 };
+        expect(duplicatePropagationPrefixEndIndex(current, [older]), "only two current frames are settled").toBeNull();
+        expect(
+            duplicatePropagationPrefixEndIndex({ ...current, backwardKnownFromIndex: 4 }, [older]),
+            "the only detector anchor is outside the settled overlap",
+        ).toBeNull();
+        const anchored = { ...older, detectorAnchors: new Map([[4, older.observations.get(4)!]]) };
+        expect(duplicatePropagationPrefixEndIndex({ ...current, backwardKnownFromIndex: 4 }, [anchored])).toBe(6);
+    });
+
+    it("keeps a provisional leading hold unless the older settled prefix covers its geometry", () => {
+        const current = { ...prefix(8, 20, 13), backwardKnownFromIndex: 9 };
+        const older = { ...prefix(8, 11, 10), backwardComplete: false, backwardKnownFromIndex: 8 };
+        const shifted = new Map(current.observations);
+        shifted.set(8, rect(0.8));
+        expect(duplicatePropagationPrefixEndIndex({ ...current, observations: shifted }, [older])).toBeNull();
+        expect(
+            duplicatePropagationPrefixEndIndex(current, [{ ...older, backwardKnownFromIndex: 9 }]),
+            "an unsettled older hold cannot cover the provisional current frame",
+        ).toBeNull();
+        expect(
+            duplicatePropagationPrefixEndIndex(current, [{ ...older, observations: prefix(9, 11, 10).observations }]),
+            "cropping identity evidence cannot discard an uncovered leading frame",
+        ).toBeNull();
+    });
+
     it("waits for a competing older group even when a ready predecessor already qualifies", () => {
         const current = prefix(2, 10, 9);
         const ready = { ...prefix(0, 4, 2), backwardComplete: false, backwardKnownFromIndex: 2 };

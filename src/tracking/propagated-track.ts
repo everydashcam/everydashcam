@@ -190,14 +190,25 @@ export function propagationGapBridges(
 
 /** Find an already covered reverse prefix without joining identities or
  * transferring evidence. Every shared source frame must agree, including an
- * older detector anchor. Ambiguous predecessors and uncovered early frames
- * prevent trimming; the current seed and all following frames remain intact. */
+ * older detector anchor. Identity needs three settled current frames; a
+ * provisional leading hold can be removed only if the older settled geometry
+ * covers it too. Ambiguous predecessors and uncovered early frames prevent
+ * trimming; the current seed and all following frames remain intact. */
 export function duplicatePropagationPrefixEndIndex(
     current: PropagationPrefix,
     olderTrajectories: readonly PropagationPrefix[],
 ): number | null {
     const currentBounds = observationIndexBounds(current.observations);
     if (!currentBounds || !current.observations.has(current.seedIndex)) return null;
+    const currentKnownFromIndex = current.backwardKnownFromIndex ?? currentBounds.first;
+    if (
+        !Number.isSafeInteger(currentKnownFromIndex) ||
+        currentKnownFromIndex < 0 ||
+        currentKnownFromIndex > current.seedIndex
+    ) {
+        return null;
+    }
+    const settledStartIndex = Math.max(currentBounds.first, currentKnownFromIndex);
     // The overlap only reads indices at or after the current prefix's first
     // frame. Earlier future observations cannot change coverage, geometry,
     // detector anchors, or competing predecessors inside that settled suffix.
@@ -223,7 +234,7 @@ export function duplicatePropagationPrefixEndIndex(
             !olderBounds ||
             olderBounds.first > currentBounds.first ||
             olderBounds.last >= current.seedIndex ||
-            olderBounds.last - currentBounds.first + 1 < MIN_DUPLICATE_PREFIX_FRAMES
+            olderBounds.last - settledStartIndex + 1 < MIN_DUPLICATE_PREFIX_FRAMES
         ) {
             continue;
         }
@@ -244,6 +255,7 @@ export function duplicatePropagationPrefixEndIndex(
             }
             const anchor = older.detectorAnchors.get(index);
             if (
+                index >= settledStartIndex &&
                 anchor &&
                 validRect(anchor) &&
                 iou(currentRect, anchor) >= DUPLICATE_PREFIX_IOU &&

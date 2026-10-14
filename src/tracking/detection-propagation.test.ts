@@ -996,4 +996,39 @@ describe("DetectionPropagation", () => {
         expect(tracker.anchors).toEqual([]);
         expect(propagation.finish()[0]!.endSec).toBeCloseTo(FRAME_SEC);
     });
+
+    it("stops a duplicate reverse prefix when its settled predecessor has a different cadence phase", async () => {
+        const frames = Array.from({ length: 21 }, (_, index) => ({ contentSec: index / 30, durationSec: 1 / 30 }));
+        const youngerReverse = new ScriptedTracker();
+        const { propagation } = setup(
+            [new ScriptedTracker([rejected("geometry")]), new ScriptedTracker(), youngerReverse, new ScriptedTracker()],
+            frames.length,
+            frames,
+        );
+        propagation.beginForwardWindow(0);
+        for (let index = 0; index < frames.length; index++) {
+            await propagation.forward(FRAME, index, index === 10 || index === 13 ? [seed()] : undefined);
+        }
+        propagation.endForwardWindow();
+        propagation.startBackward(FRAME, 13);
+        await propagation.backward(FRAME, 12, undefined, 13);
+        await propagation.backward(FRAME, 11, undefined, 13);
+        propagation.startBackward(FRAME, 10);
+        await propagation.backward(FRAME, 10, [seed()], 13);
+        for (let index = 9; index >= 6; index--) {
+            await propagation.backward(FRAME, index, undefined, 10);
+            await propagation.backward(FRAME, index, undefined, 13);
+            if (index > 6) expect(propagation.hasBackwardWork(13), `younger reverse at frame ${index}`).toBe(true);
+        }
+        // The older prefix settles frame 6 while the younger one's settled
+        // suffix begins at 7. Requiring both to infer together misses the stop.
+        expect(propagation.hasBackwardWork(13)).toBe(false);
+        expect(propagation.hasBackwardWork(10)).toBe(true);
+        for (let index = 5; index >= 0; index--) await propagation.backward(FRAME, index, undefined, 10);
+        const tracks = propagation.finish();
+        expect(tracks).toHaveLength(2);
+        for (let index = 0; index < frames.length; index++) {
+            expect(masksAt(tracks, (index + 0.5) / 30), `coverage at source frame ${index}`).toHaveLength(1);
+        }
+    });
 });
