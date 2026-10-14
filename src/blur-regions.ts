@@ -5,7 +5,8 @@
 // Model: a region is active over an explicit content-axis span [startSec,
 // endSec] (the YouTube-style timeline bar); its geometry comes from keyframes.
 // Before the first keyframe the first rect holds, after the last the last rect
-// holds, between keyframes x/y/w/h interpolate linearly. Keyframes live on the
+// holds, between keyframes manual masks interpolate linearly. Detector masks
+// hold the observed rectangle and exclude the span's end. Keyframes live on the
 // FOOTAGE (content) axis - the same axis GPS overlays interpolate on - so
 // multi-file ranges and timelapse exports resolve them the same way.
 
@@ -50,6 +51,9 @@ export interface BlurRegion {
      *  target/decode loss). The tail may need review, so the panel keeps a
      *  warning until a successful re-track. */
     lastTrackLost: boolean;
+    /** Detector observations belong to the displayed source frame. Hold their
+     *  rectangles until the next frame; manual and Follow paths interpolate. */
+    interpolation?: "linear" | "hold";
     /** Sorted by contentSec, at least one entry. */
     keyframes: BlurKeyframe[];
 }
@@ -75,6 +79,12 @@ export function cloneBlurRegions(regions: readonly BlurRegion[]): BlurRegion[] {
 /** Two keyframes closer than this merge into one on upsert. Half a 60 fps frame
  *  step (16.7 ms) so frame-by-frame stepping still creates distinct keyframes. */
 const KEYFRAME_MERGE_EPS_SEC = 0.005;
+
+/** MSE remuxing quantizes source PTS to Mediabunny's default 57600 Hz clock;
+ *  browser frame callbacks then round to microseconds. Cover one muxer tick
+ *  (17.36 us) plus browser rounding so held masks select the displayed frame.
+ *  Manual interpolation and its boundaries stay exact. */
+export const DETECTOR_FRAME_TIME_EPS_SEC = 20e-6;
 
 /** Back-off applied when anchoring a zone START at the playhead. A paused
  *  player displays the frame whose timestamp is <= currentTime, so an
@@ -141,6 +151,10 @@ function lowerKeyframeIndex(keyframes: readonly BlurKeyframe[], sec: number): nu
 
 /** True when the region's blur should be drawn at `contentSec`. */
 export function regionActiveAt(region: BlurRegion, contentSec: number): boolean {
+    if (region.interpolation === "hold") {
+        const sec = contentSec + DETECTOR_FRAME_TIME_EPS_SEC;
+        return sec >= region.startSec && sec < region.endSec;
+    }
     return contentSec >= region.startSec && contentSec <= region.endSec;
 }
 
@@ -180,10 +194,11 @@ export function regionRectAt(region: BlurRegion, contentSec: number): CropRect |
     if (!regionActiveAt(region, contentSec)) return null;
     const kfs = region.keyframes;
     if (kfs.length === 0) return null;
-    const i = lowerKeyframeIndex(kfs, contentSec);
+    const i = lowerKeyframeIndex(kfs, contentSec + (region.interpolation === "hold" ? DETECTOR_FRAME_TIME_EPS_SEC : 0));
     if (i < 0) return { ...kfs[0]!.rect };
     if (i >= kfs.length - 1) return { ...kfs[kfs.length - 1]!.rect };
     const a = kfs[i]!;
+    if (region.interpolation === "hold") return { ...a.rect };
     const b = kfs[i + 1]!;
     const span = b.contentSec - a.contentSec;
     // Guard: two keyframes closer than the merge epsilon should not exist, but

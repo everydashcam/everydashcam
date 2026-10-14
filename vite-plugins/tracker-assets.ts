@@ -33,7 +33,7 @@ import type { OrtAssets, WasmPart } from "../src/tracking/ort-assets.js";
 const ORT_DIST = resolve("node_modules/onnxruntime-web/dist");
 const ORT_PKG = resolve("node_modules/onnxruntime-web/package.json");
 
-// Plain pair: the wasm EP (vittrack + no-WebGPU detection). Asyncify pair: what
+// Plain pair: the WASM EP used by Follow. Asyncify pair: what
 // ort's WebGPU EP actually loads (the detection pass on WebGPU machines) - NOT
 // the jsep build, which this ort release keeps for other backends.
 const ORT_RUNTIMES = {
@@ -93,8 +93,8 @@ function prepareOrtAssets(ortDir: string): { ort: TrackerAssetsApp["ort"]; emit:
 // copy is silent-wrong-output rather than a crash - hence the content hash.
 const MODELS = [
     { key: "tracker", rel: "models/vittrack/object_tracking_vittrack_2023sep.onnx" },
-    { key: "plate", rel: "models/plate/yolo-v9-s-608-license-plates-end2end-fp16.onnx" },
-    { key: "face", rel: "models/face/yolov9s-face-960-fp16.onnx" },
+    { key: "plate", rel: "models/plate/yolo26n-plate-640-fp16.onnx" },
+    { key: "face", rel: "models/face/yolo26n-face-640-fp16.onnx" },
 ] as const;
 
 const MIME: Record<string, string> = {

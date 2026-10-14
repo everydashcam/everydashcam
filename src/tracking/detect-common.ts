@@ -27,10 +27,11 @@ const TILE_NATIVE_SPAN_PX = 1280;
  *  on a seam is fully inside at least one tile. */
 export const TILE_OVERLAP_FRAC = 0.1;
 
-/** Tiles per axis for a frame this wide. */
-export function tileGridSize(frameW: number): number {
-    if (!(frameW > 0)) return 1;
-    return Math.max(1, Math.ceil(frameW / TILE_NATIVE_SPAN_PX));
+/** Tiles per axis, preserving native detail in either frame orientation. */
+export function tileGridSize(frameW: number, frameH: number): number {
+    const span = Math.max(frameW, frameH);
+    if (!(span > 0) || !Number.isFinite(span)) return 1;
+    return Math.max(1, Math.ceil(span / TILE_NATIVE_SPAN_PX));
 }
 
 export interface TileRect {
@@ -42,7 +43,7 @@ export interface TileRect {
 
 /** Overlapping n x n tile rects covering the frame (n = tileGridSize). */
 export function tileRects(frameW: number, frameH: number): TileRect[] {
-    const n = tileGridSize(frameW);
+    const n = tileGridSize(frameW, frameH);
     const tw = frameW / n;
     const th = frameH / n;
     const ox = Math.round(tw * TILE_OVERLAP_FRAC);
@@ -128,14 +129,47 @@ export function iouOf(a: RawDetection, b: RawDetection): number {
     return union > 0 ? inter / union : 0;
 }
 
-/** Greedy highest-score-first suppression: drops any box overlapping an
- *  already-kept one above `iouThreshold`. Handles both cross-tile duplicates
- *  (same object seen in two overlapping tiles) and in-model NMS leftovers. */
+/** Preserve full score precision. Exact ties use geometry so processing tiles
+ * in different batches cannot choose a different duplicate representative. */
+function compareDetections(a: RawDetection, b: RawDetection): number {
+    return b.score - a.score || a.x - b.x || a.y - b.y || a.w - b.w || a.h - b.h;
+}
+
+/** Conventional highest-score-first NMS within one tile. Raw model proposals
+ * describe competing localizations of the same object, so lower-score
+ * duplicates must not enlarge the box used to seed a tracker. */
+export function suppressTileOverlaps(detections: readonly RawDetection[], iouThreshold: number): RawDetection[] {
+    const sorted = [...detections].sort(compareDetections);
+    const kept: RawDetection[] = [];
+    for (const detection of sorted) {
+        if (kept.some((other) => iouOf(other, detection) > iouThreshold)) continue;
+        kept.push({ ...detection });
+    }
+    return kept;
+}
+
+/** Greedy cross-tile duplicate grouping. Preserve the full detected
+ *  extent: a high-score box cropped at a tile seam must not hide the rest of a
+ *  lower-score box. Match only against original representatives, so growing an
+ *  envelope does not transitively absorb neighboring objects. */
 export function suppressOverlaps(detections: readonly RawDetection[], iouThreshold: number): RawDetection[] {
-    const sorted = [...detections].sort((a, b) => b.score - a.score);
+    const sorted = [...detections].sort(compareDetections);
+    const representatives: RawDetection[] = [];
     const kept: RawDetection[] = [];
     for (const d of sorted) {
-        if (!kept.some((k) => iouOf(k, d) > iouThreshold)) kept.push(d);
+        const duplicate = representatives.findIndex((k) => iouOf(k, d) > iouThreshold);
+        if (duplicate < 0) {
+            representatives.push(d);
+            kept.push({ ...d });
+            continue;
+        }
+        const envelope = kept[duplicate]!;
+        const right = Math.max(envelope.x + envelope.w, d.x + d.w);
+        const bottom = Math.max(envelope.y + envelope.h, d.y + d.h);
+        envelope.x = Math.min(envelope.x, d.x);
+        envelope.y = Math.min(envelope.y, d.y);
+        envelope.w = right - envelope.x;
+        envelope.h = bottom - envelope.y;
     }
     return kept;
 }

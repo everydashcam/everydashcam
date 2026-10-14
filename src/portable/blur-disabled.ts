@@ -3,6 +3,7 @@
 import type * as Assets from "../ui/blur-assets.js";
 import type * as Detect from "../ui/blur-detect.js";
 import type * as Track from "../ui/blur-track.js";
+import { DETECTION_QUALITY_DEFAULT } from "../tracking/detection-sampling.js";
 
 function unavailable(): never {
     throw new Error("automatic blur is unavailable in the portable edition");
@@ -19,6 +20,7 @@ export const trackPassOf: typeof Track.trackPassOf = () => null;
 export const toggleTrackPass: typeof Track.toggleTrackPass = unavailable;
 export const detectAvailable: typeof Detect.detectAvailable = () => false;
 export const detectEnabled: typeof Detect.detectEnabled = () => false;
+export const detectQuality: typeof Detect.detectQuality = () => DETECTION_QUALITY_DEFAULT;
 export const anyDetectEnabled: typeof Detect.anyDetectEnabled = () => false;
 export const detectPassState: typeof Detect.detectPassState = () => null;
 export const detectCounts: typeof Detect.detectCounts = () => null;
@@ -29,6 +31,7 @@ export const captureDetectExportRequest: typeof Detect.captureDetectExportReques
 export const ensureDetectPass: typeof Detect.ensureDetectPass = unavailable;
 export const ensureDetectRegionsForExport: typeof Detect.ensureDetectRegionsForExport = unavailable;
 export const setDetectEnabled: typeof Detect.setDetectEnabled = unavailable;
+export const setDetectQuality: typeof Detect.setDetectQuality = unavailable;
 export const setDetectStyle: typeof Detect.setDetectStyle = unavailable;
 export const detectAssetGroups: typeof Detect.detectAssetGroups = () => [];
 export const blurAssetsBlockedOffline: typeof Assets.blurAssetsBlockedOffline = () => false;

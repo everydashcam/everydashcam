@@ -3,17 +3,12 @@
 // - "wasm": the plain single-thread WASM EP - works everywhere, the floor of
 //   performance (multithread needs crossOriginIsolated, which would break the
 //   external map-tile fetches - same trade as vittrack.ts).
-// - "webgpu": ort's WebGPU EP (the asyncify wasm build). Measured ~7x faster
-//   per detector inference on an integrated GPU (20 ms vs 139 ms for the 512
-//   plate model, identical boxes; private/research/
-//   plate-detector-spike/spike-webgpu.js). In-graph NMS falls back to CPU
-//   per-node - expected, harmless.
+// - "webgpu": ort's WebGPU EP (the asyncify wasm build), used by the plate
+//   and face detectors to keep automatic detection within the pass budget.
 //
 // The two entries are separate module instances with separate env config; the
-// dead one is never fetched (dynamic import). vittrack loads through here too
-// (VitTrackerSession.create takes an OrtRuntime): the Follow pass on "wasm", the
-// detection pass on "webgpu" so the tracker reuses the detectors' asyncify
-// runtime instead of pulling the plain wasm build a second time.
+// unused one is never fetched (dynamic import). Follow uses "wasm" for
+// ViTTrack; automatic detection uses "webgpu" for its requested detectors.
 //
 // Runs in a worker. No logging - loaded from per-pass hot paths.
 

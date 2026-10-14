@@ -7,7 +7,9 @@
 // ready for replaceGeneratedKeyframes.
 
 import type { OrtAssets } from "../tracking/ort-assets.js";
+import type { DetectionQuality } from "../tracking/detection-sampling.js";
 import type { TimeInterval } from "../tracking/interval-set.js";
+import type { SourceFrameTiming } from "../tracking/propagated-track.js";
 import type { CropRect } from "../transcode/compose.js";
 
 /** One decode window within one source file, positioned on the content axis. */
@@ -68,27 +70,26 @@ export const TRACK_NOTIFY_PROGRESS = "track-progress";
 
 export type DetectKind = "plate" | "face";
 
-/** One channel's detection pass over the export range. Kinds share the decode:
- *  one native-resolution sweep, each requested detector runs per analyzed
- *  frame. Segments cover [startContentSec, endContentSec] for ONE channel -
- *  the client fires a request per exported channel. */
+/** One channel's detection pass over a requested range. Kinds share detector
+ *  discovery; ViTTrack follows detected objects backward and forward between scans.
+ *  Segments cover [startContentSec, endContentSec] for ONE channel -
+ *  the UI client requests each source ownership window separately for caching. */
 export interface DetectRequestData {
     segments: TrackSegment[];
     startContentSec: number;
     endContentSec: number;
     kinds: DetectKind[];
-    /** Per kind: the sub-ranges of [startContentSec, endContentSec] that need
-     *  decode + inference; the caller's track cache covers the rest. A shrunk
-     *  range sends empty lists - the pass returns nothing new and the client
-     *  serves cached tracks. */
+    /** Discovery cadence; tracking fills the intervals between detector scans. */
+    quality: DetectionQuality;
+    /** Per kind: complete ranges requiring analysis. The client sends the full
+     *  requested range on a cache miss, or [] when an enclosing pass is cached. */
     analyzeIntervalsByKind: Partial<Record<DetectKind, TimeInterval[]>>;
-    /** Same-origin model URLs, resolved on the main thread (blur-assets.ts owns
-     *  them). Plate/face present for every requested kind; trackerModelUrl is the
-     *  vittrack model the pass follows each detected object with between scans. */
+    /** Same-origin detector model URLs, resolved on the main thread. */
     plateModelUrl: string;
     faceModelUrl: string;
+    /** Same-origin ViTTrack model for following detector seeds. */
     trackerModelUrl: string;
-    /** Same-origin module and verified WASM parts for this runtime. */
+    /** Shared runtime for detector WebGPU sessions and ViTTrack's WASM session. */
     ortAssets: OrtAssets;
 }
 
@@ -97,10 +98,10 @@ export interface DetectProgressData {
     fractionDone: number;
 }
 
-/** One confirmed object track (see tracking/detect-track.ts). Rects are
- *  normalized source coords, already padded for coverage - ready to become an
- *  auto blur region's keyframes. detHits/bestScore are confirmation evidence
- *  for the forensic track dump (threshold field reports). */
+/** Detector and trusted tracker positions in normalized, coverage-padded source
+ *  coordinates. Interpolated positions are expanded to actual source frames;
+ *  keyframes use hold interpolation for the duration of each source frame.
+ *  detHits/bestScore retain the detector evidence for diagnostics. */
 export interface DetectResultTrack {
     detHits: number;
     bestScore: number;
@@ -111,27 +112,48 @@ export interface DetectResultTrack {
 
 /** Pass effort counters, per kind. The client logs them once per pass - the
  *  arbiter for "the pass feels slow" field reports: which kind ate the time
- *  (discovery scans vs the per-object tracker), versus the decode share. */
+ *  (detector inference versus object tracking and decoding). */
 export interface DetectPassStats {
-    /** Discovery-scan frames this kind's detector ran on (full tile grid). */
+    /** Source frames this kind's detector ran on (full tile grid). */
     scans: number;
     /** Tile inferences across those scans. */
     tiles: number;
+    /** Subset of scans/tiles used to verify an actual sparse tracker loss. */
+    recoveryScans?: number;
+    recoveryTiles?: number;
     /** Wall ms inside the detector. */
     inferMs: number;
-    /** Tracker update calls across this kind's tracked objects. */
+    /** Tracker update calls across this kind's objects, in both directions. */
     trackUpdates: number;
-    /** Wall ms inside the tracker. */
+    /** Subset of tracker update calls made backward from detector seeds. */
+    backwardUpdates: number;
+    /** Wall ms inside the tracker, in both directions. */
     trackMs: number;
 }
 
 export interface DetectResult {
     tracksByKind: Partial<Record<DetectKind, DetectResultTrack[]>>;
     statsByKind: Partial<Record<DetectKind, DetectPassStats>>;
-    /** Frames decoded over the pass (the kinds share the decode). */
+    /** Sorted unique displayed source frames on the content axis, shared by
+     * both detector kinds. Durations include a verified held final-video tail.
+     * Geometry keyframes can be compressed, so cached trims need these exact
+     * intervals to retain only the source frame displayed at the new start. */
+    sourceFrames: SourceFrameTiming[];
+    /** Decoded samples delivered to the pass, including repeated visits.
+     * Internal decoder preroll/prefetch frames are not counted. */
     decodedFrames: number;
     /** Whole-pass wall ms, decode included. */
     passMs: number;
+    /** Shared pipeline timings. Phase totals include detector/tracker time;
+     * decode waits exclude work already completed by decoder prefetch. */
+    timings?: {
+        forwardMs: number;
+        backwardMs: number;
+        decodeWaitMs: number;
+        /** Shared display-canvas draw calls, excluding later GPU readback.
+         * Per-object crop preparation is included in each kind's trackMs. */
+        drawMs: number;
+    };
 }
 
 export const DETECT_REQUEST = "detect";

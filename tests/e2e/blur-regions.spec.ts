@@ -636,6 +636,50 @@ test.describe("blur regions", () => {
         });
     }
 
+    test("detector detail is selectable before scanning and a change reanalyzes the range", async ({ page }) => {
+        test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - detection is WebGPU-only");
+        test.setTimeout(180_000);
+        await page.evaluate(() => {
+            const original = Worker.prototype.postMessage;
+            const qualities: string[] = [];
+            Worker.prototype.postMessage = function (
+                message: unknown,
+                options?: Transferable[] | StructuredSerializeOptions,
+            ) {
+                const request = message as { __k?: string; type?: string; data?: { quality?: string } };
+                if (request?.__k === "req" && request.type === "detect" && request.data?.quality) {
+                    qualities.push(request.data.quality);
+                    document.documentElement.dataset.detectQualityRequests = JSON.stringify(qualities);
+                }
+                original.call(this, message, Array.isArray(options) ? { transfer: options } : options);
+            };
+        });
+        const quality = page.getByRole("slider", { name: "Detection detail" });
+        await expect(quality).toBeEnabled();
+        await expect(quality).toHaveValue("1");
+        await expect(quality).toHaveAttribute("aria-valuetext", "Balanced");
+        await quality.focus();
+        await page.keyboard.press("Home");
+        await expect(quality).toHaveValue("0");
+        await expect(quality).toHaveAttribute("aria-valuetext", "Fast");
+        await page.locator("#export-panel-blur-plates").check();
+        const strip = page.locator(".export-panel__blur-detect-strip");
+        await strip.getByRole("button", { name: "Download & scan" }).click();
+        const status = page.locator(".export-panel__blur-detect-status");
+        await expect(status).toHaveText("Plates: 0", { timeout: 120_000 });
+        // Both source files are analyzed independently at the chosen quality.
+        await expect(page.locator("html")).toHaveAttribute("data-detect-quality-requests", '["fast","fast"]');
+
+        await quality.focus();
+        await page.keyboard.press("ArrowRight");
+        await expect(quality).toHaveAttribute("aria-valuetext", "Balanced");
+        await expect(page.locator("html")).toHaveAttribute(
+            "data-detect-quality-requests",
+            '["fast","fast","balanced","balanced"]',
+        );
+        await expect(status).toHaveText("Plates: 0", { timeout: 120_000 });
+    });
+
     test("detect consent 'Not now' unchecks the box and hides the strip", async ({ page }) => {
         // Same WebGPU gate as the scan test: a disabled checkbox makes .check() hang.
         test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - plate detection is WebGPU-only");
@@ -663,6 +707,7 @@ test.describe("blur regions", () => {
         await openExport(page);
         await expect(page.locator("#export-panel-blur-faces")).toBeDisabled();
         await expect(page.locator("#export-panel-blur-plates")).toBeDisabled();
+        await expect(page.getByRole("slider", { name: "Detection detail" })).toBeDisabled();
         await expect(page.getByText("Automatic plate and face finding isn't available in this browser")).toBeVisible();
         // The degradation is detect-only - manual zones with Follow stay
         // available (vittrack runs on wasm).

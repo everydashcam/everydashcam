@@ -1642,6 +1642,43 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
     }
 }
 
+.export-panel__detect-quality {
+    display: grid;
+    gap: var(--dc-space-1);
+    margin-block: var(--dc-space-2);
+}
+
+.export-panel__detect-quality > label {
+    font-size: var(--dc-text-sm);
+    color: var(--fg);
+}
+
+.export-panel__detect-quality > input {
+    width: 100%;
+    min-height: 28px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.export-panel__detect-quality-stops {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--dc-space-2);
+    color: var(--fg-dim);
+    font-size: var(--dc-text-sm);
+}
+
+.export-panel__detect-quality-stops > .is-active {
+    color: var(--fg);
+    font-weight: 600;
+}
+
+@media (pointer: coarse) {
+    .export-panel__detect-quality > input {
+        min-height: var(--dc-iconbtn-touch);
+    }
+}
+
 /* One-time model-download strips (Follow's + the detect checkboxes') and the
    detect status row: consent / progress / offline / error / found-counts. */
 .export-panel__blur-tracker,

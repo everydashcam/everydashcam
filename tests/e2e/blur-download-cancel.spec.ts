@@ -6,6 +6,16 @@ const assets = computeTrackerAssets("build");
 const wasm = assets.app.ort.webgpu.wasm;
 const runtimeUrl = "parts" in wasm ? wasm.parts[0]!.url : wasm.url;
 const faceUrl = assets.app.models.face;
+const sharedDetectionUrls = [
+    ...("parts" in wasm ? wasm.parts.map((part) => part.url) : [wasm.url]),
+    assets.app.ort.webgpu.moduleUrl,
+    assets.app.models.tracker,
+];
+const plainWasm = assets.app.ort.wasm.wasm;
+const plainRuntimeUrls = [
+    ...("parts" in plainWasm ? plainWasm.parts.map((part) => part.url) : [plainWasm.url]),
+    assets.app.ort.wasm.moduleUrl,
+];
 
 test.use({ serviceWorkers: "block" });
 
@@ -133,6 +143,18 @@ test("a second checkbox warms its model after the first download and remains can
     await expect
         .poll(() => page.evaluate(() => JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]")))
         .toContain(faceUrl);
+    const warmed: string[] = await page.evaluate(() =>
+        JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]"),
+    );
+    expect(warmed).toContain(assets.app.models.plate);
+    expect(warmed, "automatic detection warms its shared runtime and ViTTrack before inference").toEqual(
+        expect.arrayContaining(sharedDetectionUrls),
+    );
+    expect(
+        warmed.filter((url) => plainRuntimeUrls.includes(url)),
+        "Follow runtime remains lazy",
+    ).toEqual([]);
+    expect(new Set(warmed).size, "both checkboxes share the tracker and runtime downloads").toBe(warmed.length);
     await expect(strip.getByRole("progressbar")).toBeVisible();
     await page.clock.fastForward(2000);
     expect(trackerWorkers, "the first checkbox cannot start a pass before the second model is ready").toEqual([]);
@@ -140,6 +162,38 @@ test("a second checkbox warms its model after the first download and remains can
     await expect(page.locator("html")).toHaveAttribute("data-blur-warm-aborted", JSON.stringify([faceUrl]));
     await expect(strip).toBeHidden();
     expect(trackerWorkers).toEqual([]);
+});
+
+test("Cancel stops the automatic tracker download through the detection strip", async ({ page }) => {
+    const trackerWorkers: string[] = [];
+    page.on("worker", (worker) => {
+        if (worker.url().includes("tracker-worker-")) trackerWorkers.push(worker.url());
+    });
+    await openDetection(page, { gatedRuntimeUrl: assets.app.models.tracker });
+    await page.locator("#export-panel-blur-plates").check();
+    const strip = page.locator(".export-panel__blur-detect-strip");
+    await expect
+        .poll(() => page.evaluate(() => JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]")))
+        .toContain(assets.app.models.tracker);
+    const warmed: string[] = await page.evaluate(() =>
+        JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]"),
+    );
+    expect(warmed).toEqual(expect.arrayContaining(sharedDetectionUrls));
+    expect(
+        warmed.filter((url) => plainRuntimeUrls.includes(url)),
+        "Follow runtime remains lazy",
+    ).toEqual([]);
+    await expect(strip.getByRole("progressbar")).toBeVisible();
+    await expect(page.locator(".export-panel__blur-tracker")).toBeHidden();
+    await strip.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+        "data-blur-warm-aborted",
+        JSON.stringify([assets.app.models.tracker]),
+    );
+    await expect(strip).toBeHidden();
+    await page.clock.fastForward(2000);
+    await expect(page.locator("html")).toHaveAttribute("data-blur-warm-requests", JSON.stringify(warmed));
+    expect(trackerWorkers, "cancelling a tracker dependency cannot start automatic inference").toEqual([]);
 });
 
 test("cached detection warms after delayed discovery without remembered download history", async ({ page }) => {

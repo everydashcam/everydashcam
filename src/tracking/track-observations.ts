@@ -1,8 +1,8 @@
 import type { CropRect } from "../transcode/compose.js";
 import { appendTrackKeyframe, type TrackKeyframe } from "./detect-track.js";
 
-/** Holds become keyframes only on recovery, so an unresolved loss does not
- *  extend the track's last confirmed timestamp or its final forward hold. */
+/** Follow holds become keyframes only on recovery, so an unresolved loss does
+ *  not advance the last reliable observation reported to the user. */
 export interface PendingTrackHold {
     previousSec: number | null;
     latestSec: number | null;
@@ -20,8 +20,8 @@ export function appendTrackObservation(
     contentSec: number,
     rect: CropRect,
 ): void {
-    // A detector can recover on the same frame the tracker rejected. Preserve
-    // the preceding hold; a hold at this timestamp would be overwritten below.
+    // Preserve the preceding hold if a replacement observation shares a
+    // rejected timestamp; a hold at this timestamp would be overwritten below.
     const holdSec =
         pending.latestSec !== null && pending.latestSec < contentSec ? pending.latestSec : pending.previousSec;
     const last = keyframes[keyframes.length - 1];

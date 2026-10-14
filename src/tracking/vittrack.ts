@@ -4,10 +4,9 @@
 // The ORT session is stateless (template is passed on every run - see the
 // contract note below), so ONE VitTrackerSession can drive MANY VitTrack
 // instances, each carrying its own template/last-box/size-cap. Their updates are
-// serialized because the session owns one reusable search workspace. The
-// detection pass tracks several plates/faces off a single loaded model; the
-// Follow pass uses one track. Split accordingly: the session owns the model and
-// search workspace, while a VitTrack owns per-object state.
+// serialized because the session owns one reusable search workspace. Follow
+// creates a fresh track for each user-selected target without reloading the
+// model. Sparse face/plate passes also use these tracks between detector anchors.
 //
 // Pre/post-processing is a TypeScript port of OpenCV's
 // modules/video/src/tracking/tracker_vit.cpp (Apache-2.0); the model is
@@ -39,6 +38,10 @@ import { createOrtSession, type OrtModule, type OrtRuntime } from "./ort-runtime
 import type { TrackBox } from "./track-guards.js";
 import { TrackGeometry } from "./track-state.js";
 import { packBgrPlanarStandardized } from "./vittrack-pixels.js";
+import { captureTexture, TRACK_TEXTURE_SIZE, TrackTextureReference } from "./track-texture.js";
+import { TrackAppearanceReference } from "./track-appearance.js";
+import { TrackEdgeConsistency } from "./track-edge-consistency.js";
+import { drawTrackingFrame, type TrackingFrame } from "./tracking-frame.js";
 
 /** ort's Tensor instance type - both builds expose the same class. */
 type OrtTensor = InstanceType<OrtModule["Tensor"]>;
@@ -80,7 +83,7 @@ interface CropResult {
  *  the box center, black-padded where it leaves the frame. C++ integer
  *  division truncates toward zero - Math.trunc, not floor. */
 function cropImage(
-    frame: CanvasImageSource,
+    frame: TrackingFrame,
     frameW: number,
     frameH: number,
     box: TrackBox,
@@ -106,7 +109,7 @@ function cropImage(
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, crop.width, crop.height);
     if (roiW > 0 && roiH > 0) {
-        ctx.drawImage(frame, x1 + x1pad, y1 + y1pad, roiW, roiH, x1pad, y1pad, roiW, roiH);
+        drawTrackingFrame(ctx, frame, x1 + x1pad, y1 + y1pad, roiW, roiH, x1pad, y1pad, roiW, roiH);
     }
     return { crop, cropSz, x0: x1, y0: y1 };
 }
@@ -156,7 +159,7 @@ class VitTrackerRuntime {
     }
 
     /** Borrowed until the next crop; preprocessing consumes it before inference yields. */
-    crop(frame: CanvasImageSource, frameW: number, frameH: number, box: TrackBox, factor: number): CropResult {
+    crop(frame: TrackingFrame, frameW: number, frameH: number, box: TrackBox, factor: number): CropResult {
         return cropImage(frame, frameW, frameH, box, factor, this.cropCanvas);
     }
 
@@ -185,13 +188,8 @@ class VitTrackerRuntime {
 export class VitTrackerSession {
     private constructor(private readonly runtime: VitTrackerRuntime) {}
 
-    /** Loads the model on the given ORT build and prepares a wasm-EP session.
-     *  `ortRuntime` only selects WHICH build to piggyback on - the tracker always
-     *  runs the wasm EP (validated there). The Follow pass loads the plain "wasm"
-     *  build; the detection pass passes "webgpu" so the tracker reuses the
-     *  asyncify runtime the detectors already loaded, sparing a second ~13 MB wasm
-     *  download (the wasm-EP kernels are identical between the two builds). Thread
-     *  count + wasmPaths are set by createOrtSession (single thread - see ort-runtime.ts). */
+    /** Loads a WASM execution session. Follow uses the plain runtime build;
+     *  thread count and asset paths belong to createOrtSession. */
     static async create(ortRuntime: OrtRuntime, modelUrl: string, assets: OrtAssets): Promise<VitTrackerSession> {
         const { ort, session } = await createOrtSession(ortRuntime, assets, modelUrl, { executionProviders: ["wasm"] });
         return new VitTrackerSession(new VitTrackerRuntime(ort, session));
@@ -203,15 +201,25 @@ export class VitTrackerSession {
     }
 }
 
-/** One tracked object: template + last box + size cap. Cheap to allocate, so the
- *  detection pass makes one per plate/face and the Follow pass makes one. */
+/** One Follow target: template, last box, and size cap. */
 export class VitTrack {
     private readonly templateWorkspace: PreprocessWorkspace;
     private geometry: TrackGeometry | null = null;
+    private readonly textureReference = new TrackTextureReference();
+    private readonly appearanceReference = new TrackAppearanceReference();
+    private readonly edgeConsistency = new TrackEdgeConsistency();
+    private elapsedSec = 0;
+    private uncertain = false;
+    private readonly textureCtx: OffscreenCanvasRenderingContext2D;
     constructor(private readonly runtime: VitTrackerRuntime) {
         // Templates differ per tracked object and persist across updates; search
         // storage is larger but transient, so it lives once on the runtime.
         this.templateWorkspace = runtime.createTemplateWorkspace();
+        const textureCtx = new OffscreenCanvas(TRACK_TEXTURE_SIZE, TRACK_TEXTURE_SIZE).getContext("2d", {
+            alpha: false,
+        });
+        if (!textureCtx) throw new Error("vittrack: texture canvas ctx unavailable");
+        this.textureCtx = textureCtx;
     }
 
     /** Current box (last confident position). */
@@ -222,19 +230,40 @@ export class VitTrack {
 
     /** Seeds a new object. Continuing detector hits use reanchor so they cannot
      *  renew the original object's total growth budget. */
-    init(frame: CanvasImageSource, frameW: number, frameH: number, box: TrackBox): void {
+    init(frame: TrackingFrame, frameW: number, frameH: number, box: TrackBox): void {
         const { crop } = this.runtime.crop(frame, frameW, frameH, box, 2);
         preprocessInto(crop, this.templateWorkspace);
         this.geometry = new TrackGeometry(box, frameW, frameH);
+        const sample = captureTexture(this.textureCtx, frame, frameW, frameH, box);
+        this.textureReference.setSeed(sample);
+        this.appearanceReference.setSeed(sample?.appearance ?? null);
+        this.edgeConsistency.reset();
+        this.elapsedSec = 0;
+        this.uncertain = false;
     }
 
     /** Refreshes a matched object's template while preserving its original
      *  size cap and settled guards. False leaves the existing template intact. */
-    reanchor(frame: CanvasImageSource, frameW: number, frameH: number, box: TrackBox): boolean {
+    reanchor(
+        frame: TrackingFrame,
+        frameW: number,
+        frameH: number,
+        box: TrackBox,
+        requireAppearanceConfirmation = false,
+    ): boolean {
         if (!this.geometry) throw new Error("vittrack: reanchor before init");
+        const sample = captureTexture(this.textureCtx, frame, frameW, frameH, box);
+        // A weak class hit is maintenance evidence, not permission to replace
+        // the object's identity. Confirm it against the frozen reference first.
+        if (requireAppearanceConfirmation && !this.appearanceReference.confirms(sample?.appearance ?? null))
+            return false;
         if (!this.geometry.reanchor(box, frameW, frameH)) return false;
         const { crop } = this.runtime.crop(frame, frameW, frameH, box, 2);
         preprocessInto(crop, this.templateWorkspace);
+        this.textureReference.setSeed(sample);
+        this.appearanceReference.setSeed(sample?.appearance ?? null);
+        this.edgeConsistency.reset();
+        this.uncertain = false;
         return true;
     }
 
@@ -244,14 +273,29 @@ export class VitTrack {
      *  Low-score and rejected predictions hold the last normalized position;
      *  resolution changes rebase the search geometry without replacing the template. */
     async update(
-        frame: CanvasImageSource,
+        frame: TrackingFrame,
         frameW: number,
         frameH: number,
         dtSec: number,
-    ): Promise<{ box: TrackBox; score: number; rejected: boolean }> {
+    ): Promise<{
+        box: TrackBox;
+        score: number;
+        rejected: boolean;
+        lost: boolean;
+        diagnostics: { reason: "low-score" | "texture-collapse" | "appearance" | "geometry" | null };
+    }> {
         const geometry = this.geometry;
         if (!geometry) throw new Error("vittrack: update before init");
         geometry.advanceFrame(frameW, frameH, dtSec);
+        this.elapsedSec += Math.max(0, dtSec);
+        if (this.edgeConsistency.lost)
+            return {
+                box: geometry.box,
+                score: 0,
+                rejected: true,
+                lost: true,
+                diagnostics: { reason: "appearance" },
+            };
         const { crop, cropSz, x0, y0 } = this.runtime.crop(frame, frameW, frameH, geometry.box, 4);
         return this.runtime.runSearch(this.templateWorkspace.tensor, crop, (outs) => {
             const conf = outs.output1!.data as Float32Array;
@@ -268,6 +312,9 @@ export class VitTrack {
                 }
             }
             let rejected = false;
+            let edgeReversal = false;
+            let reason: "low-score" | "texture-collapse" | "appearance" | "geometry" | null =
+                maxVal < VITTRACK_SCORE_THRESHOLD ? "low-score" : null;
             if (maxVal >= VITTRACK_SCORE_THRESHOLD) {
                 const mx = maxIdx % MAP_SIZE;
                 const my = Math.trunc(maxIdx / MAP_SIZE);
@@ -282,12 +329,57 @@ export class VitTrack {
                     w: Math.floor(w * cropSz),
                     h: Math.floor(h * cropSz),
                 };
+                // A high response after a loss, or beside an image boundary,
+                // can belong to the remaining background. Verify spatial
+                // appearance against the frozen seed before accepting it.
+                const searchSide = Math.ceil(Math.sqrt(cand.w * cand.h) * 4);
+                const cxPx = cand.x + cand.w / 2;
+                const cyPx = cand.y + cand.h / 2;
+                edgeReversal = this.edgeConsistency.needsVerification(cand, frameW, frameH, this.elapsedSec);
+                const verifyAppearance =
+                    this.uncertain ||
+                    this.appearanceReference.needsVerification ||
+                    edgeReversal ||
+                    cxPx - searchSide / 2 < 0 ||
+                    cyPx - searchSide / 2 < 0 ||
+                    cxPx + searchSide / 2 > frameW ||
+                    cyPx + searchSide / 2 > frameH;
+                const checkTexture = this.textureReference.needsCapture(cand, frameW, frameH);
+                const sample =
+                    checkTexture || verifyAppearance
+                        ? captureTexture(this.textureCtx, frame, frameW, frameH, cand, verifyAppearance)
+                        : null;
                 // Confident localization, but an implausible step (teleport / balloon)
                 // means the peak landed on a distractor: reject it and keep the last
                 // good box so the next search stays anchored on the target.
-                rejected = !geometry.acceptCandidate(cand);
+                // A confident response on a smooth occluder can pass geometry.
+                // Check the frozen appearance before moving the trusted search
+                // box. The texture-collapse check skips low-texture or clipped
+                // targets; appearance comparison masks off-frame padding.
+                if (checkTexture && this.textureReference.rejects(sample)) {
+                    rejected = true;
+                    reason = "texture-collapse";
+                } else if (
+                    verifyAppearance &&
+                    this.appearanceReference.rejects(sample?.appearance ?? null, edgeReversal)
+                ) {
+                    rejected = true;
+                    reason = "appearance";
+                } else {
+                    rejected = !geometry.acceptCandidate(cand);
+                    if (rejected) reason = "geometry";
+                }
             }
-            return { box: geometry.box, score: maxVal, rejected };
+            this.uncertain = reason !== null;
+            if (!this.uncertain) this.edgeConsistency.observeAccepted(geometry.box, frameW, frameH, this.elapsedSec);
+            else this.edgeConsistency.observeRejected(this.elapsedSec, edgeReversal);
+            return {
+                box: geometry.box,
+                score: maxVal,
+                rejected,
+                lost: this.edgeConsistency.lost,
+                diagnostics: { reason },
+            };
         });
     }
 }

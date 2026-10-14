@@ -1,6 +1,5 @@
-// Blur-zone auto-tracking pass: sequential reduced-resolution decode of the
-// zone's span (mediabunny CanvasSink) + vittrack inference per frame, emitting
-// observed keyframes on the trip content axis.
+// Local video privacy passes: detector seeds with bidirectional tracking for
+// automatic masks, and ViTTrack for a user-selected Follow target.
 //
 // Deliberately a DEDICATED worker, not frame-extract: that worker serializes
 // its handlers, and a multi-second pass inside its gate would block chart
@@ -12,23 +11,28 @@
 // is ~200 ms; re-tracks after a correction are the common case). The DECODE
 // side opens fresh per request - files change between passes.
 
-import { CanvasSink, Input } from "mediabunny";
+import { CanvasSink, Input, type VideoSample, VideoSampleSink } from "mediabunny";
 import { getInputTimeOrigin } from "../media-time.js";
 
-import { analysisIntervalTransition } from "../tracking/analysis-interval.js";
 import { boxToRect, visibleBoxRect } from "../tracking/box-geometry.js";
+import { FollowEdgeLoss } from "../tracking/follow-edge-loss.js";
 import { finalizeFollowEndReason, followEdgeEndReason } from "../tracking/follow-end.js";
+import { createFollowSampler } from "../tracking/follow-sampling.js";
 import { chooseAnalysisWidth } from "../tracking/analysis-resolution.js";
-import { type TileRect, tileRects } from "../tracking/detect-common.js";
-import { weakDetectionCanReanchor } from "../tracking/detection-anchor.js";
+import { type RawDetection, type TileRect } from "../tracking/detect-common.js";
+import { DetectionTileCache } from "../tracking/detection-tile-cache.js";
 import {
-    type ConfirmOptions,
-    type DetectedTrack,
-    finalizeTrack,
-    type FinalizeOptions,
-    matchDetectionsToTracks,
-    type TrackKeyframe,
-} from "../tracking/detect-track.js";
+    filterRecoveryDetections,
+    planDetectionRecovery,
+    type DetectionRecoveryPlan,
+} from "../tracking/detection-recovery.js";
+import { DetectionScanCache, type DetectionScanEntry } from "../tracking/detection-scan-cache.js";
+import { createDetectionSampler } from "../tracking/detection-sampling.js";
+import { DetectionPropagation, type SeedDetection } from "../tracking/detection-propagation.js";
+import type { SourceFrameTiming } from "../tracking/propagated-track.js";
+import { createNativeTrackingFrame, NativeTrackingFrameWorkspace } from "../tracking/tracking-frame.js";
+import { planReverseCohorts } from "../tracking/reverse-decode-plan.js";
+import { canSeedDetection, DETECTION_POLICIES } from "../tracking/detector-policy.js";
 import { type TimeInterval, totalIntervalSec, unionIntervals } from "../tracking/interval-set.js";
 import { createFaceDetector } from "../tracking/face-detector.js";
 import type { OrtAssets } from "../tracking/ort-assets.js";
@@ -36,7 +40,7 @@ import { type OrtRuntime } from "../tracking/ort-runtime.js";
 import { createPlateDetector } from "../tracking/plate-detector.js";
 import { boxVisibleFraction, EXIT_CONFIRM_SEC, EXIT_VISIBLE_FRACTION } from "../tracking/track-guards.js";
 import { appendTrackObservation, type PendingTrackHold, recordTrackHold } from "../tracking/track-observations.js";
-import { type VitTrack, VitTrackerSession, VITTRACK_SCORE_THRESHOLD, type TrackBox } from "../tracking/vittrack.js";
+import { VitTrackerSession, VITTRACK_SCORE_THRESHOLD, type TrackBox } from "../tracking/vittrack.js";
 import { createBlobSource } from "../blob-source.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 import type { CropRect } from "../transcode/compose.js";
@@ -48,7 +52,6 @@ import {
     type DetectKind,
     type DetectRequestData,
     type DetectResult,
-    type DetectResultTrack,
     TRACK_NOTIFY_PROGRESS,
     TRACK_NOTIFY_STARTED,
     TRACK_REQUEST,
@@ -60,7 +63,7 @@ import { createWorkerServer, type RequestContext, type WorkerScopeEndpoint } fro
 
 declare const self: WorkerScopeEndpoint;
 
-/** Target analysis rate. Inference (the pass's dominant cost - single-thread
+/** Manual Follow analysis rate. Inference (the pass's dominant cost - single-thread
  *  WASM, ~95% of the work) runs only ~this many times per second, NOT on every
  *  decoded frame: a plate/face moves little between 15 fps steps, so this roughly
  *  halves-to-thirds the pass at little quality cost. Decode still advances at the
@@ -68,7 +71,7 @@ declare const self: WorkerScopeEndpoint;
  *  guards + loss ride-out are time-based (dt), so they hold at any value here -
  *  lower to go faster, raise to hold fast motion better. */
 const ANALYSIS_FPS = 15;
-const ANALYSIS_MIN_INTERVAL_SEC = 1 / ANALYSIS_FPS;
+const ANALYSIS_INTERVAL_SEC = 1 / ANALYSIS_FPS;
 /** How long the target may stay below-confidence before the pass declares it
  *  lost. Rides out a real occlusion (a pole, a sign, a passing truck, glare) and
  *  resumes covering the subject when it reappears. The box freezes until the
@@ -96,8 +99,6 @@ async function getTrackerSession(
     const cached = cachedSessions.get(key);
     if (cached) return cached;
     const session = await VitTrackerSession.create(ortRuntime, modelUrl, assets);
-    // Follow and detection use separate runtime builds. Retain both sessions:
-    // replacing one on every mode switch leaks its native ORT allocation.
     cachedSessions.set(key, session);
     return session;
 }
@@ -140,8 +141,10 @@ async function runTrackPass(
     const span = Math.max(1e-6, req.endContentSec - req.seedContentSec);
 
     const keyframes: TrackResultKeyframe[] = [];
+    const edgeLoss = new FollowEdgeLoss();
     const pendingHold: PendingTrackHold = { previousSec: null, latestSec: null };
     let initialized = false;
+    let sampleFollowFrame: ReturnType<typeof createFollowSampler> | null = null;
     let lastAnalyzedSec = req.seedContentSec;
     let lossStartedSec: number | null = null;
     let exitStartedSec: number | null = null;
@@ -187,6 +190,7 @@ async function runTrackPass(
                 }
                 const frame = wrapped.canvas as OffscreenCanvas;
                 if (!initialized) {
+                    sampleFollowFrame = createFollowSampler(ANALYSIS_INTERVAL_SEC, contentSec);
                     vitTrack.init(frame, frame.width, frame.height, rectToBox(req.seedRect, frame.width, frame.height));
                     initialized = true;
                     lastAnalyzedSec = contentSec;
@@ -194,14 +198,29 @@ async function runTrackPass(
                     appendTrackObservation(keyframes, pendingHold, lastGoodSec, req.seedRect);
                     continue;
                 }
-                // Temporal subsampling: analyze at ~ANALYSIS_FPS, not every decoded
-                // frame. Decode still advances every frame (cheap); we skip the
-                // expensive inference between analysis ticks.
+                // Preserve the seed's grid across segments. Rounded timestamps
+                // must not accumulate delay or replay an overlapping frame.
+                if (!sampleFollowFrame!(contentSec)) continue;
                 const dtSec = contentSec - lastAnalyzedSec;
-                if (dtSec < ANALYSIS_MIN_INTERVAL_SEC) continue;
                 lastAnalyzedSec = contentSec;
 
-                const { box, score, rejected } = await vitTrack.update(frame, frame.width, frame.height, dtSec);
+                const { box, score, rejected, lost } = await vitTrack.update(frame, frame.width, frame.height, dtSec);
+                if (lost) {
+                    endReason = "lost";
+                    break outer;
+                }
+                if (
+                    edgeLoss.observe(
+                        box,
+                        frame.width,
+                        frame.height,
+                        contentSec,
+                        !rejected && score >= VITTRACK_SCORE_THRESHOLD,
+                    )
+                ) {
+                    endReason = "lost";
+                    break outer;
+                }
                 // Frame-exit: an approaching target always leaves through a frame
                 // edge. Once the box is mostly outside, end the pass right there -
                 // BEFORE the loss ride-out, and on frozen boxes too: keeping a
@@ -253,11 +272,11 @@ async function runTrackPass(
     // Label both lost so the client holds the last known cover to the end.
     endReason = finalizeFollowEndReason(endReason, {
         initialized,
-        lossPending: lossStartedSec !== null,
+        lossPending: lossStartedSec !== null || edgeLoss.hasPendingLoss,
         exitPending: exitStartedSec !== null,
         requestedEndSec: req.endContentSec,
         lastAnalyzedSec,
-        analysisIntervalSec: ANALYSIS_MIN_INTERVAL_SEC,
+        analysisIntervalSec: ANALYSIS_INTERVAL_SEC,
     });
 
     return {
@@ -270,95 +289,14 @@ async function runTrackPass(
     };
 }
 
-// --- Detection pass ("blur all plates / faces") -----------------------------
-//
-// Detector-seeded, tracker-followed, re-anchored. The detector SCANS the full
-// tile grid at a slow flat cadence (discovery); between scans a per-object
-// vittrack follows every hit frame-by-frame; each new scan re-anchors matched
-// tracks on compatible detector boxes and seeds fresh ones. Track observations
-// retain motion between scans and hold the last known box through uncertainty.
-// detect-track.ts owns association, confirmation, and final span decisions.
+// All automatic passes follow detector seeds in both directions. Quality
+// changes discovery cadence; a missed scan must not disable verified tracking.
 
-/** Discovery scan cadence, per kind - flat, no ROI/boost scheduler. One hit is
- *  enough to seed a bidirectional cover (backward hold + forward track), so
- *  discovery only has to catch an object once. 1 fps is the current product
- *  budget, not a labeled-corpus result: the exploratory footage suggested a
- *  plate often stays detectable for ~1-2 s, but brief oncoming plates can be
- *  missed. That is an accepted gap (closed with a manual zone), not established
- *  recall performance. */
-const DETECT_SCAN_FPS: Record<DetectKind, number> = { plate: 1, face: 1 };
-
-/** IoU gate for a detection continuing a live track. The tracker box is advanced
- *  BEFORE matching (current at the scan), so a real continuation overlaps
- *  strongly; lenient because re-anchoring an existing track always beats
- *  spawning a duplicate cover for the same object. */
-const DETECT_MATCH_MIN_IOU = 0.2;
-
-/** Product score floors - what a detection must clear to SEED a new track or
- *  count as confirmation evidence (detHits / bestScore). The static-FP source is
- *  billboards and road signs: no confirmation step can cut a
- *  static false positive (hit count and tracker-sustain both reward static
- *  objects, which track better than real plates), so this floor is the only
- *  gate. Plate 0.6 is deliberately conservative: all seven s608-only boxes
- *  above it in the small local comparison were plates, but the corpus has no
- *  exhaustive ground truth, so this is not a measured precision/recall optimum.
- *  Face 0.45 keeps the clear close-range band seen in the exploratory sample;
- *  it is likewise not derived from a labeled validation set.
- *
- *  Detections BELOW this floor (down to the detectors' raw junk floors) have
- *  exactly one power: RE-ANCHORING an IoU-matched live track. A live track is
- *  already-accepted evidence, and a weak detection overlapping its current box
- *  is far more likely the same object at a bad angle than fresh junk. Without
- *  them the seed floor would also break the re-anchor cadence the tracker
- *  needs: a tight tiny box searches only ~1.5 of its own sizes per step
- *  (vittrack's crop factor), unaided it loses any laterally-moving plate, and
- *  the next strong hit no longer IoU-matches the frozen box - the track
- *  fragments into per-scan snippets. Weak re-anchors do NOT touch
- *  detHits/bestScore: geometry maintenance, not confirmation evidence. */
-const DETECT_SEED_SCORE_MIN: Record<DetectKind, number> = { plate: 0.6, face: 0.45 };
-
-/** Backward/forward hold around the tracked span (detect-track.finalizeTrack).
- *  Backward bridges the discovery lag (object approaching, still too small to
- *  detect) and is sized to it: the worst case is one full scan interval
- *  (1 / DETECT_SCAN_FPS), so both kinds hold exactly that - shorter would leave
- *  a readable-but-not-yet-scanned window uncovered, longer re-creates the
- *  "cover parked on empty road" field bug (the renderer holds the first rect
- *  through the whole window). Forward covers the gap between the last confident
- *  position and where the object left. Both HOLD the edge rect - no velocity
- *  walk (that was the flying-cover bug); the tracker already observed the real
- *  between-scan path. */
-const DETECT_EXTEND_BACK_SEC: Record<DetectKind, number> = { plate: 1.0, face: 1.0 };
-const DETECT_EXTEND_FWD_SEC = 0.7;
-
-/** Confirmation per kind (detect-track.isTrackConfirmed). confirmTrackSec is the
- *  tracker-sustain corroboration a single weak hit needs at sparse discovery - a
- *  real plate lets the tracker follow it, flicker does not. Faces DISABLE it
- *  (Infinity): the face FP source is static traffic-light lenses, which the
- *  tracker WOULD lock onto, so faces confirm only on hits (3 - the field-tuned
- *  bar) or one unmistakable hit (0.7, above the bake-off's 0.59 light ceiling).
- *  NOTE: NOTHING in this ladder can cut a static false positive (billboard,
- *  road sign) - hit count and sustain both reward static objects, which track
- *  better than real plates. That gate is DETECT_SEED_SCORE_MIN (see its note).
- *  The plate seed floor sits ABOVE confirmStrongScore, so every seedable plate
- *  hit confirms on its own - accepted: a hit clearing that floor is
- *  unmistakable by construction, and instant confirm preserves the fast
- *  oncoming plate that exits the frame with one hit and less than
- *  confirmTrackSec of sustain. Faces keep a working ladder (their seed floor
- *  stays below their strong bar): mid-band face hits still need the 3-hit
- *  corroboration. */
-const DETECT_CONFIRM: Record<DetectKind, ConfirmOptions> = {
-    plate: { confirmMinHits: 2, confirmStrongScore: 0.45, confirmTrackSec: 0.4 },
-    face: { confirmMinHits: 3, confirmStrongScore: 0.7, confirmTrackSec: Number.POSITIVE_INFINITY },
-};
-
-/** Coverage padding of the emitted box (raw detector or tracker), per kind. A
- *  plate edge peeking out of the mosaic is the failure that matters, but the
- *  padding is capped (a bloated cover reads badly); faces get more - a tight
- *  "face" box excludes hair/profile that still identifies. */
 const DETECT_MARGIN_PCT: Record<DetectKind, number> = { plate: 0.12, face: 0.35 };
 
 interface FrameDetector {
-    detect(
+    merge(detections: readonly RawDetection[]): RawDetection[];
+    detectTiles(
         frame: CanvasImageSource,
         frameW: number,
         frameH: number,
@@ -366,20 +304,47 @@ interface FrameDetector {
     ): Promise<Array<{ x: number; y: number; w: number; h: number; score: number }>>;
 }
 
-/** One object being followed within one decode interval. */
-interface LiveTrack {
-    vit: VitTrack;
-    keyframes: TrackKeyframe[];
-    pendingHold: PendingTrackHold;
-    /** A scale-budget split must not project its new box back over the old identity. */
-    startClampSec: number;
-    /** Content time of this track's last tracker update (for dt). */
-    lastAnalyzedSec: number;
-    detHits: number;
-    bestScore: number;
-    trackedGoodSec: number;
-    lossStartedSec: number | null;
-    exitStartedSec: number | null;
+interface DetectIntervalState {
+    bounds: TimeInterval;
+    completed: NonNullable<DetectResult["tracksByKind"][DetectKind]>;
+}
+
+interface DetectionObservation extends SourceFrameTiming {
+    /** Raw geometry seeds the tracker; padding belongs only to emitted masks. */
+    seeds: SeedDetection[];
+}
+
+// Reverse traversal retains native decoded samples, often compact YUV, rather
+// than full RGBA copies. One oversized frame is the unavoidable floor; the
+// single working display canvas is separate from this retained-sample budget.
+const REVERSE_FRAME_BUDGET_BYTES = 64 * 1024 * 1024;
+// Holding too many decoded samples can exhaust hardware decoder surfaces even
+// below the byte budget, and increases cancellation latency at lower resolutions.
+const MAX_REVERSE_BUFFER_FRAMES = 8;
+
+function reverseSampleBytes(sample: VideoSample): number {
+    let bytes: number;
+    try {
+        bytes = sample.allocationSize();
+    } catch {
+        // Opaque native formats have no copy allocation size. Use coded RGBA
+        // as a conservative estimate instead of assuming every frame is YUV420.
+        bytes = sample.codedWidth * sample.codedHeight * 4;
+    }
+    if (!Number.isFinite(bytes) || bytes <= 0) throw new Error("detect: backward sample size is invalid");
+    return bytes;
+}
+
+/** Time only waiting for a delivered sample, not the caller's processing.
+ * Decoder prefetch can overlap the caller, so this is exposed wait time. */
+async function* measureDecode<T>(source: AsyncIterable<T>, timings: NonNullable<DetectResult["timings"]>) {
+    let resumedAt = performance.now();
+    for await (const sample of source) {
+        timings.decodeWaitMs += performance.now() - resumedAt;
+        yield sample;
+        resumedAt = performance.now();
+    }
+    timings.decodeWaitMs += performance.now() - resumedAt;
 }
 
 async function runDetectPass(
@@ -388,307 +353,576 @@ async function runDetectPass(
     notifyProgress: (fractionDone: number) => void,
 ): Promise<DetectResult> {
     const passStartMs = performance.now();
+    const timings = { forwardMs: 0, backwardMs: 0, decodeWaitMs: 0, drawMs: 0 };
+    const trackingFrames = new NativeTrackingFrameWorkspace();
     const statsByKind: DetectResult["statsByKind"] = {};
-    for (const kind of req.kinds) statsByKind[kind] = { scans: 0, tiles: 0, inferMs: 0, trackUpdates: 0, trackMs: 0 };
-
-    // Decode covers only the union of the kinds' analyze intervals - the
-    // incremental contract: the caller's track cache owns the rest of the range,
-    // a shrunk range decodes nothing. Interval-outer iteration keeps content time
-    // monotonic; the tracker cannot bridge the gap between two intervals, so
-    // every live track is finalized at an interval boundary.
-    const decodeIntervals = unionIntervals(Object.values(req.analyzeIntervalsByKind).flat());
-    // Fully-cached request (e.g. a shrunk range): nothing to decode, so do not
-    // touch the models - on a cold worker their load costs seconds for a
-    // guaranteed-empty result.
-    if (decodeIntervals.length === 0) {
-        const emptyByKind: DetectResult["tracksByKind"] = {};
-        for (const kind of req.kinds) emptyByKind[kind] = [];
-        return {
-            tracksByKind: emptyByKind,
-            statsByKind,
-            decodedFrames: 0,
-            passMs: Math.round(performance.now() - passStartMs),
-        };
-    }
-    const decodeTotalSec = Math.max(1e-6, totalIntervalSec(decodeIntervals));
-
-    // The tracker rides the detectors' webgpu (asyncify) runtime on its wasm EP,
-    // so the pass loads ONE ort build (see VitTrackerSession.create).
-    const trackerSession = await getTrackerSession("webgpu", req.trackerModelUrl, req.ortAssets);
-    const detectors = new Map<DetectKind, FrameDetector>();
-    const live = new Map<DetectKind, LiveTrack[]>();
-    const finished = new Map<DetectKind, DetectedTrack[]>();
-    const lastScanSec = new Map<DetectKind, number>();
-    const activeIntervals = new Map<DetectKind, TimeInterval | null>();
+    const tracksByKind: DetectResult["tracksByKind"] = {};
+    const sourceFrames = new Map<number, DetectResult["sourceFrames"][number]>();
+    const intervalsByKind = new Map<DetectKind, DetectIntervalState[]>();
     for (const kind of req.kinds) {
+        statsByKind[kind] = {
+            scans: 0,
+            tiles: 0,
+            recoveryScans: 0,
+            recoveryTiles: 0,
+            inferMs: 0,
+            trackUpdates: 0,
+            backwardUpdates: 0,
+            trackMs: 0,
+        };
+        tracksByKind[kind] = [];
+        intervalsByKind.set(
+            kind,
+            (req.analyzeIntervalsByKind[kind] ?? []).map((bounds) => ({
+                bounds,
+                completed: [],
+            })),
+        );
+    }
+    const decodeIntervals = unionIntervals(req.kinds.flatMap((kind) => req.analyzeIntervalsByKind[kind] ?? []));
+    const detectors = new Map<DetectKind, FrameDetector>();
+    for (const kind of req.kinds) {
+        if (!intervalsByKind.get(kind)!.length) continue;
+        signal.throwIfAborted();
         detectors.set(
             kind,
             await getDetector(kind, kind === "plate" ? req.plateModelUrl : req.faceModelUrl, req.ortAssets),
         );
-        live.set(kind, []);
-        finished.set(kind, []);
-        lastScanSec.set(kind, Number.NEGATIVE_INFINITY);
-        activeIntervals.set(kind, null);
     }
-
+    const decodeTotalSec = Math.max(1e-6, totalIntervalSec(decodeIntervals));
     let decodedFrames = 0;
-
-    let lastProgressAt = 0;
     let decodeDoneSec = 0;
-
-    // Confirmed -> a DetectedTrack, flicker -> dropped. clampEnd bounds the
-    // forward hold to the decoded interval so a cover never leaks into
-    // un-analyzed (or a cached interval's) frames.
-    const finish = (kind: DetectKind, track: LiveTrack, clampStartSec: number, clampEndSec: number): void => {
-        const done = finalizeTrack(
-            {
-                detHits: track.detHits,
-                bestScore: track.bestScore,
-                trackedGoodSec: track.trackedGoodSec,
-                keyframes: track.keyframes,
-            },
-            {
-                ...DETECT_CONFIRM[kind],
-                extendBackSec: DETECT_EXTEND_BACK_SEC[kind],
-                extendForwardSec: DETECT_EXTEND_FWD_SEC,
-                clampStartSec: Math.max(clampStartSec, track.startClampSec),
-                clampEndSec,
-            } satisfies FinalizeOptions,
-        );
-        if (done) finished.get(kind)!.push(done);
-    };
-    const finishLive = (kind: DetectKind, bounds: TimeInterval, endSec = bounds.endSec): void => {
-        for (const track of live.get(kind)!) finish(kind, track, bounds.startSec, Math.min(bounds.endSec, endSec));
-        live.set(kind, []);
-    };
+    let lastProgressAt = 0;
 
     for (const interval of decodeIntervals) {
-        // Live tracks carry PIXEL-space tracker state (template crop, last box)
-        // across segment boundaries; a mid-trip resolution change would misplace
-        // every one of them, so on a dims change they are finalized (their
-        // emitted keyframes are normalized - still valid) and tracking restarts
-        // from the next scan's detections.
-        let intervalFrameW = 0;
-        let intervalFrameH = 0;
         for (const seg of req.segments) {
-            if (signal.aborted) throw new DOMException("aborted", "AbortError");
+            signal.throwIfAborted();
             const startLocal = Math.max(seg.startInFile, interval.startSec - seg.tripStart);
             const endLocal = Math.min(seg.endInFile, interval.endSec - seg.tripStart);
-            if (endLocal - startLocal <= 0) continue;
-
-            const input = new Input({
-                source: await createBlobSource(seg.file, signal),
-                formats: VIDEO_INPUT_FORMATS,
-            });
+            if (endLocal <= startLocal) continue;
+            const input = new Input({ source: await createBlobSource(seg.file, signal), formats: VIDEO_INPUT_FORMATS });
             try {
                 const vtrack = await input.getPrimaryVideoTrack();
-                if (!vtrack) continue;
-                // NATIVE resolution: the tile grid preserves small-object
-                // detectability (detect-common.ts), and the tracker crops its
-                // search window from the same native pixels. poolSize 1 keeps one
-                // reused canvas (fully consumed per iteration).
-                const sink = new CanvasSink(vtrack, { poolSize: 1 });
-                // Frame dims are constant within a segment - the scan grid is
-                // built once (lazily, only when a scan actually fires).
-                let segTiles: TileRect[] | null = null;
+                if (!vtrack) throw new Error("detect: source has no video track");
+                // Keep source pixels native until needed. A detector scan or
+                // several tracked objects share one display canvas; a single
+                // tracker can crop the borrowed sample directly.
+                const sink = new VideoSampleSink(vtrack);
+                let displayCanvas: OffscreenCanvas | null = null;
+                let displayContext: OffscreenCanvasRenderingContext2D | null = null;
+                const drawDisplaySample = (sample: VideoSample): OffscreenCanvas => {
+                    const startedAt = performance.now();
+                    if (!displayCanvas) {
+                        displayCanvas = new OffscreenCanvas(sample.displayWidth, sample.displayHeight);
+                        // Alpha avoids native VideoFrame drawing glitches in Firefox.
+                        displayContext = displayCanvas.getContext("2d");
+                        if (!displayContext) throw new Error("detect: canvas context is unavailable");
+                    }
+                    if (displayCanvas.width !== sample.displayWidth || displayCanvas.height !== sample.displayHeight) {
+                        displayCanvas.width = sample.displayWidth;
+                        displayCanvas.height = sample.displayHeight;
+                    }
+                    displayContext!.fillStyle = "#000";
+                    displayContext!.fillRect(0, 0, displayCanvas.width, displayCanvas.height);
+                    sample.draw(displayContext!, 0, 0, displayCanvas.width, displayCanvas.height);
+                    timings.drawMs += performance.now() - startedAt;
+                    return displayCanvas;
+                };
                 const timeOrigin = await getInputTimeOrigin(input);
-                for await (const wrapped of sink.canvases(startLocal + timeOrigin, endLocal + timeOrigin)) {
-                    if (signal.aborted) throw new DOMException("aborted", "AbortError");
-                    const contentSec = seg.tripStart + wrapped.timestamp - timeOrigin;
-                    const now = performance.now();
-                    if (now - lastProgressAt >= PROGRESS_THROTTLE_MS) {
-                        lastProgressAt = now;
-                        notifyProgress(
-                            Math.min(1, (decodeDoneSec + Math.max(0, contentSec - interval.startSec)) / decodeTotalSec),
+                const [firstTimestamp, endTimestamp] = await Promise.all([
+                    vtrack.getFirstTimestamp(),
+                    vtrack.computeDuration(),
+                ]);
+                const expectedStartSec = seg.tripStart + Math.max(startLocal, firstTimestamp - timeOrigin);
+                const expectedEndSec = seg.tripStart + endLocal;
+                if (expectedEndSec <= expectedStartSec) continue;
+                const tileCache = new DetectionTileCache();
+                const frameTimings: Array<{ contentSec: number; durationSec: number }> = [];
+                const observations = new Map<DetectKind, Map<number, DetectionObservation>>();
+                // Forward states can overlap the same presentation frame at a
+                // fractional boundary. Share even empty/partial scan results;
+                // reverse propagation consumes the saved observations only.
+                const scans = new Map<DetectKind, DetectionScanCache>();
+                const recoveryPlans = new WeakMap<DetectionScanEntry, DetectionRecoveryPlan>();
+                const samplers = new Map<DetectKind, ReturnType<typeof createDetectionSampler>>();
+                for (const kind of req.kinds) {
+                    observations.set(kind, new Map());
+                    scans.set(kind, new DetectionScanCache());
+                    samplers.set(kind, createDetectionSampler(req.quality, seg.tripStart + startLocal));
+                }
+                const propagationEntries: Array<{
+                    kind: DetectKind;
+                    state: DetectIntervalState;
+                    propagation: DetectionPropagation;
+                }> = [];
+                const propagationByState = new Map<DetectIntervalState, DetectionPropagation>();
+                let trackerSession: VitTrackerSession | null = null;
+                let reverseSampleBytesHint = 0;
+                let forwardWindowStartIndex = 0;
+                let decodedStartSec = Number.POSITIVE_INFINITY;
+                let decodedEndSec = Number.NEGATIVE_INFINITY;
+
+                const frameTiming = (timestamp: number, duration: number) => {
+                    const contentSec = seg.tripStart + timestamp - timeOrigin;
+                    // Export holds the verified final video sample through an
+                    // audio tail. A partial decode never earns that extension.
+                    const isFinalSourceFrame = timestamp + duration >= endTimestamp - 1e-4;
+                    const endSec = isFinalSourceFrame
+                        ? expectedEndSec
+                        : Math.min(contentSec + duration, expectedEndSec);
+                    return { contentSec, durationSec: endSec - contentSec };
+                };
+                const isActive = (kind: DetectKind, timing: { contentSec: number; durationSec: number }) =>
+                    intervalsByKind
+                        .get(kind)!
+                        .some(
+                            ({ bounds }) =>
+                                timing.contentSec < bounds.endSec &&
+                                timing.contentSec + timing.durationSec > bounds.startSec,
                         );
-                    }
-                    const frame = wrapped.canvas as OffscreenCanvas;
-                    const frameW = frame.width;
-                    const frameH = frame.height;
-                    decodedFrames++;
-                    if (intervalFrameW !== 0 && (frameW !== intervalFrameW || frameH !== intervalFrameH)) {
-                        for (const kind of req.kinds) {
-                            const active = activeIntervals.get(kind);
-                            if (active) finishLive(kind, active, contentSec);
-                            lastScanSec.set(kind, Number.NEGATIVE_INFINITY);
-                        }
-                    }
-                    intervalFrameW = frameW;
-                    intervalFrameH = frameH;
-
-                    for (const kind of req.kinds) {
-                        const {
-                            active,
-                            finished: ended,
-                            started,
-                        } = analysisIntervalTransition(
-                            activeIntervals.get(kind) ?? null,
-                            req.analyzeIntervalsByKind[kind] ?? [],
-                            contentSec,
-                        );
-                        if (ended) finishLive(kind, ended);
-                        activeIntervals.set(kind, active);
-                        if (started) lastScanSec.set(kind, Number.NEGATIVE_INFINITY);
-                        if (!active) continue;
-                        const liveTracks = live.get(kind)!;
-                        const stat = statsByKind[kind]!;
-
-                        // 1) Advance live trackers to this frame (brings boxes
-                        //    current for matching; drives loss / frame-exit). Walk
-                        //    backward - a finished track is spliced out here.
-                        for (let i = liveTracks.length - 1; i >= 0; i--) {
-                            const track = liveTracks[i]!;
-                            const dt = contentSec - track.lastAnalyzedSec;
-                            if (dt < ANALYSIS_MIN_INTERVAL_SEC) continue;
-                            track.lastAnalyzedSec = contentSec;
-                            const t0 = performance.now();
-                            const { box, score, rejected } = await track.vit.update(frame, frameW, frameH, dt);
-                            stat.trackMs += performance.now() - t0;
-                            stat.trackUpdates++;
-                            // Frame-exit: an approaching target leaves through an
-                            // edge - end the track there (before the loss ride-out
-                            // and on frozen boxes), else the peak balloons onto
-                            // bodywork (see track-guards.ts).
-                            if (boxVisibleFraction(box, frameW, frameH) < EXIT_VISIBLE_FRACTION) {
-                                track.exitStartedSec ??= contentSec;
-                                if (contentSec - track.exitStartedSec >= EXIT_CONFIRM_SEC) {
-                                    finish(kind, track, active.startSec, active.endSec);
-                                    liveTracks.splice(i, 1);
-                                    continue;
-                                }
-                            } else {
-                                track.exitStartedSec = null;
-                            }
-                            if (rejected || score < VITTRACK_SCORE_THRESHOLD) {
-                                // Occlusion / implausible step: ride out a brief
-                                // loss, end a long one.
-                                recordTrackHold(track.pendingHold, contentSec);
-                                track.lossStartedSec ??= contentSec;
-                                if (contentSec - track.lossStartedSec >= LOSS_RIDE_OUT_SEC) {
-                                    finish(kind, track, active.startSec, active.endSec);
-                                    liveTracks.splice(i, 1);
-                                }
-                            } else {
-                                const rect = visibleBoxRect(box, frameW, frameH, DETECT_MARGIN_PCT[kind]);
-                                if (!rect) {
-                                    recordTrackHold(track.pendingHold, contentSec);
-                                    continue;
-                                }
-                                track.lossStartedSec = null;
-                                track.trackedGoodSec += dt;
-                                appendTrackObservation(track.keyframes, track.pendingHold, contentSec, rect);
-                            }
-                        }
-
-                        // 2) Discovery scan at the flat cadence: detect, then
-                        //    re-anchor matched tracks / seed fresh ones.
-                        if (contentSec - lastScanSec.get(kind)! < 1 / DETECT_SCAN_FPS[kind]) continue;
-                        lastScanSec.set(kind, contentSec);
-                        segTiles ??= tileRects(frameW, frameH);
+                const scanTiles = async (
+                    kind: DetectKind,
+                    frame: OffscreenCanvas,
+                    contentSec: number,
+                    requested: readonly TileRect[],
+                    recovery: boolean,
+                ) => {
+                    const scan = scans.get(kind)!.entryFor(contentSec);
+                    const missing = scan.missingTiles(requested);
+                    if (missing.length === 0) return scan;
+                    const stat = statsByKind[kind]!;
+                    const startedAt = performance.now();
+                    const boxes = await detectors.get(kind)!.detectTiles(frame, frame.width, frame.height, missing);
+                    stat.inferMs += performance.now() - startedAt;
+                    signal.throwIfAborted();
+                    if (scan.tileCount === 0) {
                         stat.scans++;
-                        stat.tiles += segTiles.length;
-                        const t0 = performance.now();
-                        const detections = await detectors.get(kind)!.detect(frame, frameW, frameH, segTiles);
-                        stat.inferMs += performance.now() - t0;
-                        if (detections.length === 0) continue;
-
-                        const observations = detections.flatMap((box) => {
-                            const padded = visibleBoxRect(box, frameW, frameH, DETECT_MARGIN_PCT[kind]);
-                            return padded ? [{ box, rect: boxToRect(box, frameW, frameH), padded }] : [];
-                        });
-                        const trackBoxes = liveTracks.map((tr) => boxToRect(tr.vit.box, frameW, frameH));
-                        const matchedTrack = matchDetectionsToTracks(
-                            observations.map((observation) => observation.rect),
-                            trackBoxes,
-                            {
-                                minIou: DETECT_MATCH_MIN_IOU,
-                            },
+                        if (recovery) stat.recoveryScans!++;
+                    }
+                    stat.tiles += missing.length;
+                    if (recovery) stat.recoveryTiles! += missing.length;
+                    scan.record(missing, boxes);
+                    return scan;
+                };
+                const makeObservation = (
+                    kind: DetectKind,
+                    frame: OffscreenCanvas,
+                    timing: { contentSec: number; durationSec: number },
+                    boxes: readonly RawDetection[],
+                ): DetectionObservation => {
+                    return {
+                        ...timing,
+                        seeds: boxes.flatMap((box) =>
+                            visibleBoxRect(box, frame.width, frame.height, DETECT_MARGIN_PCT[kind])
+                                ? [{ rect: boxToRect(box, frame.width, frame.height), score: box.score }]
+                                : [],
+                        ),
+                    };
+                };
+                const infer = async (
+                    kind: DetectKind,
+                    frame: OffscreenCanvas,
+                    timing: { contentSec: number; durationSec: number },
+                ) => {
+                    const tiles = tileCache.forFrame(frame.width, frame.height);
+                    const scan = await scanTiles(kind, frame, timing.contentSec, tiles, false);
+                    const observation = makeObservation(kind, frame, timing, detectors.get(kind)!.merge(scan.boxes));
+                    observations.get(kind)!.set(timing.contentSec, observation);
+                };
+                let segmentProgress = 0;
+                const progress = (endSec: number, phase: "forward" | "backward" | "complete", reverseFraction = 0) => {
+                    const now = performance.now();
+                    if (now - lastProgressAt < PROGRESS_THROTTLE_MS && phase !== "complete") return;
+                    lastProgressAt = now;
+                    const segmentStartSec = seg.tripStart + startLocal;
+                    const duration = expectedEndSec - segmentStartSec;
+                    const localDone = Math.max(0, Math.min(duration, endSec - segmentStartSec));
+                    const done =
+                        phase === "complete"
+                            ? localDone
+                            : phase === "forward"
+                              ? localDone * 0.8
+                              : duration * (0.8 + reverseFraction * 0.2);
+                    segmentProgress = Math.max(segmentProgress, done);
+                    notifyProgress(
+                        Math.min(
+                            1,
+                            (decodeDoneSec + segmentStartSec - interval.startSec + segmentProgress) / decodeTotalSec,
+                        ),
+                    );
+                };
+                const forwardStartedAt = performance.now();
+                // VideoSampleSink yields presentation order, including B-frame
+                // inputs; decode-order packet timestamps never enter tracking.
+                for await (const sample of measureDecode(
+                    sink.samples(startLocal + timeOrigin, endLocal + timeOrigin),
+                    timings,
+                )) {
+                    try {
+                        signal.throwIfAborted();
+                        const timing = frameTiming(sample.timestamp, sample.duration);
+                        if (!(timing.durationSec > 0)) continue;
+                        // Retain only a size hint, not another native surface.
+                        // Reverse can decode its seed with the first block.
+                        reverseSampleBytesHint = Math.max(reverseSampleBytesHint, reverseSampleBytes(sample));
+                        const frameEndSec = timing.contentSec + timing.durationSec;
+                        const frame = createNativeTrackingFrame(sample, trackingFrames);
+                        let displayFrame: OffscreenCanvas | null = null;
+                        decodedFrames++;
+                        const frameIndex = frameTimings.length;
+                        const previous = frameTimings[frameIndex - 1];
+                        if (previous && timing.contentSec > previous.contentSec + previous.durationSec + 1e-6) {
+                            forwardWindowStartIndex = frameIndex;
+                        }
+                        frameTimings.push(timing);
+                        // Disjoint analysis windows can decode the same displayed
+                        // predecessor. Keep its longest verified support once;
+                        // never infer a duration from the next window's start.
+                        const cachedTiming = sourceFrames.get(timing.contentSec);
+                        if (!cachedTiming || timing.durationSec > cachedTiming.durationSec) {
+                            sourceFrames.set(timing.contentSec, timing);
+                        }
+                        decodedStartSec = Math.min(decodedStartSec, timing.contentSec);
+                        decodedEndSec = Math.max(decodedEndSec, frameEndSec);
+                        for (const kind of req.kinds) {
+                            if (!isActive(kind, timing)) continue;
+                            if (!samplers.get(kind)!(timing.contentSec, frameEndSec >= expectedEndSec - 1e-6)) continue;
+                            displayFrame ??= drawDisplaySample(sample);
+                            await infer(kind, displayFrame, timing);
+                        }
+                        const liveCount = propagationEntries.reduce(
+                            (count, { state, propagation }) =>
+                                timing.contentSec < state.bounds.endSec && frameEndSec > state.bounds.startSec
+                                    ? count + propagation.forwardTrackCount()
+                                    : count,
+                            0,
                         );
-                        for (let d = 0; d < observations.length; d++) {
-                            const { box, padded } = observations[d]!;
-                            const score = box.score;
-                            const seedable = score >= DETECT_SEED_SCORE_MIN[kind];
-                            const ti = matchedTrack[d]!;
-                            // Sub-floor with no live track to maintain: junk (or
-                            // an object not yet worth a track) - ignore.
-                            if (ti < 0 && !seedable) continue;
-                            const matched = ti >= 0 ? liveTracks[ti]! : null;
-                            if (matched && !seedable && !weakDetectionCanReanchor(box, matched.vit.box)) continue;
-                            if (matched?.vit.reanchor(frame, frameW, frameH, box)) {
-                                const track = matched;
-                                track.lastAnalyzedSec = contentSec;
-                                track.lossStartedSec = null;
-                                track.exitStartedSec = null;
-                                if (seedable) {
-                                    // Only full-floor hits are confirmation
-                                    // evidence - a weak re-anchor is geometry
-                                    // maintenance (see DETECT_SEED_SCORE_MIN).
-                                    track.detHits++;
-                                    track.bestScore = Math.max(track.bestScore, score);
+                        // Multiple native crops repeat YUV conversion and
+                        // resize the ROI workspace. Share display pixels
+                        // once when several objects need this frame.
+                        if (!displayFrame && liveCount > 1) displayFrame = drawDisplaySample(sample);
+                        // Discovery and forward tracking consume the same source
+                        // frame. Keep timing/anchors for the later reverse pass,
+                        // but never decode this whole window a second time.
+                        // Verify every source frame: 15 Hz interpolation can miss
+                        // a small fast target or a one-frame identity switch.
+                        for (const kind of req.kinds) {
+                            const seeds = observations.get(kind)!.get(timing.contentSec)?.seeds;
+                            for (const state of intervalsByKind.get(kind)!) {
+                                if (timing.contentSec >= state.bounds.endSec || frameEndSec <= state.bounds.startSec)
+                                    continue;
+                                let propagation = propagationByState.get(state);
+                                if (!propagation) {
+                                    if (!seeds?.some((seed) => canSeedDetection(seed.score, DETECTION_POLICIES[kind])))
+                                        continue;
+                                    const firstIndex = frameTimings.findIndex(
+                                        (frame) =>
+                                            frame.contentSec < state.bounds.endSec &&
+                                            frame.contentSec + frame.durationSec > state.bounds.startSec,
+                                    );
+                                    // No positive seed means no tracker session. Reuse
+                                    // the detector runtime; ViTTrack still uses its WASM EP.
+                                    trackerSession ??= await getTrackerSession(
+                                        "webgpu",
+                                        req.trackerModelUrl,
+                                        req.ortAssets,
+                                    );
+                                    signal.throwIfAborted();
+                                    propagation = new DetectionPropagation(trackerSession, {
+                                        margin: DETECT_MARGIN_PCT[kind],
+                                        ...DETECTION_POLICIES[kind],
+                                        frames: frameTimings,
+                                        bounds: {
+                                            startSec: frameTimings[firstIndex]!.contentSec,
+                                            endSec: Math.min(expectedEndSec, state.bounds.endSec),
+                                        },
+                                        stats: statsByKind[kind]!,
+                                        signal,
+                                    });
+                                    propagation.beginForwardWindow(Math.max(firstIndex, forwardWindowStartIndex));
+                                    propagationByState.set(state, propagation);
+                                    propagationEntries.push({ kind, state, propagation });
                                 }
-                                appendTrackObservation(track.keyframes, track.pendingHold, contentSec, padded);
-                            } else {
-                                // Weak evidence cannot renew an exhausted size
-                                // budget. A strong hit starts a new trajectory,
-                                // preserving genuine growth without bridging an
-                                // identity/scale change with interpolated boxes.
-                                if (!seedable) continue;
-                                if (matched) finish(kind, matched, active.startSec, contentSec);
-                                const vit = trackerSession.newTrack();
-                                vit.init(frame, frameW, frameH, box);
-                                const track: LiveTrack = {
-                                    vit,
-                                    keyframes: [],
-                                    pendingHold: { previousSec: null, latestSec: null },
-                                    startClampSec: matched ? contentSec : active.startSec,
-                                    lastAnalyzedSec: contentSec,
-                                    detHits: 1,
-                                    bestScore: score,
-                                    trackedGoodSec: 0,
-                                    lossStartedSec: null,
-                                    exitStartedSec: null,
-                                };
-                                appendTrackObservation(track.keyframes, track.pendingHold, contentSec, padded);
-                                if (ti >= 0) liveTracks[ti] = track;
-                                else liveTracks.push(track);
+                                // Detector scan frames already have display
+                                // pixels; reuse them for crops and templates.
+                                await propagation.forward(displayFrame ?? frame, frameIndex, seeds, async (lost) => {
+                                    const plan = planDetectionRecovery(
+                                        lost,
+                                        frame.width,
+                                        frame.height,
+                                        tileCache.forFrame(frame.width, frame.height),
+                                    );
+                                    if (plan.tiles.length === 0) return [];
+                                    displayFrame ??= drawDisplaySample(sample);
+                                    const scan = await scanTiles(
+                                        kind,
+                                        displayFrame,
+                                        timing.contentSec,
+                                        plan.tiles,
+                                        true,
+                                    );
+                                    const previousPlan = recoveryPlans.get(scan);
+                                    const combinedPlan = previousPlan
+                                        ? { regions: [...previousPlan.regions, ...plan.regions], tiles: [] }
+                                        : plan;
+                                    recoveryPlans.set(scan, combinedPlan);
+                                    // Always merge original per-tile proposals. Feeding a
+                                    // previous envelope back into NMS would make grouping
+                                    // depend on which loss requested its tiles first.
+                                    const accepted = filterRecoveryDetections(
+                                        detectors.get(kind)!.merge(scan.boxes),
+                                        combinedPlan,
+                                        Math.max(
+                                            DETECTION_POLICIES[kind].seedScoreMin,
+                                            DETECTION_POLICIES[kind].strongScore,
+                                        ),
+                                        frame.width,
+                                        frame.height,
+                                    );
+                                    const observation = makeObservation(kind, displayFrame, timing, accepted);
+                                    observations.get(kind)!.set(timing.contentSec, observation);
+                                    return observation.seeds;
+                                });
                             }
+                        }
+                        progress(frameEndSec, "forward");
+                    } finally {
+                        sample.close();
+                    }
+                }
+                timings.forwardMs += performance.now() - forwardStartedAt;
+                // An empty decode is not a successfully scanned interval; do
+                // not let the client permanently cache a silent privacy failure.
+                if (frameTimings.length === 0) throw new Error("detect: no video frames decoded");
+                // Compare against packet timestamps, not approximate container
+                // duration. A partial decode must not become a complete cache.
+                if (decodedStartSec > expectedStartSec + 1e-4 || decodedEndSec < expectedEndSec - 1e-4) {
+                    throw new Error("detect: video decode ended before the requested range was covered");
+                }
+                const backwardStartedAt = performance.now();
+                for (const { propagation } of propagationEntries) propagation.endForwardWindow();
+                // Discovery groups keep independent identity matching.
+                // Nearby groups share decoded frames within a bounded cohort.
+                const reverseGroups = new Map<
+                    number,
+                    { startIndex: number; branchCount: number; propagations: DetectionPropagation[] }
+                >();
+                for (const { propagation } of propagationEntries) {
+                    for (const job of propagation.backwardJobs()) {
+                        const group = reverseGroups.get(job.seedIndex);
+                        if (group) {
+                            group.startIndex = Math.min(group.startIndex, job.startIndex);
+                            group.branchCount++;
+                            if (!group.propagations.includes(propagation)) group.propagations.push(propagation);
+                        } else {
+                            reverseGroups.set(job.seedIndex, {
+                                startIndex: job.startIndex,
+                                branchCount: 1,
+                                propagations: [propagation],
+                            });
                         }
                     }
                 }
+                const reverseWork = [...reverseGroups].reduce(
+                    (sum, [seedIndex, group]) => sum + seedIndex - group.startIndex,
+                    0,
+                );
+                const propagationKinds = new Map(
+                    propagationEntries.map(({ propagation, kind }) => [propagation, kind]),
+                );
+                const reverseSink = new VideoSampleSink(vtrack);
+                let reverseDone = 0;
+                const cohorts = planReverseCohorts(
+                    [...reverseGroups].map(([seedIndex, group]) => ({ ...group, seedIndex, started: false })),
+                );
+                for (const cohort of cohorts) {
+                    signal.throwIfAborted();
+                    const startIndex = Math.min(...cohort.map((group) => group.startIndex));
+                    const lastGroup = cohort[cohort.length - 1]!;
+                    const hasWork = (group: (typeof cohort)[number]) =>
+                        group.started &&
+                        group.propagations.some((propagation) => propagation.hasBackwardWork(group.seedIndex));
+                    const startGroup = (
+                        group: (typeof cohort)[number],
+                        frame: OffscreenCanvas | ReturnType<typeof createNativeTrackingFrame>,
+                    ) => {
+                        for (const propagation of group.propagations) propagation.startBackward(frame, group.seedIndex);
+                        group.started = true;
+                        if (!hasWork(group)) reverseDone += group.seedIndex - group.startIndex;
+                    };
+                    let sampleBytesHint = reverseSampleBytesHint;
+                    // Include the seed in the first bounded block. A separate
+                    // getSample would decode the same GOP prefix an extra time.
+                    for (let endIndex = lastGroup.seedIndex + 1; endIndex > startIndex; ) {
+                        signal.throwIfAborted();
+                        const capacity = Math.max(
+                            1,
+                            Math.min(
+                                MAX_REVERSE_BUFFER_FRAMES,
+                                Math.floor(REVERSE_FRAME_BUDGET_BYTES / sampleBytesHint),
+                            ),
+                        );
+                        const iteratorEndIndex = endIndex;
+                        // Each block decodes forwards and is consumed backwards.
+                        // A single nonmonotonic iterator keeps its decoder alive;
+                        // mediabunny flushes it at each backwards timestamp jump.
+                        // Do not gate this generator on block consumption: the
+                        // decoder needs the next timestamp to flush this block.
+                        const timestamps = function* () {
+                            for (let blockEnd = iteratorEndIndex; blockEnd > startIndex; ) {
+                                const blockStart = Math.max(startIndex, blockEnd - capacity);
+                                for (let index = blockStart; index < blockEnd; index++) {
+                                    yield frameTimings[index]!.contentSec - seg.tripStart + timeOrigin + 1e-6;
+                                }
+                                blockEnd = blockStart;
+                            }
+                        };
+                        let blockStartIndex = Math.max(startIndex, endIndex - capacity);
+                        let index = blockStartIndex;
+                        const retained: Array<{ index: number; sample: VideoSample; bytes: number }> = [];
+                        let retainedBytes = 0;
+                        let stoppedEarly = false;
+                        try {
+                            // Keep the decoder's native samples until reverse
+                            // consumption; no full-resolution RGBA copying.
+                            for await (const sample of measureDecode(
+                                reverseSink.samplesAtTimestamps(timestamps()),
+                                timings,
+                            )) {
+                                if (!sample) throw new Error("detect: backward frame is unavailable");
+                                let isRetained = false;
+                                try {
+                                    signal.throwIfAborted();
+                                    if (
+                                        Math.abs(
+                                            sample.timestamp -
+                                                timeOrigin +
+                                                seg.tripStart -
+                                                frameTimings[index]!.contentSec,
+                                        ) > 1e-6
+                                    ) {
+                                        throw new Error("detect: backward frame is unavailable");
+                                    }
+                                    const bytes = reverseSampleBytes(sample);
+                                    sampleBytesHint = Math.max(sampleBytesHint, bytes);
+                                    retained.push({ index, sample, bytes });
+                                    isRetained = true;
+                                    retainedBytes += bytes;
+                                    // A format or resolution change can exceed
+                                    // the seed's size hint. Retain the newest
+                                    // suffix; a fresh, smaller-block iterator
+                                    // revisits every discarded earlier index.
+                                    while (retained.length > 1 && retainedBytes > REVERSE_FRAME_BUDGET_BYTES) {
+                                        const discarded = retained.shift()!;
+                                        retainedBytes -= discarded.bytes;
+                                        discarded.sample.close();
+                                    }
+                                    decodedFrames++;
+                                    index++;
+                                } finally {
+                                    if (!isRetained) sample.close();
+                                }
+                                if (index < endIndex) continue;
+                                const nextEndIndex = retained[0]!.index;
+                                for (let item = retained.length - 1; item >= 0; item--) {
+                                    signal.throwIfAborted();
+                                    const { index, sample } = retained[item]!;
+                                    // Older groups settle this frame first.
+                                    // Their ready prefix can then safely stop
+                                    // younger duplicates without waiting for
+                                    // unrelated earlier frames to finish.
+                                    const needed = cohort.some((group) => group.seedIndex === index || hasWork(group));
+                                    if (!needed) continue;
+                                    const liveCount = cohort.reduce(
+                                        (count, group) =>
+                                            count +
+                                            (group.seedIndex === index
+                                                ? group.branchCount
+                                                : group.propagations.reduce(
+                                                      (sum, propagation) =>
+                                                          sum + propagation.backwardTrackCount(group.seedIndex),
+                                                      0,
+                                                  )),
+                                        0,
+                                    );
+                                    const frame =
+                                        liveCount > 1
+                                            ? drawDisplaySample(sample)
+                                            : createNativeTrackingFrame(sample, trackingFrames);
+                                    for (const group of cohort) {
+                                        if (group.seedIndex === index) {
+                                            startGroup(group, frame);
+                                        } else if (hasWork(group)) {
+                                            for (const propagation of group.propagations) {
+                                                const kind = propagationKinds.get(propagation)!;
+                                                await propagation.backward(
+                                                    frame,
+                                                    index,
+                                                    observations.get(kind)!.get(frameTimings[index]!.contentSec)?.seeds,
+                                                    group.seedIndex,
+                                                );
+                                            }
+                                            reverseDone++;
+                                            if (!hasWork(group)) reverseDone += index - group.startIndex;
+                                        }
+                                    }
+                                    progress(expectedEndSec, "backward", reverseDone / Math.max(1, reverseWork));
+                                }
+                                for (const { sample } of retained) sample.close();
+                                retained.length = 0;
+                                retainedBytes = 0;
+                                endIndex = nextEndIndex;
+                                if (!cohort.some(hasWork)) {
+                                    // No live branch needs the gap before the
+                                    // next seed. Close the iterator before
+                                    // seeking there instead of decoding it.
+                                    const nextSeed = cohort.filter((group) => !group.started).at(-1);
+                                    endIndex = nextSeed ? Math.min(endIndex, nextSeed.seedIndex + 1) : startIndex;
+                                }
+                                if (nextEndIndex > blockStartIndex || endIndex !== nextEndIndex) {
+                                    // Closing this iterator also releases its
+                                    // lookahead queue before a size-change retry.
+                                    stoppedEarly = true;
+                                    break;
+                                }
+                                blockStartIndex = Math.max(startIndex, endIndex - capacity);
+                                index = blockStartIndex;
+                            }
+                            if (!stoppedEarly && endIndex > startIndex) {
+                                throw new Error("detect: backward tracking decode ended early");
+                            }
+                        } finally {
+                            for (const { sample } of retained) sample.close();
+                        }
+                    }
+                }
+                for (const { state, propagation } of propagationEntries) state.completed.push(...propagation.finish());
+                timings.backwardMs += performance.now() - backwardStartedAt;
+                progress(expectedEndSec, "complete");
             } finally {
                 input.dispose();
             }
         }
-        // Interval boundary: content time jumps - finalize every live track,
-        // clamped to this interval, and reset for the next one. An object
-        // straddling the boundary splits into per-interval tracks that confirm
-        // independently - the accepted trade-off of the incremental cache (see
-        // TrackCacheEntry in blur-detect.ts).
-        for (const kind of req.kinds) {
-            const active = activeIntervals.get(kind);
-            if (active) finishLive(kind, active);
-            activeIntervals.set(kind, null);
-        }
         decodeDoneSec += interval.endSec - interval.startSec;
     }
-
-    const tracksByKind: DetectResult["tracksByKind"] = {};
     for (const kind of req.kinds) {
-        tracksByKind[kind] = finished.get(kind)!.map(
-            (t): DetectResultTrack => ({
-                startSec: t.startSec,
-                endSec: t.endSec,
-                keyframes: t.keyframes,
-                detHits: t.detHits,
-                bestScore: t.bestScore,
-            }),
-        );
+        tracksByKind[kind] = intervalsByKind.get(kind)!.flatMap(({ completed }) => completed);
+        statsByKind[kind]!.inferMs = Math.round(statsByKind[kind]!.inferMs);
+        statsByKind[kind]!.trackMs = Math.round(statsByKind[kind]!.trackMs);
     }
-    for (const stat of Object.values(statsByKind)) {
-        stat.inferMs = Math.round(stat.inferMs);
-        stat.trackMs = Math.round(stat.trackMs);
-    }
-    return { tracksByKind, statsByKind, decodedFrames, passMs: Math.round(performance.now() - passStartMs) };
+    return {
+        tracksByKind,
+        statsByKind,
+        sourceFrames: [...sourceFrames.values()].sort((a, b) => a.contentSec - b.contentSec),
+        decodedFrames,
+        passMs: Math.round(performance.now() - passStartMs),
+        timings: {
+            forwardMs: Math.round(timings.forwardMs),
+            backwardMs: Math.round(timings.backwardMs),
+            decodeWaitMs: Math.round(timings.decodeWaitMs),
+            drawMs: Math.round(timings.drawMs),
+        },
+    };
 }
 
 // createWorkerServer does NOT serialize handlers (see its doc). Passes share

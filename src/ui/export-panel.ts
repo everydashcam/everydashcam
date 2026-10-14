@@ -61,6 +61,7 @@ import { buildClipGpx, clipRecordsForRange } from "../export-range.js";
 import { totalDistanceKm } from "../parser.js";
 import { notify } from "./notifications.js";
 import { t } from "../i18n/index.js";
+import { DETECTION_QUALITIES, type DetectionQuality } from "../tracking/detection-sampling.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { formatDistanceFromKm } from "../units-pref.js";
 import { SPEED_FACTORS, type TranscodeProgress } from "../transcode/types.js";
@@ -86,6 +87,7 @@ import {
     detectAssetGroups,
     detectCounts,
     detectEnabled,
+    detectQuality,
     detectRegions,
     detectStyle,
     type DetectKind,
@@ -93,6 +95,7 @@ import {
     ensureDetectPass,
     detectAvailable,
     setDetectEnabled,
+    setDetectQuality,
     setDetectStyle,
     subscribeBlurDetect,
 } from "./blur-detect.js";
@@ -1234,6 +1237,8 @@ let detectReviewTrip: ReturnType<typeof activeTrip> = null;
 let blurDetectPlatesCbEl: HTMLInputElement | null = null;
 let blurDetectFacesCbEl: HTMLInputElement | null = null;
 let blurDetectGpuNoteEl: HTMLDivElement | null = null;
+let blurDetectQualityEl: HTMLInputElement | null = null;
+const blurDetectQualityLabels = new Map<DetectionQuality, HTMLElement>();
 // The second checkbox can queue a warm behind the first; Cancel owns both.
 const detectDownloadControllers = new Set<AbortController>();
 // Zones a user asked to Follow that are waiting on the one-time tracker download.
@@ -1282,6 +1287,7 @@ function renderBlurGroup(): HTMLElement {
         );
         blurDetectFacesCbEl = facesRow.querySelector("input");
         wrap.appendChild(facesRow);
+        wrap.appendChild(renderDetectQualityControl());
         // Detection is WebGPU-only (see blur-detect.ts) - when the adapter is
         // absent both checkboxes are disabled and this note says why. Availability
         // resolves from an async probe, so syncDetectGroup owns both states.
@@ -1391,6 +1397,44 @@ function renderBlurGroup(): HTMLElement {
     syncBlurGroup();
     if (!__PORTABLE__) syncTrackerStrip();
     if (!__PORTABLE__) syncDetectGroup();
+    return wrap;
+}
+
+function renderDetectQualityControl(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "export-panel__detect-quality";
+    const label = document.createElement("label");
+    label.htmlFor = "export-panel-detect-quality";
+    label.textContent = t("export.blur.detect.quality.label");
+    const input = document.createElement("input");
+    input.id = label.htmlFor;
+    input.type = "range";
+    input.min = "0";
+    input.max = String(DETECTION_QUALITIES.length - 1);
+    input.step = "1";
+    input.setAttribute("aria-describedby", "export-panel-detect-quality-hint");
+    input.addEventListener("input", () => {
+        const quality = DETECTION_QUALITIES[Number(input.value)];
+        if (!quality) return;
+        setDetectQuality(quality);
+        notifyExportStateChanged();
+    });
+    blurDetectQualityEl = input;
+    const stops = document.createElement("div");
+    stops.className = "export-panel__detect-quality-stops";
+    stops.setAttribute("aria-hidden", "true");
+    blurDetectQualityLabels.clear();
+    for (const quality of DETECTION_QUALITIES) {
+        const stop = document.createElement("span");
+        stop.textContent = t(`export.blur.detect.quality.${quality}`);
+        blurDetectQualityLabels.set(quality, stop);
+        stops.appendChild(stop);
+    }
+    const hint = document.createElement("div");
+    hint.id = "export-panel-detect-quality-hint";
+    hint.className = "export-panel__note";
+    hint.textContent = t("export.blur.detect.quality.hint");
+    wrap.append(label, input, stops, hint);
     return wrap;
 }
 
@@ -1697,6 +1741,13 @@ function syncDetectGroup(): void {
         blurDetectFacesCbEl.checked = detectEnabled("face");
         blurDetectFacesCbEl.disabled = !detectAvailable();
     }
+    if (blurDetectQualityEl) {
+        const quality = detectQuality();
+        blurDetectQualityEl.value = String(DETECTION_QUALITIES.indexOf(quality));
+        blurDetectQualityEl.disabled = !detectAvailable();
+        blurDetectQualityEl.setAttribute("aria-valuetext", t(`export.blur.detect.quality.${quality}`));
+        for (const [value, label] of blurDetectQualityLabels) label.classList.toggle("is-active", value === quality);
+    }
     if (blurDetectGpuNoteEl) blurDetectGpuNoteEl.hidden = detectAvailable();
     syncDetectStrip();
     const el = blurDetectStatusEl;
@@ -1744,10 +1795,9 @@ function syncDetectGroup(): void {
                 if (live.length === 0) return;
                 const finding = live[detectReviewCursor % live.length]!;
                 detectReviewCursor = (detectReviewCursor + 1) % live.length;
-                // Land just inside the active span: a paused video displays the
-                // frame at-or-before currentTime, so the exact boundary can
-                // otherwise show one frame before the cover appears.
-                seekPresentedContentTime(Math.min(finding.endSec, finding.startSec + 0.1));
+                // Keep short findings strictly inside their exclusive end.
+                // The midpoint also avoids seeking just before the first frame.
+                seekPresentedContentTime(finding.startSec + Math.min(0.1, (finding.endSec - finding.startSec) / 2));
             });
             el.appendChild(review);
         } else {

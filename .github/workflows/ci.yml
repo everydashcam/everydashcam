@@ -106,9 +106,60 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # The default headless project may skip detection when no adapter exists.
+  # Lavapipe runs the packaged FP16 models on the CPU through Vulkan/WebGPU;
+  # the dedicated project fails if either WebGPU or shader-f16 is unavailable.
+  detectors:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps --no-shell chromium
+
+      - name: Select software Vulkan driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          driver_path="$(dpkg -L mesa-vulkan-drivers | awk '/\/lvp_icd[^/]*\.json$/ { print; exit }')"
+          test -n "$driver_path" && test -f "$driver_path"
+          echo "VK_DRIVER_FILES=$driver_path" >> "$GITHUB_ENV"
+
+      - name: Required detector coverage
+        run: npm run test:e2e -- --project=detectors-webgpu --workers=1 --retries=0 --reporter=list,github,blob
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_DIR: ${{ runner.temp }}/blob-report
+
+      - name: Upload detector blob report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-blob-detectors
+          path: ${{ runner.temp }}/blob-report/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload detector failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: detector-test-results
+          path: tests/test-results/detectors/
+          retention-days: 7
+          if-no-files-found: ignore
+
   reports:
     if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
-    needs: [e2e]
+    needs: [e2e, detectors]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -146,7 +197,7 @@ jobs:
   # Keep one stable check name, including when an upstream job fails or skips.
   test:
     if: ${{ !cancelled() }}
-    needs: [checks, e2e, portable, staging-build, deployment-profile, reports]
+    needs: [checks, e2e, detectors, portable, staging-build, deployment-profile, reports]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

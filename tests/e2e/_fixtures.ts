@@ -730,17 +730,29 @@ export async function canEncodeHighProfileH264(page: Page): Promise<boolean> {
  * timeout on a runner whose (SwiftShader) adapter is missing. Guards those
  * specs into a clean skip instead. Presence of navigator.gpu is not enough:
  * requestAdapter() can still resolve null, which is what actually gates the UI.
+ * The required detector project asserts adapter and FP16 support before any
+ * caller can skip, so an unavailable CI driver cannot silently remove coverage.
  */
 export async function hasWebGpuAdapter(page: Page): Promise<boolean> {
-    return page.evaluate(async () => {
-        const gpu = (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-        if (!gpu) return false;
+    const capability = await page.evaluate(async () => {
+        const gpu = (
+            navigator as unknown as {
+                gpu?: { requestAdapter(): Promise<{ features: { has(name: string): boolean } } | null> };
+            }
+        ).gpu;
+        if (!gpu) return { adapter: false, fp16: false };
         try {
-            return !!(await gpu.requestAdapter());
+            const adapter = await gpu.requestAdapter();
+            return { adapter: !!adapter, fp16: adapter?.features.has("shader-f16") ?? false };
         } catch {
-            return false;
+            return { adapter: false, fp16: false };
         }
     });
+    if (test.info().project.metadata.requireWebGpu) {
+        expect(capability.adapter, "required detector project must acquire a WebGPU adapter").toBe(true);
+        expect(capability.fp16, "required detector project must support shader-f16 for packaged models").toBe(true);
+    }
+    return capability.adapter;
 }
 
 /** Inspect the MP4 Blob handed to the download on the in-memory export path

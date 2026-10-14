@@ -1,14 +1,30 @@
-yolo-v9-s-608-license-plates-end2end-fp16.onnx
+yolo26n-plate-640-fp16.onnx
 
-License-plate detection model, MIT (see LICENSE; (c) ankandrew).
+License-plate detection model, AGPL-3.0 (see LICENSE), as declared by
+the upstream model card and ONNX metadata.
 
-Provenance:
-- ankandrew/open-image-models, release asset
-  yolo-v9-s-608-license-plates-end2end.onnx
-  (https://github.com/ankandrew/open-image-models).
-- upstream FP32 sha256:
-  2b878b38d9aa07b6ddc3ea75c4ffcb39869bc5c218e0a14002f60ab2f7b0be9a
-- converted with onnxconverter-common 1.16.0: FP16 compute, FP32 input,
-  /end2end/ postprocess and output.
-- shipped sha256:
-  0b6dda70cf33df6a404e267fd96a8a4bb7682e4ad7a185a2e9f8124658fae189
+Attribution and source:
+- Fine-tuned model: ishaqinu/yolo26n-license-plate-detection.
+  https://huggingface.co/ishaqinu/yolo26n-license-plate-detection
+- Pinned revision: b9162ec575eae48a1c3c3d42cd24e87fea83214b
+- Original FP32 ONNX:
+  https://huggingface.co/ishaqinu/yolo26n-license-plate-detection/resolve/b9162ec575eae48a1c3c3d42cd24e87fea83214b/alpr_26n.onnx
+- The same revision provides alpr_26n.pt, args.yaml and ATTRIBUTION.md.
+- Base model and training implementation: Ultralytics YOLO26,
+  version 8.4.155, https://github.com/ultralytics/ultralytics/tree/v8.4.155
+- Training dataset: License Plate Recognition v11, Roboflow Universe.
+  https://universe.roboflow.com/roboflow-universe-projects/license-plate-recognition-rxg4e/dataset/11
+  Upstream reports the dataset license as CC BY 4.0:
+  https://creativecommons.org/licenses/by/4.0/
+
+Local modification (2026-10-14):
+- Converted the original ONNX to FP16 with onnx 1.23.2 and
+  onnxconverter-common 1.16.0. Removed graph.value_info before conversion;
+  convert_float_to_float16 used keep_io_types=True and the default blocked
+  operators plus Resize. Input, output and Resize remain FP32.
+- ONNX opset 19, input images [1, 3, 640, 640], output output0 [1, 5, 8400].
+  The model has no embedded NMS; postprocessing is performed by the application.
+- Original FP32: 9,793,541 bytes; SHA-256:
+  f42b5d166a13ab0802973cd8ee04a08225dd102f98488424cccbfe0e7d4e624a
+- Shipped FP16: 4,935,944 bytes; SHA-256:
+  1c3f64c17b20f8b6d89dcc973717a69144c90749add8be0e41556e7ff426353e

@@ -5,6 +5,7 @@ import {
     packRgbPlanarNormalized,
     type RawDetection,
     suppressOverlaps,
+    suppressTileOverlaps,
     type TileRect,
     tileRects,
 } from "./detect-common.js";
@@ -62,13 +63,30 @@ export class TiledDetector {
     ): Promise<TiledDetector> {
         const { ort, session } = await createOrtSession(runtime, assets, modelUrl, {
             executionProviders: [runtime],
-            // In-graph NMS can fall back to CPU; per-node warnings are expected.
             logSeverityLevel: 3,
         });
         return new TiledDetector(ort, session, model);
     }
 
+    /** Merge original per-tile proposals once. Merging prior envelopes instead
+     * of their representatives can absorb neighbors as batches accumulate. */
+    merge(detections: readonly RawDetection[]): RawDetection[] {
+        return suppressOverlaps(detections, this.model.overlapIou);
+    }
+
     async detect(
+        frame: CanvasImageSource,
+        frameW: number,
+        frameH: number,
+        tiles: readonly TileRect[] = tileRects(frameW, frameH),
+    ): Promise<RawDetection[]> {
+        return this.merge(await this.detectTiles(frame, frameW, frameH, tiles));
+    }
+
+    /** Return NMS-filtered proposals from each tile without merging seams.
+     * A cache may accumulate disjoint tile batches, then merge their original
+     * representatives together after every requested tile is available. */
+    async detectTiles(
         frame: CanvasImageSource,
         frameW: number,
         frameH: number,
@@ -85,10 +103,12 @@ export class TiledDetector {
                 resolved = await outputs;
                 const out = resolved[this.session.outputNames[0]!];
                 if (out) {
+                    const tileDetections: RawDetection[] = [];
                     this.model.collect(
                         { data: out.data as Float32Array, dims: out.dims, lb, tile, frameW, frameH },
-                        detections,
+                        tileDetections,
                     );
+                    detections.push(...suppressTileOverlaps(tileDetections, this.model.overlapIou));
                 }
             } finally {
                 if (resolved) {
@@ -125,7 +145,7 @@ export class TiledDetector {
             }
             throw error;
         }
-        return suppressOverlaps(detections, this.model.overlapIou);
+        return detections;
     }
 
     private toTensor(slot: InputSlot): OrtTensor {

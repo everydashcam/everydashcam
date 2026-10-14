@@ -1,6 +1,6 @@
 // Readiness gate for the blur features' heavy assets: the onnxruntime-web wasm
-// runtime plus the per-feature ONNX models (vittrack for Follow, the plate and
-// face detectors for the "blur all ..." checkboxes). The workers fetch these
+// runtimes plus the per-feature ONNX models (ViTTrack for Follow, and detector
+// models with ViTTrack for the "blur all ..." checkboxes). The workers fetch these
 // lazily, but that fetch is silent - on a slow link the user stares at a frozen
 // button while megabytes download, and offline it just fails.
 //
@@ -12,7 +12,7 @@
 //
 // Assets are grouped per feature; a request names the groups it needs and the
 // consent copy prices only the files this device has never pulled (the detect
-// groups share the webgpu runtime, so consenting to plates makes the faces
+// groups share the WebGPU runtime and ViTTrack, so consenting to plates makes the faces
 // checkbox later cost just the face model). Downloads are opt-in and
 // remembered per FILE in localStorage. No UI here - the panel subscribes.
 
@@ -50,8 +50,8 @@ const TRACKER_ASSETS =
               },
               models: {
                   tracker: "/models/vittrack/object_tracking_vittrack_2023sep.onnx",
-                  plate: "/models/plate/yolo-v9-s-608-license-plates-end2end-fp16.onnx",
-                  face: "/models/face/yolov9s-face-960-fp16.onnx",
+                  plate: "/models/plate/yolo26n-plate-640-fp16.onnx",
+                  face: "/models/face/yolo26n-face-640-fp16.onnx",
               },
           };
 
@@ -60,8 +60,8 @@ export const PLATE_MODEL_URL = TRACKER_ASSETS.models.plate;
 export const FACE_MODEL_URL = TRACKER_ASSETS.models.face;
 export const TRACKER_ORT_ASSETS = TRACKER_ASSETS.ort;
 
-/** Feature-facing asset groups: Follow needs the tracker model, each detect
- *  checkbox needs its detector model; all three need the shared ORT runtime. */
+/** Follow needs ViTTrack and plain WASM. Detection shares its WebGPU runtime
+ *  with ViTTrack's WASM session; each checkbox adds its detector model. */
 export type BlurAssetGroupId = "track" | "detect-plate" | "detect-face";
 
 /** approxMb only steers the progress bar weights and the consent price tag -
@@ -83,29 +83,18 @@ function runtimeAssets(assets: OrtAssets): AssetSpec[] {
 
 const ORT_WASM_ASSETS = runtimeAssets(TRACKER_ORT_ASSETS.wasm);
 const ORT_WEBGPU_ASSETS = runtimeAssets(TRACKER_ORT_ASSETS.webgpu);
+const TRACKER_MODEL_ASSET = { url: TRACKER_MODEL_URL, approxMb: 0.7 };
 
 function groupAssets(group: BlurAssetGroupId): readonly AssetSpec[] {
     switch (group) {
         case "track":
-            return [...ORT_WASM_ASSETS, { url: TRACKER_MODEL_URL, approxMb: 0.7 }];
+            return [...ORT_WASM_ASSETS, TRACKER_MODEL_ASSET];
         case "detect-plate":
-            // Detection is WebGPU-only (the panel disables both checkboxes
-            // without an adapter - see blur-detect.ts), so the detect groups
-            // always price the webgpu runtime. The detect pass ALSO follows each
-            // hit with vittrack (on that same webgpu runtime's wasm EP - no
-            // second ort build), so it prices the tracker MODEL too; the Follow
-            // pass stays on the plain wasm pair (validated there).
-            return [
-                ...ORT_WEBGPU_ASSETS,
-                { url: TRACKER_MODEL_URL, approxMb: 0.7 },
-                { url: PLATE_MODEL_URL, approxMb: 14.4 },
-            ];
+            // Keep tracking dependencies inside the requested detect group so
+            // its consent, progress and Cancel remain owned by the same strip.
+            return [...ORT_WEBGPU_ASSETS, TRACKER_MODEL_ASSET, { url: PLATE_MODEL_URL, approxMb: 4.9 }];
         case "detect-face":
-            return [
-                ...ORT_WEBGPU_ASSETS,
-                { url: TRACKER_MODEL_URL, approxMb: 0.7 },
-                { url: FACE_MODEL_URL, approxMb: 12.8 },
-            ];
+            return [...ORT_WEBGPU_ASSETS, TRACKER_MODEL_ASSET, { url: FACE_MODEL_URL, approxMb: 4.9 }];
     }
 }
 

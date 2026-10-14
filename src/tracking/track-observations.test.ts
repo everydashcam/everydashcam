@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyTrackResult } from "../blur-follow.js";
 import { createBlurRegion, regionRectAt, type BlurRegion } from "../blur-regions.js";
 import type { CropRect } from "../transcode/compose.js";
-import { finalizeTrack, type FinalizeOptions, type TrackKeyframe } from "./detect-track.js";
+import type { TrackKeyframe } from "./detect-track.js";
 import { finalizeFollowEndReason } from "./follow-end.js";
 import { appendTrackObservation, type PendingTrackHold, recordTrackHold } from "./track-observations.js";
 
@@ -15,17 +15,7 @@ function trackedRegion(keyframes: TrackKeyframe[]): BlurRegion {
     return region;
 }
 
-const finalizeOptions: FinalizeOptions = {
-    confirmMinHits: 2,
-    confirmStrongScore: 0.7,
-    confirmTrackSec: 0.4,
-    extendBackSec: 1,
-    extendForwardSec: 0.7,
-    clampStartSec: 0,
-    clampEndSec: 5,
-};
-
-describe("track observations across uncertain frames", () => {
+describe("Follow observations across uncertain frames", () => {
     it("keeps ordinary observed motion continuous", () => {
         const keyframes: TrackKeyframe[] = [];
         const pending: PendingTrackHold = { previousSec: null, latestSec: null };
@@ -50,7 +40,7 @@ describe("track observations across uncertain frames", () => {
         expect(regionRectAt(region, 2)).toEqual(b);
     });
 
-    it("keeps the preceding hold when a detector recovers on the rejected frame", () => {
+    it("keeps the preceding hold when a replacement observation uses the rejected timestamp", () => {
         const keyframes: TrackKeyframe[] = [];
         const pending: PendingTrackHold = { previousSec: null, latestSec: null };
         appendTrackObservation(keyframes, pending, 0, a);
@@ -62,7 +52,7 @@ describe("track observations across uncertain frames", () => {
         expect(regionRectAt(trackedRegion(keyframes), 2)).toEqual(b);
     });
 
-    it("preserves the gap hold when a recovered tracker is re-anchored on the same frame", () => {
+    it("preserves the gap hold when a recovered observation is corrected at the same timestamp", () => {
         const keyframes: TrackKeyframe[] = [];
         const pending: PendingTrackHold = { previousSec: null, latestSec: null };
         appendTrackObservation(keyframes, pending, 0, a);
@@ -88,19 +78,6 @@ describe("track observations across uncertain frames", () => {
         ]);
     });
 
-    it("does not extend finalization into an unresolved loss or change confirmation evidence", () => {
-        const keyframes: TrackKeyframe[] = [];
-        const pending: PendingTrackHold = { previousSec: null, latestSec: null };
-        appendTrackObservation(keyframes, pending, 1, a);
-        for (const sec of [1.1, 2, 3, 4]) recordTrackHold(pending, sec);
-        const accumulator = { keyframes, detHits: 1, bestScore: 0.9, trackedGoodSec: 0 };
-
-        const finished = finalizeTrack(accumulator, finalizeOptions)!;
-        expect(finished.endSec).toBe(1.7);
-        expect(keyframes).toEqual([{ contentSec: 1, rect: a }]);
-        expect(finalizeTrack({ ...accumulator, bestScore: 0.5 }, finalizeOptions)).toBeNull();
-    });
-
     it("holds the recovered position across later losses without moving the final good timestamp", () => {
         const keyframes: TrackKeyframe[] = [];
         const pending: PendingTrackHold = { previousSec: null, latestSec: null };
@@ -117,9 +94,6 @@ describe("track observations across uncertain frames", () => {
         expect(regionRectAt(region, 1.5)).toEqual(b);
         expect(regionRectAt(region, 4)).toEqual(c);
         expect(keyframes.at(-1)?.contentSec).toBe(2);
-        expect(
-            finalizeTrack({ keyframes, detHits: 2, bestScore: 0.9, trackedGoodSec: 0 }, finalizeOptions)?.endSec,
-        ).toBe(2.7);
     });
 
     it("keeps an unresolved Follow tail uncertain and held through the requested end", () => {

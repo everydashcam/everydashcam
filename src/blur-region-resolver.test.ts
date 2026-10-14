@@ -7,6 +7,49 @@ import type { Channel } from "./parsers/types.js";
 const channels: Channel[] = ["front", "rear", "interior", "side"];
 
 describe("createRegionBlurResolver", () => {
+    it("activates held masks on rounded browser timestamps without changing manual boundaries", () => {
+        const held = createBlurRegion("front", "fill", 7 / 30, 10 / 30, 7 / 30, {
+            xPct: 0.1,
+            yPct: 0.2,
+            wPct: 0.2,
+            hPct: 0.1,
+        });
+        held.interpolation = "hold";
+        upsertKeyframe(held, 8 / 30, { xPct: 0.4, yPct: 0.2, wPct: 0.2, hPct: 0.1 }, false);
+        const manual = { ...held, interpolation: "linear" as const };
+        const resolve = createRegionBlurResolver([manual, held], "front");
+        expect(resolve(0.233333)).toEqual([{ rect: held.keyframes[0]!.rect, style: "fill" }]);
+        expect(resolve(0.266667).at(-1)?.rect).toEqual(held.keyframes[1]!.rect);
+        expect(resolve(0.333333)).toHaveLength(1);
+        expect(resolve(0.333334)).toEqual([]);
+        expect(resolve(0.233333)).toHaveLength(1);
+    });
+
+    it("matches preview on quantized MSE frames across starts, keyframes, ends and backward seeks", () => {
+        const first = { xPct: 0.4, yPct: 0.3, wPct: 0.2, hPct: 0.1 };
+        const next = { xPct: 0.2, yPct: 0.4, wPct: 0.2, hPct: 0.1 };
+        const held = createBlurRegion("front", "fill", 10.679, 10.759, 10.679, first);
+        held.interpolation = "hold";
+        upsertKeyframe(held, 10.719, next, false);
+        const manual = { ...held, interpolation: "linear" as const };
+        const regions = [manual, held];
+        const resolve = createRegionBlurResolver(regions, "front");
+
+        expect(resolve(10.678979)).toEqual([]);
+        expect(resolve(10.678993)).toEqual([{ rect: first, style: "fill" }]);
+        expect(resolve(10.718979).at(-1)?.rect).toEqual(first);
+        expect(resolve(10.718993).at(-1)?.rect).toEqual(next);
+        expect(resolve(10.758993)).toEqual([{ rect: next, style: "fill" }]);
+        expect(resolve(10.759001)).toEqual([]);
+        expect(resolve(10.678993)).toEqual([{ rect: first, style: "fill" }]);
+
+        for (const time of [
+            10.678979, 10.678993, 10.679, 10.718979, 10.718993, 10.758993, 10.759, 10.759001, 10.718993,
+        ]) {
+            expect(resolve(time), `at ${time}`).toEqual(resolveRegionBlursAt(regions, "front", time));
+        }
+    });
+
     it("preserves interpolation, inclusive edges and paint order across held frames and backward jumps", () => {
         // Creation order deliberately differs from start time. Equal-style
         // overlapping patches must retain their original relative paint order.
@@ -21,6 +64,7 @@ describe("createRegionBlurResolver", () => {
                 { xPct: (i % 7) / 10, yPct: 0.2, wPct: 0.12, hPct: 0.1 },
             );
             upsertKeyframe(region, start + 4, { xPct: 0.1, yPct: 0.7, wPct: 0.2, hPct: 0.15 }, false);
+            if (i % 2 === 0) region.interpolation = "hold";
             return region;
         });
         const original = structuredClone(regions);

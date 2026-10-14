@@ -6,7 +6,11 @@ import {
     blurAssetsReady,
     blurAssetsState,
     downloadBlurAssets,
+    FACE_MODEL_URL,
+    PLATE_MODEL_URL,
     subscribeBlurAssets,
+    TRACKER_MODEL_URL,
+    TRACKER_ORT_ASSETS,
 } from "./blur-assets.js";
 import { reportMapTileNetworkError, reportMapTilesOk } from "./connectivity.js";
 
@@ -34,6 +38,51 @@ afterEach(() => {
 });
 
 describe("blur assets offline readiness", () => {
+    it("shares the detector runtime and tracker model without downloading the Follow runtime", async () => {
+        expect(await downloadBlurAssets(["detect-plate", "detect-face"])).toBe(true);
+        expect(fetch).toHaveBeenCalledWith(PLATE_MODEL_URL, expect.anything());
+        expect(fetch).toHaveBeenCalledWith(FACE_MODEL_URL, expect.anything());
+        expect(fetch).toHaveBeenCalledWith(TRACKER_MODEL_URL, expect.anything());
+        expect(fetch).not.toHaveBeenCalledWith(TRACKER_ORT_ASSETS.wasm.moduleUrl, expect.anything());
+        expect(fetch).toHaveBeenCalledWith(TRACKER_ORT_ASSETS.webgpu.moduleUrl, expect.anything());
+        const downloaded = vi.mocked(fetch).mock.calls.map(([url]) => url);
+        const plainWasm = TRACKER_ORT_ASSETS.wasm.wasm;
+        const plainUrls = [
+            ...("parts" in plainWasm ? plainWasm.parts.map((part) => part.url) : [plainWasm.url]),
+            TRACKER_ORT_ASSETS.wasm.moduleUrl,
+        ];
+        expect(downloaded.filter((url) => plainUrls.includes(String(url)))).toEqual([]);
+        expect(new Set(downloaded).size, "shared runtime and model download once").toBe(downloaded.length);
+        expect(blurAssetsReady(["detect-plate", "detect-face"])).toBe(true);
+        expect(blurAssetsReady(["track"])).toBe(false);
+        expect(await downloadBlurAssets(["track"])).toBe(true);
+        expect(
+            vi
+                .mocked(fetch)
+                .mock.calls.slice(downloaded.length)
+                .map(([url]) => url),
+        ).toEqual(plainUrls);
+        expect(blurAssetsReady(["track"])).toBe(true);
+    });
+
+    it("keeps tracker download progress owned by the requested detection group", async () => {
+        const downloadingGroups: Array<readonly string[] | null> = [];
+        const unsubscribe = subscribeBlurAssets(() => {
+            if (blurAssetsState().phase === "downloading") downloadingGroups.push(blurAssetsState().activeGroups);
+        });
+        try {
+            expect(await downloadBlurAssets(["detect-plate"])).toBe(true);
+            expect(downloadingGroups.length).toBeGreaterThan(0);
+            for (const groups of downloadingGroups) expect(groups).toEqual(["detect-plate"]);
+            const callsAfterPlate = vi.mocked(fetch).mock.calls.length;
+            expect(await downloadBlurAssets(["detect-face"])).toBe(true);
+            expect(fetch).toHaveBeenCalledTimes(callsAfterPlate + 1);
+            expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe(FACE_MODEL_URL);
+        } finally {
+            unsubscribe();
+        }
+    });
+
     it("downloads same-origin models while the tile provider is unreachable", async () => {
         reportMapTileNetworkError();
         expect(blurAssetsBlockedOffline(["track"])).toBe(false);

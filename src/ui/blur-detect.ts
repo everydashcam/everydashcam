@@ -1,8 +1,8 @@
 // Main-thread client of the detection pass (the "blur all plates / faces"
 // checkboxes on the export panel). Owns the per-trip checkbox flags, the pass
 // result cache and the single running pass; the heavy work - native-res decode
-// + tiled detector inference - runs in src/workers/tracker-worker.ts (shared
-// with the Follow pass, one worker = one wasm runtime).
+// + tiled detection and bidirectional object tracking - runs in src/workers/tracker-worker.ts (shared
+// with the Follow pass, serialized to bound decoder/inference resource use).
 //
 // Result model: the pass converts confirmed detector tracks into ordinary
 // BlurRegion objects (auto-* ids, unpinned keyframes) kept OUTSIDE the manual
@@ -10,7 +10,7 @@
 // editor never sees them (dozens of non-editable rows would drown the panel;
 // a false positive is cheap, a miss is fixed with a manual zone).
 //
-// Freshness: results are keyed by (range, channels, kinds). The key mismatching
+// Freshness: results are keyed by (range, channels, kinds, quality). The key mismatching
 // the current params means STALE - stale results are not painted and not
 // exported (they cover a different span); ensureDetectPass() re-runs. Range
 // edits re-trigger through a debounce so a trim-bar drag does not thrash
@@ -18,7 +18,7 @@
 
 import { cloneBlurRegions, type BlurRegion, type BlurStyle } from "../blur-regions.js";
 import { sliceTripChannelForRange } from "../export-range.js";
-import { subtractIntervals, type TimeInterval, unionIntervals } from "../tracking/interval-set.js";
+import { DETECTION_QUALITY_DEFAULT, type DetectionQuality } from "../tracking/detection-sampling.js";
 import { createLogger } from "../log.js";
 import { tripAllCandidates } from "../trips.js";
 import type { Trip } from "../trips.js";
@@ -32,6 +32,7 @@ import {
     type DetectRequestData,
     type DetectResult,
     type DetectResultTrack,
+    type TrackSegment,
 } from "../workers/tracker-protocol.js";
 
 import {
@@ -68,36 +69,28 @@ export interface DetectCounts {
 }
 
 interface TrackCacheEntry {
-    /** Intervals of the trip content axis this channel+kind has analyzed. */
-    intervals: TimeInterval[];
-    /** Confirmed tracks produced within them (each already clamped to the
-     *  interval it was found in - the worker flushes tracks at interval
-     *  boundaries, so a cached track never spans an un-analyzed gap).
-     *
-     *  Accepted trade-off of that flush: an object straddling the boundary
-     *  between a cached interval and a newly analyzed one splits into two
-     *  tracks that confirm INDEPENDENTLY. Usually that just means two
-     *  overlapping covers (cheap); the real cost is a face whose detector hits
-     *  split below the 3-hit bar on both sides - it drops entirely, where one
-     *  continuous pass would confirm it (plates are saved by tracker-sustain).
-     *  Deliberate: carrying hits across the boundary would re-create the
-     *  deleted merge's cross-pass coupling for a miss a manual zone fixes. */
+    /** Full ownership window, independent of the current export trim. */
+    source: TrackSegment;
+    /** Complete analyzed portion of that window; extensions replace it whole. */
+    segment: TrackSegment;
+    quality: DetectionQuality;
     tracks: DetectResultTrack[];
+    sourceFrames: DetectResult["sourceFrames"];
 }
 
 interface TripDetectState {
     source: BlurTripSource;
     enabled: { plate: boolean; face: boolean };
+    quality: DetectionQuality;
     /** One style per trip, including while a pass is still running. Keeping it
      *  here prevents a long multi-camera pass from producing mixed styles when
      *  the active trip or the style selector changes between channels. */
     style: BlurStyle;
     /** Last completed pass; `key` names the params it covered. */
     result: { key: string; regions: BlurRegion[]; counts: DetectCounts } | null;
-    /** Per-channel track cache: survives range edits, so a re-keyed pass decodes
-     *  only what the covered intervals miss - a shrunk range costs nothing (serve
-     *  the overlapping cached tracks), a grown one only the added tail. */
-    trackCache: Map<Channel, Partial<Record<DetectKind, TrackCacheEntry>>>;
+    /** One analysis per source window and kind. Only changed boundary windows
+     *  need inference when a multi-file export grows or moves. */
+    trackCache: Map<Channel, Partial<Record<DetectKind, TrackCacheEntry[]>>>;
 }
 
 let stateByTrip = new WeakMap<Trip, TripDetectState>();
@@ -108,6 +101,7 @@ function tripState(trip: Trip): TripDetectState {
         st = {
             source: captureBlurTripSource(trip),
             enabled: { plate: false, face: false },
+            quality: DETECTION_QUALITY_DEFAULT,
             style: exportPanelState.blurStyle,
             result: null,
             trackCache: new Map(),
@@ -121,8 +115,8 @@ interface RunningDetect {
     trip: Trip;
     key: string;
     runId: string;
-    channelCount: number;
-    /** Aggregate 0..1 across all channel requests. */
+    segmentCount: number;
+    /** Aggregate 0..1 across the source windows of all channels. */
     fraction: number;
     controller: AbortController;
     /** Settles when the pass stores a result (true) or fails/cancels (false). */
@@ -183,6 +177,7 @@ subscribeBlurTripRegroup((oldTrips, newTrips) => {
             stateByTrip.set(trip, {
                 source: captureBlurTripSource(trip),
                 enabled: { ...previous.st.enabled },
+                quality: previous.st.quality,
                 style: previous.st.style,
                 result: null,
                 trackCache: new Map(),
@@ -218,10 +213,10 @@ subscribeTrackerWorkerNotifications((msg) => {
     const data = msg.data as Partial<DetectProgressData> & { passId?: string };
     const run = running;
     if (!run || !data.passId?.startsWith(`${run.runId}:`)) return;
-    const channelIndex = Number(data.passId.slice(run.runId.length + 1));
-    if (!Number.isFinite(channelIndex)) return;
+    const segmentIndex = Number(data.passId.slice(run.runId.length + 1));
+    if (!Number.isFinite(segmentIndex)) return;
     if (msg.type === DETECT_NOTIFY_PROGRESS && data.fractionDone !== undefined) {
-        run.fraction = Math.min(1, (channelIndex + data.fractionDone) / run.channelCount);
+        run.fraction = Math.min(1, (segmentIndex + data.fractionDone) / run.segmentCount);
     }
     run.armTimeout();
     notifyDetectChanged();
@@ -273,6 +268,7 @@ interface PassParams {
     endSec: number;
     channels: Channel[];
     kinds: DetectKind[];
+    quality: DetectionQuality;
 }
 
 /** Current pass parameters for the trip, or null when no kind is enabled.
@@ -289,11 +285,12 @@ function passParams(trip: Trip): PassParams | null {
     const channels = [...state.composition.channelOrder];
     return {
         // Tile order changes composition, not the source frames to analyze.
-        key: `${startSec}|${endSec}|${[...channels].sort().join("+")}|${kinds.join("+")}`,
+        key: `${startSec}|${endSec}|${[...channels].sort().join("+")}|${kinds.join("+")}|${st.quality}`,
         startSec,
         endSec,
         channels,
         kinds,
+        quality: st.quality,
     };
 }
 
@@ -302,10 +299,9 @@ export function detectAssetGroups(kinds: readonly DetectKind[]): BlurAssetGroupI
     return kinds.map((k) => (k === "plate" ? "detect-plate" : "detect-face"));
 }
 
-/** Detection is WebGPU-only for both kinds (faces: yolov9s-960 is ~600 ms/tile
- *  on wasm; plates: 5 fps x 9 tiles x ~140 ms is ~6x realtime - both a crawl,
- *  not a degradation). Once the probe concludes there is no adapter, the panel
- *  disables both checkboxes with an explanation. */
+/** Detector scans require WebGPU; ViTTrack uses its separate WASM runtime.
+ *  Once the probe concludes there is no adapter, the panel disables both
+ *  checkboxes with an explanation. */
 export function detectAvailable(): boolean {
     return !probeConcludedNoGpu;
 }
@@ -314,6 +310,25 @@ export function detectAvailable(): boolean {
 export function detectEnabled(kind: DetectKind): boolean {
     const trip = activeTrip();
     return trip ? tripState(trip).enabled[kind] : false;
+}
+
+/** The active trip's chosen speed and detail, including before either kind is enabled. */
+export function detectQuality(): DetectionQuality {
+    const trip = activeTrip();
+    return trip ? tripState(trip).quality : DETECTION_QUALITY_DEFAULT;
+}
+
+export function setDetectQuality(quality: DetectionQuality): void {
+    const trip = activeTrip();
+    if (!trip) return;
+    const st = tripState(trip);
+    if (st.quality === quality) return;
+    st.quality = quality;
+    lastFailedRun = null;
+    // Reconcile after the debounce so a slider drag returning to the running
+    // quality keeps its work. Save still reconciles synchronously.
+    notifyDetectChanged();
+    if (state.exportModeOpen && anyDetectEnabled()) scheduleEnsureDetectPass();
 }
 
 export function anyDetectEnabled(): boolean {
@@ -539,18 +554,30 @@ export async function ensureDetectRegionsForExport(
     }
 }
 
-/** The sub-span of a cached track that lies within the export range, or null
- *  when the track is entirely outside it. Keyframes are kept whole - the render
- *  is range-bounded, so interpolation at the clamped edge still reads the
- *  neighbor keyframes correctly. */
+/** Clips a cached track to the export range, retaining only the actual source
+ * frame displayed at a fractional start. Compressed geometry keyframes cannot
+ * identify frame boundaries, so timing comes from the source-frame index. */
 function trackRegionSpan(
     track: DetectResultTrack,
     startSec: number,
     endSec: number,
+    sourceFrames: DetectResult["sourceFrames"],
 ): { startSec: number; endSec: number } | null {
-    const s = Math.max(startSec, track.startSec);
+    let s = Math.max(startSec, track.startSec);
     const e = Math.min(endSec, track.endSec);
-    return e > s ? { startSec: s, endSec: e } : null;
+    if (e <= s) return null;
+    let lo = 0;
+    let hi = sourceFrames.length - 1;
+    while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        if (sourceFrames[mid]!.contentSec <= startSec) lo = mid + 1;
+        else hi = mid - 1;
+    }
+    const frame = sourceFrames[hi];
+    if (frame && startSec < frame.contentSec + frame.durationSec) {
+        s = Math.max(track.startSec, frame.contentSec);
+    }
+    return { startSec: s, endSec: e };
 }
 
 function buildRegion(
@@ -564,6 +591,21 @@ function buildRegion(
     },
 ): BlurRegion {
     autoRegionCounter += 1;
+    // HOLD needs only the predecessor of the first displayed frame and changes
+    // before the exclusive end. A short trim must not clone a whole long track.
+    const lowerBound = (sec: number): number => {
+        let lo = 0;
+        let hi = track.keyframes.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (track.keyframes[mid]!.contentSec < sec) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
+    };
+    const first = lowerBound(track.startSec);
+    const from = track.keyframes[first]?.contentSec === track.startSec ? first : Math.max(0, first - 1);
+    const to = Math.max(from + 1, lowerBound(track.endSec));
     return {
         id: `auto-${kind}-${autoRegionCounter}`,
         channel,
@@ -572,8 +614,20 @@ function buildRegion(
         endSec: track.endSec,
         autoEnd: false,
         lastTrackLost: false,
-        keyframes: track.keyframes.map((k) => ({ contentSec: k.contentSec, rect: { ...k.rect }, pinned: false })),
+        interpolation: "hold",
+        keyframes: track.keyframes
+            .slice(from, to)
+            .map((k) => ({ contentSec: k.contentSec, rect: { ...k.rect }, pinned: false })),
     };
+}
+
+function sameSourceWindow(a: TrackSegment, b: TrackSegment): boolean {
+    return (
+        a.file === b.file &&
+        a.tripStart === b.tripStart &&
+        a.startInFile === b.startInFile &&
+        a.endInFile === b.endInFile
+    );
 }
 
 function startRun(trip: Trip, params: PassParams, exportProtected = false): void {
@@ -582,13 +636,18 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
     const st = tripState(trip);
     // Ingest can mutate candidates while a prior channel awaits the worker.
     // Freeze every file window against this timeline before yielding control.
-    const segmentsByChannel = params.channels.map((channel) =>
-        sliceTripChannelForRange(trip, channel, params.startSec, params.endSec).map((segment) => ({
-            file: segment.file,
-            startInFile: segment.startInFile,
-            endInFile: segment.endInFile,
-            tripStart: segment.tripStart,
-        })),
+    const windows = params.channels.flatMap((channel) =>
+        sliceTripChannelForRange(trip, channel, 0, trip.timeline.contentDurationSec).flatMap((full) => {
+            const source: TrackSegment = {
+                file: full.file,
+                startInFile: full.startInFile,
+                endInFile: full.endInFile,
+                tripStart: full.tripStart,
+            };
+            const startInFile = Math.max(source.startInFile, params.startSec - source.tripStart);
+            const endInFile = Math.min(source.endInFile, params.endSec - source.tripStart);
+            return endInFile > startInFile ? [{ channel, source, segment: { ...source, startInFile, endInFile } }] : [];
+        }),
     );
     const controller = new AbortController();
     runCounter += 1;
@@ -610,7 +669,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
         trip,
         key: params.key,
         runId,
-        channelCount: Math.max(1, params.channels.length),
+        segmentCount: Math.max(1, windows.length),
         fraction: 0,
         controller,
         armTimeout,
@@ -623,30 +682,35 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
             controller.signal.throwIfAborted();
             const regions: BlurRegion[] = [];
             const counts: DetectCounts = { plate: 0, face: 0 };
-            for (let i = 0; i < params.channels.length; i++) {
-                const channel = params.channels[i]!;
-                const segments = segmentsByChannel[i]!;
-                if (segments.length === 0) continue;
-                // Incremental contract: analyze only what the track cache does
-                // not cover. A shrunk range analyzes nothing (the cache already
-                // holds the tracks); a grown one only decodes the added tail.
+            for (let i = 0; i < windows.length; i++) {
+                controller.signal.throwIfAborted();
+                const { channel, source, segment } = windows[i]!;
+                const startSec = segment.tripStart + segment.startInFile;
+                const endSec = segment.tripStart + segment.endInFile;
+                // Tracking cannot cross ownership windows. Reanalyze a changed
+                // window whole, preserving evidence near its trimmed edges,
+                // while unrelated completed files keep their cached analysis.
                 const chCache = st.trackCache.get(channel) ?? {};
                 const analyzeIntervalsByKind: DetectRequestData["analyzeIntervalsByKind"] = {};
                 for (const kind of params.kinds) {
-                    analyzeIntervalsByKind[kind] = subtractIntervals(
-                        { startSec: params.startSec, endSec: params.endSec },
-                        chCache[kind]?.intervals ?? [],
-                    );
+                    const cached = chCache[kind]?.find((entry) => sameSourceWindow(entry.source, source));
+                    const isCovered =
+                        cached &&
+                        cached.quality === params.quality &&
+                        cached.segment.startInFile <= segment.startInFile &&
+                        cached.segment.endInFile >= segment.endInFile;
+                    analyzeIntervalsByKind[kind] = isCovered ? [] : [{ startSec, endSec }];
                 }
                 // Cached geometry must not disappear behind a queued Follow just
                 // because the user narrowed an already analyzed export range.
                 if (Object.values(analyzeIntervalsByKind).some((intervals) => intervals.length > 0)) {
                     const request: DetectRequestData & { passId: string } = {
                         passId: `${runId}:${i}`,
-                        segments,
-                        startContentSec: params.startSec,
-                        endContentSec: params.endSec,
+                        segments: [segment],
+                        startContentSec: startSec,
+                        endContentSec: endSec,
                         kinds: params.kinds,
+                        quality: params.quality,
                         analyzeIntervalsByKind,
                         plateModelUrl: PLATE_MODEL_URL,
                         faceModelUrl: FACE_MODEL_URL,
@@ -660,65 +724,77 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                     // response before this continuation resumes.
                     controller.signal.throwIfAborted();
                     timeoutCtrl.signal.throwIfAborted();
-                    // The next channel may sit behind a Follow request in the
+                    // The next window may sit behind a Follow request in the
                     // worker's serialization queue. Stop counting inactivity now;
                     // its own STARTED notification re-arms after that queue.
                     if (timeoutTimer !== undefined) {
                         window.clearTimeout(timeoutTimer);
                         timeoutTimer = undefined;
                     }
-                    // Fold the newly produced tracks into the cache - only on a
-                    // completed request, so an abort/failure leaves it untouched.
+                    // Replace only newly analyzed kinds after completion, so an
+                    // abort/failure preserves the previous complete analysis.
                     const updatedCache = st.trackCache.get(channel) ?? {};
                     for (const kind of params.kinds) {
-                        const entry = updatedCache[kind] ?? { intervals: [], tracks: [] };
-                        entry.tracks = [...entry.tracks, ...(result.tracksByKind[kind] ?? [])];
-                        entry.intervals = unionIntervals([...entry.intervals, ...(analyzeIntervalsByKind[kind] ?? [])]);
-                        updatedCache[kind] = entry;
+                        if (!analyzeIntervalsByKind[kind]?.length) continue;
+                        updatedCache[kind] = [
+                            ...(updatedCache[kind] ?? []).filter((entry) => !sameSourceWindow(entry.source, source)),
+                            {
+                                source,
+                                segment,
+                                quality: params.quality,
+                                tracks: result.tracksByKind[kind] ?? [],
+                                sourceFrames: result.sourceFrames,
+                            },
+                        ];
                     }
                     st.trackCache.set(channel, updatedCache);
                     // The effort breakdown is the arbiter for "the pass feels slow"
-                    // field reports - which kind ate the wall time (discovery scans
-                    // vs the per-object tracker), versus the decode share.
+                    // field reports - detector scans, tracking, and the decode share.
                     log.info("detect pass stats", {
                         channel,
-                        spanSec: Math.round((params.endSec - params.startSec) * 10) / 10,
+                        quality: params.quality,
+                        spanSec: Math.round((endSec - startSec) * 10) / 10,
                         passMs: result.passMs,
                         decodedFrames: result.decodedFrames,
+                        timings: result.timings,
                         ...result.statsByKind,
                     });
-                    // Full track dump (compact strings): the forensic record for
-                    // "the cover moved wrong" field reports - only THIS pass's fresh
-                    // tracks (the cache holds the earlier intervals'). Shows every
-                    // keyframe the render interpolates, so a bad motion can be traced
-                    // to the exact track without a repro clip.
+                    // Frame-level masks can contain thousands of keyframes.
+                    // Keep diagnostics bounded per track with endpoint samples.
                     for (const kind of params.kinds) {
                         const tracks = result.tracksByKind[kind] ?? [];
                         if (tracks.length === 0) continue;
                         log.info("detect tracks", {
                             channel,
                             kind,
-                            tracks: tracks.map(
-                                (track) =>
+                            tracks: tracks.map((track) => {
+                                const samples =
+                                    track.keyframes.length <= 6
+                                        ? track.keyframes
+                                        : [...track.keyframes.slice(0, 3), ...track.keyframes.slice(-3)];
+                                return (
                                     `${track.startSec.toFixed(2)}..${track.endSec.toFixed(2)} ` +
                                     `hits=${track.detHits} best=${track.bestScore.toFixed(2)} ` +
-                                    track.keyframes
+                                    `frames=${track.keyframes.length} samples=` +
+                                    samples
                                         .map(
                                             (k) =>
                                                 `${k.contentSec.toFixed(2)}@${k.rect.xPct.toFixed(3)},${k.rect.yPct.toFixed(3)},${k.rect.wPct.toFixed(3)},${k.rect.hPct.toFixed(3)}`,
                                         )
-                                        .join(" "),
-                            ),
+                                        .join(" ")
+                                );
+                            }),
                         });
                     }
                 }
-                // Build regions from the WHOLE cache (this pass + earlier
-                // intervals), each clamped to the current range; a track fully
-                // outside it is skipped.
+                // Resolve only this source window, including cached trims whose
+                // first displayed frame precedes the fractional trim boundary.
                 const cache = st.trackCache.get(channel)!;
                 for (const kind of params.kinds) {
-                    for (const track of cache[kind]?.tracks ?? []) {
-                        const span = trackRegionSpan(track, params.startSec, params.endSec);
+                    const entry = cache[kind]?.find((entry) => sameSourceWindow(entry.source, source));
+                    if (!entry) continue;
+                    for (const track of entry.tracks) {
+                        const span = trackRegionSpan(track, startSec, endSec, entry.sourceFrames);
                         if (!span) continue;
                         counts[kind] += 1;
                         regions.push(
@@ -730,7 +806,10 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         );
                     }
                 }
+                run.fraction = (i + 1) / run.segmentCount;
+                notifyDetectChanged();
             }
+            controller.signal.throwIfAborted();
             // The style may have changed while a long multi-channel pass ran.
             // Normalize once at commit so the completed result is never mixed.
             for (const region of regions) region.style = st.style;

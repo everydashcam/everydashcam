@@ -29,6 +29,22 @@ The latter builds and lists the selected tests without launching a browser.
 To run every scenario in a feature file, use the full entry point, for example
 `npm run test:e2e -- blur-regions.spec.ts`.
 
+Real plate/face inference also has an explicit required project:
+`npm run test:e2e -- --project=detectors-webgpu --workers=1`. It runs short
+plate and face motion cases, thorough small-plate continuity and tracker-loss
+recovery; missing WebGPU or `shader-f16` fails instead of skipping. On a local
+desktop, add `--headed`
+when the headless browser cannot acquire its hardware adapter.
+
+The separate Linux CI job installs Mesa lavapipe and selects its ICD through
+[`VK_DRIVER_FILES`](https://docs.mesa3d.org/install.html#vulkan). Chromium's
+[documented Vulkan flags](https://developer.chrome.com/blog/supercharge-web-ai-testing)
+enable headless WebGPU for that project only. Lavapipe exposes
+[FP16 support](https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa/+/b453331e7cfeceacd414b9fd6e65b8fa25ae6606/src/gallium/frontends/lavapipe/lvp_device.c#495);
+Chrome's bundled SwiftShader does not satisfy the packaged FP16 models.
+These are correctness tests; software inference timings do not represent
+desktop or mobile GPU performance.
+
 Import `test` and `expect` from [`_fixtures.ts`](_fixtures.ts) to retain the shared
 runtime-error and network checks. For File System Access tests that persist OPFS
 handles in IndexedDB, import `persistentTest as test` from the same module. Keep

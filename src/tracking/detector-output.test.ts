@@ -11,31 +11,35 @@ const geometry = {
 };
 
 describe("detector output mapping", () => {
-    it("maps channels-first faces and applies the width floor in frame pixels", () => {
+    it("maps channels-first faces including small faces and drops scores below the candidate floor", () => {
         const detections: RawDetection[] = [];
         collectFaceDetections(
             {
                 ...geometry,
                 dims: [1, 5, 3],
-                data: new Float32Array([50, 70, 90, 40, 40, 40, 10, 9, 10, 20, 20, 20, 0.25, 0.9, 0.24]),
+                data: new Float32Array([50, 70, 90, 40, 40, 40, 10, 9, 10, 20, 20, 20, 0.25, 0.5, 0.24]),
             },
             detections,
         );
-        expect(detections).toEqual([{ x: 170, y: 220, w: 20, h: 40, score: 0.25 }]);
+        expect(detections).toEqual([
+            { x: 170, y: 220, w: 20, h: 40, score: 0.25 },
+            { x: 211, y: 220, w: 18, h: 40, score: 0.5 },
+        ]);
     });
 
-    it("maps plate rows and drops low scores and whole-vehicle boxes", () => {
+    it("maps channels-first plates including close plates and drops scores below the candidate floor", () => {
         const detections: RawDetection[] = [];
         collectPlateDetections(
             {
                 ...geometry,
-                dims: [3, 7],
-                data: new Float32Array([
-                    0, 20, 30, 60, 40, 0, 0.25, 0, 20, 30, 220, 40, 0, 0.9, 0, 20, 30, 60, 40, 0, 0.24,
-                ]),
+                dims: [1, 5, 3],
+                data: new Float32Array([40, 120, 40, 35, 35, 35, 40, 200, 40, 10, 10, 10, 0.25, 0.75, 0.24]),
             },
             detections,
         );
-        expect(detections).toEqual([{ x: 120, y: 220, w: 80, h: 20, score: 0.25 }]);
+        expect(detections).toEqual([
+            { x: 120, y: 220, w: 80, h: 20, score: 0.25 },
+            { x: 120, y: 220, w: 400, h: 20, score: 0.75 },
+        ]);
     });
 });

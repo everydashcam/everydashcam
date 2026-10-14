@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { inflateRect } from "../blur-regions.js";
 import { boxToRect, visibleBoxRect } from "./box-geometry.js";
-import { matchDetectionsToTracks } from "./detect-track.js";
 
 describe("tracking box geometry", () => {
-    it("keeps an exiting detector box aligned with the tracker before clipping its cover", () => {
+    it("keeps raw geometry unclipped while clipping its displayed cover", () => {
         const box = { x: -40, y: 20, w: 80, h: 40 };
         const rect = boxToRect(box, 1000, 500);
         expect(rect.xPct).toBeCloseTo(-0.04);
         expect(rect.wPct).toBeCloseTo(0.08);
-        expect(matchDetectionsToTracks([rect], [boxToRect(box, 1000, 500)], { minIou: 0.9 })).toEqual([0]);
 
         const cover = visibleBoxRect(box, 1000, 500, 0.2)!;
         expect(cover.xPct).toBe(0);
@@ -38,7 +36,7 @@ describe("tracking box geometry", () => {
         }
     });
 
-    it("rejects invalid detector geometry before it can seed a tracker", () => {
+    it("rejects invalid detector geometry before it can create a cover", () => {
         expect(visibleBoxRect({ x: Number.NaN, y: 20, w: 80, h: 40 }, 1000, 500, 0.2)).toBeNull();
         expect(visibleBoxRect({ x: 40, y: 20, w: 0, h: 40 }, 1000, 500, 0.2)).toBeNull();
         expect(visibleBoxRect({ x: 40, y: 20, w: 80, h: -40 }, 1000, 500, 0.2)).toBeNull();

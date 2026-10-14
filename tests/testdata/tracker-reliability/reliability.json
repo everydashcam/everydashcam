@@ -1,0 +1,1482 @@
+{
+    "fps": 15,
+    "scenarios": [
+        {
+            "id": "smooth-occlusion",
+            "name": "smooth-occlusion.mp4",
+            "width": 640,
+            "height": 360,
+            "fps": 15,
+            "durationSec": 2.4,
+            "occlusionStartSec": 0.8,
+            "occlusionFullSec": 1.0666666666666667,
+            "frames": [
+                {
+                    "contentSec": 0,
+                    "rect": {
+                        "xPct": 0.1640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.1640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.06666666666666667,
+                    "rect": {
+                        "xPct": 0.16875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.16875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.13333333333333333,
+                    "rect": {
+                        "xPct": 0.171875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.171875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.2,
+                    "rect": {
+                        "xPct": 0.1765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.1765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.26666666666666666,
+                    "rect": {
+                        "xPct": 0.18125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.18125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.3333333333333333,
+                    "rect": {
+                        "xPct": 0.184375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.184375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.4,
+                    "rect": {
+                        "xPct": 0.1890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.1890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.4666666666666667,
+                    "rect": {
+                        "xPct": 0.19375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.19375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.5333333333333333,
+                    "rect": {
+                        "xPct": 0.196875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.196875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.6,
+                    "rect": {
+                        "xPct": 0.2015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.6666666666666666,
+                    "rect": {
+                        "xPct": 0.20625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.20625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.7333333333333333,
+                    "rect": {
+                        "xPct": 0.209375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.209375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.8,
+                    "rect": {
+                        "xPct": 0.2140625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2140625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.8666666666666667,
+                    "rect": {
+                        "xPct": 0.21875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.21875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 0.7222222222222222,
+                    "occluderRect": {
+                        "xPct": 0.209375,
+                        "yPct": 0.3333333333333333,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.9333333333333333,
+                    "rect": {
+                        "xPct": 0.221875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.221875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 0.4444444444444444,
+                    "occluderRect": {
+                        "xPct": 0.2125,
+                        "yPct": 0.3611111111111111,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1,
+                    "rect": {
+                        "xPct": 0.2265625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2265625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 0.19444444444444442,
+                    "occluderRect": {
+                        "xPct": 0.2171875,
+                        "yPct": 0.3861111111111111,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.0666666666666667,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.23125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.221875,
+                        "yPct": 0.41388888888888886,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.1333333333333333,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.234375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.225,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.2,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.2390625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2296875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.2666666666666666,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.24375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.234375,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.3333333333333333,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.246875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2375,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.4,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.2515625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2421875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.4666666666666666,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.25625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.246875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.5333333333333334,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.259375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.25,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.6,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.2640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2546875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.6666666666666667,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.26875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.259375,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.7333333333333334,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.271875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2625,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.8,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.2765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2671875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.8666666666666667,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.28125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.271875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 1.9333333333333333,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.284375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.275,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 2,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.2890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2796875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 2.066666666666667,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.29375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.284375,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 2.1333333333333333,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.296875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 2.2,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.3015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.2921875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 2.2666666666666666,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.30625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.296875,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 2.3333333333333335,
+                    "rect": null,
+                    "targetRect": {
+                        "xPct": 0.309375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": false,
+                    "visibleFraction": 0,
+                    "occluderRect": {
+                        "xPct": 0.3,
+                        "yPct": 0.42777777777777776,
+                        "wPct": 0.09375,
+                        "hPct": 0.1388888888888889
+                    },
+                    "brightness": 1,
+                    "contrast": 1
+                }
+            ]
+        },
+        {
+            "id": "illumination-change",
+            "name": "illumination-change.mp4",
+            "width": 640,
+            "height": 360,
+            "fps": 15,
+            "durationSec": 2.4,
+            "frames": [
+                {
+                    "contentSec": 0,
+                    "rect": {
+                        "xPct": 0.1640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.1640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                },
+                {
+                    "contentSec": 0.06666666666666667,
+                    "rect": {
+                        "xPct": 0.16875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.16875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9979911985748287,
+                    "contrast": 0.9971876780047602
+                },
+                {
+                    "contentSec": 0.13333333333333333,
+                    "rect": {
+                        "xPct": 0.171875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.171875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9920293588299671,
+                    "contrast": 0.988841102361954
+                },
+                {
+                    "contentSec": 0.2,
+                    "rect": {
+                        "xPct": 0.1765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.1765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9823060992002333,
+                    "contrast": 0.9752285388803266
+                },
+                {
+                    "contentSec": 0.26666666666666666,
+                    "rect": {
+                        "xPct": 0.18125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.18125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9691339332504514,
+                    "contrast": 0.9567875065506319
+                },
+                {
+                    "contentSec": 0.3333333333333333,
+                    "rect": {
+                        "xPct": 0.184375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.184375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9529362252323417,
+                    "contrast": 0.9341107153252783
+                },
+                {
+                    "contentSec": 0.4,
+                    "rect": {
+                        "xPct": 0.1890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.1890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9342335828091248,
+                    "contrast": 0.9079270159327748
+                },
+                {
+                    "contentSec": 0.4666666666666667,
+                    "rect": {
+                        "xPct": 0.19375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.19375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9136271242968684,
+                    "contrast": 0.8790779740156158
+                },
+                {
+                    "contentSec": 0.5333333333333333,
+                    "rect": {
+                        "xPct": 0.196875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.196875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.891779158227207,
+                    "contrast": 0.8484908215180897
+                },
+                {
+                    "contentSec": 0.6,
+                    "rect": {
+                        "xPct": 0.2015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8693918962061856,
+                    "contrast": 0.8171486546886599
+                },
+                {
+                    "contentSec": 0.6666666666666666,
+                    "rect": {
+                        "xPct": 0.20625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.20625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8471848832554607,
+                    "contrast": 0.786058836557645
+                },
+                {
+                    "contentSec": 0.7333333333333333,
+                    "rect": {
+                        "xPct": 0.209375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.209375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8258718710432595,
+                    "contrast": 0.7562206194605634
+                },
+                {
+                    "contentSec": 0.8,
+                    "rect": {
+                        "xPct": 0.2140625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2140625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8061378773184872,
+                    "contrast": 0.7285930282458821
+                },
+                {
+                    "contentSec": 0.8666666666666667,
+                    "rect": {
+                        "xPct": 0.21875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.21875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7886171688766419,
+                    "contrast": 0.7040640364272988
+                },
+                {
+                    "contentSec": 0.9333333333333333,
+                    "rect": {
+                        "xPct": 0.221875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.221875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7738728757031316,
+                    "contrast": 0.6834220259843842
+                },
+                {
+                    "contentSec": 1,
+                    "rect": {
+                        "xPct": 0.2265625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2265625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7623788915121976,
+                    "contrast": 0.6673304481170766
+                },
+                {
+                    "contentSec": 1.0666666666666667,
+                    "rect": {
+                        "xPct": 0.23125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.23125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7545046424130184,
+                    "contrast": 0.6563064993782257
+                },
+                {
+                    "contentSec": 1.1333333333333333,
+                    "rect": {
+                        "xPct": 0.234375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.234375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7505032132505951,
+                    "contrast": 0.6507044985508332
+                },
+                {
+                    "contentSec": 1.2,
+                    "rect": {
+                        "xPct": 0.2390625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2390625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7505032132505951,
+                    "contrast": 0.6507044985508332
+                },
+                {
+                    "contentSec": 1.2666666666666666,
+                    "rect": {
+                        "xPct": 0.24375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.24375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7545046424130183,
+                    "contrast": 0.6563064993782257
+                },
+                {
+                    "contentSec": 1.3333333333333333,
+                    "rect": {
+                        "xPct": 0.246875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.246875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7623788915121976,
+                    "contrast": 0.6673304481170766
+                },
+                {
+                    "contentSec": 1.4,
+                    "rect": {
+                        "xPct": 0.2515625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2515625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7738728757031316,
+                    "contrast": 0.6834220259843842
+                },
+                {
+                    "contentSec": 1.4666666666666666,
+                    "rect": {
+                        "xPct": 0.25625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.25625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.7886171688766419,
+                    "contrast": 0.7040640364272985
+                },
+                {
+                    "contentSec": 1.5333333333333334,
+                    "rect": {
+                        "xPct": 0.259375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.259375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8061378773184872,
+                    "contrast": 0.7285930282458821
+                },
+                {
+                    "contentSec": 1.6,
+                    "rect": {
+                        "xPct": 0.2640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2640625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8258718710432595,
+                    "contrast": 0.7562206194605634
+                },
+                {
+                    "contentSec": 1.6666666666666667,
+                    "rect": {
+                        "xPct": 0.26875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.26875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8471848832554607,
+                    "contrast": 0.7860588365576449
+                },
+                {
+                    "contentSec": 1.7333333333333334,
+                    "rect": {
+                        "xPct": 0.271875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.271875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8693918962061856,
+                    "contrast": 0.8171486546886599
+                },
+                {
+                    "contentSec": 1.8,
+                    "rect": {
+                        "xPct": 0.2765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2765625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.8917791582272069,
+                    "contrast": 0.8484908215180897
+                },
+                {
+                    "contentSec": 1.8666666666666667,
+                    "rect": {
+                        "xPct": 0.28125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.28125,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9136271242968684,
+                    "contrast": 0.8790779740156157
+                },
+                {
+                    "contentSec": 1.9333333333333333,
+                    "rect": {
+                        "xPct": 0.284375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.284375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9342335828091248,
+                    "contrast": 0.9079270159327748
+                },
+                {
+                    "contentSec": 2,
+                    "rect": {
+                        "xPct": 0.2890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.2890625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9529362252323417,
+                    "contrast": 0.9341107153252783
+                },
+                {
+                    "contentSec": 2.066666666666667,
+                    "rect": {
+                        "xPct": 0.29375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.29375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9691339332504514,
+                    "contrast": 0.9567875065506319
+                },
+                {
+                    "contentSec": 2.1333333333333333,
+                    "rect": {
+                        "xPct": 0.296875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.296875,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9823060992002333,
+                    "contrast": 0.9752285388803266
+                },
+                {
+                    "contentSec": 2.2,
+                    "rect": {
+                        "xPct": 0.3015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.3015625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9920293588299671,
+                    "contrast": 0.988841102361954
+                },
+                {
+                    "contentSec": 2.2666666666666666,
+                    "rect": {
+                        "xPct": 0.30625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.30625,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 0.9979911985748287,
+                    "contrast": 0.9971876780047602
+                },
+                {
+                    "contentSec": 2.3333333333333335,
+                    "rect": {
+                        "xPct": 0.309375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "targetRect": {
+                        "xPct": 0.309375,
+                        "yPct": 0.4444444444444444,
+                        "wPct": 0.075,
+                        "hPct": 0.1
+                    },
+                    "visible": true,
+                    "visibleFraction": 1,
+                    "occluderRect": null,
+                    "brightness": 1,
+                    "contrast": 1
+                }
+            ]
+        }
+    ]
+}

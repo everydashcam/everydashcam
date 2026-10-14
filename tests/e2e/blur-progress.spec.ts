@@ -37,14 +37,22 @@ async function openBlurProgress(page: Page): Promise<void> {
                 : nativeFetch(input, init);
         };
         const NativeWorker = window.Worker;
+        let completeFutureDetections = false;
+        let detectionRequests = 0;
         window.Worker = class extends NativeWorker {
             private isTracker: boolean;
             private progressData = new Map<string, object>();
+            private pendingDetections = new Set<number>();
 
             constructor(scriptURL: string | URL, options?: WorkerOptions) {
                 super(scriptURL, options);
                 this.isTracker = options?.name === "tracker-worker";
                 if (!this.isTracker) return;
+                window.addEventListener("e2e:detect-empty-current", () => this.completeDetections());
+                window.addEventListener("e2e:detect-empty", () => {
+                    completeFutureDetections = true;
+                    this.completeDetections();
+                });
                 for (const type of ["track", "detect"]) {
                     window.addEventListener(`e2e:${type}-progress`, (event) => {
                         if (!(event instanceof CustomEvent) || typeof event.detail !== "number") return;
@@ -63,6 +71,21 @@ async function openBlurProgress(page: Page): Promise<void> {
                 }
             }
 
+            private completeDetections(): void {
+                const pending = [...this.pendingDetections];
+                this.pendingDetections.clear();
+                for (const id of pending) {
+                    const result: DetectResult = {
+                        tracksByKind: {},
+                        statsByKind: {},
+                        sourceFrames: [],
+                        decodedFrames: 0,
+                        passMs: 0,
+                    };
+                    this.dispatchEvent(new MessageEvent("message", { data: { __k: "res", id, ok: true, result } }));
+                }
+            }
+
             override postMessage(message: unknown, options?: Transferable[] | StructuredSerializeOptions): void {
                 if (this.isTracker && message && typeof message === "object" && "__k" in message) {
                     if (message.__k === "abort") return;
@@ -77,22 +100,14 @@ async function openBlurProgress(page: Page): Promise<void> {
                         this.progressData.set(message.type, message.data);
                         document.documentElement.setAttribute(`data-${message.type}-requested`, "true");
                         if (message.type === "detect" && "id" in message && typeof message.id === "number") {
-                            const id = message.id;
-                            window.addEventListener(
-                                "e2e:detect-empty",
-                                () => {
-                                    const result: DetectResult = {
-                                        tracksByKind: {},
-                                        statsByKind: {},
-                                        decodedFrames: 0,
-                                        passMs: 0,
-                                    };
-                                    this.dispatchEvent(
-                                        new MessageEvent("message", { data: { __k: "res", id, ok: true, result } }),
-                                    );
-                                },
-                                { once: true },
+                            this.pendingDetections.add(message.id);
+                            document.documentElement.setAttribute(
+                                "data-detect-request-count",
+                                String(++detectionRequests),
                             );
+                            // Save can discover further source windows after
+                            // the first reply; release those requests too.
+                            if (completeFutureDetections) queueMicrotask(() => this.completeDetections());
                         }
                         return;
                     }
@@ -165,36 +180,43 @@ test("detection progress updates its bar without rebuilding nodes or repainting 
     const status = page.locator(".export-panel__blur-detect-status");
     await expect(status.getByRole("progressbar")).toBeVisible();
 
-    const changes = await page.evaluate(async () => {
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
-        const status = document.querySelector(".export-panel__blur-detect-status");
-        const bar = status?.querySelector('[role="progressbar"]');
-        if (!status || !bar) throw new Error("detection progress missing");
-        let repaints = 0;
-        const nativeClear = CanvasRenderingContext2D.prototype.clearRect;
-        CanvasRenderingContext2D.prototype.clearRect = function (x, y, w, h) {
-            if (this.canvas.classList.contains("blur-preview-canvas")) repaints++;
-            nativeClear.call(this, x, y, w, h);
-        };
-        const observer = new MutationObserver(() => {});
-        observer.observe(status, { childList: true });
-        let replacedStatusNodes = 0;
-        try {
-            for (let pct = 1; pct <= 100; pct++) {
-                window.dispatchEvent(new CustomEvent("e2e:detect-progress", { detail: pct / 100 }));
-                replacedStatusNodes += observer.takeRecords().length;
-                await new Promise(requestAnimationFrame);
-            }
+    const advanceProgress = () =>
+        page.evaluate(async () => {
             await new Promise(requestAnimationFrame);
-            return { replacedStatusNodes, sameBar: status.contains(bar), repaints };
-        } finally {
-            CanvasRenderingContext2D.prototype.clearRect = nativeClear;
-            observer.disconnect();
-        }
-    });
+            await new Promise(requestAnimationFrame);
+            const status = document.querySelector(".export-panel__blur-detect-status");
+            const bar = status?.querySelector('[role="progressbar"]');
+            if (!status || !bar) throw new Error("detection progress missing");
+            let repaints = 0;
+            const nativeClear = CanvasRenderingContext2D.prototype.clearRect;
+            CanvasRenderingContext2D.prototype.clearRect = function (x, y, w, h) {
+                if (this.canvas.classList.contains("blur-preview-canvas")) repaints++;
+                nativeClear.call(this, x, y, w, h);
+            };
+            const observer = new MutationObserver(() => {});
+            observer.observe(status, { childList: true });
+            let replacedStatusNodes = 0;
+            try {
+                for (let pct = 1; pct <= 100; pct++) {
+                    window.dispatchEvent(new CustomEvent("e2e:detect-progress", { detail: pct / 100 }));
+                    replacedStatusNodes += observer.takeRecords().length;
+                    await new Promise(requestAnimationFrame);
+                }
+                await new Promise(requestAnimationFrame);
+                return { replacedStatusNodes, sameBar: status.contains(bar), repaints };
+            } finally {
+                CanvasRenderingContext2D.prototype.clearRect = nativeClear;
+                observer.disconnect();
+            }
+        });
 
-    expect(changes).toEqual({ replacedStatusNodes: 0, sameBar: true, repaints: 0 });
+    expect(await advanceProgress()).toEqual({ replacedStatusNodes: 0, sameBar: true, repaints: 0 });
+    await expect(status.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+    await page.evaluate(() => window.dispatchEvent(new Event("e2e:detect-empty-current")));
+    await expect(page.locator("html")).toHaveAttribute("data-detect-request-count", "2");
+    // Completing a window commits its result and may repaint. Each progress
+    // burst independently checks the steady-state DOM and paused-mask contract.
+    expect(await advanceProgress()).toEqual({ replacedStatusNodes: 0, sameBar: true, repaints: 0 });
     await expect(status.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
     await page.locator("#export-panel-blur-plates").uncheck();
 });

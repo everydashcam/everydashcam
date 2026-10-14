@@ -56,11 +56,75 @@ describe("regionRectAt", () => {
         expect(regionRectAt(r, 6)).toEqual(rect(0.6, 0.5));
     });
 
+    it("holds detector geometry for the displayed frame and stops at its exclusive end", () => {
+        const r = makeRegion(2, 6.1);
+        r.interpolation = "hold";
+        upsertKeyframe(r, 6, rect(0.6, 0.5, 0.2, 0.1), false);
+        expect(regionRectAt(r, 5.999)).toEqual(rect(0.4, 0.4));
+        expect(regionRectAt(r, 6)).toEqual(rect(0.6, 0.5, 0.2, 0.1));
+        expect(regionRectAt(r, 6.099)).toEqual(rect(0.6, 0.5, 0.2, 0.1));
+        expect(regionRectAt(r, 6.1)).toBeNull();
+        const [copy] = cloneBlurRegions([r]);
+        expect(copy!.interpolation).toBe("hold");
+        expect(regionRectAt(copy!, 5)).toEqual(rect(0.4, 0.4));
+    });
+
     it("single keyframe region is static over its whole span", () => {
         const r = makeRegion(0, 10);
         for (const t of [0, 2, 5, 10]) {
             expect(regionRectAt(r, t)).toEqual(rect(0.4, 0.4));
         }
+    });
+
+    it("matches held source frames on the microsecond-rounded browser clock", () => {
+        const r = createBlurRegion("front", "fill", 7 / 30, 10 / 30, 7 / 30, rect(0.1, 0.2));
+        r.interpolation = "hold";
+        upsertKeyframe(r, 8 / 30, rect(0.3, 0.2), false);
+        upsertKeyframe(r, 9 / 30, rect(0.5, 0.2), false);
+        expect(regionRectAt(r, 0.233333)).toEqual(rect(0.1, 0.2));
+        expect(regionRectAt(r, 0.266667)).toEqual(rect(0.3, 0.2));
+        expect(regionRectAt(r, 0.3)).toEqual(rect(0.5, 0.2));
+        expect(regionRectAt(r, 0.333333)).toBeNull();
+        expect(regionRectAt(r, 0.2333)).toBeNull();
+    });
+
+    it("selects the displayed held frame after MSE timestamp quantization", () => {
+        const previous = rect(0.4, 0.3);
+        const current = rect(0.2, 0.4);
+        const r = createBlurRegion("front", "fill", 10.719, 10.8, 10.719, previous);
+        r.interpolation = "hold";
+        upsertKeyframe(r, 10.759, current, false);
+
+        // The same source frame after 57600 Hz remuxing and browser rounding.
+        expect(regionRectAt(r, 10.758993055555555)).toEqual(current);
+        expect(regionRectAt(r, 10.758993)).toEqual(current);
+        expect(regionRectAt(r, 10.759)).toEqual(current);
+        // A genuinely earlier time still belongs to the preceding frame.
+        expect(regionRectAt(r, 10.758979)).toEqual(previous);
+    });
+
+    it("keeps quantized held starts inclusive and ends exclusive", () => {
+        const r = createBlurRegion("front", "fill", 10.719, 10.759, 10.719, rect(0.2, 0.4));
+        r.interpolation = "hold";
+        expect(regionRectAt(r, 10.718979)).toBeNull();
+        expect(regionRectAt(r, 10.718993)).toEqual(rect(0.2, 0.4));
+        expect(regionRectAt(r, 10.758979)).toEqual(rect(0.2, 0.4));
+        expect(regionRectAt(r, 10.758993)).toBeNull();
+        expect(regionRectAt(r, 10.759)).toBeNull();
+
+        const manual = { ...r, interpolation: "linear" as const };
+        expect(regionRectAt(manual, 10.718993)).toBeNull();
+        expect(regionRectAt(manual, 10.758993)).toEqual(rect(0.2, 0.4));
+        expect(regionRectAt(manual, 10.759)).toEqual(rect(0.2, 0.4));
+    });
+
+    it("does not snap manual interpolation to a nearby held-frame timestamp", () => {
+        const r = createBlurRegion("front", "fill", 10.719, 10.8, 10.719, rect(0.4, 0.3));
+        upsertKeyframe(r, 10.759, rect(0.2, 0.4), true);
+        const interpolated = regionRectAt(r, 10.758993)!;
+        expect(interpolated.xPct).toBeCloseTo(0.200035, 10);
+        expect(interpolated.yPct).toBeCloseTo(0.3999825, 10);
+        expect(interpolated).not.toEqual(rect(0.2, 0.4));
     });
 
     it("returns a copy, not the stored rect", () => {
