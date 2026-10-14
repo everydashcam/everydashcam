@@ -9,8 +9,8 @@
 // public/models/face/NOTICE.
 //
 // This lightweight model trades some small-face detections for faster browser
-// inference. Thresholds remain provisional pending labelled video evaluation;
-// temporal corroboration cannot reject persistent background false positives.
+// inference. The score floor remains provisional pending labelled video
+// evaluation; confident background false positives still need review.
 //
 // Output decode: ultralytics export, [1, 5, N] channels-first (cx, cy, w, h,
 // score) in input pixels, no in-graph NMS - suppressOverlaps handles both
@@ -20,26 +20,25 @@
 
 import type { OrtAssets } from "./ort-assets.js";
 import type { RawDetection } from "./detect-common.js";
+import { FACE_SCORE_MIN } from "./detector-policy.js";
 import type { OrtRuntime } from "./ort-runtime.js";
 import { type DetectionTileOutput, TiledDetector } from "./tiled-detector.js";
 
 /** The re-export's static input side (see header). */
 const INPUT_SIZE = 640;
-/** Raw candidate floor. Lower-confidence observations can establish a face
- *  through repeated detections; the temporal pass owns confirmation. The
- *  exploratory stills do not establish a safe native-pixel cutoff, so small
- *  faces are returned too. Printed faces and persistent false positives still
- *  need review: temporal confirmation cannot distinguish them. */
-export const FACE_SCORE_MIN = 0.25;
 /** Duplicate suppression across tiles and model leftovers. */
 const NMS_IOU = 0.45;
 
-/** Decodes the model's channels-first [1, 5, N] boxes into frame pixels. */
-export function collectFaceDetections({ data, dims, lb, tile }: DetectionTileOutput, detections: RawDetection[]): void {
+/** Decodes the model's channels-first [1, 5, N] boxes into frame pixels. Small
+ * faces remain eligible: exploratory stills do not establish a safe native-pixel cutoff. */
+export function collectFaceDetections(
+    { data, dims, lb, tile, scoreMin = FACE_SCORE_MIN }: DetectionTileOutput,
+    detections: RawDetection[],
+): void {
     const n = dims[2]!;
     for (let i = 0; i < n; i++) {
         const score = data[4 * n + i]!;
-        if (!(score >= FACE_SCORE_MIN)) continue;
+        if (!(score >= scoreMin)) continue;
         const cx = data[i]!;
         const cy = data[n + i]!;
         const w = data[2 * n + i]!;

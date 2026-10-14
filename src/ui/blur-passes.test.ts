@@ -51,6 +51,7 @@ import {
     captureDetectExportRequest,
     detectEnabled,
     detectQuality,
+    detectThreshold,
     detectPassState,
     detectRegions,
     detectStyle,
@@ -58,6 +59,7 @@ import {
     ensureDetectRegionsForExport,
     setDetectEnabled,
     setDetectQuality,
+    setDetectThreshold,
     setDetectStyle,
 } from "./blur-detect.js";
 import {
@@ -712,6 +714,71 @@ describe("blur pass lifecycle", () => {
         expect(detectRegions()).toHaveLength(1);
         regroupTrip();
         expect(detectQuality(), "trip regrouping preserves the chosen quality").toBe("thorough");
+    });
+
+    it("keeps Save-time thresholds and reanalyzes only the changed detector kind", async () => {
+        await downloadBlurAssets(["detect-plate", "detect-face"]);
+        expect(detectThreshold("face")).toBe(0.45);
+        expect(detectThreshold("plate")).toBe(0.7);
+        setDetectEnabled("plate", true);
+        setDetectEnabled("face", true);
+        const captured = captureDetectExportRequest()!;
+        const initial = ensureDetectRegionsForExport(captured, new AbortController().signal, () => {});
+        await flushMicrotasks();
+        expect(requests[0]!.data).toMatchObject({ thresholds: { plate: 0.7, face: 0.45 } });
+        setDetectThreshold("face", 0.1);
+        expect(captured.params.thresholds.face).toBe(0.45);
+        const result = makeDetectResult();
+        result.tracksByKind.face = result.tracksByKind.plate;
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+        expect(await initial, "changing the live slider preserves a captured export").toHaveLength(2);
+        expect(detectRegions(), "the old threshold must not appear as a current result").toHaveLength(0);
+
+        const updated = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        expect(requests[1]!.data).toMatchObject({
+            thresholds: { plate: 0.7, face: 0.1 },
+            analyzeIntervalsByKind: { plate: [], face: [{ startSec: 0, endSec: 3 }] },
+        });
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[1]!.id, ok: true, result });
+        expect(await updated).toHaveLength(2);
+        regroupTrip();
+        expect(detectThreshold("face")).toBe(0.1);
+        expect(detectThreshold("plate")).toBe(0.7);
+
+        setDetectThreshold("face", 0.45);
+        const restored = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        expect(requests[2]!.data).toMatchObject({
+            thresholds: { plate: 0.7, face: 0.45 },
+            analyzeIntervalsByKind: { plate: [], face: [{ startSec: 0, endSec: 3 }] },
+        });
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[2]!.id, ok: true, result });
+        expect(await restored).toHaveLength(2);
+    });
+
+    it("does not restart an active scan when a threshold drag returns before the debounce", async () => {
+        vi.useFakeTimers();
+        await downloadBlurAssets(["detect-plate"]);
+        setDetectEnabled("plate", true);
+        ensureDetectPass();
+        await flushMicrotasks();
+        setDetectThreshold("plate", 0.1);
+        setDetectThreshold("plate", 0.7);
+        setDetectThreshold("face", 1);
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(requests, "an unchanged active kind retains its scan").toHaveLength(1);
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result: makeDetectResult() });
+        await flushMicrotasks();
+        expect(detectRegions()).toHaveLength(1);
     });
 
     it("keeps independent analyses when returning to previously completed qualities", async () => {

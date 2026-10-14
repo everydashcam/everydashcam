@@ -60,8 +60,14 @@ import { downloadBlob } from "../download.js";
 import { buildClipGpx, clipRecordsForRange } from "../export-range.js";
 import { totalDistanceKm } from "../parser.js";
 import { notify } from "./notifications.js";
-import { t } from "../i18n/index.js";
+import { getDateLocale, t } from "../i18n/index.js";
 import { DETECTION_QUALITIES, type DetectionQuality } from "../tracking/detection-sampling.js";
+import {
+    DETECTION_POLICIES,
+    DETECTION_THRESHOLD_MIN,
+    DETECTION_THRESHOLD_MAX,
+    DETECTION_THRESHOLD_STEP,
+} from "../tracking/detector-policy.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { formatDistanceFromKm } from "../units-pref.js";
 import { SPEED_FACTORS, type TranscodeProgress } from "../transcode/types.js";
@@ -88,6 +94,7 @@ import {
     detectCounts,
     detectEnabled,
     detectQuality,
+    detectThreshold,
     detectRegions,
     detectStyle,
     type DetectKind,
@@ -96,6 +103,7 @@ import {
     detectAvailable,
     setDetectEnabled,
     setDetectQuality,
+    setDetectThreshold,
     setDetectStyle,
     subscribeBlurDetect,
 } from "./blur-detect.js";
@@ -1239,6 +1247,8 @@ let blurDetectFacesCbEl: HTMLInputElement | null = null;
 let blurDetectGpuNoteEl: HTMLDivElement | null = null;
 let blurDetectQualityEl: HTMLInputElement | null = null;
 const blurDetectQualityLabels = new Map<DetectionQuality, HTMLElement>();
+const blurDetectThresholdControls = new Map<DetectKind, { input: HTMLInputElement; output: HTMLOutputElement }>();
+let blurDetectThresholdResetEl: HTMLButtonElement | null = null;
 // The second checkbox can queue a warm behind the first; Cancel owns both.
 const detectDownloadControllers = new Set<AbortController>();
 // Zones a user asked to Follow that are waiting on the one-time tracker download.
@@ -1288,6 +1298,7 @@ function renderBlurGroup(): HTMLElement {
         blurDetectFacesCbEl = facesRow.querySelector("input");
         wrap.appendChild(facesRow);
         wrap.appendChild(renderDetectQualityControl());
+        wrap.appendChild(renderDetectThresholdSettings());
         // Detection is WebGPU-only (see blur-detect.ts) - when the adapter is
         // absent both checkboxes are disabled and this note says why. Availability
         // resolves from an async probe, so syncDetectGroup owns both states.
@@ -1398,6 +1409,82 @@ function renderBlurGroup(): HTMLElement {
     if (!__PORTABLE__) syncTrackerStrip();
     if (!__PORTABLE__) syncDetectGroup();
     return wrap;
+}
+
+function formatDetectionThreshold(value: number): string {
+    return new Intl.NumberFormat(getDateLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function renderDetectThresholdSettings(): HTMLElement {
+    const details = document.createElement("details");
+    details.className = "export-panel__detect-settings";
+    const summary = document.createElement("summary");
+    summary.textContent = t("export.blur.detect.settings");
+    const hint = document.createElement("div");
+    hint.id = "export-panel-detect-threshold-hint";
+    hint.className = "export-panel__note";
+    hint.textContent = t("export.blur.detect.threshold.hint");
+    details.append(summary, hint);
+    blurDetectThresholdControls.clear();
+    for (const kind of ["face", "plate"] as const) {
+        const control = document.createElement("div");
+        control.className = "export-panel__detect-threshold";
+        const defaultValue = DETECTION_POLICIES[kind].seedScoreMin;
+        const fraction = (defaultValue - DETECTION_THRESHOLD_MIN) / (DETECTION_THRESHOLD_MAX - DETECTION_THRESHOLD_MIN);
+        control.style.setProperty("--default-position", `${fraction * 100}%`);
+        const heading = document.createElement("div");
+        heading.className = "export-panel__detect-threshold-heading";
+        const label = document.createElement("label");
+        label.htmlFor = `export-panel-detect-threshold-${kind}`;
+        label.textContent = t(`export.blur.detect.threshold.${kind}`);
+        const output = document.createElement("output");
+        output.htmlFor.value = label.htmlFor;
+        heading.append(label, output);
+        const range = document.createElement("div");
+        range.className = "export-panel__detect-threshold-range";
+        const input = document.createElement("input");
+        input.id = label.htmlFor;
+        input.type = "range";
+        input.min = String(DETECTION_THRESHOLD_MIN);
+        input.max = String(DETECTION_THRESHOLD_MAX);
+        input.step = String(DETECTION_THRESHOLD_STEP);
+        const defaultNote = document.createElement("div");
+        defaultNote.id = `${input.id}-default`;
+        defaultNote.className = "export-panel__note";
+        defaultNote.textContent = t("export.blur.detect.threshold.default", {
+            value: formatDetectionThreshold(defaultValue),
+        });
+        input.setAttribute("aria-describedby", `${hint.id} ${defaultNote.id}`);
+        input.addEventListener("input", () => {
+            setDetectThreshold(kind, Number(input.value));
+            notifyExportStateChanged();
+        });
+        const marker = document.createElement("div");
+        marker.className = "export-panel__detect-threshold-marker";
+        marker.setAttribute("aria-hidden", "true");
+        range.append(input, marker);
+        const ends = document.createElement("div");
+        ends.className = "export-panel__detect-threshold-ends";
+        for (const key of ["more", "confident"] as const) {
+            const end = document.createElement("span");
+            end.textContent = t(`export.blur.detect.threshold.${key}`);
+            ends.appendChild(end);
+        }
+        control.append(heading, range, ends, defaultNote);
+        details.appendChild(control);
+        blurDetectThresholdControls.set(kind, { input, output });
+    }
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "export-panel__secondary-btn";
+    reset.textContent = t("export.blur.detect.threshold.reset");
+    reset.addEventListener("click", () => {
+        for (const kind of ["face", "plate"] as const) setDetectThreshold(kind, DETECTION_POLICIES[kind].seedScoreMin);
+        notifyExportStateChanged();
+    });
+    blurDetectThresholdResetEl = reset;
+    details.appendChild(reset);
+    return details;
 }
 
 function renderDetectQualityControl(): HTMLElement {
@@ -1748,6 +1835,17 @@ function syncDetectGroup(): void {
         blurDetectQualityEl.setAttribute("aria-valuetext", t(`export.blur.detect.quality.${quality}`));
         for (const [value, label] of blurDetectQualityLabels) label.classList.toggle("is-active", value === quality);
     }
+    let hasCustomThreshold = false;
+    for (const [kind, { input, output }] of blurDetectThresholdControls) {
+        const threshold = detectThreshold(kind);
+        input.value = String(threshold);
+        input.disabled = !detectAvailable();
+        const formatted = formatDetectionThreshold(threshold);
+        input.setAttribute("aria-valuetext", formatted);
+        output.value = formatted;
+        hasCustomThreshold ||= threshold !== DETECTION_POLICIES[kind].seedScoreMin;
+    }
+    if (blurDetectThresholdResetEl) blurDetectThresholdResetEl.disabled = !detectAvailable() || !hasCustomThreshold;
     if (blurDetectGpuNoteEl) blurDetectGpuNoteEl.hidden = detectAvailable();
     syncDetectStrip();
     const el = blurDetectStatusEl;

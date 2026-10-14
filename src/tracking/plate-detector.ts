@@ -29,13 +29,13 @@ export const PLATE_DEDUPE_IOU = 0.5;
 
 /** Decodes the model's channels-first [1, 5, N] boxes into frame pixels. */
 export function collectPlateDetections(
-    { data, dims, lb, tile }: DetectionTileOutput,
+    { data, dims, lb, tile, scoreMin = PLATE_SCORE_MIN }: DetectionTileOutput,
     detections: RawDetection[],
 ): void {
     const n = dims[2]!;
     for (let i = 0; i < n; i++) {
         const score = data[4 * n + i]!;
-        if (!(score >= PLATE_SCORE_MIN)) continue;
+        if (!(score >= scoreMin)) continue;
         const cx = data[i]!;
         const cy = data[n + i]!;
         const w = data[2 * n + i]!;

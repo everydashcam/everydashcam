@@ -10,7 +10,7 @@
 // editor never sees them (dozens of non-editable rows would drown the panel;
 // a false positive is cheap, a miss is fixed with a manual zone).
 //
-// Freshness: results are keyed by (range, channels, kinds, quality). The key mismatching
+// Freshness: results are keyed by range, channels, kinds, quality and thresholds. The key mismatching
 // the current params means STALE - stale results are not painted and not
 // exported (they cover a different span); ensureDetectPass() re-runs. Range
 // edits re-trigger through a debounce so a trim-bar drag does not thrash
@@ -19,6 +19,7 @@
 import { cloneBlurRegions, type BlurRegion, type BlurStyle } from "../blur-regions.js";
 import { sliceTripChannelForRange } from "../export-range.js";
 import { DETECTION_QUALITY_DEFAULT, type DetectionQuality } from "../tracking/detection-sampling.js";
+import { DETECTION_POLICIES, detectionPolicy, type DetectionThresholds } from "../tracking/detector-policy.js";
 import { createLogger } from "../log.js";
 import { tripAllCandidates } from "../trips.js";
 import type { Trip } from "../trips.js";
@@ -74,6 +75,7 @@ interface TrackCacheEntry {
     /** Complete analyzed portion of that window; extensions replace it whole. */
     segment: TrackSegment;
     quality: DetectionQuality;
+    threshold: number;
     tracks: DetectResultTrack[];
     sourceFrames: DetectResult["sourceFrames"];
 }
@@ -82,13 +84,14 @@ interface TripDetectState {
     source: BlurTripSource;
     enabled: { plate: boolean; face: boolean };
     quality: DetectionQuality;
+    thresholds: DetectionThresholds;
     /** One style per trip, including while a pass is still running. Keeping it
      *  here prevents a long multi-camera pass from producing mixed styles when
      *  the active trip or the style selector changes between channels. */
     style: BlurStyle;
     /** Last completed pass; `key` names the params it covered. */
     result: { key: string; regions: BlurRegion[]; counts: DetectCounts } | null;
-    /** One analysis per source window, kind and quality. Only changed boundary
+    /** One analysis per source window, kind and quality at its last threshold. Only changed boundary
      *  windows need inference when a multi-file export grows or moves. */
     trackCache: Map<Channel, Partial<Record<DetectKind, TrackCacheEntry[]>>>;
 }
@@ -102,6 +105,7 @@ function tripState(trip: Trip): TripDetectState {
             source: captureBlurTripSource(trip),
             enabled: { plate: false, face: false },
             quality: DETECTION_QUALITY_DEFAULT,
+            thresholds: { plate: DETECTION_POLICIES.plate.seedScoreMin, face: DETECTION_POLICIES.face.seedScoreMin },
             style: exportPanelState.blurStyle,
             result: null,
             trackCache: new Map(),
@@ -178,6 +182,7 @@ subscribeBlurTripRegroup((oldTrips, newTrips) => {
                 source: captureBlurTripSource(trip),
                 enabled: { ...previous.st.enabled },
                 quality: previous.st.quality,
+                thresholds: { ...previous.st.thresholds },
                 style: previous.st.style,
                 result: null,
                 trackCache: new Map(),
@@ -269,6 +274,7 @@ interface PassParams {
     channels: Channel[];
     kinds: DetectKind[];
     quality: DetectionQuality;
+    thresholds: DetectionThresholds;
 }
 
 /** Current pass parameters for the trip, or null when no kind is enabled.
@@ -285,12 +291,13 @@ function passParams(trip: Trip): PassParams | null {
     const channels = [...state.composition.channelOrder];
     return {
         // Tile order changes composition, not the source frames to analyze.
-        key: `${startSec}|${endSec}|${[...channels].sort().join("+")}|${kinds.join("+")}|${st.quality}`,
+        key: `${startSec}|${endSec}|${[...channels].sort().join("+")}|${kinds.map((kind) => `${kind}:${st.thresholds[kind]}`).join("+")}|${st.quality}`,
         startSec,
         endSec,
         channels,
         kinds,
         quality: st.quality,
+        thresholds: { ...st.thresholds },
     };
 }
 
@@ -329,6 +336,23 @@ export function setDetectQuality(quality: DetectionQuality): void {
     // quality keeps its work. Save still reconciles synchronously.
     notifyDetectChanged();
     if (state.exportModeOpen && anyDetectEnabled()) scheduleEnsureDetectPass();
+}
+
+export function detectThreshold(kind: DetectKind): number {
+    const trip = activeTrip();
+    return trip ? tripState(trip).thresholds[kind] : DETECTION_POLICIES[kind].seedScoreMin;
+}
+
+export function setDetectThreshold(kind: DetectKind, threshold: number): void {
+    detectionPolicy(threshold);
+    const trip = activeTrip();
+    if (!trip) return;
+    const st = tripState(trip);
+    if (st.thresholds[kind] === threshold) return;
+    st.thresholds[kind] = threshold;
+    lastFailedRun = null;
+    notifyDetectChanged();
+    if (state.exportModeOpen && st.enabled[kind]) scheduleEnsureDetectPass();
 }
 
 export function anyDetectEnabled(): boolean {
@@ -696,7 +720,10 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                 const analyzeIntervalsByKind: DetectRequestData["analyzeIntervalsByKind"] = {};
                 for (const kind of params.kinds) {
                     const cached = chCache[kind]?.find(
-                        (entry) => entry.quality === params.quality && sameSourceWindow(entry.source, source),
+                        (entry) =>
+                            entry.quality === params.quality &&
+                            entry.threshold === params.thresholds[kind] &&
+                            sameSourceWindow(entry.source, source),
                     );
                     const isCovered =
                         cached &&
@@ -714,6 +741,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         endContentSec: endSec,
                         kinds: params.kinds,
                         quality: params.quality,
+                        thresholds: params.thresholds,
                         analyzeIntervalsByKind,
                         plateModelUrl: PLATE_MODEL_URL,
                         faceModelUrl: FACE_MODEL_URL,
@@ -735,7 +763,8 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         timeoutTimer = undefined;
                     }
                     // Replace only the matching quality after completion, so an
-                    // abort/failure or a slider round trip preserves prior work.
+                    // abort/failure preserves prior work. Keep only the latest
+                    // threshold per quality to bound geometry retained by sliders.
                     // More discovery scans can change tracking identities, so
                     // reuse the exact quality rather than assuming a superset.
                     const updatedCache = st.trackCache.get(channel) ?? {};
@@ -749,6 +778,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                                 source,
                                 segment,
                                 quality: params.quality,
+                                threshold: params.thresholds[kind],
                                 tracks: result.tracksByKind[kind] ?? [],
                                 sourceFrames: result.sourceFrames,
                             },
@@ -760,6 +790,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                     log.info("detect pass stats", {
                         channel,
                         quality: params.quality,
+                        thresholds: params.thresholds,
                         spanSec: Math.round((endSec - startSec) * 10) / 10,
                         passMs: result.passMs,
                         decodedFrames: result.decodedFrames,
@@ -799,7 +830,10 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                 const cache = st.trackCache.get(channel)!;
                 for (const kind of params.kinds) {
                     const entry = cache[kind]?.find(
-                        (entry) => entry.quality === params.quality && sameSourceWindow(entry.source, source),
+                        (entry) =>
+                            entry.quality === params.quality &&
+                            entry.threshold === params.thresholds[kind] &&
+                            sameSourceWindow(entry.source, source),
                     );
                     if (!entry) continue;
                     for (const track of entry.tracks) {

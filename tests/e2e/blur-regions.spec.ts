@@ -642,14 +642,21 @@ test.describe("blur regions", () => {
         await page.evaluate(() => {
             const original = Worker.prototype.postMessage;
             const qualities: string[] = [];
+            const thresholds: number[] = [];
             Worker.prototype.postMessage = function (
                 message: unknown,
                 options?: Transferable[] | StructuredSerializeOptions,
             ) {
-                const request = message as { __k?: string; type?: string; data?: { quality?: string } };
+                const request = message as {
+                    __k?: string;
+                    type?: string;
+                    data?: { quality?: string; thresholds?: { plate: number } };
+                };
                 if (request?.__k === "req" && request.type === "detect" && request.data?.quality) {
                     qualities.push(request.data.quality);
                     document.documentElement.dataset.detectQualityRequests = JSON.stringify(qualities);
+                    thresholds.push(request.data.thresholds!.plate);
+                    document.documentElement.dataset.detectThresholdRequests = JSON.stringify(thresholds);
                 }
                 original.call(this, message, Array.isArray(options) ? { transfer: options } : options);
             };
@@ -667,15 +674,30 @@ test.describe("blur regions", () => {
         await strip.getByRole("button", { name: "Download & scan" }).click();
         const status = page.locator(".export-panel__blur-detect-status");
         await expect(status).toHaveText("Plates: 0", { timeout: 120_000 });
+        await page.locator(".export-panel__detect-settings > summary").click();
+        const plateThreshold = page.getByRole("slider", { name: "License plates", exact: true });
+        await expect(plateThreshold).toHaveValue("0.7");
+        await plateThreshold.focus();
+        await page.keyboard.press("End");
+        await expect(plateThreshold).toHaveValue("1");
+        await expect(page.locator("html")).toHaveAttribute("data-detect-threshold-requests", "[0.7,0.7,1,1]");
+        await expect(status).toHaveText("Plates: 0", { timeout: 120_000 });
+        await page.getByRole("button", { name: "Reset defaults" }).click();
+        await expect(plateThreshold).toHaveValue("0.7");
+        await expect(page.locator("html")).toHaveAttribute("data-detect-threshold-requests", "[0.7,0.7,1,1,0.7,0.7]");
+        await expect(status).toHaveText("Plates: 0", { timeout: 120_000 });
         // Both source files are analyzed independently at the chosen quality.
-        await expect(page.locator("html")).toHaveAttribute("data-detect-quality-requests", '["fast","fast"]');
+        await expect(page.locator("html")).toHaveAttribute(
+            "data-detect-quality-requests",
+            '["fast","fast","fast","fast","fast","fast"]',
+        );
 
         await quality.focus();
         await page.keyboard.press("ArrowRight");
         await expect(quality).toHaveAttribute("aria-valuetext", "Balanced");
         await expect(page.locator("html")).toHaveAttribute(
             "data-detect-quality-requests",
-            '["fast","fast","balanced","balanced"]',
+            '["fast","fast","fast","fast","fast","fast","balanced","balanced"]',
         );
         await expect(status).toHaveText("Plates: 0", { timeout: 120_000 });
     });

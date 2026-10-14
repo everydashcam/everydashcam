@@ -8,6 +8,7 @@
 
 import type { OrtAssets } from "../tracking/ort-assets.js";
 import type { DetectionQuality } from "../tracking/detection-sampling.js";
+import type { DetectionThresholds } from "../tracking/detector-policy.js";
 import type { TimeInterval } from "../tracking/interval-set.js";
 import type { SourceFrameTiming } from "../tracking/propagated-track.js";
 import type { CropRect } from "../transcode/compose.js";
@@ -81,6 +82,8 @@ export interface DetectRequestData {
     kinds: DetectKind[];
     /** Discovery cadence; tracking fills the intervals between detector scans. */
     quality: DetectionQuality;
+    /** Per-kind seed and confirmation floors; omitted values use the defaults. */
+    thresholds?: Partial<DetectionThresholds>;
     /** Per kind: complete ranges requiring analysis. The client sends the full
      *  requested range on a cache miss, or [] when an enclosing pass is cached. */
     analyzeIntervalsByKind: Partial<Record<DetectKind, TimeInterval[]>>;

@@ -34,12 +34,12 @@ import { DetectionPropagation, type SeedDetection } from "../tracking/detection-
 import type { SourceFrameTiming } from "../tracking/propagated-track.js";
 import { createNativeTrackingFrame, NativeTrackingFrameWorkspace } from "../tracking/tracking-frame.js";
 import { planReverseCohorts, planReverseFrameIndices } from "../tracking/reverse-decode-plan.js";
-import { canSeedDetection, DETECTION_POLICIES } from "../tracking/detector-policy.js";
+import { canSeedDetection, DETECTION_POLICIES, detectionPolicy } from "../tracking/detector-policy.js";
 import { type TimeInterval, totalIntervalSec, unionIntervals } from "../tracking/interval-set.js";
 import { createFaceDetector } from "../tracking/face-detector.js";
 import type { OrtAssets } from "../tracking/ort-assets.js";
 import { type OrtRuntime } from "../tracking/ort-runtime.js";
-import { createPlateDetector } from "../tracking/plate-detector.js";
+import { createPlateDetector, PLATE_SCORE_MIN } from "../tracking/plate-detector.js";
 import { boxVisibleFraction, EXIT_CONFIRM_SEC, EXIT_VISIBLE_FRACTION } from "../tracking/track-guards.js";
 import { appendTrackObservation, type PendingTrackHold, recordTrackHold } from "../tracking/track-observations.js";
 import { VitTrackerSession, VITTRACK_SCORE_THRESHOLD, type TrackBox } from "../tracking/vittrack.js";
@@ -304,6 +304,7 @@ interface FrameDetector {
         frameW: number,
         frameH: number,
         tiles: readonly TileRect[],
+        scoreMin?: number,
     ): Promise<Array<{ x: number; y: number; w: number; h: number; score: number }>>;
 }
 
@@ -355,6 +356,16 @@ async function runDetectPass(
     signal: AbortSignal,
     notifyProgress: (fractionDone: number) => void,
 ): Promise<DetectResult> {
+    const policies = {
+        plate: detectionPolicy(req.thresholds?.plate ?? DETECTION_POLICIES.plate.seedScoreMin),
+        face: detectionPolicy(req.thresholds?.face ?? DETECTION_POLICIES.face.seedScoreMin),
+    };
+    // Keep weak plate maintenance evidence, but never discard candidates
+    // above a lower user-selected seed floor. Face proposals use one floor.
+    const candidateFloors = {
+        plate: Math.min(PLATE_SCORE_MIN, policies.plate.seedScoreMin),
+        face: policies.face.seedScoreMin,
+    };
     const passStartMs = performance.now();
     const timings = {
         forwardMs: 0,
@@ -497,7 +508,9 @@ async function runDetectPass(
                     if (missing.length === 0) return scan;
                     const stat = statsByKind[kind]!;
                     const startedAt = performance.now();
-                    const boxes = await detectors.get(kind)!.detectTiles(frame, frame.width, frame.height, missing);
+                    const boxes = await detectors
+                        .get(kind)!
+                        .detectTiles(frame, frame.width, frame.height, missing, candidateFloors[kind]);
                     stat.inferMs += performance.now() - startedAt;
                     signal.throwIfAborted();
                     if (scan.tileCount === 0) {
@@ -531,9 +544,13 @@ async function runDetectPass(
                             const startedAt = performance.now();
                             context = await detectors
                                 .get(kind)!
-                                .detectTiles(frame, frame.width, frame.height, [
-                                    { sx: 0, sy: 0, sw: frame.width, sh: frame.height },
-                                ]);
+                                .detectTiles(
+                                    frame,
+                                    frame.width,
+                                    frame.height,
+                                    [{ sx: 0, sy: 0, sw: frame.width, sh: frame.height }],
+                                    candidateFloors[kind],
+                                );
                             signal.throwIfAborted();
                             const stat = statsByKind[kind]!;
                             stat.inferMs += performance.now() - startedAt;
@@ -666,8 +683,7 @@ async function runDetectPass(
                                 continue;
                             let propagation = propagationByState.get(state);
                             if (!propagation) {
-                                if (!seeds?.some((seed) => canSeedDetection(seed.score, DETECTION_POLICIES[kind])))
-                                    continue;
+                                if (!seeds?.some((seed) => canSeedDetection(seed.score, policies[kind]))) continue;
                                 const firstIndex = frameTimings.findIndex(
                                     (frame) =>
                                         frame.contentSec < state.bounds.endSec &&
@@ -683,7 +699,7 @@ async function runDetectPass(
                                 signal.throwIfAborted();
                                 propagation = new DetectionPropagation(trackerSession, {
                                     margin: DETECT_MARGIN_PCT[kind],
-                                    ...DETECTION_POLICIES[kind],
+                                    ...policies[kind],
                                     frames: frameTimings,
                                     bounds: {
                                         startSec: frameTimings[firstIndex]!.contentSec,
@@ -719,10 +735,7 @@ async function runDetectPass(
                                 const accepted = filterRecoveryDetections(
                                     detectors.get(kind)!.merge(scan.boxes),
                                     combinedPlan,
-                                    Math.max(
-                                        DETECTION_POLICIES[kind].seedScoreMin,
-                                        DETECTION_POLICIES[kind].strongScore,
-                                    ),
+                                    Math.max(policies[kind].seedScoreMin, policies[kind].strongScore),
                                     frame.width,
                                     frame.height,
                                 );

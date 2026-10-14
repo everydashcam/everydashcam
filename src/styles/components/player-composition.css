@@ -1673,9 +1673,136 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
     font-weight: 600;
 }
 
+.export-panel__detect-settings {
+    margin-block: var(--dc-space-3);
+    padding: var(--dc-space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-md);
+    background: var(--bg-elev);
+}
+
+.export-panel__detect-settings > summary {
+    cursor: pointer;
+    color: var(--fg);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+}
+
+.export-panel__detect-settings[open] > summary {
+    margin-bottom: var(--dc-space-2);
+}
+
+.export-panel__detect-threshold {
+    display: grid;
+    gap: var(--dc-space-1);
+    margin-block: var(--dc-space-3);
+    font-size: var(--dc-text-sm);
+}
+
+.export-panel__detect-threshold-heading,
+.export-panel__detect-threshold-ends {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--dc-space-2);
+}
+
+.export-panel__detect-threshold-heading output {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.export-panel__detect-threshold-ends {
+    color: var(--fg-dim);
+}
+
+.export-panel__detect-threshold-ends > :last-child {
+    text-align: end;
+}
+
+.export-panel__detect-threshold-range {
+    position: relative;
+}
+
+.export-panel__detect-threshold-range input {
+    appearance: none;
+    display: block;
+    width: 100%;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.export-panel__detect-threshold-range input::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: var(--dc-radius-md);
+    background: linear-gradient(
+        to right,
+        var(--border-strong),
+        var(--ok) var(--default-position),
+        var(--border-strong)
+    );
+}
+
+.export-panel__detect-threshold-range input::-moz-range-track {
+    height: 6px;
+    border-radius: var(--dc-radius-md);
+    background: linear-gradient(
+        to right,
+        var(--border-strong),
+        var(--ok) var(--default-position),
+        var(--border-strong)
+    );
+}
+
+.export-panel__detect-threshold-range input::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    margin-top: -7px;
+    border: 2px solid var(--fg);
+    border-radius: 50%;
+    background: var(--bg-elev);
+}
+
+.export-panel__detect-threshold-range input::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--fg);
+    border-radius: 50%;
+    background: var(--bg-elev);
+}
+
+.export-panel__detect-threshold-range input:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.export-panel__detect-threshold-marker {
+    position: absolute;
+    inset: auto 10px 1px;
+    pointer-events: none;
+}
+
+.export-panel__detect-threshold-marker::after {
+    content: "";
+    position: absolute;
+    left: var(--default-position);
+    bottom: 0;
+    width: 2px;
+    height: 5px;
+    background: var(--ok);
+    transform: translateX(-50%);
+}
+
 @media (pointer: coarse) {
     .export-panel__detect-quality > input {
         min-height: var(--dc-iconbtn-touch);
+    }
+    .export-panel__detect-threshold-range input {
+        height: var(--dc-iconbtn-touch);
     }
 }
 

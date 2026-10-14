@@ -51,6 +51,7 @@ const plateCase = {
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
     hasForwardUpdates: true,
+    thresholds: undefined as DetectRequestData["thresholds"],
     expectsBackwardUpdates: true,
     minimumContextChecks: 0,
     tilesPerScan: 1,
@@ -71,6 +72,7 @@ const faceCase = {
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
     hasForwardUpdates: true,
+    thresholds: undefined as DetectRequestData["thresholds"],
     expectsBackwardUpdates: true,
     minimumContextChecks: 0,
     tilesPerScan: 1,
@@ -102,6 +104,18 @@ const longPlateCase = {
 const cases = [
     plateCase,
     faceCase,
+    {
+        ...faceCase,
+        label: "rejects faces below the chosen 1.00 threshold",
+        thresholds: { face: 1 },
+        expectedMiss: true,
+    },
+    {
+        ...plateCase,
+        label: "rejects plates below the chosen 1.00 threshold",
+        thresholds: { plate: 1 },
+        expectedMiss: true,
+    },
     {
         ...plateCase,
         label: "a genuine large plate after full-frame context verification",
@@ -291,6 +305,7 @@ for (const {
     minimumBackwardUpdates,
     expectsTrackUpdates,
     hasForwardUpdates,
+    thresholds,
     expectsBackwardUpdates,
     minimumContextChecks,
     tilesPerScan,
@@ -355,7 +370,18 @@ self.postMessage = function(message, ...args) {
             await page.goto("/detector-motion-harness.html");
             test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - detection is WebGPU-only");
             const result = await page.evaluate(
-                async ({ workerUrl, bytes, assets, filename, durationSec, kind, splitSec, startSec, quality }) => {
+                async ({
+                    workerUrl,
+                    bytes,
+                    assets,
+                    filename,
+                    durationSec,
+                    kind,
+                    splitSec,
+                    startSec,
+                    quality,
+                    thresholds,
+                }) => {
                     const worker = new Worker(workerUrl, { type: "module" });
                     try {
                         return await new Promise<MeasuredDetectResult>((resolve, reject) => {
@@ -388,6 +414,7 @@ self.postMessage = function(message, ...args) {
                                 endContentSec: durationSec,
                                 kinds: [kind],
                                 quality,
+                                thresholds,
                                 analyzeIntervalsByKind: { [kind]: [{ startSec, endSec: durationSec }] },
                                 plateModelUrl: new URL(assets.models.plate, location.origin).href,
                                 faceModelUrl: new URL(assets.models.face, location.origin).href,
@@ -410,6 +437,7 @@ self.postMessage = function(message, ...args) {
                     splitSec,
                     startSec,
                     quality,
+                    thresholds,
                 },
             );
             const resultPath = testInfo.outputPath("detector-motion-result.json");
@@ -513,7 +541,7 @@ self.postMessage = function(message, ...args) {
             if (expectedMiss) {
                 expect(
                     motion.frames.filter((frame) => frame.boxes.length > 0),
-                    "the clip really contains a brief plate",
+                    "the clip really contains a brief visible object",
                 ).toHaveLength(12);
                 expect(regions, "a clip without an eligible discovery seed produces no tracks").toHaveLength(0);
                 return;

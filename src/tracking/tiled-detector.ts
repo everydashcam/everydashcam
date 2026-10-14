@@ -26,6 +26,7 @@ export interface DetectionTileOutput {
     tile: TileRect;
     frameW: number;
     frameH: number;
+    scoreMin?: number;
 }
 
 interface DetectorModel {
@@ -79,8 +80,9 @@ export class TiledDetector {
         frameW: number,
         frameH: number,
         tiles: readonly TileRect[] = tileRects(frameW, frameH),
+        scoreMin?: number,
     ): Promise<RawDetection[]> {
-        return this.merge(await this.detectTiles(frame, frameW, frameH, tiles));
+        return this.merge(await this.detectTiles(frame, frameW, frameH, tiles, scoreMin));
     }
 
     /** Return NMS-filtered proposals from each tile without merging seams.
@@ -91,6 +93,7 @@ export class TiledDetector {
         frameW: number,
         frameH: number,
         tiles: readonly TileRect[] = tileRects(frameW, frameH),
+        scoreMin?: number,
     ): Promise<RawDetection[]> {
         const detections: RawDetection[] = [];
         let inFlight: { outputs: ReturnType<OrtSession["run"]>; lb: LetterboxMap; tile: TileRect } | null = null;
@@ -105,7 +108,7 @@ export class TiledDetector {
                 if (out) {
                     const tileDetections: RawDetection[] = [];
                     this.model.collect(
-                        { data: out.data as Float32Array, dims: out.dims, lb, tile, frameW, frameH },
+                        { data: out.data as Float32Array, dims: out.dims, lb, tile, frameW, frameH, scoreMin },
                         tileDetections,
                     );
                     detections.push(...suppressTileOverlaps(tileDetections, this.model.overlapIou));
