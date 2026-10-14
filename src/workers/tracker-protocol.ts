@@ -137,6 +137,8 @@ export interface DetectPassStats {
     highMotionUpdates?: number;
     recoveryUpdates?: number;
     calibrationUpdates?: number;
+    /** Full-frame checks of large plate proposals, included in tiles/inferMs. */
+    contextChecks?: number;
 }
 
 export interface DetectResult {

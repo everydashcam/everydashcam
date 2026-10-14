@@ -29,6 +29,7 @@ import {
 import { DetectionScanCache, type DetectionScanEntry } from "../tracking/detection-scan-cache.js";
 import { createDetectionSampler } from "../tracking/detection-sampling.js";
 import { detectionSampleTiming, withFinalSample } from "../tracking/detection-decode.js";
+import { shouldVerifyPlateContext, resolvePlateContextDetections } from "../tracking/detection-context.js";
 import { DetectionPropagation, type SeedDetection } from "../tracking/detection-propagation.js";
 import type { SourceFrameTiming } from "../tracking/propagated-track.js";
 import { createNativeTrackingFrame, NativeTrackingFrameWorkspace } from "../tracking/tracking-frame.js";
@@ -385,6 +386,7 @@ async function runDetectPass(
             highMotionUpdates: 0,
             recoveryUpdates: 0,
             calibrationUpdates: 0,
+            contextChecks: 0,
         };
         tracksByKind[kind] = [];
         intervalsByKind.set(
@@ -507,12 +509,43 @@ async function runDetectPass(
                     scan.record(missing, boxes);
                     return scan;
                 };
-                const makeObservation = (
+                const plateContextByScan = new WeakMap<DetectionScanEntry, readonly RawDetection[]>();
+                const makeObservation = async (
                     kind: DetectKind,
                     frame: OffscreenCanvas,
                     timing: { contentSec: number; durationSec: number },
                     boxes: readonly RawDetection[],
-                ): DetectionObservation => {
+                ): Promise<DetectionObservation> => {
+                    // A tile can turn a cropped car panel into a confident
+                    // plate. Large proposals retain enough pixels in a whole
+                    // frame scan to verify their class with the scene intact.
+                    // Small objects still need the tiled detection scale.
+                    if (
+                        kind === "plate" &&
+                        tileCache.forFrame(frame.width, frame.height).length > 1 &&
+                        boxes.some((box) => shouldVerifyPlateContext(box, frame.width, frame.height))
+                    ) {
+                        const scan = scans.get(kind)!.entryFor(timing.contentSec);
+                        let context = plateContextByScan.get(scan);
+                        if (!context) {
+                            const startedAt = performance.now();
+                            context = await detectors
+                                .get(kind)!
+                                .detectTiles(frame, frame.width, frame.height, [
+                                    { sx: 0, sy: 0, sw: frame.width, sh: frame.height },
+                                ]);
+                            signal.throwIfAborted();
+                            const stat = statsByKind[kind]!;
+                            stat.inferMs += performance.now() - startedAt;
+                            stat.tiles++;
+                            stat.contextChecks!++;
+                            plateContextByScan.set(scan, context);
+                        }
+                        // Use the corroborated whole-frame geometry: tiles can
+                        // crop a large plate at their seams. A matched pair is
+                        // still one observation, never two independent hits.
+                        boxes = resolvePlateContextDetections(boxes, context, frame.width, frame.height);
+                    }
                     return {
                         ...timing,
                         seeds: boxes.flatMap((box) =>
@@ -529,7 +562,12 @@ async function runDetectPass(
                 ) => {
                     const tiles = tileCache.forFrame(frame.width, frame.height);
                     const scan = await scanTiles(kind, frame, timing.contentSec, tiles, false);
-                    const observation = makeObservation(kind, frame, timing, detectors.get(kind)!.merge(scan.boxes));
+                    const observation = await makeObservation(
+                        kind,
+                        frame,
+                        timing,
+                        detectors.get(kind)!.merge(scan.boxes),
+                    );
                     observations.get(kind)!.set(timing.contentSec, observation);
                 };
                 let segmentProgress = 0;
@@ -688,7 +726,7 @@ async function runDetectPass(
                                     frame.width,
                                     frame.height,
                                 );
-                                const observation = makeObservation(kind, displayFrame, timing, accepted);
+                                const observation = await makeObservation(kind, displayFrame, timing, accepted);
                                 observations.get(kind)!.set(timing.contentSec, observation);
                                 return observation.seeds;
                             });

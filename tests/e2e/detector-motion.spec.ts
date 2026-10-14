@@ -32,6 +32,9 @@ const crispSmallPlateMotion = JSON.parse(
 const slowSmallPlateMotion = JSON.parse(
     readFileSync(resolve(REPO_ROOT, "tests/testdata/detector-motion/small-plate-crisp-slow-motion.json"), "utf8"),
 ) as typeof motionFixture;
+const largePlateContext = JSON.parse(
+    readFileSync(resolve(REPO_ROOT, "tests/testdata/detector-motion/large-plate-context.json"), "utf8"),
+) as typeof motionFixture;
 const plateCase = {
     label: "every frame of a brief fast-moving plate",
     kind: "plate" as const,
@@ -47,6 +50,8 @@ const plateCase = {
     expectedAfterSeed: 5,
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
+    expectsBackwardUpdates: true,
+    minimumContextChecks: 0,
     tilesPerScan: 1,
 };
 const faceCase = {
@@ -64,6 +69,8 @@ const faceCase = {
     expectedAfterSeed: 5,
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
+    expectsBackwardUpdates: true,
+    minimumContextChecks: 0,
     tilesPerScan: 1,
 };
 const finalFace = faceCase.motion.frames[17]!;
@@ -93,6 +100,18 @@ const longPlateCase = {
 const cases = [
     plateCase,
     faceCase,
+    {
+        ...plateCase,
+        label: "a genuine large plate after full-frame context verification",
+        motion: {
+            ...largePlateContext,
+            frames: largePlateContext.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
+        },
+        expectedScans: largePlateContext.frames.length,
+        expectsBackwardUpdates: false,
+        minimumContextChecks: 1,
+        tilesPerScan: 4,
+    },
     {
         ...plateCase,
         label: "every moving plate frame across a fractional file boundary",
@@ -252,6 +271,8 @@ for (const {
     expectedAfterSeed,
     minimumBackwardUpdates,
     expectsTrackUpdates,
+    expectsBackwardUpdates,
+    minimumContextChecks,
     tilesPerScan,
 } of cases) {
     const usesTracker = !expectedMiss;
@@ -390,6 +411,7 @@ self.postMessage = function(message, ...args) {
             );
             const recoveryScans = stats!.recoveryScans ?? 0;
             const recoveryTiles = stats!.recoveryTiles ?? 0;
+            const contextChecks = stats!.contextChecks ?? 0;
             if (
                 quality === "thorough" &&
                 splitSec === null &&
@@ -401,9 +423,20 @@ self.postMessage = function(message, ...args) {
                 ).toBeLessThanOrEqual(8);
             }
             expect(stats!.scans - recoveryScans, "detector follows the selected discovery policy").toBe(expectedScans);
-            expect(stats!.tiles - recoveryTiles, "discovery retains the source-resolution tile grid").toBe(
-                expectedScans * tilesPerScan,
-            );
+            expect(
+                contextChecks,
+                "large plate proposals are verified against full-frame context",
+            ).toBeGreaterThanOrEqual(minimumContextChecks);
+            if (minimumContextChecks > 0) {
+                expect(
+                    (result.tracksByKind[kind] ?? []).reduce((sum, track) => sum + track.detHits, 0),
+                    "context corroboration does not add independent detector evidence",
+                ).toBe(expectedScans);
+            }
+            expect(
+                stats!.tiles - recoveryTiles - contextChecks,
+                "discovery retains the source-resolution tile grid",
+            ).toBe(expectedScans * tilesPerScan);
             expect(recoveryTiles, "recovery never scans a frame tile twice").toBeLessThanOrEqual(
                 recoveryScans * tilesPerScan,
             );
@@ -412,9 +445,16 @@ self.postMessage = function(message, ...args) {
                 expect(recoveryTiles).toBe(0);
             }
             if (usesTracker && expectsTrackUpdates) {
-                expect(stats!.backwardUpdates, "positive discovery tracks preceding source frames").toBeGreaterThan(
-                    minimumBackwardUpdates,
-                );
+                if (expectsBackwardUpdates) {
+                    expect(stats!.backwardUpdates, "positive discovery tracks preceding source frames").toBeGreaterThan(
+                        minimumBackwardUpdates,
+                    );
+                } else {
+                    expect(
+                        stats!.backwardUpdates,
+                        "a plate visible from the first frame needs no backward tracking",
+                    ).toBe(0);
+                }
                 expect(stats!.trackUpdates, "forward work is additional to backward work").toBeGreaterThan(
                     stats!.backwardUpdates,
                 );
