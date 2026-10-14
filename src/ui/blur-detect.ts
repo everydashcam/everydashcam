@@ -88,8 +88,8 @@ interface TripDetectState {
     style: BlurStyle;
     /** Last completed pass; `key` names the params it covered. */
     result: { key: string; regions: BlurRegion[]; counts: DetectCounts } | null;
-    /** One analysis per source window and kind. Only changed boundary windows
-     *  need inference when a multi-file export grows or moves. */
+    /** One analysis per source window, kind and quality. Only changed boundary
+     *  windows need inference when a multi-file export grows or moves. */
     trackCache: Map<Channel, Partial<Record<DetectKind, TrackCacheEntry[]>>>;
 }
 
@@ -687,16 +687,19 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                 const { channel, source, segment } = windows[i]!;
                 const startSec = segment.tripStart + segment.startInFile;
                 const endSec = segment.tripStart + segment.endInFile;
-                // Tracking cannot cross ownership windows. Reanalyze a changed
-                // window whole, preserving evidence near its trimmed edges,
-                // while unrelated completed files keep their cached analysis.
+                // A new edge seed can track arbitrarily far into the previous
+                // range, while an old seed can be its extension's only evidence.
+                // Fixed overlap/delta stitching would lose those covers.
+                // TODO: retain raw detector anchors and tracker continuation in
+                // the worker before replacing whole-window extension analysis.
                 const chCache = st.trackCache.get(channel) ?? {};
                 const analyzeIntervalsByKind: DetectRequestData["analyzeIntervalsByKind"] = {};
                 for (const kind of params.kinds) {
-                    const cached = chCache[kind]?.find((entry) => sameSourceWindow(entry.source, source));
+                    const cached = chCache[kind]?.find(
+                        (entry) => entry.quality === params.quality && sameSourceWindow(entry.source, source),
+                    );
                     const isCovered =
                         cached &&
-                        cached.quality === params.quality &&
                         cached.segment.startInFile <= segment.startInFile &&
                         cached.segment.endInFile >= segment.endInFile;
                     analyzeIntervalsByKind[kind] = isCovered ? [] : [{ startSec, endSec }];
@@ -731,13 +734,17 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         window.clearTimeout(timeoutTimer);
                         timeoutTimer = undefined;
                     }
-                    // Replace only newly analyzed kinds after completion, so an
-                    // abort/failure preserves the previous complete analysis.
+                    // Replace only the matching quality after completion, so an
+                    // abort/failure or a slider round trip preserves prior work.
+                    // More discovery scans can change tracking identities, so
+                    // reuse the exact quality rather than assuming a superset.
                     const updatedCache = st.trackCache.get(channel) ?? {};
                     for (const kind of params.kinds) {
                         if (!analyzeIntervalsByKind[kind]?.length) continue;
                         updatedCache[kind] = [
-                            ...(updatedCache[kind] ?? []).filter((entry) => !sameSourceWindow(entry.source, source)),
+                            ...(updatedCache[kind] ?? []).filter(
+                                (entry) => entry.quality !== params.quality || !sameSourceWindow(entry.source, source),
+                            ),
                             {
                                 source,
                                 segment,
@@ -791,7 +798,9 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                 // first displayed frame precedes the fractional trim boundary.
                 const cache = st.trackCache.get(channel)!;
                 for (const kind of params.kinds) {
-                    const entry = cache[kind]?.find((entry) => sameSourceWindow(entry.source, source));
+                    const entry = cache[kind]?.find(
+                        (entry) => entry.quality === params.quality && sameSourceWindow(entry.source, source),
+                    );
                     if (!entry) continue;
                     for (const track of entry.tracks) {
                         const span = trackRegionSpan(track, startSec, endSec, entry.sourceFrames);

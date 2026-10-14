@@ -714,6 +714,69 @@ describe("blur pass lifecycle", () => {
         expect(detectQuality(), "trip regrouping preserves the chosen quality").toBe("thorough");
     });
 
+    it("keeps independent analyses when returning to previously completed qualities", async () => {
+        await downloadBlurAssets(["detect-plate"]);
+        setDetectEnabled("plate", true);
+        const qualities = ["fast", "balanced", "thorough"] as const;
+        const expectedRects = qualities.map((_, index) => ({
+            ...makeRegion().keyframes[0]!.rect,
+            xPct: 0.1 + index * 0.2,
+        }));
+        for (const [index, quality] of qualities.entries()) {
+            setDetectQuality(quality);
+            const pending = ensureDetectRegionsForExport(
+                captureDetectExportRequest()!,
+                new AbortController().signal,
+                () => {},
+            );
+            await flushMicrotasks();
+            expect(requests).toHaveLength(index + 1);
+            const result = makeDetectResult();
+            result.tracksByKind.plate![0]!.keyframes[0]!.rect = expectedRects[index]!;
+            endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[index]!.id, ok: true, result });
+            expect((await pending)[0]!.keyframes[0]!.rect).toEqual(expectedRects[index]);
+        }
+        for (const quality of ["balanced", "fast", "thorough"] as const) {
+            setDetectQuality(quality);
+            const regions = await ensureDetectRegionsForExport(
+                captureDetectExportRequest()!,
+                new AbortController().signal,
+                () => {},
+            );
+            expect(requests, "a quality round trip does not repeat inference").toHaveLength(3);
+            expect(regions[0]!.keyframes[0]!.rect, "the exact quality retains its own geometry").toEqual(
+                expectedRects[qualities.indexOf(quality)],
+            );
+        }
+
+        // A larger range replaces only that quality; returning to the old
+        // range still restores the other completed analyses without inference.
+        ui.range = { startTripSec: 0, endTripSec: 4 };
+        const expanded = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        expect(requests).toHaveLength(4);
+        const result = makeDetectResult();
+        result.tracksByKind.plate![0]!.endSec = 4;
+        result.tracksByKind.plate![0]!.keyframes[0]!.rect = { ...expectedRects[2]!, xPct: 0.7 };
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[3]!.id, ok: true, result });
+        expect((await expanded)[0]!.keyframes[0]!.rect.xPct).toBeCloseTo(0.7);
+        ui.range = { startTripSec: 0, endTripSec: 3 };
+        for (const quality of ["fast", "thorough"] as const) {
+            setDetectQuality(quality);
+            const regions = await ensureDetectRegionsForExport(
+                captureDetectExportRequest()!,
+                new AbortController().signal,
+                () => {},
+            );
+            expect(requests).toHaveLength(4);
+            expect(regions[0]!.keyframes[0]!.rect.xPct).toBeCloseTo(quality === "fast" ? 0.1 : 0.7);
+        }
+    });
+
     it("retains cached plates while analyzing newly enabled faces", async () => {
         await downloadBlurAssets(["detect-plate", "detect-face"]);
         setDetectEnabled("plate", true);
