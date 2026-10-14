@@ -814,12 +814,17 @@ async function runDetectPass(
                     // Retain pixels on each branch's inference grid, detector
                     // anchors and safety exceptions. Still consume every source
                     // timing so holds, gaps and identity boundaries stay exact.
-                    const decodeIndices = planReverseFrameIndices(frameTimings, cohort, [...requiredReverseIndices]);
                     let sampleBytesHint = reverseSampleBytesHint;
                     // Include the seed in the first bounded block. A separate
                     // getSample would decode the same GOP prefix an extra time.
                     for (let endIndex = lastGroup.seedIndex + 1; endIndex > startIndex; ) {
                         signal.throwIfAborted();
+                        // Reverse calibration can discover motion absent in the
+                        // forward pass. Each iterator owns an immutable plan;
+                        // only its unconsumed prefix is replanned after closing.
+                        const decodeIndices = planReverseFrameIndices(frameTimings, cohort, [
+                            ...requiredReverseIndices,
+                        ]);
                         const capacity = Math.max(
                             1,
                             Math.min(
@@ -898,7 +903,7 @@ async function runDetectPass(
                                 }
                                 if (position < blockEndPosition) continue;
                                 timings.reverseBlocks++;
-                                const nextEndIndex = retained[0]!.index;
+                                let nextEndIndex = retained[0]!.index;
                                 const samplesByIndex = new Map(retained.map(({ index, sample }) => [index, sample]));
                                 for (let index = endIndex - 1; index >= nextEndIndex; index--) {
                                     signal.throwIfAborted();
@@ -908,6 +913,18 @@ async function runDetectPass(
                                     // unrelated earlier frames to finish.
                                     const needed = cohort.some((group) => group.seedIndex === index || hasWork(group));
                                     if (!needed) continue;
+                                    if (
+                                        !samplesByIndex.has(index) &&
+                                        cohort.some((group) => group.hasHighMotion && hasWork(group))
+                                    ) {
+                                        // Stop before ANY group mutates this
+                                        // frame. A monotonic motion upgrade can
+                                        // require pixels omitted by this plan.
+                                        // Revisit this index without replaying
+                                        // the already settled newer suffix.
+                                        nextEndIndex = index + 1;
+                                        break;
+                                    }
                                     const liveCount = cohort.reduce(
                                         (count, group) =>
                                             count +
@@ -942,6 +959,9 @@ async function runDetectPass(
                                                     trackingFrame,
                                                     index,
                                                     observations.get(kind)!.get(frameTimings[index]!.contentSec)?.seeds,
+                                                    group.seedIndex,
+                                                );
+                                                group.hasHighMotion ||= propagation.hasBackwardHighMotion(
                                                     group.seedIndex,
                                                 );
                                             }

@@ -149,8 +149,11 @@ export interface DetectResult {
      * Geometry keyframes can be compressed, so cached trims need these exact
      * intervals to retain only the source frame displayed at the new start. */
     sourceFrames: SourceFrameTiming[];
-    /** Decoded samples delivered to the pass, including repeated visits.
-     * Internal decoder preroll/prefetch frames are not counted. */
+    /** Decoded samples consumed by the pass, including repeated visits and
+     * samples discarded before analysis (zero duration or reverse-buffer
+     * overflow). This measures delivered decode work, not analyzed frames;
+     * sourceFrames records displayed intervals. Internal decoder preroll and
+     * prefetch frames that never reach the pass are not counted. */
     decodedFrames: number;
     /** Whole-pass wall ms, decode included. */
     passMs: number;
@@ -160,7 +163,7 @@ export interface DetectResult {
         forwardMs: number;
         backwardMs: number;
         decodeWaitMs: number;
-        /** Delivered samples by phase, excluding internal decoder preroll. */
+        /** Same delivered-work counts as decodedFrames, split by phase. */
         forwardSamples: number;
         backwardSamples: number;
         /** Reverse batches; each backwards timestamp jump can replay a GOP prefix. */

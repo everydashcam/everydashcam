@@ -65,6 +65,9 @@ export function planReverseCohorts<T extends ReverseDecodeGroup>(groups: readonl
 
 /** Retain only pixels needed by a cohort's reverse inference schedules. Each
  * seed owns a greedy reverse cadence; detector reanchors do not shift it.
+ * Source frames through the first inference interval calibrate reverse motion
+ * even when the forward seed has no later observations. These extra source
+ * frames do not shift cadence.
  * Extra detector/branch-endpoint indices, recovery warmup, and long displayed
  * holds need pixels but never shift that cadence. High-motion groups retain
  * every source frame. The caller still advances propagation
@@ -100,10 +103,12 @@ export function planReverseFrameIndices(
         selected.add(group.seedIndex);
         selected.add(group.startIndex);
         let previousInferenceSec = frames[group.seedIndex]!.contentSec;
+        let isCalibrating = true;
         for (let index = group.seedIndex - 1; index > group.startIndex; index--) {
             const frame = frames[index]!;
             if (
                 group.hasHighMotion ||
+                isCalibrating ||
                 group.seedIndex - index <= warmup ||
                 frame.durationSec > PROPAGATION_INTERVAL_SEC + 1e-6
             ) {
@@ -113,6 +118,7 @@ export function planReverseFrameIndices(
             if (!isPropagationUpdateDue(previousInferenceSec, contentSec)) continue;
             selected.add(index);
             previousInferenceSec = contentSec;
+            isCalibrating = false;
         }
     }
     for (const index of requiredIndices) {

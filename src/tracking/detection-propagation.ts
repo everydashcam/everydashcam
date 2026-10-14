@@ -256,8 +256,8 @@ export class DetectionPropagation {
         // timestamp is close to the seed. Never project over a long hold.
         const isLongHold = timing.durationSec > PROPAGATION_INTERVAL_SEC + TIME_EPSILON_SEC;
         const hasHighMotion = branch.trajectory.hasHighMotion && !hasReliableAnchor;
-        // One fresh forward observation establishes motion before the first
-        // sparse jump. An eligible detector anchor can provide it instead.
+        // Observe one full inference interval in each direction before the
+        // first sparse jump. Eligible detector anchors can supply these pixels.
         const shouldCalibrate = branch.isCalibrationPending && !hasReliableAnchor;
         if (
             !force &&
@@ -324,30 +324,27 @@ export class DetectionPropagation {
             const beforeSec = this.timing(branch.trustedIndex).contentSec;
             const elapsed = this.timing(frameIndex).contentSec - beforeSec;
             const before = branch.motionReference.rect;
-            const motionElapsed =
-                this.timing(frameIndex).contentSec - this.timing(branch.motionReference.index).contentSec;
-            const hasFullInterval = Math.abs(motionElapsed) + TIME_EPSILON_SEC >= PROPAGATION_INTERVAL_SEC;
-            if (frameIndex > branch.trajectory.seedIndex) {
+            const motionElapsed = Math.abs(
+                this.timing(frameIndex).contentSec - this.timing(branch.motionReference.index).contentSec,
+            );
+            const hasFullInterval = motionElapsed + TIME_EPSILON_SEC >= PROPAGATION_INTERVAL_SEC;
+            if (hasFullInterval) {
                 // When half an object can move during one inference interval,
                 // sparse searches become unreliable. Preserve source cadence
                 // for this trajectory unless a detector supplies the anchor.
-                // Reverse uses this forward-established flag, allowing its
-                // decoder to plan the same required pixels in advance.
-                // The initial short calibration can expose fast motion early.
-                // Thereafter measure whole inference intervals: adjacent
+                // Reverse can discover motion absent after the seed; its
+                // decoder extends the remaining pixel plan on that transition.
+                // Calibrate and measure over whole inference intervals: adjacent
                 // detector frames may repeat a position and then jump, which
                 // must not double the apparent velocity of a slow object.
-                if (branch.isCalibrationPending || hasFullInterval) {
-                    const dx = Math.abs(rect.xPct + rect.wPct / 2 - before.xPct - before.wPct / 2);
-                    const dy = Math.abs(rect.yPct + rect.hPct / 2 - before.yPct - before.hPct / 2);
-                    branch.trajectory.hasHighMotion ||=
-                        (dx * PROPAGATION_INTERVAL_SEC) / motionElapsed >= Math.min(before.wPct, rect.wPct) / 2 ||
-                        (dy * PROPAGATION_INTERVAL_SEC) / motionElapsed >= Math.min(before.hPct, rect.hPct) / 2;
-                }
-            }
-            if (hasFullInterval) {
+                const dx = Math.abs(rect.xPct + rect.wPct / 2 - before.xPct - before.wPct / 2);
+                const dy = Math.abs(rect.yPct + rect.hPct / 2 - before.yPct - before.hPct / 2);
+                branch.trajectory.hasHighMotion ||=
+                    (dx * PROPAGATION_INTERVAL_SEC) / motionElapsed >= Math.min(before.wPct, rect.wPct) / 2 ||
+                    (dy * PROPAGATION_INTERVAL_SEC) / motionElapsed >= Math.min(before.hPct, rect.hPct) / 2;
                 branch.previousMotionReference = branch.motionReference;
                 branch.motionReference = { rect, index: frameIndex };
+                branch.isCalibrationPending = false;
             }
             for (const index of branch.pendingIndices) {
                 branch.trajectory.observations.set(
@@ -358,7 +355,6 @@ export class DetectionPropagation {
             branch.pendingIndices = [];
             branch.trustedRect = rect;
             branch.trustedIndex = frameIndex;
-            branch.isCalibrationPending = false;
         } else {
             branch.pendingIndices.push(frameIndex);
             // A terminal skipped frame may precede the next rejection. Cover
@@ -582,7 +578,9 @@ export class DetectionPropagation {
     }
 
     /** A new source window must not inherit a template, timing, or backward
-     * bound from the preceding one. Finished observations remain available. */
+     * bound from the preceding one. A skipped terminal frame retains its
+     * bounded motion envelope; the next window supplies no interpolation
+     * evidence across the gap. Finished observations remain available. */
     endForwardWindow(): void {
         this.live = [];
         this.previousForwardIndex = null;
@@ -620,7 +618,8 @@ export class DetectionPropagation {
                 motionReference: { rect: { ...job.rect }, index: seedIndex },
                 pendingIndices: [],
                 warmupRemaining: job.recoveryWarmupFrames,
-                isCalibrationPending: false,
+                // Motion before the seed is independent of its forward history.
+                isCalibrationPending: true,
                 hasOlderAnchorOverlap: false,
             }));
         this.startedReverseSeeds.add(seedIndex);
@@ -629,6 +628,11 @@ export class DetectionPropagation {
 
     hasBackwardWork(seedIndex?: number): boolean {
         return seedIndex === undefined ? this.reverse.size > 0 : this.reverse.has(seedIndex);
+    }
+
+    /** A reverse observation can require denser pixels than the initial plan. */
+    hasBackwardHighMotion(seedIndex: number): boolean {
+        return this.reverse.get(seedIndex)?.some((branch) => branch.trajectory.hasHighMotion) ?? false;
     }
 
     /** Pixel preparation can share a display canvas for multiple objects;

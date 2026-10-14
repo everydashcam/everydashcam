@@ -50,6 +50,7 @@ const plateCase = {
     expectedAfterSeed: 5,
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
+    hasForwardUpdates: true,
     expectsBackwardUpdates: true,
     minimumContextChecks: 0,
     tilesPerScan: 1,
@@ -69,6 +70,7 @@ const faceCase = {
     expectedAfterSeed: 5,
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
+    hasForwardUpdates: true,
     expectsBackwardUpdates: true,
     minimumContextChecks: 0,
     tilesPerScan: 1,
@@ -162,6 +164,23 @@ const cases = [
     {
         ...longPlateCase,
         quality: "fast" as const,
+        label: "all fast-moving plate frames when only the final frame seeds reverse tracking",
+        motion: {
+            ...longPlateCase.motion,
+            durationSec: 43 / 30,
+            frames: longPlateCase.motion.frames.filter((frame) => frame.contentSec < 43 / 30),
+        },
+        // The first scan is blank; the second is the final displayed frame.
+        // Reverse must discover fast motion itself without a forward update.
+        startSec: 0.4,
+        expectedScans: 2,
+        singleSeedSec: 1.4,
+        expectedAfterSeed: 0,
+        hasForwardUpdates: false,
+    },
+    {
+        ...longPlateCase,
+        quality: "fast" as const,
         label: "a 48 by 12 pixel plate on both sides of one tiled discovery hit",
         motion: {
             ...crispSmallPlateMotion,
@@ -191,7 +210,7 @@ const cases = [
     {
         ...longPlateCase,
         quality: "fast" as const,
-        label: "a small plate while sparse reverse tracking fits a frame-buffer block",
+        label: "a small plate with bounded reverse calibration and sparse tracking",
         motion: {
             ...slowSmallPlateMotion,
             frames: slowSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
@@ -201,7 +220,7 @@ const cases = [
         singleSeedSec: 2.8,
         expectedBeforeSeed: 12,
         expectedAfterSeed: 11,
-        // Twelve source frames fit one eight-sample buffer at 15 Hz.
+        // Calibration adds one source sample before returning to 15 Hz.
         minimumBackwardUpdates: 5,
         maxMaskArea: 2.5,
         tilesPerScan: 4,
@@ -271,6 +290,7 @@ for (const {
     expectedAfterSeed,
     minimumBackwardUpdates,
     expectsTrackUpdates,
+    hasForwardUpdates,
     expectsBackwardUpdates,
     minimumContextChecks,
     tilesPerScan,
@@ -455,9 +475,24 @@ self.postMessage = function(message, ...args) {
                         "a plate visible from the first frame needs no backward tracking",
                     ).toBe(0);
                 }
-                expect(stats!.trackUpdates, "forward work is additional to backward work").toBeGreaterThan(
-                    stats!.backwardUpdates,
-                );
+                if (hasForwardUpdates) {
+                    expect(stats!.trackUpdates, "forward work is additional to backward work").toBeGreaterThan(
+                        stats!.backwardUpdates,
+                    );
+                } else {
+                    expect(stats!.trackUpdates, "a final-frame seed has no forward update").toBe(
+                        stats!.backwardUpdates,
+                    );
+                    expect(
+                        stats!.calibrationUpdates,
+                        "reverse motion is calibrated from the next source frame",
+                    ).toBeGreaterThan(0);
+                    expect(
+                        stats!.highMotionUpdates,
+                        "reverse-only fast motion restores source cadence",
+                    ).toBeGreaterThan(0);
+                    expect(recoveryScans, "reverse calibration does not add forward recovery evidence").toBe(0);
+                }
                 expect(stats!.trackMs, "tracker inference time is measured").toBeGreaterThan(0);
             } else {
                 expect(stats!.trackUpdates).toBe(0);
@@ -503,13 +538,18 @@ self.postMessage = function(message, ...args) {
                 expect(stats!.seededTracks, "recovery retains the original discovery trajectory").toBe(1);
             }
             if (measuresReverseDecode) {
-                // This GOP-30 fixture needs 180 forward packets. At 15 Hz its
-                // reverse prefix fits one block (25 packets), down from two
-                // blocks (25 + 17), within the same native-surface budget.
+                // At 30 fps calibration adds one retained sample. The first
+                // rejected frame then falls into a second reverse block;
+                // retain the eight-surface budget and bound its decode cost.
+                // Repeated source positions must not latch source-rate tracking.
+                expect(stats!.highMotionUpdates ?? 0, "repeated positions retain sparse tracking").toBe(0);
+                expect(stats!.backwardUpdates, "calibration adds bounded work to the 15 Hz grid").toBeLessThanOrEqual(
+                    8,
+                );
                 expect(
                     result.nativeDecodeCalls,
-                    "sparse reverse samples avoid a repeated GOP prefix",
-                ).toBeLessThanOrEqual(205);
+                    "calibrated sparse reverse tracking stays within the measured decode budget",
+                ).toBeLessThanOrEqual(245);
             }
             if (motion.filename === "small-plate-crisp-slow-motion.mp4" && quality !== "fast") {
                 expect(

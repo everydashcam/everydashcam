@@ -98,10 +98,10 @@ describe("planReverseFrameIndices", () => {
     });
 
     it.each([
-        { fps: 30, seedIndex: 6, expected: [0, 2, 4, 6] },
-        { fps: 30, seedIndex: 7, expected: [0, 1, 3, 5, 7] },
-        { fps: 60, seedIndex: 12, expected: [0, 4, 8, 12] },
-        { fps: 60, seedIndex: 13, expected: [0, 1, 5, 9, 13] },
+        { fps: 30, seedIndex: 6, expected: [0, 2, 4, 5, 6] },
+        { fps: 30, seedIndex: 7, expected: [0, 1, 3, 5, 6, 7] },
+        { fps: 60, seedIndex: 12, expected: [0, 4, 8, 9, 10, 11, 12] },
+        { fps: 60, seedIndex: 13, expected: [0, 1, 5, 9, 10, 11, 12, 13] },
     ])("retains the seed phase and first endpoint at $fps fps from $seedIndex", ({ fps, seedIndex, expected }) => {
         expect(planReverseFrameIndices(framesAtRate(seedIndex + 1, fps), [group(seedIndex)])).toEqual(expected);
     });
@@ -111,20 +111,30 @@ describe("planReverseFrameIndices", () => {
             contentSec,
             durationSec: 0.01,
         }));
-        expect(planReverseFrameIndices(frames, [group(6)])).toEqual([0, 1, 4, 6]);
+        expect(planReverseFrameIndices(frames, [group(6)])).toEqual([0, 1, 4, 5, 6]);
+    });
+
+    it("retains the whole initial calibration interval across irregular source timestamps", () => {
+        const frames = [0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.105, 0.12].map((contentSec) => ({
+            contentSec,
+            durationSec: 0.02,
+        }));
+        expect(planReverseFrameIndices(frames, [group(7)])).toEqual([0, 2, 3, 4, 5, 6, 7]);
     });
 
     it("unites independent seed phases without resampling either group", () => {
         expect(planReverseFrameIndices(framesAtRate(14, 60), [group(13), group(12)])).toEqual([
-            0, 1, 4, 5, 8, 9, 12, 13,
+            0, 1, 4, 5, 8, 9, 10, 11, 12, 13,
         ]);
     });
 
-    it("adds recovery warmup pixels without shifting the normal reverse cadence", () => {
+    it("adds recovery warmup beyond calibration without shifting the normal reverse cadence", () => {
         const frames = framesAtRate(13, 60);
-        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 0 }])).toEqual([0, 4, 8, 12]);
-        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 2 }])).toEqual([
-            0, 4, 8, 10, 11, 12,
+        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 0 }])).toEqual([
+            0, 4, 8, 9, 10, 11, 12,
+        ]);
+        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 5 }])).toEqual([
+            0, 4, 7, 8, 9, 10, 11, 12,
         ]);
         expect(planReverseFrameIndices(frames, [{ ...group(12, 1, 10), recoveryWarmupFrames: 5 }])).toEqual([
             10, 11, 12,
@@ -133,7 +143,7 @@ describe("planReverseFrameIndices", () => {
 
     it("retains normal and recovery phases in a mixed cohort", () => {
         const groups = [group(12), { ...group(13), recoveryWarmupFrames: 2 }];
-        expect(planReverseFrameIndices(framesAtRate(14, 60), groups)).toEqual([0, 1, 4, 5, 8, 9, 11, 12, 13]);
+        expect(planReverseFrameIndices(framesAtRate(14, 60), groups)).toEqual([0, 1, 4, 5, 8, 9, 10, 11, 12, 13]);
         expect(planReverseCohorts(groups)).toEqual([groups]);
     });
 
@@ -150,7 +160,9 @@ describe("planReverseFrameIndices", () => {
 
     it("retains every high-motion frame while keeping other groups sparse", () => {
         const frames = framesAtRate(14, 60);
-        expect(planReverseFrameIndices(frames, [{ ...group(12), hasHighMotion: false }])).toEqual([0, 4, 8, 12]);
+        expect(planReverseFrameIndices(frames, [{ ...group(12), hasHighMotion: false }])).toEqual([
+            0, 4, 8, 9, 10, 11, 12,
+        ]);
         expect(planReverseFrameIndices(frames, [group(12), { ...group(13, 1, 9), hasHighMotion: true }])).toEqual([
             0, 4, 8, 9, 10, 11, 12, 13,
         ]);
@@ -158,8 +170,8 @@ describe("planReverseFrameIndices", () => {
 
     it("retains an intermediate long-held VFR sample without shifting inference", () => {
         const frames = framesAtRate(13, 60);
-        frames[10]!.durationSec = 2;
-        expect(planReverseFrameIndices(frames, [group(12)])).toEqual([0, 4, 8, 10, 12]);
+        frames[6]!.durationSec = 2;
+        expect(planReverseFrameIndices(frames, [group(12)])).toEqual([0, 4, 6, 8, 9, 10, 11, 12]);
     });
 
     it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid frame duration %s", (durationSec) => {
@@ -173,7 +185,7 @@ describe("planReverseFrameIndices", () => {
     it("retains off-grid detector and branch endpoints without shifting inference", () => {
         const groups = Object.freeze([Object.freeze(group(12, 1, 3))]);
         const required = Object.freeze([6, 5, 6, 2, 18]);
-        expect(planReverseFrameIndices(framesAtRate(20, 60), groups, required)).toEqual([3, 4, 5, 6, 8, 12]);
+        expect(planReverseFrameIndices(framesAtRate(20, 60), groups, required)).toEqual([3, 4, 5, 6, 8, 9, 10, 11, 12]);
         expect(required).toEqual([6, 5, 6, 2, 18]);
         expect(groups).toEqual([group(12, 1, 3)]);
     });
@@ -184,12 +196,34 @@ describe("planReverseFrameIndices", () => {
     });
 
     it("lets eight retained samples cover more source time at high frame rates", () => {
-        for (const fps of [30, 60]) {
+        for (const { fps, samples, span } of [
+            { fps: 30, samples: 17, span: 12 },
+            { fps: 60, samples: 19, span: 16 },
+        ]) {
             const selected = planReverseFrameIndices(framesAtRate(fps + 1, fps), [group(fps)]);
-            expect(selected).toHaveLength(16);
+            expect(selected).toHaveLength(samples);
             const block = selected.slice(-8);
-            expect(block.at(-1)! - block[0]!).toBe((7 * fps) / 15);
+            expect(block.at(-1)! - block[0]!).toBe(span);
         }
+    });
+
+    it("shares calibration with the endpoint when only one predecessor exists", () => {
+        expect(planReverseFrameIndices(framesAtRate(6, 60), [group(5, 1, 4)])).toEqual([4, 5]);
+    });
+
+    it("adds an unconsumed prefix when reverse calibration discovers high motion", () => {
+        const frames = framesAtRate(31, 60);
+        const initial = planReverseFrameIndices(frames, [group(30, 1, 4)]);
+        expect(initial).toContain(29);
+        expect(initial).not.toContain(25);
+        // The worker consumes the seed and full calibration interval before
+        // requesting a new plan. Its exclusive end preserves that suffix.
+        const endIndex = 26;
+        const replanned = planReverseFrameIndices(frames, [{ ...group(30, 1, 4), hasHighMotion: true }]).filter(
+            (index) => index < endIndex,
+        );
+        expect(replanned).toEqual(Array.from({ length: 22 }, (_, index) => index + 4));
+        expect(initial.filter((index) => index >= endIndex)).toEqual([26, 27, 28, 29, 30]);
     });
 
     it.each([group(0), group(20), group(3, 1, -1), group(3.5), group(3, 1, 3)])(

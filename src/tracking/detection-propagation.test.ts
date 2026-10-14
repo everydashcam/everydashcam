@@ -146,6 +146,117 @@ function masksAt(tracks: DetectedTrack[], sec: number): CropRect[] {
 }
 
 describe("DetectionPropagation", () => {
+    it.each([30, 60])("keeps reverse calibration of repeated slow positions sparse at %s fps", async (fps) => {
+        const framesPerInterval = fps / 15;
+        const seedIndex = 6 * framesPerInterval;
+        const frames = Array.from({ length: seedIndex + 1 }, (_, index) => ({
+            contentSec: index / fps,
+            durationSec: 1 / fps,
+        }));
+        const reverse = new ScriptedTracker([
+            ...Array.from({ length: framesPerInterval }, () => accepted(0.47)),
+            ...Array.from({ length: 5 }, (_, step) => accepted(0.44 - step * 0.03)),
+        ]);
+        const { propagation, stats } = setup([new ScriptedTracker(), reverse], frames.length, frames);
+        propagation.beginForwardWindow(0);
+        await propagation.forward(FRAME, seedIndex, [seed(0.5)]);
+        propagation.startBackward(FRAME, seedIndex);
+        for (let index = seedIndex - 1; index >= 0; index--) {
+            await propagation.backward(FRAME, index, undefined, seedIndex);
+            expect(propagation.hasBackwardHighMotion(seedIndex)).toBe(false);
+        }
+        expect(reverse.steps).toHaveLength(6 + framesPerInterval - 1);
+        expect(stats.calibrationUpdates).toBe(framesPerInterval - 1);
+        expect(stats.highMotionUpdates ?? 0).toBe(0);
+        const tracks = propagation.finish();
+        for (let index = 0; index <= seedIndex; index++) expect(masksAt(tracks, (index + 0.5) / fps)).toHaveLength(1);
+    });
+
+    it("calibrates reverse motion of a four-pixel object at 60 fps", async () => {
+        const frames = Array.from({ length: 6 }, (_, index) => ({ contentSec: index / 60, durationSec: 1 / 60 }));
+        const reverse = new ScriptedTracker(
+            Array.from({ length: 4 }, (_, step) => ({ ...accepted(), box: { x: 199 - step, y: 200, w: 4, h: 4 } })),
+        );
+        const { propagation } = setup([new ScriptedTracker(), reverse], frames.length, frames);
+        propagation.beginForwardWindow(0);
+        await propagation.forward(FRAME, 5, [{ score: 0.8, rect: { xPct: 0.2, yPct: 0.4, wPct: 0.004, hPct: 0.008 } }]);
+        propagation.startBackward(FRAME, 5);
+        for (let index = 4; index >= 1; index--) await propagation.backward(FRAME, index, undefined, 5);
+        expect(reverse.steps[0]).toBeCloseTo(1 / 60);
+        expect(propagation.hasBackwardHighMotion(5)).toBe(true);
+    });
+
+    it.each([false, true])(
+        "calibrates fast reverse motion independently of a slow forward history (%s)",
+        async (hasForwardHistory) => {
+            const frames = Array.from({ length: hasForwardHistory ? 11 : 9 }, (_, index) => ({
+                contentSec: index / 30,
+                durationSec: 1 / 30,
+            }));
+            const reverse = new ScriptedTracker(
+                Array.from({ length: 8 }, (_, step) => accepted(0.5 - (step + 1) * 0.04)),
+            );
+            const { propagation, stats } = setup([new ScriptedTracker(), reverse], frames.length, frames);
+            propagation.beginForwardWindow(0);
+            await propagation.forward(FRAME, 8, [seed(0.5)]);
+            for (let index = 9; index < frames.length; index++) await propagation.forward(FRAME, index, [seed(0.5)]);
+            const [job] = propagation.backwardJobs();
+            expect(job!.hasHighMotion).toBe(false);
+            expect(planReverseFrameIndices(frames, [job!])).not.toContain(5);
+            propagation.startBackward(FRAME, 8);
+            for (let index = 7; index >= 0; index--) {
+                const planned = new Set(
+                    planReverseFrameIndices(frames, [{ ...job!, hasHighMotion: propagation.hasBackwardHighMotion(8) }]),
+                );
+                await propagation.backward(
+                    () => {
+                        expect(planned.has(index), `reverse pixels for frame ${index}`).toBe(true);
+                        return FRAME;
+                    },
+                    index,
+                    undefined,
+                    8,
+                );
+                if (index === 7) expect(propagation.hasBackwardHighMotion(8)).toBe(false);
+                if (index === 6) expect(propagation.hasBackwardHighMotion(8)).toBe(true);
+            }
+            expect(reverse.steps).toHaveLength(8);
+            expect(stats.calibrationUpdates).toBe(1);
+            const tracks = propagation.finish();
+            for (let index = 0; index <= 8; index++) {
+                expect(masksAt(tracks, (index + 0.5) / 30)[0]!.xPct).toBeCloseTo(0.5 - (8 - index) * 0.04);
+            }
+        },
+    );
+
+    it("recognizes reverse acceleration after an initially stationary calibration", async () => {
+        const frames = Array.from({ length: 13 }, (_, index) => ({ contentSec: index / 60, durationSec: 1 / 60 }));
+        const reverse = new ScriptedTracker([
+            accepted(0.5),
+            accepted(0.5),
+            accepted(0.5),
+            accepted(0.5),
+            accepted(0.42),
+            accepted(0.4),
+            accepted(0.38),
+            accepted(0.36),
+            accepted(0.34),
+        ]);
+        const { propagation, stats } = setup([new ScriptedTracker(), reverse], frames.length, frames);
+        propagation.beginForwardWindow(0);
+        await propagation.forward(FRAME, 12, [seed(0.5)]);
+        propagation.startBackward(FRAME, 12);
+        for (let index = 11; index >= 0; index--) {
+            await propagation.backward(FRAME, index, undefined, 12);
+            if (index === 8) expect(propagation.hasBackwardHighMotion(12)).toBe(false);
+            if (index === 4) expect(propagation.hasBackwardHighMotion(12)).toBe(true);
+        }
+        expect(reverse.steps).toHaveLength(9);
+        expect(stats.calibrationUpdates).toBe(3);
+        expect(stats.highMotionUpdates).toBe(3);
+        expect(masksAt(propagation.finish(), 0.5 / 60)[0]!.xPct).toBeCloseTo(0.34);
+    });
+
     it("calibrates a sparse forward seed and schedules source frames for measured fast motion in both directions", async () => {
         const frames = Array.from({ length: 7 }, (_, index) => ({ contentSec: index / 30, durationSec: 1 / 30 }));
         const forward = new ScriptedTracker([accepted(0.24), accepted(0.28), accepted(0.32), accepted(0.36)]);
@@ -199,6 +310,7 @@ describe("DetectionPropagation", () => {
             propagation.beginForwardWindow(0);
             await propagation.forward(FRAME, 2, [seed()]);
             await propagation.forward(FRAME, 3, [seed(0.24)]);
+            await propagation.forward(FRAME, 4, [seed(0.28)]);
             expect(propagation.backwardJobs()[0]!.hasHighMotion).toBe(true);
             propagation.startBackward(FRAME, 2);
             await propagation.backward(FRAME, 1, [seed()], 2);
@@ -404,22 +516,26 @@ describe("DetectionPropagation", () => {
     it.each([false, true])(
         "interpolates skipped frames between trusted positions without reading pixels (backward=%s)",
         async (backward) => {
-            const count = backward ? 3 : 5;
+            const count = 5;
             const timings = Array.from({ length: count }, (_, index) => ({
                 contentSec: index / 30,
                 durationSec: 1 / 30,
             }));
-            const tracker = new ScriptedTracker(backward ? [accepted(0.2)] : [accepted(0.22), accepted(0.24)]);
+            const tracker = new ScriptedTracker(
+                backward ? [accepted(0.22), accepted(0.2)] : [accepted(0.22), accepted(0.24)],
+            );
             const { propagation } = setup(backward ? [new ScriptedTracker(), tracker] : [tracker], count, timings);
             const noPixels = () => {
                 throw new Error("skipped source frame must not request pixels");
             };
             if (backward) {
                 propagation.beginForwardWindow(0);
-                await propagation.forward(FRAME, 2, [seed(0.24)]);
-                propagation.startBackward(FRAME, 2);
-                await propagation.backward(noPixels, 1, undefined, 2);
-                await propagation.backward(FRAME, 0, undefined, 2);
+                await propagation.forward(FRAME, 4, [seed(0.24)]);
+                propagation.startBackward(FRAME, 4);
+                await propagation.backward(FRAME, 3, [seed(0.23)], 4);
+                await propagation.backward(FRAME, 2, undefined, 4);
+                await propagation.backward(noPixels, 1, undefined, 4);
+                await propagation.backward(FRAME, 0, undefined, 4);
             } else {
                 await propagation.forward(FRAME, 0, [seed()]);
                 await propagation.forward(FRAME, 1, [seed()]);
@@ -428,12 +544,12 @@ describe("DetectionPropagation", () => {
                 await propagation.forward(FRAME, 4, undefined);
             }
             const tracks = propagation.finish();
-            expect(tracker.steps).toHaveLength(backward ? 1 : 2);
+            expect(tracker.steps).toHaveLength(2);
             expect(tracker.steps[0]).toBeCloseTo(1 / 15);
             expect(masksAt(tracks, 0.5 / 30)[0]!.xPct).toBeCloseTo(0.2);
-            expect(masksAt(tracks, (backward ? 1.5 : 3.5) / 30)[0]!.xPct).toBeCloseTo(backward ? 0.22 : 0.23);
+            expect(masksAt(tracks, (backward ? 1.5 : 3.5) / 30)[0]!.xPct).toBeCloseTo(backward ? 0.21 : 0.23);
             expect(masksAt(tracks, (backward ? 1.5 : 3.5) / 30)[0]!.wPct).toBeCloseTo(0.1);
-            expect(masksAt(tracks, (backward ? 2.5 : 4.5) / 30)[0]!.xPct).toBeCloseTo(0.24);
+            expect(masksAt(tracks, 4.5 / 30)[0]!.xPct).toBeCloseTo(0.24);
         },
     );
 
@@ -482,7 +598,8 @@ describe("DetectionPropagation", () => {
                 propagation.beginForwardWindow(0);
                 await propagation.forward(FRAME, 3, [seed()]);
                 propagation.startBackward(FRAME, 3);
-                for (let index = 2; index >= 0; index--) await propagation.backward(FRAME, index, undefined, 3);
+                for (let index = 2; index >= 0; index--)
+                    await propagation.backward(FRAME, index, index === 2 ? [seed()] : undefined, 3);
             } else {
                 await propagation.forward(FRAME, 0, [seed()]);
                 for (let index = 1; index < 4; index++)
@@ -505,7 +622,8 @@ describe("DetectionPropagation", () => {
                 propagation.beginForwardWindow(0);
                 await propagation.forward(FRAME, 5, [seed(0.24)]);
                 propagation.startBackward(FRAME, 5);
-                for (let index = 4; index >= 0; index--) await propagation.backward(FRAME, index, undefined, 5);
+                for (let index = 4; index >= 0; index--)
+                    await propagation.backward(FRAME, index, index === 4 ? [seed(0.22)] : undefined, 5);
             } else {
                 await propagation.forward(FRAME, 0, [seed()]);
                 for (let index = 1; index < 6; index++)
@@ -561,7 +679,7 @@ describe("DetectionPropagation", () => {
         },
     );
 
-    it("bounds reverse terminal motion before a full observation interval exists", async () => {
+    it("verifies reverse pixels before a full observation interval exists", async () => {
         const timestamps = [0, 1 / 30, 2 / 30 - 0.00001, 2 / 30];
         const timings = timestamps.map((contentSec, index) => ({
             contentSec,
@@ -575,13 +693,12 @@ describe("DetectionPropagation", () => {
         await propagation.backward(FRAME, 2, [seed(0.2001)], 3);
         await propagation.backward(FRAME, 1, undefined, 3);
         await propagation.backward(FRAME, 0, undefined, 3);
-        const pending = masksAt(propagation.finish(), 1.5 / 30)[0]!;
+        const tracks = propagation.finish();
         expect(reverse.steps).toHaveLength(1);
-        expect(pending.xPct).toBeCloseTo(0.2001);
-        expect(pending.wPct).toBeLessThan(0.101);
+        expect(masksAt(tracks, 1.5 / 30)).toHaveLength(0);
     });
 
-    it("applies the tracker speed ceiling to unobserved travel after detector anchors", async () => {
+    it("verifies fast reverse travel after detector anchors instead of extrapolating through a rejection", async () => {
         const timings = Array.from({ length: 6 }, (_, index) => ({ contentSec: index / 30, durationSec: 1 / 30 }));
         const detection = (xPct: number): SeedDetection => ({
             rect: { xPct, yPct: 0.2, wPct: 0.4, hPct: 0.2 },
@@ -599,11 +716,10 @@ describe("DetectionPropagation", () => {
         await propagation.backward(FRAME, 3, [detection(0.4)], 5);
         await propagation.backward(FRAME, 2, undefined, 5);
         await propagation.backward(FRAME, 1, undefined, 5);
-        const pending = masksAt(propagation.finish(), 2.5 / 30)[0]!;
+        const tracks = propagation.finish();
         expect(reverse.steps).toHaveLength(2);
-        expect(pending.xPct).toBeCloseTo(0.4);
-        expect(pending.wPct).toBeCloseTo(0.5);
-        expect(pending.hPct).toBeCloseTo(0.2);
+        expect(masksAt(tracks, 3.5 / 30)[0]!.xPct).toBeCloseTo(0.4);
+        expect(masksAt(tracks, 2.5 / 30)).toHaveLength(0);
     });
 
     it("stabilizes a recovery seed on two source frames without shifting its inference grid or duplicating its predecessor", async () => {
@@ -625,9 +741,14 @@ describe("DetectionPropagation", () => {
         const jobs = propagation.backwardJobs();
         expect(jobs).toHaveLength(1);
         expect(jobs[0]!.recoveryWarmupFrames).toBe(2);
-        const planned = new Set(planReverseFrameIndices(timings, jobs));
         propagation.startBackward(FRAME, 4);
         for (let index = 3; index >= 0; index--) {
+            const planned = new Set(
+                planReverseFrameIndices(
+                    timings,
+                    jobs.map((job) => ({ ...job, hasHighMotion: propagation.hasBackwardHighMotion(job.seedIndex) })),
+                ),
+            );
             await propagation.backward(
                 () => {
                     if (!planned.has(index)) throw new Error("unplanned recovery warmup frame");
@@ -1024,6 +1145,7 @@ describe("DetectionPropagation", () => {
         // suffix begins at 7. Requiring both to infer together misses the stop.
         expect(propagation.hasBackwardWork(13)).toBe(false);
         expect(propagation.hasBackwardWork(10)).toBe(true);
+        expect(youngerReverse.steps).toHaveLength(4);
         for (let index = 5; index >= 0; index--) await propagation.backward(FRAME, index, undefined, 10);
         const tracks = propagation.finish();
         expect(tracks).toHaveLength(2);
