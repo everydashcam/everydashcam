@@ -39,9 +39,8 @@ export interface BlurRegion {
     startSec: number;
     endSec: number;
     /** true = the end is owned by auto-tracking (the "Follow a moving object"
-     *  path): a pass follows through the footage, shortening endSec only for a
-     *  confidently confirmed frame exit. On uncertain loss it keeps the full
-     *  span and freeze-holds the last cover, so the failure is over-redaction.
+     *  path): a pass follows through the footage, ending at a confirmed frame
+     *  exit or the last trusted observation on loss. Both endings need review.
      *  false = the end is the user's (drawn default, "whole clip", or a manual
      *  set-end); a track pass then freeze-holds on loss and never shortens it.
      *  This one flag is what keeps "follow until gone" and "cover this exact

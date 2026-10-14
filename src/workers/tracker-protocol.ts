@@ -57,8 +57,8 @@ export interface TrackResult {
     trackedUntilSec: number;
     /** Why tracking ended. `exited` is a confidently confirmed frame-edge
      *  departure; `lost` includes confidence collapse, an uncertain EOF tail
-     *  and an unexpectedly short decode. Callers can safely trim only exited;
-     *  a lost tail must hold the last cover to the requested end. */
+     *  and an unexpectedly short decode. Automatic spans end at trackedUntilSec
+     *  on either outcome and require review; manual spans retain their end. */
     endReason: "completed" | "exited" | "lost";
 }
 

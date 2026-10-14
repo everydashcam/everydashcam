@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyTrackResult, followSeed } from "./blur-follow.js";
-import { createBlurRegion, regionRectAt, upsertKeyframe } from "./blur-regions.js";
+import { createBlurRegion, MIN_ZONE_SPAN_SEC, regionRectAt, upsertKeyframe } from "./blur-regions.js";
 import type { TrackResult } from "./workers/tracker-protocol.js";
 
 function region() {
@@ -39,6 +39,17 @@ describe("followSeed", () => {
         upsertKeyframe(value, 6, { ...corrected, xPct: 0.6 }, true);
         expect(followSeed(value)).toEqual({ contentSec: 3, rect: corrected });
     });
+
+    it("continues an automatic Follow from a correction at its stopped end", () => {
+        const value = region();
+        applyTrackResult(value, 2, 10, 10, result("lost", 4));
+        const corrected = { xPct: 0.5, yPct: 0.3, wPct: 0.1, hPct: 0.1 };
+        upsertKeyframe(value, value.endSec, corrected, true);
+
+        expect(followSeed(value)).toEqual({ contentSec: 4, rect: corrected });
+        value.autoEnd = false;
+        expect(followSeed(value)?.contentSec, "a fixed span still needs footage after its seed").toBe(2);
+    });
 });
 
 describe("applyTrackResult", () => {
@@ -49,7 +60,7 @@ describe("applyTrackResult", () => {
         expect(value.lastTrackLost).toBe(false);
     });
 
-    it("ends only a confidently exited target at its last covered position", () => {
+    it("ends a confidently exited target at its last covered position", () => {
         const value = region();
         applyTrackResult(value, 2, 10, 10, result("exited", 6));
         expect(value.endSec).toBe(6);
@@ -57,12 +68,44 @@ describe("applyTrackResult", () => {
         expect(regionRectAt(value, 7)).toBeNull();
     });
 
-    it("fails closed on target loss by holding the last cover to the end", () => {
+    it("ends a lost Follow at the last trusted position and flags it for review", () => {
         const value = region();
         applyTrackResult(value, 2, 10, 10, result("lost", 4));
+        expect(value.endSec).toBe(4);
+        expect(value.lastTrackLost).toBe(true);
+        expect(regionRectAt(value, 4)).toEqual({ xPct: 0.4, yPct: 0.2, wPct: 0.2, hPct: 0.2 });
+        expect(regionRectAt(value, 9)).toBeNull();
+    });
+
+    it("keeps a minimum editable span when tracking loses the seed immediately", () => {
+        const value = region();
+        applyTrackResult(value, 2, 10, 10, { endReason: "lost", trackedUntilSec: 2, keyframes: [] });
+
+        expect(value.endSec).toBeCloseTo(value.startSec + MIN_ZONE_SPAN_SEC);
+        expect(value.lastTrackLost).toBe(true);
+        expect(regionRectAt(value, 9)).toBeNull();
+    });
+
+    it("clamps an automatic ending to the footage end", () => {
+        const value = region();
+        value.startSec = 9.99;
+        applyTrackResult(value, 2, 10, 10, { endReason: "lost", trackedUntilSec: 2, keyframes: [] });
+
         expect(value.endSec).toBe(10);
         expect(value.lastTrackLost).toBe(true);
-        expect(regionRectAt(value, 9)).toEqual({ xPct: 0.4, yPct: 0.2, wPct: 0.2, hPct: 0.2 });
+    });
+
+    it("keeps moved coverage starts editable without moving their original seed", () => {
+        const value = region();
+        value.startSec = 4;
+        const originalSeed = structuredClone(value.keyframes[0]!);
+        applyTrackResult(value, 2, 10, 10, { endReason: "lost", trackedUntilSec: 2, keyframes: [] });
+
+        expect(value.endSec).toBeCloseTo(value.startSec + MIN_ZONE_SPAN_SEC);
+        expect(value.keyframes[0]).toEqual(originalSeed);
+        expect(followSeed(value)).toEqual({ contentSec: 2, rect: originalSeed.rect });
+        expect(regionRectAt(value, 4.5)).toEqual(originalSeed.rect);
+        expect(regionRectAt(value, 6)).toBeNull();
     });
 
     it("holds a manually shortened tail instead of interpolating toward stale future tracking", () => {

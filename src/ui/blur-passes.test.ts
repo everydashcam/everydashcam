@@ -188,6 +188,26 @@ afterEach(() => {
 });
 
 describe("blur pass lifecycle", () => {
+    it.each([true, false])("applies a lost Follow with automatic timing %s", async (autoEnd) => {
+        const region = makeRegion();
+        region.autoEnd = autoEnd;
+        const pending = toggleTrackPass(ui.trip!, region);
+        await flushMicrotasks();
+        const rect = { xPct: 0.6, yPct: 0.6, wPct: 0.1, hPct: 0.1 };
+        endpoints.workerEndpoint.postMessage({
+            __k: "res",
+            id: requests[0]!.id,
+            ok: true,
+            result: { keyframes: [{ contentSec: 1, rect }], trackedUntilSec: 1, endReason: "lost" },
+        });
+
+        expect(await pending).toBe("completed");
+        expect(region.endSec).toBe(autoEnd ? 1 : 4);
+        expect(region.lastTrackLost).toBe(true);
+        expect(regionRectAt(region, 3)).toEqual(autoEnd ? null : rect);
+        expect(trackPassOf(region.id)).toBeNull();
+    });
+
     it("keeps a running detection pass and fresh results when only tile order changes", async () => {
         const front = tripAllCandidates(ui.trip!)[0]!;
         const rear: VideoCandidate = { ...front, file: new File(["video"], "rear.mp4"), channel: "rear" };

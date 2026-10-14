@@ -17,7 +17,7 @@ const MIN_TRAVEL_PX = 2;
 
 /** A clipped, outward-moving target gets a short loss confirmation instead of
  * the central-occlusion recovery window. Losing it is uncertainty, not proof
- * that it has exited: the caller must keep the last trusted cover for review.
+ * that it has exited: the caller must flag the last trusted position for review.
  * Observe model updates only; a hand-drawn seed can shift while localization
  * settles and must not count as evidence of outward motion. */
 export class FollowEdgeLoss {

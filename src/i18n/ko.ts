@@ -775,7 +775,7 @@ export const koDict = {
     "export.blur.row.track": "이 움직이는 대상 따라가기",
     "export.blur.row.trackCancel": "따라가기 중지",
     "export.blur.track.failed": "따라가지 못했어요 — 상자를 직접 옮겨 주세요",
-    "export.blur.track.lost": "대상을 놓쳤어요 — 가림은 구역 끝까지 유지돼요, 확인해 주세요",
+    "export.blur.track.lost": "대상을 놓쳤어요 — 구역이 끝나는 시간을 확인하고 필요하면 조정해 주세요",
     "export.blur.track.followedEnd": "화면 밖으로 나갈 때까지 따라갔어요 — 끝부분을 확인해 주세요",
     "export.blur.track.timeout": "따라가기가 너무 오래 걸려서 멈췄어요 — 구역을 확인해 주세요",
     "export.blur.tracker.consent": "움직이는 대상을 따라가려면 한 번만 다운로드가 필요해요 (약 {mb} MB). 이후에는 오프라인에서도 작동해요.",

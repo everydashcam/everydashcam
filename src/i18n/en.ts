@@ -768,7 +768,7 @@ export const enDict = {
     "export.blur.row.track": "Follow this moving object",
     "export.blur.row.trackCancel": "Stop following",
     "export.blur.track.failed": "Couldn't follow it — move the box by hand",
-    "export.blur.track.lost": "Lost the object — the cover holds to the zone end, check it",
+    "export.blur.track.lost": "Lost the object — check when the zone ends and adjust it if needed",
     "export.blur.track.followedEnd": "Followed it to where it left the picture — check the ending",
     "export.blur.track.timeout": "Following ran too long and stopped — check the zone",
     "export.blur.tracker.consent": "Following moving objects needs a one-time download (about {mb} MB). After that it works offline too.",

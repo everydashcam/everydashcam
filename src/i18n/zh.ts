@@ -764,7 +764,7 @@ export const zhDict = {
     "export.blur.row.track": "跟随这个移动的物体",
     "export.blur.row.trackCancel": "停止跟随",
     "export.blur.track.failed": "没能跟随它 — 请手动移动选框",
-    "export.blur.track.lost": "跟丢了物体 — 遮挡会保持到区域末尾，请检查",
+    "export.blur.track.lost": "跟丢了物体 — 请检查区域的结束时间，必要时调整",
     "export.blur.track.followedEnd": "已跟随到它离开画面的位置 — 请检查结尾",
     "export.blur.track.timeout": "跟随时间太长，已自动停止 — 检查一下这个区域",
     "export.blur.tracker.consent": "跟随移动物体需要先下载一次（约 {mb} MB）。下载后离线也能用。",

@@ -117,15 +117,15 @@ export type TrackPassOutcome = "completed" | "cancel-requested" | "cancelled" | 
 
 /**
  * Starts (or cancels, when already running) the tracking pass for a region.
- * Seeds from the LAST pinned keyframe before the zone end - i.e. the user's
- * latest correction - and tracks forward. Resulting keyframes replace the
+ * Seeds from the last pinned keyframe within the zone, including an automatic
+ * end, and tracks forward from that correction. Resulting keyframes replace the
  * unpinned ones in the tracked span.
  *
  * Two end-of-span behaviors, keyed on region.autoEnd:
  *   - autoEnd (the "Follow a moving object" path): tracking OWNS the end. The
- *     pass runs to the end of the footage. A confirmed frame exit shortens the
- *     span; uncertain target/decode loss keeps the full span and freeze-holds
- *     the last confident rect (privacy-safe over-redaction). Both ask for review.
+ *     pass runs to the end of the footage. A confirmed frame exit or uncertain
+ *     target/decode loss shortens the span to the observed departure or last
+ *     trusted position. Both ask for review before export.
  *   - manual end (drawn default / "whole clip" / a hand-set end): tracking fills
  *     keyframes only within the fixed span and, on early loss, freeze-holds the
  *     last confident rect to endSec (regionRectAt) rather than trimming - a span
@@ -217,14 +217,12 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
             if (timeoutTimer !== undefined) window.clearTimeout(timeoutTimer);
         }
 
-        // A confirmed frame exit may safely shorten an auto-owned span. A
-        // confidence/decode loss MUST keep the span through the footage end so
-        // regionRectAt freeze-holds the last reliable cover over the uncertain
-        // tail. A completed pass also owns the full requested end.
+        // Automatic timing follows measured motion only. On loss, end at the
+        // last trusted observation instead of extending a stationary cover
+        // through untracked footage. Manual timing keeps the user's full span.
         applyTrackResult(region, fromSec, toSec, contentDur, result);
-        // Persistently flag any non-routine ending for review. `lost` already
-        // fails closed by holding the cover; the warning still matters because
-        // a moving/reappearing subject can leave that held rectangle.
+        // Persistently flag any non-routine ending for review: the subject may
+        // remain visible after tracking stops or reappear later.
         if (result.endReason === "exited") {
             notify({ severity: "warn", messageKey: "export.blur.track.followedEnd" });
         } else if (result.endReason === "lost") {

@@ -767,7 +767,7 @@ export const esDict = {
     "export.blur.row.track": "Seguir este objeto en movimiento",
     "export.blur.row.trackCancel": "Dejar de seguir",
     "export.blur.track.failed": "No se pudo seguir — mueve el recuadro a mano",
-    "export.blur.track.lost": "Se perdió el objeto — la cobertura se mantiene hasta el final de la zona, revísalo",
+    "export.blur.track.lost": "Se perdió el objeto — revisa cuándo termina la zona y ajusta el final si hace falta",
     "export.blur.track.followedEnd": "Lo siguió hasta que salió de cuadro — revisa el final",
     "export.blur.track.timeout": "El seguimiento tardó demasiado y se detuvo — revisa la zona",
     "export.blur.tracker.consent": "Seguir objetos en movimiento requiere una descarga única (unos {mb} MB). Después también funciona sin conexión.",

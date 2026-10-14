@@ -11,7 +11,7 @@
 // confident-but-implausible step is rejected - kept OUT of rectLast (so the next
 // search stays anchored on the target, not the distractor) and reported so the
 // caller freezes and counts it toward the loss streak. An uncertain Follow
-// holds the last cover through the requested tail and marks it for review.
+// reports the last trusted position and marks it for review.
 //
 // A per-step rate guard cannot stop a GRADUAL balloon (every step plausible, the
 // sum not): that failure is closed by two absolute mechanisms - the seed-derived

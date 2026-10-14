@@ -96,7 +96,7 @@ describe("Follow observations across uncertain frames", () => {
         expect(keyframes.at(-1)?.contentSec).toBe(2);
     });
 
-    it("keeps an unresolved Follow tail uncertain and held through the requested end", () => {
+    it("ends an unresolved Follow tail at the final trusted observation", () => {
         const keyframes: TrackKeyframe[] = [];
         const pending: PendingTrackHold = { previousSec: null, latestSec: null };
         appendTrackObservation(keyframes, pending, 0, a);
@@ -116,8 +116,9 @@ describe("Follow observations across uncertain frames", () => {
 
         expect(endReason).toBe("lost");
         expect(region.lastTrackLost).toBe(true);
-        expect(region.endSec).toBe(2);
+        expect(region.endSec).toBe(1);
         expect(region.keyframes.at(-1)?.contentSec).toBe(1);
-        expect(regionRectAt(region, 1.9)).toEqual(b);
+        expect(regionRectAt(region, 1)).toEqual(b);
+        expect(regionRectAt(region, 1.9)).toBeNull();
     });
 });

@@ -767,7 +767,7 @@ export const ptDict = {
     "export.blur.row.track": "Seguir este objeto em movimento",
     "export.blur.row.trackCancel": "Parar de seguir",
     "export.blur.track.failed": "Não consegui seguir — mova a caixa manualmente",
-    "export.blur.track.lost": "Perdi o objeto — a cobertura permanece até o fim da zona, confira",
+    "export.blur.track.lost": "Perdi o objeto — confira quando a zona termina e ajuste se precisar",
     "export.blur.track.followedEnd": "Segui até ele sair do quadro — confira o final",
     "export.blur.track.timeout": "O acompanhamento demorou demais e parou — confira a zona",
     "export.blur.tracker.consent": "Seguir objetos em movimento exige um download único (cerca de {mb} MB). Depois disso, funciona offline também.",

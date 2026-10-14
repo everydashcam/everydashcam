@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
 
 import { applyTrackResult } from "../../src/blur-follow.js";
-import { createBlurRegion, regionRectAt, type BlurRegion } from "../../src/blur-regions.js";
+import { createBlurRegion, MIN_ZONE_SPAN_SEC, regionRectAt, type BlurRegion } from "../../src/blur-regions.js";
 import { iou } from "../../src/tracking/detect-track.js";
 import type { CropRect } from "../../src/transcode/compose.js";
 import type { WireRequest, WireResponse } from "../../src/workers/_protocol/wire.js";
@@ -11,7 +11,16 @@ import type { TrackRequestData, TrackResult } from "../../src/workers/tracker-pr
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import type motionFixture from "../testdata/tracker-motion/motion.json";
 import type reliabilityFixture from "../testdata/tracker-reliability/reliability.json";
-import { expect, REPO_ROOT, test } from "./_fixtures.js";
+import {
+    DESKTOP,
+    expect,
+    gotoApp,
+    openExport,
+    pausePlayback,
+    presetLocalStorage,
+    REPO_ROOT,
+    test,
+} from "./_fixtures.js";
 
 const motion = JSON.parse(
     readFileSync(resolve(REPO_ROOT, "tests/testdata/tracker-motion/motion.json"), "utf8"),
@@ -19,6 +28,69 @@ const motion = JSON.parse(
 const reliability = JSON.parse(
     readFileSync(resolve(REPO_ROOT, "tests/testdata/tracker-reliability/reliability.json"), "utf8"),
 ) as typeof reliabilityFixture;
+
+for (const locale of [
+    { code: "en", download: "Download & follow", follow: "Follow", warning: "Check the ending" },
+    { code: "ru", download: "Загрузить и следить", follow: "Следить", warning: "Проверь концовку" },
+] as const) {
+    test(`Follow shows an early loss for review without a frozen tail (${locale.code})`, async ({ page }) => {
+        test.setTimeout(180_000);
+        const scenario = reliability.scenarios.find((item) => item.id === "smooth-occlusion")!;
+        const target = scenario.frames[0]!.targetRect;
+        await presetLocalStorage(page);
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, locale.code);
+        await page
+            .locator("#file-input")
+            .setInputFiles(resolve(REPO_ROOT, "tests/testdata/tracker-reliability", scenario.name));
+        const trip = page.locator("li.trip:not(.unindexed-note)");
+        await expect(trip).toHaveCount(1);
+        await trip.click();
+        await pausePlayback(page);
+        await page.evaluate(async () => {
+            const video = window.__everydashcam.dom.player;
+            const shown = new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
+            video.currentTime = 0;
+            await shown;
+        });
+        await openExport(page);
+        await page.locator(".export-panel__blur-add-btn").click();
+        const layer = page.locator('.video-tile[data-channel="front"] .blur-draw-layer');
+        await expect(layer).toBeVisible();
+        const bounds = await layer.boundingBox();
+        expect(bounds).not.toBeNull();
+        if (!bounds) throw new Error("blur drawing layer missing");
+        await page.mouse.move(bounds.x + target.xPct * bounds.width, bounds.y + target.yPct * bounds.height);
+        await page.mouse.down();
+        await page.mouse.move(
+            bounds.x + (target.xPct + target.wPct) * bounds.width,
+            bounds.y + (target.yPct + target.hPct) * bounds.height,
+            { steps: 6 },
+        );
+        await page.mouse.up();
+
+        const follow = page.locator(".export-panel__blur-follow-btn");
+        await follow.click();
+        const download = page.locator(".export-panel__blur-tracker");
+        await download.getByRole("button", { name: locale.download }).click();
+        const warning = page.locator(".export-panel__blur-row-state.is-warn");
+        await expect(warning).toHaveText(locale.warning, { timeout: 120_000 });
+        await expect(follow).toHaveText(locale.follow);
+        await expect(follow).toHaveAttribute("aria-pressed", "true");
+        await expect(page.locator(".export-panel__blur-row-range")).toHaveText("0:00-0:01");
+        await expect(page.locator("#export-panel-save-btn")).toBeEnabled();
+        await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toBeVisible();
+
+        await page.evaluate(async () => {
+            const video = window.__everydashcam.dom.player;
+            const shown = new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
+            video.currentTime = 2;
+            await shown;
+        });
+        await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toHaveCount(0);
+        await expect(warning).toHaveText(locale.warning);
+    });
+}
 
 function coveredFraction(mask: CropRect, target: CropRect): number {
     const w = Math.max(
@@ -134,7 +206,7 @@ test("real Follow keeps a moving textured target covered across a resolution cha
     }
 });
 
-test("real Follow loses a textured target behind a smooth cover and holds its last trusted mask", async ({
+test("real Follow ends a lost target at its last trusted mask and preserves manual timing", async ({
     page,
 }, testInfo) => {
     test.setTimeout(120_000);
@@ -164,9 +236,22 @@ test("real Follow loses a textured target behind a smooth cover and holds its la
     region.autoEnd = true;
     applyTrackResult(region, 0, scenario.durationSec, scenario.durationSec, result);
     expect(region.lastTrackLost).toBe(true);
-    expect(region.endSec, "uncertain loss keeps the requested tail covered").toBe(scenario.durationSec);
+    expect(region.endSec, "automatic timing retains only the minimum editable span after an early loss").toBe(
+        Math.max(result.trackedUntilSec, MIN_ZONE_SPAN_SEC),
+    );
+    const manualRegion = createBlurRegion("front", "fill", 0, scenario.durationSec, 0, first.targetRect);
+    applyTrackResult(manualRegion, 0, scenario.durationSec, scenario.durationSec, result);
+    expect(manualRegion.endSec, "manual timing retains the requested span").toBe(scenario.durationSec);
+    expect(manualRegion.lastTrackLost).toBe(true);
     for (const frame of scenario.frames) {
         const mask = regionRectAt(region, frame.contentSec);
+        if (frame.contentSec > region.endSec) {
+            expect(mask, `automatic cover ends before untracked footage at ${frame.contentSec}`).toBeNull();
+            expect(regionRectAt(manualRegion, frame.contentSec), "manual cover holds its last position").toEqual(
+                last.rect,
+            );
+            continue;
+        }
         expect(mask, `cover exists at ${frame.contentSec.toFixed(3)}s`).not.toBeNull();
         if (!mask) throw new Error("tracked mask missing");
         if (frame.contentSec <= scenario.occlusionStartSec!) {
@@ -176,10 +261,10 @@ test("real Follow loses a textured target behind a smooth cover and holds its la
                 `visible target coverage at ${frame.contentSec}`,
             ).toBeGreaterThan(0.85);
         }
-        if (!frame.visible)
-            expect(mask, `hidden frame ${frame.contentSec} holds the last trusted cover`).toEqual(last.rect);
     }
-    expect(regionRectAt(region, scenario.durationSec)).toEqual(last.rect);
+    expect(regionRectAt(region, region.endSec)).toEqual(last.rect);
+    expect(regionRectAt(region, scenario.durationSec)).toBeNull();
+    expect(regionRectAt(manualRegion, scenario.durationSec)).toEqual(last.rect);
 });
 
 test("real Follow keeps a moving textured target covered through brightness and contrast changes", async ({

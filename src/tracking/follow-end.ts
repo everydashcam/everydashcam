@@ -6,7 +6,7 @@ export function followEdgeEndReason(visibleFraction: number, isReliable: boolean
     return isReliable && visibleFraction === 0 ? "exited" : "lost";
 }
 
-/** Final fail-closed classification after the decode loop. A pending low-score
+/** Final classification after the decode loop. A pending low-score
  *  or edge-exit ride-out at EOF is uncertainty, not a completed follow; a
  *  materially short decode is treated the same way. */
 export function finalizeFollowEndReason(

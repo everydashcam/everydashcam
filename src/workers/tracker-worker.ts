@@ -76,8 +76,8 @@ const ANALYSIS_INTERVAL_SEC = 1 / ANALYSIS_FPS;
  *  lost. Rides out a real occlusion (a pole, a sign, a passing truck, glare) and
  *  resumes covering the subject when it reappears. The box freezes until the
  *  last uncertain frame, then follows the recovered observation. An uncertain
- *  Follow ending keeps the last cover through the requested tail and asks for
- *  review. Time-based, so it holds independent of ANALYSIS_FPS. */
+ *  Follow ending reports the last trusted position so automatic timing stops
+ *  there and asks for review. Time-based, so it holds independent of ANALYSIS_FPS. */
 const LOSS_RIDE_OUT_SEC = 3;
 /** Padding added to every emitted (auto-tracked) box, as a fraction of its own
  *  size. vittrack tends to under-size the target as it moves/zooms, so the raw
@@ -267,9 +267,10 @@ async function runTrackPass(
     }
 
     // A confidence/edge ride-out that reaches EOF before its confirmation
-    // window is still an UNCERTAIN tail, not a successful pass. Likewise, a
-    // decoder that stops materially before the requested end must fail closed.
-    // Label both lost so the client holds the last known cover to the end.
+    // window is still an uncertain tail, not a successful pass. Likewise, a
+    // decoder that stops materially before the requested end cannot establish
+    // coverage. Label both lost so automatic timing ends at the last trusted
+    // position and the client asks the user to review it.
     endReason = finalizeFollowEndReason(endReason, {
         initialized,
         lossPending: lossStartedSec !== null || edgeLoss.hasPendingLoss,

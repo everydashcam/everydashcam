@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
+import { applyTrackResult } from "../../src/blur-follow.js";
 import { createBlurRegion, regionRectAt } from "../../src/blur-regions.js";
 import { iou } from "../../src/tracking/detect-track.js";
 import type { CropRect } from "../../src/transcode/compose.js";
@@ -97,6 +98,12 @@ for (const scenario of boundary.scenarios) {
                 scenario.exitSec,
             );
             expect(result.keyframes.every((frame) => frame.contentSec < scenario.exitSec!)).toBe(true);
+            const region = createBlurRegion("front", "fill", 0, scenario.durationSec, 0, first.targetRect);
+            region.autoEnd = true;
+            applyTrackResult(region, 0, scenario.durationSec, scenario.durationSec, result);
+            expect(region.endSec, "automatic cover ends with observed tracking").toBe(result.trackedUntilSec);
+            expect(region.lastTrackLost, "early endings remain marked for review").toBe(true);
+            expect(regionRectAt(region, scenario.durationSec), "no frozen cover remains after departure").toBeNull();
             for (const keyframe of result.keyframes) {
                 const truth = scenario.frames[Math.round(keyframe.contentSec * scenario.fps)]!;
                 if (truth.visibleFraction < 0.5 || !truth.visibleRect) continue;

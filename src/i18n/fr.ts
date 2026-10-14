@@ -767,7 +767,7 @@ export const frDict = {
     "export.blur.row.track": "Suivre cet objet en mouvement",
     "export.blur.row.trackCancel": "Arrêter le suivi",
     "export.blur.track.failed": "Échec du suivi — déplace le cadre à la main",
-    "export.blur.track.lost": "Objet perdu — le cache reste jusqu'à la fin de la zone, à vérifier",
+    "export.blur.track.lost": "Objet perdu — vérifie quand la zone se termine et ajuste la fin si besoin",
     "export.blur.track.followedEnd": "Suivi jusqu'à sa sortie du cadre — vérifie la fin",
     "export.blur.track.timeout": "Le suivi a duré trop longtemps et s'est arrêté — vérifie la zone",
     "export.blur.tracker.consent": "Suivre les objets en mouvement demande un téléchargement ponctuel (environ {mb} Mo). Ensuite, ça marche aussi hors ligne.",

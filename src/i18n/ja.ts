@@ -777,7 +777,7 @@ export const jaDict = {
     "export.blur.row.track": "動く対象を追尾",
     "export.blur.row.trackCancel": "追尾を停止",
     "export.blur.track.failed": "追尾できませんでした — 枠を手動で動かしてください",
-    "export.blur.track.lost": "対象を見失いました — 隠す部分はゾーンの最後まで残ります。確認してください",
+    "export.blur.track.lost": "対象を見失いました — ゾーンの終了時刻を確認し、必要に応じて調整してください",
     "export.blur.track.followedEnd": "対象が画面から外れるところまで追尾しました — 最後を確認してください",
     "export.blur.track.timeout": "追尾に時間がかかりすぎたため停止しました — ゾーンを確認してください",
     "export.blur.tracker.consent": "動くものを追尾するには、初回だけダウンロードが必要です（約 {mb} MB）。ダウンロード後はオフラインでも使えます。",

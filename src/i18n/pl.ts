@@ -767,7 +767,7 @@ export const plDict = {
     "export.blur.row.track": "Śledź ten poruszający się obiekt",
     "export.blur.row.trackCancel": "Przestań śledzić",
     "export.blur.track.failed": "Nie udało się śledzić — dostosuj ramkę ręcznie",
-    "export.blur.track.lost": "Utracono obiekt — zasłona pozostaje do końca strefy. Sprawdź jej położenie.",
+    "export.blur.track.lost": "Utracono obiekt — sprawdź, kiedy kończy się strefa, i w razie potrzeby popraw jej koniec",
     "export.blur.track.followedEnd": "Śledzono go aż zniknął z kadru — sprawdź zakończenie",
     "export.blur.track.timeout": "Śledzenie trwało zbyt długo i zatrzymało się — sprawdź strefę",
     "export.blur.tracker.consent": "Śledzenie poruszających się obiektów wymaga jednorazowego pobrania (ok. {mb} MB). Potem działa też offline.",

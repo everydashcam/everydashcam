@@ -765,7 +765,7 @@ export const deDict = {
     "export.blur.row.track": "Dieses bewegte Objekt verfolgen",
     "export.blur.row.trackCancel": "Verfolgung stoppen",
     "export.blur.track.failed": "Konnte nicht verfolgt werden — Rahmen manuell verschieben",
-    "export.blur.track.lost": "Objekt verloren — die Abdeckung bleibt bis zum Zonenende, bitte prüfen",
+    "export.blur.track.lost": "Objekt verloren — prüfe, wann die Zone endet, und passe das Ende bei Bedarf an",
     "export.blur.track.followedEnd": "Bis zum Verlassen des Bildes verfolgt — Ende bitte prüfen",
     "export.blur.track.timeout": "Die Verfolgung lief zu lange und wurde gestoppt — Zone bitte prüfen",
     "export.blur.tracker.consent": "Das Verfolgen bewegter Objekte braucht einen einmaligen Download (etwa {mb} MB). Danach funktioniert es auch offline.",
