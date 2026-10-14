@@ -16,7 +16,7 @@ import {
     type PropagationPrefix,
     type SourceFrameTiming,
 } from "./propagated-track.js";
-import { boxVisibleFraction, EXIT_VISIBLE_FRACTION, type TrackBox } from "./track-guards.js";
+import { boxVisibleFraction, EXIT_VISIBLE_FRACTION, MAX_CENTER_SPEED_PER_SEC, type TrackBox } from "./track-guards.js";
 import { type VitTrack, VITTRACK_SCORE_THRESHOLD } from "./vittrack.js";
 
 /** The model boundary: propagation owns association and evidence, while the
@@ -77,7 +77,7 @@ interface Branch {
     lastCadenceIndex: number;
     trustedRect: CropRect;
     trustedIndex: number;
-    previousTrusted: { rect: CropRect; index: number } | null;
+    previousMotionReference: { rect: CropRect; index: number } | null;
     motionReference: { rect: CropRect; index: number };
     pendingIndices: number[];
     warmupRemaining: number;
@@ -323,16 +323,16 @@ export class DetectionPropagation {
             // guards, so motion does not inflate every intermediate mask.
             const beforeSec = this.timing(branch.trustedIndex).contentSec;
             const elapsed = this.timing(frameIndex).contentSec - beforeSec;
+            const before = branch.motionReference.rect;
+            const motionElapsed =
+                this.timing(frameIndex).contentSec - this.timing(branch.motionReference.index).contentSec;
+            const hasFullInterval = Math.abs(motionElapsed) + TIME_EPSILON_SEC >= PROPAGATION_INTERVAL_SEC;
             if (frameIndex > branch.trajectory.seedIndex) {
                 // When half an object can move during one inference interval,
                 // sparse searches become unreliable. Preserve source cadence
                 // for this trajectory unless a detector supplies the anchor.
                 // Reverse uses this forward-established flag, allowing its
                 // decoder to plan the same required pixels in advance.
-                const before = branch.motionReference.rect;
-                const motionElapsed =
-                    this.timing(frameIndex).contentSec - this.timing(branch.motionReference.index).contentSec;
-                const hasFullInterval = motionElapsed + TIME_EPSILON_SEC >= PROPAGATION_INTERVAL_SEC;
                 // The initial short calibration can expose fast motion early.
                 // Thereafter measure whole inference intervals: adjacent
                 // detector frames may repeat a position and then jump, which
@@ -343,8 +343,11 @@ export class DetectionPropagation {
                     branch.trajectory.hasHighMotion ||=
                         (dx * PROPAGATION_INTERVAL_SEC) / motionElapsed >= Math.min(before.wPct, rect.wPct) / 2 ||
                         (dy * PROPAGATION_INTERVAL_SEC) / motionElapsed >= Math.min(before.hPct, rect.hPct) / 2;
-                    if (hasFullInterval) branch.motionReference = { rect, index: frameIndex };
                 }
+            }
+            if (hasFullInterval) {
+                branch.previousMotionReference = branch.motionReference;
+                branch.motionReference = { rect, index: frameIndex };
             }
             for (const index of branch.pendingIndices) {
                 branch.trajectory.observations.set(
@@ -353,28 +356,39 @@ export class DetectionPropagation {
                 );
             }
             branch.pendingIndices = [];
-            branch.previousTrusted = { rect: branch.trustedRect, index: branch.trustedIndex };
             branch.trustedRect = rect;
             branch.trustedIndex = frameIndex;
             branch.isCalibrationPending = false;
         } else {
             branch.pendingIndices.push(frameIndex);
             // A terminal skipped frame may precede the next rejection. Cover
-            // its short travel from the last two trusted positions rather
-            // than freezing a moving object at the previous sampled pixels.
+            // its short travel from trusted motion over an inference interval.
+            // Adjacent detector anchors can be microseconds apart: their
+            // subpixel jitter must not become an unbounded velocity estimate.
+            // Until a full interval exists, use its duration as the floor.
             // Only unsampled time inside this inference interval is filled;
             // the rejected frame itself never receives extrapolated geometry.
-            if (branch.previousTrusted) {
-                const previous = branch.previousTrusted;
-                const elapsed = this.timing(frameIndex).contentSec - this.timing(branch.trustedIndex).contentSec;
-                const measured = this.timing(branch.trustedIndex).contentSec - this.timing(previous.index).contentSec;
-                const fraction = elapsed / measured;
-                rect = coverRects(branch.trustedRect, {
-                    ...branch.trustedRect,
-                    xPct: branch.trustedRect.xPct + (branch.trustedRect.xPct - previous.rect.xPct) * fraction,
-                    yPct: branch.trustedRect.yPct + (branch.trustedRect.yPct - previous.rect.yPct) * fraction,
-                });
-            }
+            const previous = branch.previousMotionReference ?? branch.motionReference;
+            const trusted = branch.trustedRect;
+            const elapsed = Math.min(
+                Math.abs(this.timing(frameIndex).contentSec - this.timing(branch.trustedIndex).contentSec),
+                PROPAGATION_INTERVAL_SEC,
+            );
+            const measured = Math.abs(
+                this.timing(branch.trustedIndex).contentSec - this.timing(previous.index).contentSec,
+            );
+            const fraction = elapsed / Math.max(measured, PROPAGATION_INTERVAL_SEC);
+            const dx = (trusted.xPct + trusted.wPct / 2 - previous.rect.xPct - previous.rect.wPct / 2) * fraction;
+            const dy = (trusted.yPct + trusted.hPct / 2 - previous.rect.yPct - previous.rect.hPct / 2) * fraction;
+            // Unobserved travel gets the same physical speed ceiling as a
+            // tracker prediction; detector anchors cannot bypass this guard.
+            const distance = Math.hypot(dx, dy);
+            const scale = distance > 0 ? Math.min(1, (MAX_CENTER_SPEED_PER_SEC * elapsed) / distance) : 1;
+            rect = coverRects(trusted, {
+                ...trusted,
+                xPct: trusted.xPct + dx * scale,
+                yPct: trusted.yPct + dy * scale,
+            });
         }
         branch.trajectory.observations.set(frameIndex, rect);
     }
@@ -539,7 +553,7 @@ export class DetectionPropagation {
                     lastCadenceIndex: frameIndex,
                     trustedRect: { ...seed.rect },
                     trustedIndex: frameIndex,
-                    previousTrusted: null,
+                    previousMotionReference: null,
                     motionReference: { rect: { ...seed.rect }, index: frameIndex },
                     pendingIndices: [],
                     warmupRemaining: isRecoveryScan ? RECOVERY_WARMUP_FRAMES : 0,
@@ -602,7 +616,7 @@ export class DetectionPropagation {
                 lastCadenceIndex: seedIndex,
                 trustedRect: { ...job.rect },
                 trustedIndex: seedIndex,
-                previousTrusted: null,
+                previousMotionReference: null,
                 motionReference: { rect: { ...job.rect }, index: seedIndex },
                 pendingIndices: [],
                 warmupRemaining: job.recoveryWarmupFrames,

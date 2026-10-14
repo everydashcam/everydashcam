@@ -519,6 +519,93 @@ describe("DetectionPropagation", () => {
         },
     );
 
+    it.each([false, true])(
+        "does not amplify close-timestamp detector jitter into terminal coverage (backward=%s)",
+        async (isBackward) => {
+            const ordered = [0, 1 / 30, 2 / 30, 2 / 30 + 0.00001, 3 / 30, 4 / 30];
+            const timestamps = isBackward ? ordered.map((sec) => 4 / 30 - sec).reverse() : ordered;
+            const timings = timestamps.map((contentSec, index) => ({
+                contentSec,
+                durationSec: (timestamps[index + 1] ?? contentSec + 1 / 30) - contentSec,
+            }));
+            const tracker = new ScriptedTracker([accepted(), rejected("appearance")]);
+            const { propagation } = setup(isBackward ? [new ScriptedTracker(), tracker] : [tracker], 6, timings);
+            const jittered: SeedDetection = {
+                rect: { ...rect(), xPct: 0.2001, yPct: 0.4001 },
+                score: 0.8,
+            };
+            const noPixels = () => {
+                throw new Error("terminal source frame must retain its sampled cadence");
+            };
+            if (isBackward) {
+                propagation.beginForwardWindow(0);
+                await propagation.forward(FRAME, 5, [seed()]);
+                propagation.startBackward(FRAME, 5);
+            } else {
+                await propagation.forward(FRAME, 0, [seed()]);
+            }
+            for (let step = 1; step < 6; step++) {
+                const index = isBackward ? 5 - step : step;
+                const detections = step < 3 ? [seed()] : step === 3 ? [jittered] : undefined;
+                const source = step === 4 ? noPixels : FRAME;
+                if (isBackward) await propagation.backward(source, index, detections, 5);
+                else await propagation.forward(source, index, detections);
+            }
+            const tracks = propagation.finish();
+            const index = isBackward ? 1 : 4;
+            const pending = masksAt(tracks, timings[index]!.contentSec + timings[index]!.durationSec / 2)[0]!;
+            expect(tracker.steps).toHaveLength(2);
+            expect(pending.wPct).toBeLessThan(0.101);
+            expect(pending.hPct).toBeLessThan(0.051);
+            expect(masksAt(tracks, isBackward ? timings[0]!.durationSec / 2 : 4.5 / 30)).toHaveLength(0);
+        },
+    );
+
+    it("bounds reverse terminal motion before a full observation interval exists", async () => {
+        const timestamps = [0, 1 / 30, 2 / 30 - 0.00001, 2 / 30];
+        const timings = timestamps.map((contentSec, index) => ({
+            contentSec,
+            durationSec: (timestamps[index + 1] ?? contentSec + 1 / 30) - contentSec,
+        }));
+        const reverse = new ScriptedTracker([rejected("appearance")]);
+        const { propagation } = setup([new ScriptedTracker(), reverse], 4, timings);
+        propagation.beginForwardWindow(0);
+        await propagation.forward(FRAME, 3, [seed()]);
+        propagation.startBackward(FRAME, 3);
+        await propagation.backward(FRAME, 2, [seed(0.2001)], 3);
+        await propagation.backward(FRAME, 1, undefined, 3);
+        await propagation.backward(FRAME, 0, undefined, 3);
+        const pending = masksAt(propagation.finish(), 1.5 / 30)[0]!;
+        expect(reverse.steps).toHaveLength(1);
+        expect(pending.xPct).toBeCloseTo(0.2001);
+        expect(pending.wPct).toBeLessThan(0.101);
+    });
+
+    it("applies the tracker speed ceiling to unobserved travel after detector anchors", async () => {
+        const timings = Array.from({ length: 6 }, (_, index) => ({ contentSec: index / 30, durationSec: 1 / 30 }));
+        const detection = (xPct: number): SeedDetection => ({
+            rect: { xPct, yPct: 0.2, wPct: 0.4, hPct: 0.2 },
+            score: 0.8,
+        });
+        const reverse = new ScriptedTracker([
+            { ...accepted(), box: { x: 200, y: 100, w: 400, h: 100 } },
+            rejected("appearance"),
+        ]);
+        const { propagation } = setup([new ScriptedTracker(), reverse], 6, timings);
+        propagation.beginForwardWindow(0);
+        await propagation.forward(FRAME, 5, [detection(0)]);
+        propagation.startBackward(FRAME, 5);
+        await propagation.backward(FRAME, 4, [detection(0.2)], 5);
+        await propagation.backward(FRAME, 3, [detection(0.4)], 5);
+        await propagation.backward(FRAME, 2, undefined, 5);
+        await propagation.backward(FRAME, 1, undefined, 5);
+        const pending = masksAt(propagation.finish(), 2.5 / 30)[0]!;
+        expect(reverse.steps).toHaveLength(2);
+        expect(pending.xPct).toBeCloseTo(0.4);
+        expect(pending.wPct).toBeCloseTo(0.5);
+        expect(pending.hPct).toBeCloseTo(0.2);
+    });
+
     it("stabilizes a recovery seed on two source frames without shifting its inference grid or duplicating its predecessor", async () => {
         const timings = Array.from({ length: 9 }, (_, index) => ({ contentSec: index / 25, durationSec: 1 / 25 }));
         const original = new ScriptedTracker([accepted(), rejected()]);
