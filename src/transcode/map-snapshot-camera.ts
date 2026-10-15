@@ -56,9 +56,11 @@ export interface MapSnapshotCameraMode {
 }
 
 // Reuse thresholds. A snapshot is reused only while the new pose would move
-// the rendered image by less than a fraction of one snapshot pixel - after the
-// cover-fit into the (smaller) overlay slot that is well under an output pixel,
-// so the burned-in map is visually identical to a fresh render.
+// the rendered image by less than a fraction of one snapshot (logical) pixel,
+// about 0.1% of the map width. The slot is cover-fit from the 640 px snapshot,
+// so that is under an output pixel for slots up to ~640 px (1080p at the
+// default scale) and up to ~2 px at the widest 4K slot, where the alternating
+// render/reuse at highway speed shows as slightly coarser map motion.
 //
 // North-up: the map translates by the position delta; the marker sprite (half
 // size ~25 px) rotates by the bearing, so 0.5 deg moves its tip by ~0.2 px.

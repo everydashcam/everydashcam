@@ -54,6 +54,7 @@ import { MAP_PROVIDER_REGISTRY, MAX_MAP_PITCH_DEG } from "./map-provider-registr
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { waitForMapEvent } from "./map-events.js";
 import { addSpeedTrack } from "./map-track.js";
+import { haversineMeters } from "../transcode/frame-pos.js";
 import {
     MAP_SNAPSHOT_HEIGHT as SNAPSHOT_HEIGHT,
     MAP_SNAPSHOT_WIDTH as SNAPSHOT_WIDTH,
@@ -79,9 +80,6 @@ const MAX_SNAPSHOT_PIXEL_RATIO = 2;
 const TRACK_SOURCE_ID = "export-track";
 const TRACK_LAYER_ID = "export-track-line";
 
-/** Earth radius for zoom-from-distance math (meters). */
-const EARTH_R = 6378137;
-
 // --- Chase camera (export map overlay) ---
 // Tilt ceiling - mirrors the live map's CHASE_MAX_PITCH_DEG. Past ~70 the
 // renderer pulls in far too many tiles near the horizon for little gain.
@@ -101,16 +99,6 @@ const PREWARM_BUDGET_MS = 60_000;
 function clampExportPitch(deg: number | undefined): number {
     if (deg === undefined || !Number.isFinite(deg)) return 0;
     return Math.max(0, Math.min(EXPORT_CHASE_MAX_PITCH, deg));
-}
-
-/** Coarse haversine in meters; enough for "have we moved a viewport-width yet". */
-function distanceM(aLat: number, aLon: number, bLat: number, bLon: number): number {
-    const dLat = ((bLat - aLat) * Math.PI) / 180;
-    const dLon = ((bLon - aLon) * Math.PI) / 180;
-    const lat1 = (aLat * Math.PI) / 180;
-    const lat2 = (bLat * Math.PI) / 180;
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-    return 2 * EARTH_R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 export interface SnapshotRequest {
@@ -392,7 +380,7 @@ export async function createExportMapSnapshotter(
         async prewarm(recs, zoomKm, signal, chase): Promise<void> {
             await providerStyleChange;
             // Filter first: an inactive/NaN seed or waypoint would make
-            // distanceM return NaN (NaN < step is false -> not skipped) and feed
+            // haversineMeters return NaN (NaN < step is false -> not skipped) and feed
             // jumpTo a NaN center, which destabilizes the MapLibre instance.
             const usable = finiteActiveRecords(recs);
             if (usable.length === 0) return;
@@ -451,7 +439,7 @@ export async function createExportMapSnapshotter(
                     budgetExhausted = true;
                     break;
                 }
-                if (distanceM(lastLat, lastLon, r.lat, r.lon) < stepMeters) continue;
+                if (haversineMeters(lastLat, lastLon, r.lat, r.lon) < stepMeters) continue;
                 await visit(r, 2000);
                 lastLat = r.lat;
                 lastLon = r.lon;
