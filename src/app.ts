@@ -79,7 +79,12 @@ import { initUnsupportedFormatsModal } from "./ui/unsupported-formats-modal.js";
 import { initIosFolderWarningModal } from "./ui/ios-folder-warning-modal.js";
 import { initUploadWarningModal } from "./ui/upload-warning-modal.js";
 import { initWebglEnableModal } from "./ui/webgl-enable-modal.js";
-import { loadDeferredGpsForTrip, isCurrentTripOpen, takeTripOpenToken } from "./ui/deferred-gps.js";
+import {
+    abortDeferredGpsForTripOpen,
+    loadDeferredGpsForTrip,
+    isCurrentTripOpen,
+    takeTripOpenToken,
+} from "./ui/deferred-gps.js";
 import {
     claimForegroundTripPreparation,
     getDeferredGpsConcurrency,
@@ -605,15 +610,15 @@ async function prepareTripOpen(
     }
 
     const releasePriority = claimForegroundTripPreparation();
-    try {
-        // Viewer chunks and recording analysis are independent. Starting
-        // both now lets the selected file preempt background storage immediately,
-        // instead of waiting for map/chart/player code to download first.
-        const [, preparation] = await Promise.all([
-            initTripUi(),
-            prepareTripForPlayback(initialLocation.tripIdx, target.exactFrame ? initialLocation.frameIdx : undefined),
-        ]);
-        if (!isCurrentTripOpen(openToken)) return null;
+    // A failed viewer download can finish this open while the independent data
+    // branch still runs. Its late completion must not start GPS or change the UI.
+    let isPreparing = true;
+    const prepareData = async (): Promise<TripOpenTarget | null> => {
+        const preparation = await prepareTripForPlayback(
+            initialLocation.tripIdx,
+            target.exactFrame ? initialLocation.frameIdx : undefined,
+        );
+        if (!isPreparing || !isCurrentTripOpen(openToken)) return null;
         if (preparation.status === "ready") {
             // The read gate may skip a damaged leading clip, replace a repaired File
             // object and finish before viewer initialization. Resolve its stable keys
@@ -630,7 +635,7 @@ async function prepareTripOpen(
             const gpsResult = await loadDeferredGpsForTrip(readyLocation.tripIdx, {
                 concurrency: getDeferredGpsConcurrency(),
             });
-            if (!isCurrentTripOpen(openToken)) return null;
+            if (!isPreparing || !isCurrentTripOpen(openToken)) return null;
             if (gpsResult !== "ready") {
                 if (gpsResult === "failed") {
                     reportTripOpenFailure(openToken, originalTripIdx);
@@ -640,12 +645,7 @@ async function prepareTripOpen(
                 return null;
             }
 
-            // GPS clock evidence can regroup or reorder trips. Follow the playable
-            // recording identities once more before handing control to the player.
-            const finalLocation = resolveTripOpenTarget(state.trips, playableTarget);
-            if (finalLocation) return finalLocation;
-            reportTripOpenFailure(openToken, originalTripIdx);
-            return null;
+            return playableTarget;
         }
 
         clearOpeningTrip();
@@ -653,8 +653,43 @@ async function prepareTripOpen(
             notify({ severity: "error", messageKey: "status.tripOpenFailed" });
         }
         return null;
+    };
+
+    // Storage priority belongs to the recording read, including cancellation
+    // cleanup. A pending or failed viewer download must not extend or cut it short.
+    const dataPreparation = prepareData().finally(releasePriority);
+    let hasViewerFailure = false;
+    // Handle the viewer outcome even when data cancellation returns first. A
+    // later network failure must not turn that completed cancellation into a toast.
+    const viewerInitialization = initTripUi().then(
+        () => ({ status: "ready" }) as const,
+        (err: unknown) => {
+            hasViewerFailure = true;
+            if (isPreparing) {
+                isPreparing = false;
+                abortDeferredGpsForTripOpen(openToken);
+            }
+            return { status: "failed", err } as const;
+        },
+    );
+    try {
+        // Run the complete metadata → GPS chain alongside viewer initialization;
+        // a slow map/chart download must not leave selected-trip analysis idle.
+        const playableTarget = await dataPreparation;
+        if (!isCurrentTripOpen(openToken)) return null;
+        if (!playableTarget && !hasViewerFailure) return null;
+        const viewer = await viewerInitialization;
+        if (viewer.status === "failed") throw viewer.err;
+        if (!playableTarget || !isCurrentTripOpen(openToken)) return null;
+
+        // GPS clock evidence or background metadata can regroup trips while the
+        // viewer loads. Resolve stable recording identities only after both finish.
+        const finalLocation = resolveTripOpenTarget(state.trips, playableTarget);
+        if (finalLocation) return finalLocation;
+        reportTripOpenFailure(openToken, originalTripIdx);
+        return null;
     } finally {
-        releasePriority();
+        isPreparing = false;
     }
 }
 

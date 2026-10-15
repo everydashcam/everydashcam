@@ -54,6 +54,11 @@ export function isCurrentTripOpen(token: number): boolean {
     return token === tripOpenSequence;
 }
 
+/** Stops a failed open's scan without superseding its failure notification. */
+export function abortDeferredGpsForTripOpen(token: number): void {
+    if (isCurrentTripOpen(token)) currentDeferredGpsSession?.controller.abort();
+}
+
 /** Supersedes and aborts on-click GPS work before an ingest can regroup trips. */
 export function cancelDeferredGpsLoad(): void {
     tripOpenSequence++;

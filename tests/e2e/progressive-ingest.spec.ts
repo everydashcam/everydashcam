@@ -10,6 +10,7 @@ import type { Page } from "@playwright/test";
 import {
     DESKTOP,
     MOBILE,
+    REPO_ROOT,
     SAMPLE_70MAI,
     SAMPLE_GOPRO,
     SAMPLE_NOGPS,
@@ -22,6 +23,7 @@ import {
 } from "./_fixtures.js";
 
 const temporaryDirectories: string[] = [];
+const DEFERRED_GPS_FILENAME = "2021_1013_183759_050.MP4";
 
 function makeTemporaryDirectory(prefix: string): string {
     const directory = mkdtempSync(path.join(tmpdir(), prefix));
@@ -94,8 +96,60 @@ function withMvhdCreationTime(source: string, iso: string): Buffer {
     return bytes;
 }
 
+function writeDeferredGpsClip(directory: string): void {
+    const gps = readFileSync(path.join(REPO_ROOT, "tests/testdata/novatek-real-anonymized/2e-drive-730.mp4"));
+    for (let offset = 0; offset + 8 <= gps.length; ) {
+        const size = gps.readUInt32BE(offset);
+        if (size < 8 || offset + size > gps.length) throw new Error("invalid GPS fixture box");
+        if (gps.toString("ascii", offset + 4, offset + 8) === "free") {
+            // One real anonymized freeGPS block provides only one scan seed,
+            // which forces the heavy/deferred path. Appending it leaves the
+            // public clip's video offsets intact and preserves real parser bytes.
+            const video = withMvhdCreationTime(path.join(SAMPLE_NOGPS, "clip-no-gps.mp4"), "2021-10-13T18:37:59.000Z");
+            writeFileSync(
+                path.join(directory, DEFERRED_GPS_FILENAME),
+                Buffer.concat([video, gps.subarray(offset, offset + size)]),
+            );
+            return;
+        }
+        offset += size;
+    }
+    throw new Error("missing freeGPS fixture box");
+}
+
+async function openDeferredGpsTrip(page: Page, includeBackgroundClips = false): Promise<void> {
+    const dir = makeTemporaryDirectory("everydashcam-gps-open-");
+    writeDeferredGpsClip(dir);
+    if (includeBackgroundClips) {
+        for (const day of ["01", "02"]) {
+            writeFileSync(
+                path.join(dir, `NO202001${day}-120000-000001F.MP4`),
+                withMvhdCreationTime(path.join(SAMPLE_NOGPS, "clip-no-gps.mp4"), `2020-01-${day}T12:00:00.000Z`),
+            );
+        }
+    }
+    await armImmediateTripClick(page);
+    await page.locator("#folder-input").setInputFiles(dir);
+    await expect(page.locator("li.trip:not(.unindexed-note)").first()).toBeVisible({ timeout: 30_000 });
+    await expect
+        .poll(() =>
+            page.evaluate(
+                () => (window as typeof window & { __gpsResponseQueued?: boolean }).__gpsResponseQueued ?? false,
+            ),
+        )
+        .toBe(true);
+}
+
 test.describe("progressive ingest", () => {
+    let releaseViewerDownload: (() => void) | undefined;
+    let viewerDownloadRequested = false;
+    let rejectViewerDownload = false;
+
     test.afterEach(() => {
+        releaseViewerDownload?.();
+        releaseViewerDownload = undefined;
+        viewerDownloadRequested = false;
+        rejectViewerDownload = false;
         for (const directory of temporaryDirectories.splice(0)) {
             rmSync(directory, { recursive: true, force: true });
         }
@@ -144,7 +198,19 @@ test.describe("progressive ingest", () => {
                 await route.continue();
             });
         }
-        if (testInfo.title.includes("waits for the selected trip GPS")) {
+        if (testInfo.title.includes("viewer download")) {
+            const viewerDownload = new Promise<void>((resolve) => {
+                releaseViewerDownload = resolve;
+            });
+            await page.route("**/assets/maplibre-gl-*.js", async (route) => {
+                viewerDownloadRequested = true;
+                await viewerDownload;
+                if (rejectViewerDownload) {
+                    await route.fulfill({ status: 503, contentType: "text/javascript", body: "" });
+                } else {
+                    await route.continue();
+                }
+            });
             await page.addInitScript(() => {
                 const target = window as typeof window & {
                     __gpsResponseQueued?: boolean;
@@ -161,6 +227,8 @@ test.describe("progressive ingest", () => {
                 };
                 const NativeWorker = window.Worker;
                 window.Worker = class extends NativeWorker {
+                    readonly fullScanRequests = new Set<number>();
+
                     constructor(scriptURL: string | URL, options?: WorkerOptions) {
                         super(scriptURL, options);
                         if (options?.name !== "gps-extract-worker") return;
@@ -189,7 +257,10 @@ test.describe("progressive ingest", () => {
                                         typeof message === "object" &&
                                         message !== null &&
                                         "__k" in message &&
-                                        message.__k === "res";
+                                        message.__k === "res" &&
+                                        "id" in message &&
+                                        typeof message.id === "number" &&
+                                        this.fullScanRequests.has(message.id);
                                     const deliver = (): void => {
                                         if (typeof listener === "function") listener.call(this, event);
                                         else listener.handleEvent(event);
@@ -204,6 +275,31 @@ test.describe("progressive ingest", () => {
                                 listenerOptions,
                             );
                         }) as Worker["addEventListener"];
+                    }
+
+                    override postMessage(message: unknown, transfer: Transferable[]): void;
+                    override postMessage(message: unknown, options?: StructuredSerializeOptions): void;
+                    override postMessage(
+                        message: unknown,
+                        transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
+                    ): void {
+                        if (
+                            typeof message === "object" &&
+                            message !== null &&
+                            "__k" in message &&
+                            message.__k === "req" &&
+                            "id" in message &&
+                            typeof message.id === "number" &&
+                            "data" in message &&
+                            typeof message.data === "object" &&
+                            message.data !== null &&
+                            "mode" in message.data &&
+                            message.data.mode === "all"
+                        ) {
+                            this.fullScanRequests.add(message.id);
+                        }
+                        if (Array.isArray(transferOrOptions)) super.postMessage(message, transferOrOptions);
+                        else super.postMessage(message, transferOrOptions);
                     }
                 };
                 setInterval(() => {
@@ -356,23 +452,11 @@ test.describe("progressive ingest", () => {
         expect(await page.evaluate(() => window.__everydashcam.state.trips[0]?.records.length)).toBe(0);
     });
 
-    test("waits for the selected trip GPS before starting playback", async ({ page }) => {
-        const dir = makeTemporaryDirectory("everydashcam-gps-open-");
-        copyFileSync(path.join(SAMPLE_GOPRO, "hero5-trimmed.mp4"), path.join(dir, "hero5-trimmed.mp4"));
-        await armImmediateTripClick(page);
-        await page.locator("#folder-input").setInputFiles(dir);
-
-        await expect(page.locator("li.trip:not(.unindexed-note)").first()).toBeVisible({ timeout: 30_000 });
-        await expect
-            .poll(
-                () =>
-                    page.evaluate(
-                        () =>
-                            (window as typeof window & { __gpsResponseQueued?: boolean }).__gpsResponseQueued ?? false,
-                    ),
-                { timeout: 10_000 },
-            )
-            .toBe(true);
+    test("waits for the selected trip GPS and concurrent viewer download before starting playback", async ({
+        page,
+    }) => {
+        await openDeferredGpsTrip(page);
+        expect(viewerDownloadRequested, "GPS completes its worker scan while the viewer download is held").toBe(true);
 
         const preparation = page.locator("#trip-preparation");
         await expect(preparation).toBeVisible();
@@ -423,6 +507,19 @@ test.describe("progressive ingest", () => {
             .toBe(true);
         await expect(preparation).toBeHidden();
         await expect
+            .poll(() => page.evaluate(() => window.__everydashcam.state.trips[0]?.records.length ?? 0))
+            .toBeGreaterThan(0);
+        expect(
+            await page.evaluate(() => ({
+                active: window.__everydashcam.state.active,
+                pendingGps: window.__everydashcam.state.pendingHeavyEmbeddedGps.size,
+                inflightGps: window.__everydashcam.state.inflightEmbeddedGps.size,
+            })),
+            "GPS is applied independently, but playback still waits for the viewer",
+        ).toEqual({ active: null, pendingGps: 0, inflightGps: 0 });
+        await expect(page.locator("li.trip.trip--opening")).toHaveCount(1);
+        releaseViewerDownload?.();
+        await expect
             .poll(async () => (await page.locator("#player-total").textContent())?.trim(), { timeout: 10_000 })
             .not.toBe("0:00");
 
@@ -443,6 +540,72 @@ test.describe("progressive ingest", () => {
         expect(result.pendingGps, "the active trip has no deferred GPS tail").toBe(0);
         expect(result.inflightGps, "the active trip has no in-flight GPS tail").toBe(0);
         expect(result.startedEarly, "playback never becomes active before GPS resolves").toBe(false);
+    });
+
+    test.describe("viewer download failure", () => {
+        test.use({
+            tolerateConsole: async ({ tolerateConsole }, use) => {
+                await use([
+                    ...tolerateConsole,
+                    /^Failed to load resource: the server responded with a status of 503/,
+                    /^\[landing\] viewer init failed .*Failed to fetch dynamically imported module:/,
+                    /^\[app\] trip open failed \(trip \d+\) .*Failed to fetch dynamically imported module:/,
+                ]);
+            },
+        });
+
+        for (const cancelFirst of [true, false]) {
+            test(`${cancelFirst ? "Cancel during GPS resumes background metadata before" : "GPS is cancelled and background metadata resumes after"} a failed viewer download`, async ({
+                page,
+            }) => {
+                await openDeferredGpsTrip(page, true);
+                expect(viewerDownloadRequested).toBe(true);
+                expect(
+                    await page.evaluate(() =>
+                        window.__everydashcam.state.trips.some((trip) =>
+                            trip.frames.some((frame) =>
+                                Object.values(frame.channels).some((candidate) => candidate.metadataReady !== true),
+                            ),
+                        ),
+                    ),
+                    "unselected recordings still need background metadata",
+                ).toBe(true);
+                await expect(page.locator("#trip-preparation")).toBeVisible();
+                await expect(page.locator("#landing-cta")).toHaveCount(0);
+
+                if (cancelFirst) {
+                    await page.locator("#trip-preparation-cancel").click();
+                    await expect(page.locator("#trip-preparation")).toBeHidden();
+                    await expect(page.locator("#trip-list")).toHaveAttribute("aria-busy", "false");
+                    expect(await page.evaluate(() => window.__everydashcam.state.active)).toBeNull();
+                }
+
+                // Exhaust only the page-reload recovery ladder; the failed
+                // dynamic import must still reject and exercise trip cleanup.
+                await page.evaluate(() => sessionStorage.setItem("dc-asset-retry", "4"));
+                rejectViewerDownload = true;
+                releaseViewerDownload?.();
+                await expect
+                    .poll(() =>
+                        page.evaluate(() =>
+                            window.__everydashcam.dumpLog().some((entry) => entry.msg === "viewer init failed"),
+                        ),
+                    )
+                    .toBe(true);
+                await expect(page.locator("#trip-preparation")).toBeHidden();
+                await expect(page.locator("#trip-list")).toHaveAttribute("aria-busy", "false");
+                await expect(page.locator("li.trip.trip--opening")).toHaveCount(0);
+                const state = await page.evaluate(() => ({
+                    active: window.__everydashcam.state.active,
+                    pending: window.__everydashcam.state.pendingHeavyEmbeddedGps.size,
+                    inflight: window.__everydashcam.state.inflightEmbeddedGps.size,
+                }));
+                expect(state).toEqual({ active: null, pending: 1, inflight: 0 });
+                const failure = page.locator(".dc-toast__body").filter({ hasText: "Couldn't open this trip" });
+                if (cancelFirst) await expect(failure).toHaveCount(0);
+                else await expect(failure).toBeVisible();
+            });
+        }
     });
 
     test("recording-scoped NMEA log binds after MP4 metadata becomes ready", async ({ page }) => {
