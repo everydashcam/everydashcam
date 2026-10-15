@@ -29,9 +29,14 @@ block's length copies cover the pair; the second block's copies cover only
 itself. Their slot counts use little-endian and big-endian order respectively.
 Plaintext slots start with the timestamp, without a record index. Read only
 the plaintext twin; erase the enciphered slots when anonymizing fixtures.
-Keep preallocation scans bounded and verify every skipped byte is zero.
-Zero padding is independent of GPS: ordinary TS packets and other recognized
-tables can precede it too. Preserve zero-valued bytes inside the final TS packet.
+Locate a table in front of preallocation by bisecting the 188-byte packet
+grid for the last complete packet, read the table's own leading length, and
+verify the table with the same end-anchored checks as at EOF; read only a
+bounded window of the padding behind it, and reject any non-zero byte there.
+The exhaustive backward scan stays as the fallback, bounded, verifying every
+skipped byte is zero. Zero padding is independent of GPS: ordinary TS packets
+and other recognized tables can precede it too. Preserve zero-valued bytes
+inside the final TS packet.
 
 Blackview X5S PRO recordings without GPS can end in an empty table. Parking
 clips use a `SKIP` block with zero magic, flags and count. Time-lapse clips

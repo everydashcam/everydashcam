@@ -247,9 +247,18 @@ describe("paired TS trailers", () => {
         expect(await findTsGpsTrailer(new Blob([new Uint8Array(1), Uint8Array.from(realPaired)]))).toBeNull();
     });
 
-    it("bounds the preallocation scan", async () => {
+    it("finds the tables behind padding larger than the scan bound", async () => {
         const file = new Blob([Uint8Array.from(realPaired), new Uint8Array(65 * 1024 * 1024)]);
-        expect(await findTsGpsTrailer(file)).toBeNull();
+        expect((await findTsGpsTrailer(file))?.cleanLength).toBe(cleanLength);
+    });
+
+    it("rejects stray bytes behind the tables even past the padding window", async () => {
+        // The exhaustive scan treats any non-zero byte behind the tables as an
+        // unknown structure; the bisection path keeps that rule for the window
+        // it reads and leaves the rest of the padding unread.
+        const bytes = Buffer.concat([realPaired, Buffer.alloc(32 * 1024)]);
+        bytes[bytes.length - 1] = 1;
+        expect(await findTsGpsTrailer(blobOf(bytes))).toBeNull();
     });
 });
 
@@ -379,6 +388,72 @@ describe("clampTsTrailingBytes", () => {
             expect(await clamped.computeDuration()).toBeGreaterThan(1);
         } finally {
             clamped.dispose();
+        }
+    });
+});
+
+describe("trailer detection behind zero padding", () => {
+    const cleanLength = realPaired.length - 1024 - 17360;
+    const TS_PACKET = 188;
+
+    /** Counts bytes materialized through Blob.arrayBuffer until restored. */
+    function countBlobReads(): { bytes: () => number; restore: () => void } {
+        const original = Blob.prototype.arrayBuffer;
+        let bytes = 0;
+        Blob.prototype.arrayBuffer = function (this: Blob) {
+            bytes += this.size;
+            return original.call(this);
+        };
+        return {
+            bytes: () => bytes,
+            restore: () => {
+                Blob.prototype.arrayBuffer = original;
+            },
+        };
+    }
+
+    it("bisects the packet grid instead of scanning the padding", async () => {
+        const padding = 40 * 1024 * 1024;
+        const file = new File([Uint8Array.from(realPaired.subarray(0, -1024)), new Uint8Array(padding)], "paired.ts");
+        const reads = countBlobReads();
+        try {
+            expect(await findTsGpsTrailer(file)).toEqual({
+                cleanLength,
+                trailerLength: 17360,
+                unindexedRecordsOffset: 8772,
+            });
+            expect(reads.bytes(), "bytes read while locating the tables").toBeLessThan(256 * 1024);
+        } finally {
+            reads.restore();
+        }
+    });
+
+    it("falls back to the padding scan when a sync defect stops the bisection early", async () => {
+        // A zeroed block in the middle of the stream: the first bisection
+        // probe lands inside it, converges onto its start, verifies no table
+        // there and must hand over to the exhaustive scan.
+        const bytes = Buffer.from(realPaired);
+        const packets = Math.floor(cleanLength / TS_PACKET);
+        const from = Math.floor(packets * 0.4) * TS_PACKET;
+        const to = Math.floor(packets * 0.6) * TS_PACKET;
+        bytes.fill(0, from, to);
+        expect(await findTsGpsTrailer(blobOf(bytes))).toEqual({
+            cleanLength,
+            trailerLength: 17360,
+            unindexedRecordsOffset: 8772,
+        });
+    });
+
+    it("answers a repeated lookup on the same blob without reading it again", async () => {
+        const file = blobOf(realPaired);
+        const first = await findTsGpsTrailer(file);
+        expect(first).not.toBeNull();
+        const reads = countBlobReads();
+        try {
+            expect(await findTsGpsTrailer(file)).toBe(first);
+            expect(reads.bytes(), "bytes read on the repeated lookup").toBe(0);
+        } finally {
+            reads.restore();
         }
     });
 });

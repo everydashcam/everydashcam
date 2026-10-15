@@ -177,8 +177,32 @@ async function findPairedTsGpsTrailer(blob: Blob, end: number): Promise<TsGpsTra
     return { cleanLength, trailerLength, unindexedRecordsOffset: firstLength + PAIRED_SLOTS_OFFSET };
 }
 
+// One Blob reaches several readers inside one worker: the GPS worker builds
+// its index and later parses the trailer, and the AV clamp falls back from
+// trailer detection to the packet-boundary search. Each miss re-reads the whole
+// zero preallocation (tens of MB on real recordings), so settled answers are
+// kept for the Blob's lifetime - a Blob is immutable, so they cannot go stale.
+// Rejections are dropped so a transient device error can retry.
+const zeroPaddedEndByBlob = new WeakMap<Blob, Promise<number | null>>();
+const trailerByBlob = new WeakMap<Blob, Promise<TsGpsTrailer | null>>();
+
+function memoizeByBlob<T>(cache: WeakMap<Blob, Promise<T>>, blob: Blob, compute: () => Promise<T>): Promise<T> {
+    const cached = cache.get(blob);
+    if (cached) return cached;
+    const pending = compute();
+    cache.set(blob, pending);
+    pending.catch(() => {
+        if (cache.get(blob) === pending) cache.delete(blob);
+    });
+    return pending;
+}
+
 /** Returns the end of nonzero data, without interpreting any container bytes. */
-async function findZeroPaddedEnd(blob: Blob): Promise<number | null> {
+function findZeroPaddedEnd(blob: Blob): Promise<number | null> {
+    return memoizeByBlob(zeroPaddedEndByBlob, blob, () => scanZeroPaddedEnd(blob));
+}
+
+async function scanZeroPaddedEnd(blob: Blob): Promise<number | null> {
     // Preallocated recordings leave zeros after their data. Verify every skipped
     // byte, and keep the scan bounded so unrelated files cannot force a full read.
     const tail = new Uint8Array(await blob.slice(-1).arrayBuffer());
@@ -196,9 +220,15 @@ async function findZeroPaddedEnd(blob: Blob): Promise<number | null> {
 }
 
 /** Detects known GPS table structures at EOF or before zero preallocation. */
-export async function findTsGpsTrailer(blob: Blob): Promise<TsGpsTrailer | null> {
+export function findTsGpsTrailer(blob: Blob): Promise<TsGpsTrailer | null> {
+    return memoizeByBlob(trailerByBlob, blob, () => detectTsGpsTrailer(blob));
+}
+
+async function detectTsGpsTrailer(blob: Blob): Promise<TsGpsTrailer | null> {
     const direct = (await findStandardTsGpsTrailer(blob, blob.size)) ?? (await findPairedTsGpsTrailer(blob, blob.size));
     if (direct) return direct;
+    const behindLastPacket = await findTsGpsTrailerBehindLastPacket(blob);
+    if (behindLastPacket) return behindLastPacket;
     const dataEnd = await findZeroPaddedEnd(blob);
     if (dataEnd === null) return null;
     // A big-endian length may itself end in up to three zero bytes.
@@ -210,6 +240,57 @@ export async function findTsGpsTrailer(blob: Blob): Promise<TsGpsTrailer | null>
         if (trailer) return trailer;
     }
     return null;
+}
+
+const TS_SYNC_RUN_BYTES = TS_SYNC_RUN * TS_PACKET;
+/** Bytes verified to be zero directly behind a table located by bisection. */
+const TRAILER_ZERO_WINDOW_BYTES = 64 * 1024;
+
+/**
+ * Finds a GPS table that directly follows the last complete packet, without
+ * reading whatever comes after the table. Bisects the 188-byte grid for the
+ * last offset where a sync run still holds (the packet grid is anchored at
+ * byte zero, so a run is valid up to the clean length and invalid in the table
+ * and the padding behind it), then reads the table's own leading length - both
+ * dialects open with it - and hands that end to the same end-anchored checks
+ * the EOF path uses. Only a table those checks accept at exactly this clean
+ * length is returned, and only with a zero window behind it; the exhaustive
+ * scan additionally proves the whole padding is zero, which is the one read
+ * this path skips. A sync defect inside the stream merely stops the bisection
+ * early, verifies nothing there, and leaves the fallback to run.
+ */
+async function findTsGpsTrailerBehindLastPacket(blob: Blob): Promise<TsGpsTrailer | null> {
+    const size = blob.size;
+    if (size < TS_SYNC_RUN_BYTES + MIN_TRAILER_BYTES) return null;
+    const head = new Uint8Array(await blob.slice(0, TS_SYNC_RUN_BYTES).arrayBuffer());
+    if (!hasTsSyncRun(head, 0)) return null;
+    let low = 0;
+    let high = Math.floor((size - TS_SYNC_RUN_BYTES) / TS_PACKET);
+    while (low < high) {
+        const mid = low + Math.ceil((high - low) / 2);
+        const start = mid * TS_PACKET;
+        const run = new Uint8Array(await blob.slice(start, start + TS_SYNC_RUN_BYTES).arrayBuffer());
+        if (hasTsSyncRun(run, 0)) low = mid;
+        else high = mid - 1;
+    }
+    const cleanLength = low * TS_PACKET + TS_SYNC_RUN_BYTES;
+    if (cleanLength + 4 > size) return null;
+    const lengthBytes = new Uint8Array(await blob.slice(cleanLength, cleanLength + 4).arrayBuffer());
+    if (lengthBytes.length < 4) return null;
+    const trailerLength = new DataView(lengthBytes.buffer, lengthBytes.byteOffset, 4).getUint32(0);
+    if (trailerLength < MIN_TRAILER_BYTES || trailerLength > MAX_TRAILER_BYTES) return null;
+    const trailerEnd = cleanLength + trailerLength;
+    if (trailerEnd > size) return null;
+    const trailer =
+        (await findStandardTsGpsTrailer(blob, trailerEnd)) ?? (await findPairedTsGpsTrailer(blob, trailerEnd));
+    if (!trailer || trailer.cleanLength !== cleanLength) return null;
+    // An unknown dialect or a stale recording left in a reused file slot shows
+    // up as non-zero bytes directly behind the table; the exhaustive scan calls
+    // that "not this structure", and so does this path. Only a bounded window
+    // is read - the preallocation beyond it is what the bisection exists to skip.
+    const windowEnd = Math.min(size, trailerEnd + TRAILER_ZERO_WINDOW_BYTES);
+    const window = new Uint8Array(await blob.slice(trailerEnd, windowEnd).arrayBuffer());
+    return window.every((byte) => byte === 0) ? trailer : null;
 }
 
 function hasTsSyncRun(bytes: Uint8Array, start: number): boolean {
