@@ -642,7 +642,7 @@ function markOpening(tripIdx: number, frameIdx?: number): void {
 }
 
 /** Clears the "opening" spinner once playback takes over (or supersedes). Called
- *  by playFrame just before its renderTrips so the rebuilt card has no spinner. */
+ *  by playFrame before it moves the card highlight, so no card keeps a spinner. */
 export function clearOpeningTrip(): void {
     openingKeys = null;
     for (const el of dom.list.querySelectorAll(".trip--opening")) {

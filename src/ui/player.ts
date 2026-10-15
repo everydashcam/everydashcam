@@ -450,6 +450,12 @@ function scheduleSlavePreloads(nextFrame: TripFrame, masterCh: Channel): void {
  * the playback rate and start when playback is intended. Returns false when
  * nothing was promoted; the caller then attaches the file normally.
  */
+/** Detaches `v` when it sits in a fatal error state while still holding `file`:
+ *  the idempotent attach primitives would otherwise leave it dead. */
+function detachIfErrored(v: HTMLVideoElement, file: File): void {
+    if (v.error && videoAttachedFile.get(v) === file) clearVideoSrc(v);
+}
+
 function promoteSlavePreload(ch: Channel, cand: VideoCandidate, positionSec: number): boolean {
     const preload = preloadPlayer(ch);
     if (videoAttachedFile.get(preload) !== cand.file) return false;
@@ -609,8 +615,8 @@ export function playFrame(
     // Must run for BOTH a trip change AND a re-activation of the already-open trip
     // (clicking another clip row in it) - the latter takes the no-tripChanged
     // path below and would otherwise leave the spinner stuck on the active card.
-    // clearOpeningTrip is global + idempotent, so the trip-change renderTrips below
-    // simply rebuilds an already-spinner-free card.
+    // clearOpeningTrip is global + idempotent; the trip-change highlight below
+    // then touches an already-spinner-free card.
     clearOpeningTrip();
 
     // Any explicit playFrame invalidates the preload slot: a trip change certainly,
@@ -794,6 +800,11 @@ export function playFrame(
     // at duration forever. A source still loading keeps the ordinary pending
     // path so its first loadedmetadata applies the request.
     const master = channelPlayers[picked.channel];
+    // A fatally errored element plays nothing until it is reloaded, and
+    // setVideoSrcFromFile is idempotent per File: detach it so the attach
+    // below reloads the same file instead of reusing the dead element
+    // (replay after a tail decode failure, loop on a one-clip trip).
+    detachIfErrored(master, video.file);
     const masterBackend = state.channelBackends[picked.channel];
     const canReuseMasterSource =
         !requiresMseBackend(video) ||
@@ -947,6 +958,9 @@ function showRuntimePlaybackFailure(cand: VideoCandidate, ch: Channel): void {
     disarmResumeAfterSeek();
     pendingPlay = false;
     pendingFileOffset = 0;
+    // Nothing plays until the user retries; let background previews decode.
+    isPlaybackIntended = false;
+    syncPreviewThrottle();
     hideLoadingOverlay();
     showPlaybackFailureOverlay(() => retryPlaybackCandidate(cand, ch));
     syncCaptureButton();
@@ -1031,12 +1045,29 @@ function handleRuntimeDecodeFailure(
             durationSec: cand.durationSec,
         });
         if (isMaster) {
+            // The same clean-up the native error listener does for the master;
+            // the MSE backend's error path arrives here without it, and a seek
+            // pin or resume latch left armed would freeze the playhead.
+            hideLoadingOverlay();
+            clearPendingSeek();
+            disarmResumeAfterSeek();
+            pendingPlay = false;
+            pendingFileOffset = 0;
             // The element will not reach 'ended' on its own; park it paused so
             // the play button reads the real state, and remember why the clip
             // closed in case nothing follows (isAtTripEnd).
             v.pause();
             activeClipEndedByFailure = true;
-            finishActiveClip();
+            const af = activeFrame();
+            const isLastFrame = !!af && !!state.active && state.active.frame >= af.trip.frames.length - 1;
+            // A paused user scrubbed into the broken tail of the last clip: hold
+            // the frame rather than looping or jumping to another trip under
+            // them. Play then restarts the trip through isAtTripEnd.
+            if (isPlaybackIntended || !isLastFrame) finishActiveClip();
+            else {
+                syncPlayButton();
+                updatePlayerProgressUi();
+            }
         }
         return;
     }
@@ -1450,6 +1481,7 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
         const cand = frame.channels[ch];
         const attachCand = ch === activeCh ? cand : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand);
         if (attachCand?.canPlay && !runtimePlaybackFailures.has(attachCand)) {
+            detachIfErrored(v, attachCand.file);
             // Mute/volume: audio source = composition.audioChannel (decoupled
             // from the visual main slot). preferredMuted still wins globally;
             // non-audio channels are muted with volume=0 as a dirty fallback.
@@ -2000,6 +2032,8 @@ function activeSlaveTarget(slaveCh: Channel, masterPosSec: number): SlaveTarget 
  * writes the clamped position directly.
  */
 function applySlaveTarget(slaveCh: Channel, s: HTMLVideoElement, target: SlaveTarget): void {
+    // A slave left errored by a tail decode failure is reloaded by the seek.
+    detachIfErrored(s, target.cand.file);
     if (videoAttachedFile.get(s) !== target.cand.file) {
         if (!promoteSlavePreload(slaveCh, target.cand, target.positionSec)) {
             attachCandidateToVideo(slaveCh, s, target.cand, false);
@@ -2457,9 +2491,9 @@ export function initPlayer(): void {
             s.pause();
         });
     });
-    // Playback stopping/reloading also frees the decoder for previews. 'ended'
-    // reads the real paused state: a mid-trip 'ended' advances to the next file
-    // (a fresh 'play' re-throttles), a terminal one leaves paused=true here.
+    // Clip ends and reloads re-sync the throttle too; it reads the intent, so a
+    // mid-trip 'ended' keeps previews throttled through the swap and only a
+    // terminal end (stopAtTripEnd) or a user pause releases them.
     onActivePlayerEvent("ended", syncPreviewThrottle);
     onActivePlayerEvent("emptied", syncPreviewThrottle);
     onActivePlayerEvent("seeked", () => {

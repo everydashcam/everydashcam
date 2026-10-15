@@ -13,6 +13,14 @@ describe("isClipTailFailure", () => {
         expect(isClipTailFailure(276.98 - CLIP_TAIL_TOLERANCE_SEC - 0.01, 276.98)).toBe(false);
     });
 
+    it("keeps short clips retryable outside their second half and at the start", () => {
+        expect(isClipTailFailure(1, 2)).toBe(true);
+        expect(isClipTailFailure(0.9, 2)).toBe(false);
+        expect(isClipTailFailure(0, 2)).toBe(false);
+        expect(isClipTailFailure(0, 60)).toBe(false);
+        expect(isClipTailFailure(0.5, 0.8)).toBe(true);
+    });
+
     it("needs a usable duration", () => {
         expect(isClipTailFailure(5, null)).toBe(false);
         expect(isClipTailFailure(5, undefined)).toBe(false);

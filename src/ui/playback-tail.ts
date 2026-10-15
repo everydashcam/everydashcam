@@ -14,10 +14,14 @@ export const CLIP_TAIL_TOLERANCE_SEC = 2;
 
 /**
  * Whether a decode failure at `positionSec` lies in the clip tail. Needs a
- * finite, positive duration; otherwise the failure is an ordinary one.
+ * finite, positive duration; otherwise the failure is an ordinary one. The
+ * tolerance never covers more than the second half of a clip, and a failure
+ * at the very start is a load failure, not a tail - short clips keep their
+ * retry.
  */
 export function isClipTailFailure(positionSec: number, durationSec: number | null | undefined): boolean {
     if (typeof durationSec !== "number" || !Number.isFinite(durationSec) || durationSec <= 0) return false;
-    if (!Number.isFinite(positionSec)) return false;
-    return positionSec >= durationSec - CLIP_TAIL_TOLERANCE_SEC;
+    if (!Number.isFinite(positionSec) || positionSec <= 0) return false;
+    const tolerance = Math.min(CLIP_TAIL_TOLERANCE_SEC, durationSec / 2);
+    return positionSec >= durationSec - tolerance;
 }
