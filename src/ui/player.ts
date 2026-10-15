@@ -193,7 +193,9 @@ export function reconcileActiveTripAfterRegroup(): void {
     resyncMetricsForTrip();
     updatePlayerProgressUi();
 
-    clearAllPreloadSlots();
+    // No blanket clear first: the scheduler replaces or drops every channel's
+    // warm source itself, and progressive ingest regroups often enough that a
+    // clear would respawn the prewarmed workers each time.
     schedulePreloadNext();
 }
 
@@ -1339,7 +1341,13 @@ function attachCandidateToVideo(
                 return "seek-in-place";
             }
         }
-        log.info("attach: mse start", { ...logMeta, prewarmed: prewarmedBackends.get(ch)?.file === cand.file });
+        // A backend prewarmed for this file skips the worker spawn and the
+        // metadata read. Taken synchronously, together with the marker below:
+        // a schedule run before the dispose await resolves (playFrame on a
+        // reusable master, a regroup) reads the new marker, warms this
+        // channel's file after next and would dispose this backend first.
+        const warm = takePrewarmedBackend(ch, cand.file);
+        log.info("attach: mse start", { ...logMeta, prewarmed: warm !== null });
         // Write the marker BEFORE the IIFE so a concurrent attach can immediately see our claim
         // and abort. If the marker were set inside the IIFE (after the await), there would be a
         // TOCTOU window: another attach between our dispose-await and the check could see an
@@ -1357,12 +1365,18 @@ function attachCandidateToVideo(
             // Between the await and now the user may have called attachCandidateToVideo again
             // with a different candidate that already overwrote the marker. If so, bail out -
             // the new IIFE will take ownership.
-            if (videoAttachedFile.get(v) !== cand.file) return;
+            if (videoAttachedFile.get(v) !== cand.file) {
+                void warm?.dispose();
+                return;
+            }
             // Defense-in-depth seq-guard: even if the marker still matches (another playFrame
             // didn't touch this channel - e.g. it's absent from the new frame and syncFrameToGrid
             // went through the else branch), the seq catches that the user is on a different trip
             // and we shouldn't burn resources attaching a stale backend.
-            if (playFrameSeq !== seqAtStart) return;
+            if (playFrameSeq !== seqAtStart) {
+                void warm?.dispose();
+                return;
+            }
             // Show overlay AFTER dispose has run. dispose() now does
             // video.removeAttribute("src") + load() so the browser releases
             // the prior MediaSource (without this MSes pile up in DevTools
@@ -1378,9 +1392,7 @@ function attachCandidateToVideo(
                 videoOwnedBlobUrl.delete(v);
                 URL.revokeObjectURL(prevOwn);
             }
-            // A backend prewarmed for this file skips the worker spawn and the
-            // metadata read; it was created for position 0 and is retargeted.
-            const warm = takePrewarmedBackend(ch, cand.file);
+            // The prewarmed worker was initialized for position 0; retarget it.
             if (warm) warm.setFeedStart(startSec);
             const backend =
                 warm ??

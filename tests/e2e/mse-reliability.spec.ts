@@ -352,6 +352,43 @@ test("warms the next MPEG-TS clip's worker before the clip boundary", async ({ p
     ).toEqual([]);
 });
 
+test("retargets a prewarmed worker when the user seeks into the next clip", async ({ page }) => {
+    const clips = await Promise.all([
+        createMseFixture({ format: "mpegts", gopCount: 6, audioDurationSec: 6 }),
+        createMseFixture({ format: "mpegts", gopCount: 7, audioDurationSec: 7 }),
+    ]);
+    await page.locator("#file-input").setInputFiles([
+        { name: "20260904_202849F.ts", mimeType: "video/mp2t", buffer: Buffer.from(clips[0]) },
+        { name: "20260904_202855F.ts", mimeType: "video/mp2t", buffer: Buffer.from(clips[1]) },
+    ]);
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await expect
+        .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
+        .toBeGreaterThan(1);
+    // 70 % of the 13 s trip lands about 3 s into the second clip: the backend
+    // warmed for position 0 must start its feed there instead.
+    await page.keyboard.press("7");
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(1);
+    const attach = await page.evaluate(() =>
+        window.__everydashcam
+            .dumpLog()
+            .filter((entry) => entry.msg === "attach: mse start" && entry.ctx?.file === "20260904_202855F.ts")
+            .map((entry) => ({ prewarmed: entry.ctx?.prewarmed, startSec: entry.ctx?.startSec as number })),
+    );
+    expect(attach).toHaveLength(1);
+    expect(attach[0]!.prewarmed).toBe(true);
+    expect(attach[0]!.startSec).toBeGreaterThan(2);
+    expect(attach[0]!.startSec).toBeLessThan(4.5);
+    await expect
+        .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
+        .toBeGreaterThan(attach[0]!.startSec);
+    expect(
+        await page.locator("#player").evaluate((video: HTMLVideoElement) => video.buffered.start(0)),
+    ).toBeGreaterThan(1.5);
+});
+
 test("seeks back to the initial position after MSE trims it", async ({ page }) => {
     await loadTrip(page, join(fixtureDirectory, "seek-zero"));
     await expect
