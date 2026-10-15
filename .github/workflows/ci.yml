@@ -173,7 +173,8 @@ jobs:
           merge-multiple: true
 
       - name: Merge e2e reports
-        run: npx playwright merge-reports --reporter=html "$RUNNER_TEMP/blob-reports"
+        # Normalize Linux and macOS report paths to the same test root.
+        run: npx playwright merge-reports --config=tests/playwright.e2e.config.ts --reporter=html "$RUNNER_TEMP/blob-reports"
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: tests/playwright-report
           PLAYWRIGHT_HTML_OPEN: never
