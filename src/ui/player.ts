@@ -335,10 +335,12 @@ function isPreloadableCandidate(cand: VideoCandidate): boolean {
     return !requiresMseBackend(cand) && cand.canPlay && !runtimePlaybackFailures.has(cand);
 }
 
-/** MSE-backed, decodable and not failed at runtime: its worker phase can run
- *  ahead of the attach. */
+/** Prewarming snapshots duration and audio options, so wait for indexing to
+ *  replace their provisional values even when the File identity stays the same. */
 function isPrewarmableCandidate(cand: VideoCandidate): boolean {
-    return requiresMseBackend(cand) && cand.canPlay && !runtimePlaybackFailures.has(cand);
+    return (
+        cand.metadataReady !== false && requiresMseBackend(cand) && cand.canPlay && !runtimePlaybackFailures.has(cand)
+    );
 }
 
 // Prewarmed MSE backends, one per channel: the next clip's worker is spawned

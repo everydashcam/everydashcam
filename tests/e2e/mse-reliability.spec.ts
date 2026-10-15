@@ -8,6 +8,7 @@ import {
     gotoApp,
     installExportCapture,
     loadTrip,
+    mockDirectoryPicker,
     openExport,
     pausePlayback,
     presetLocalStorage,
@@ -387,6 +388,53 @@ test("retargets a prewarmed worker when the user seeks into the next clip", asyn
     expect(
         await page.locator("#player").evaluate((video: HTMLVideoElement) => video.buffered.start(0)),
     ).toBeGreaterThan(1.5);
+});
+
+test("seeks past a newly added clip's provisional duration after reopening its folder", async ({ page }) => {
+    const directory = join(fixtureDirectory, "prewarm-metadata");
+    await mkdir(directory);
+    const clips = await Promise.all([
+        createMseFixture({ format: "mpegts", gopCount: 30, audioDurationSec: 30 }),
+        createMseFixture({ format: "mpegts", gopCount: 60, audioDurationSec: 60 }),
+    ]);
+    await writeFile(join(directory, "20260904_202800F.ts"), clips[0]);
+    await mockDirectoryPicker(page, [{ label: "MOCKCARD", dir: directory }]);
+    await page.reload();
+    await page.locator("#landing-cta").click();
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await pausePlayback(page);
+
+    // Reopen the same directory handle: a separate file-input batch would have
+    // its own source identity and would not extend the active trip. The new
+    // clip is initially estimated at 30 s from the filename spacing, then its
+    // metadata replaces that estimate with 60 s while the first clip is open.
+    await writeFile(join(directory, "20260904_202830F.ts"), clips[1]);
+    await page.evaluate(async () => {
+        const root = (window as unknown as { __e2eDirectoryPickerRoots: FileSystemDirectoryHandle[] })
+            .__e2eDirectoryPickerRoots[0]!;
+        const handle = await root.getFileHandle("20260904_202830F.ts", { create: true });
+        const writable = await handle.createWritable();
+        const response = await fetch("https://everydashcam-fsa.test/__fsa/0/20260904_202830F.ts");
+        await writable.write(await response.arrayBuffer());
+        await writable.close();
+    });
+    await page.locator("#sidebar-cta").click();
+    await expect(page.locator("#player-total")).toHaveText("1:30");
+    await expect(trips).toHaveCount(1);
+
+    // 80 % of the 90 s trip is 42 s into the added clip. A backend retaining
+    // its provisional duration clamps this seek to 30 s, outside its buffer.
+    await page.keyboard.press("8");
+    const player = page.locator("#player");
+    await expect.poll(() => player.evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(42, 0);
+    await expect.poll(() => player.evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThanOrEqual(2);
+    const seekTime = await player.evaluate((video: HTMLVideoElement) => video.currentTime);
+    await page.locator("#player-play").click();
+    await expect
+        .poll(() => player.evaluate((video: HTMLVideoElement) => video.currentTime))
+        .toBeGreaterThan(seekTime + 0.5);
 });
 
 test("seeks back to the initial position after MSE trims it", async ({ page }) => {
