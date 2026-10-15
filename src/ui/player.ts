@@ -103,6 +103,7 @@ import {
 import { initPlayerMetrics, refreshMetricsFromActiveFrame, resyncMetricsForTrip } from "./player-metrics.js";
 import { isPreloadReadyForPromotion } from "./player-preload.js";
 import { isClipTailFailure } from "./playback-tail.js";
+import { isCoarsePointer } from "./media-queries.js";
 import { syncExportButton } from "./player-export-button.js";
 import { initPlayerFullscreen, syncFullscreenButton, toggleFullscreen } from "./player-fullscreen.js";
 import { persistCurrentLayout, restoreLayoutForTrip } from "./player-layout-pref.js";
@@ -187,8 +188,7 @@ export function reconcileActiveTripAfterRegroup(): void {
     resyncMetricsForTrip();
     updatePlayerProgressUi();
 
-    const masterChannel = effectiveMasterChannel();
-    clearPreloadSlot(masterChannel);
+    clearAllPreloadSlots();
     schedulePreloadNext();
 }
 
@@ -273,14 +273,16 @@ let resumeAfterSeekTimer: ReturnType<typeof setTimeout> | null = null;
  * two sources playing would echo. playbackRate is set in promotePreloadAsActive
  * before play(); until then preload does not play.
  */
-function setPreloadSrc(ch: Channel, cand: VideoCandidate): void {
+function setPreloadSrc(ch: Channel, cand: VideoCandidate): boolean {
     const v = preloadPlayer(ch);
+    const isNewSource = videoAttachedFile.get(v) !== cand.file;
     // Always muted: the preload slot is non-active, and two sources playing
     // would echo. Re-asserting muted on a same-file (no-op) call is harmless.
     // The blob-URL lifecycle (WeakMap bookkeeping + revoke-after-set ordering)
     // lives in one place - the shared setVideoSrcFromFile primitive.
     v.muted = true;
     setVideoSrcFromFile(v, cand.file);
+    return isNewSource;
 }
 
 /**
@@ -291,6 +293,35 @@ function setPreloadSrc(ch: Channel, cand: VideoCandidate): void {
  */
 function clearPreloadSlot(ch: Channel): void {
     clearVideoSrc(preloadPlayer(ch));
+}
+
+/** Every channel's preload slot: a trip change or an explicit seek invalidates
+ *  the master's and the slaves' warm files alike. */
+function clearAllPreloadSlots(): void {
+    for (const ch of ALL_CHANNELS) clearPreloadSlot(ch);
+}
+
+/** Native, decodable and not failed at runtime - the only files a warm slot
+ *  can take. MSE-backed files keep their own backend lifecycle. */
+function isPreloadableCandidate(cand: VideoCandidate): boolean {
+    return !requiresMseBackend(cand) && cand.canPlay && !runtimePlaybackFailures.has(cand);
+}
+
+/**
+ * Whether slave channels warm their own preload slot for the next clip. That
+ * doubles the live decoders of a multi-channel trip for the span of a clip,
+ * and there is no API for how many hardware decoder sessions a device offers:
+ * Chromium silently falls back to software decoding, which on a phone can
+ * starve the decoders that are actually on screen. The gate is therefore a
+ * memory heuristic. navigator.deviceMemory is Chromium-only and capped at 8,
+ * so 8 reads as desktop-class; where it is absent a fine pointer is the best
+ * available proxy for a desktop-class decoder budget. Two channels need only
+ * four warm decoders and get a lower bar.
+ */
+function canPreloadSlaveChannels(channelCount: number): boolean {
+    const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    if (typeof deviceMemory !== "number") return !isCoarsePointer();
+    return deviceMemory >= (channelCount <= 2 ? 4 : 8);
 }
 
 /**
@@ -322,33 +353,113 @@ function schedulePreloadNext(): void {
         // Last frame: no preload needed on stop (player halts on ended);
         // on loop wrap to frame[0].
         if (state.tripEndBehavior !== "loop") {
-            clearPreloadSlot(masterCh);
+            clearAllPreloadSlots();
             return;
         }
         nextFrameIdx = 0;
     }
     const nextFrame = trip.frames[nextFrameIdx];
     if (!nextFrame) {
-        clearPreloadSlot(masterCh);
+        clearAllPreloadSlots();
         return;
     }
     const picked = pickFrameChannel(nextFrame, mainChannel());
+    let isMasterSlotLoading = false;
     if (!picked || picked.channel !== masterCh) {
         // Master channel absent in next-frame, or fallback resolves to a different
         // channel - preloading into the current masterCh slot makes no sense.
         clearPreloadSlot(masterCh);
+    } else {
+        const cand = picked.candidate;
+        // The master slot must start at 0: a next interval that continues
+        // inside the file the master already plays is served by a seek.
+        if (
+            frameMediaOffset(nextFrame, masterCh) > 0 ||
+            videoAttachedFile.get(activePlayer()) === cand.file ||
+            !isPreloadableCandidate(cand)
+        ) {
+            clearPreloadSlot(masterCh);
+        } else {
+            isMasterSlotLoading = setPreloadSrc(masterCh, cand);
+        }
+    }
+    if (!isMasterSlotLoading) {
+        scheduleSlavePreloads(nextFrame, masterCh);
         return;
     }
-    const cand = picked.candidate;
-    if (frameMediaOffset(nextFrame, masterCh) > 0 || videoAttachedFile.get(activePlayer()) === cand.file) {
-        clearPreloadSlot(masterCh);
-        return;
+    // Stagger the slaves behind the master's slot: every warm slot reads the
+    // head of a file while the live streams are still filling their own
+    // buffers, and on removable storage that contention lands right at clip
+    // start. The master slot reporting canplaythrough means its read is done.
+    const masterPreload = preloadPlayer(masterCh);
+    const activeTripIdx = state.active.trip;
+    const activeFrameIdx = state.active.frame;
+    const masterPreloadFile = videoAttachedFile.get(masterPreload);
+    masterPreload.addEventListener(
+        "canplaythrough",
+        () => {
+            // Still the same clip and the same warm file - otherwise a newer
+            // schedule (or a trip change) already owns the slots.
+            if (
+                state.active?.trip !== activeTripIdx ||
+                state.active.frame !== activeFrameIdx ||
+                videoAttachedFile.get(masterPreload) !== masterPreloadFile
+            )
+                return;
+            scheduleSlavePreloads(nextFrame, masterCh);
+        },
+        { once: true },
+    );
+}
+
+/**
+ * Warms the next clip of every slave channel into its preload slot, or clears
+ * the slot where no warm file qualifies. The slot is positioned on promotion
+ * (promoteSlavePreload), so a per-channel media offset is fine here; a slave
+ * that keeps its file across the boundary needs no slot.
+ */
+function scheduleSlavePreloads(nextFrame: TripFrame, masterCh: Channel): void {
+    const preloadSlaves = canPreloadSlaveChannels(frameChannels(nextFrame).length);
+    for (const ch of ALL_CHANNELS) {
+        if (ch === masterCh) continue;
+        const cand = nextFrame.channels[ch];
+        if (
+            !preloadSlaves ||
+            !cand ||
+            videoAttachedFile.get(channelPlayers[ch]) === cand.file ||
+            !isPreloadableCandidate(cand)
+        ) {
+            clearPreloadSlot(ch);
+            continue;
+        }
+        setPreloadSrc(ch, cand);
     }
-    if (requiresMseBackend(cand) || !cand.canPlay || runtimePlaybackFailures.has(cand)) {
-        clearPreloadSlot(masterCh);
-        return;
-    }
-    setPreloadSrc(masterCh, cand);
+}
+
+/**
+ * Swaps a slave channel onto its warm preload slot when that slot already holds
+ * `cand` and can play, mirroring tryPromotePreloadAsActive for the master: the
+ * ex-active element is cleared and becomes the channel's preload slot. A
+ * promoted slot emits no loadedmetadata, so what the slave listener normally
+ * does happens here: position at `positionSec` (clamped into the file), copy
+ * the playback rate and start when playback is intended. Returns false when
+ * nothing was promoted; the caller then attaches the file normally.
+ */
+function promoteSlavePreload(ch: Channel, cand: VideoCandidate, positionSec: number): boolean {
+    const preload = preloadPlayer(ch);
+    if (videoAttachedFile.get(preload) !== cand.file) return false;
+    if (!isPreloadReadyForPromotion(preload.readyState) || preload.error) return false;
+    const previous = channelPlayers[ch];
+    routeChannelAudio(preload, ch);
+    preload.playbackRate = state.preferredPlaybackRate;
+    const duration = Number.isFinite(preload.duration) ? preload.duration : Number.POSITIVE_INFINITY;
+    const target = Math.min(Math.max(positionSec, 0), duration);
+    if (Math.abs(preload.currentTime - target) > 0.01) preload.currentTime = target;
+    swapActiveSlot(ch);
+    clearVideoSrc(previous);
+    if (isPlaybackIntended) preload.play().catch(() => {});
+    log.info("slave preload promoted", { channel: ch, file: cand.file.name, positionSec: target });
+    return true;
 }
 
 /**
@@ -500,7 +611,7 @@ export function playFrame(
     // and a manual seek to another frame too - the preload may have been for the
     // frame after the previous active. New active loadedmetadata will re-kick
     // schedulePreloadNext.
-    if (state.active) clearPreloadSlot(effectiveMasterChannel());
+    if (state.active) clearAllPreloadSlots();
     state.active = { trip: tripIdx, frame: frameIdx };
 
     // Marker rAF loop stops when state is empty. Restart here - first playFrame
@@ -1325,7 +1436,7 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
     // instant (no re-attach / MSE re-seek) - it only un-hides the tile.
     applyTileLayoutRoles(frame, activeCh, masterOffsetSec);
     for (const ch of ALL_CHANNELS) {
-        const v = channelPlayers[ch];
+        let v = channelPlayers[ch];
         const cand = frame.channels[ch];
         const attachCand = ch === activeCh ? cand : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand);
         if (attachCand?.canPlay && !runtimePlaybackFailures.has(attachCand)) {
@@ -1346,6 +1457,9 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
                 ch === activeCh
                     ? masterOffsetSec
                     : (activeSlaveTarget(ch, masterOffsetSec)?.positionSec ?? masterOffsetSec);
+            // A slave whose next file is already warm in its preload slot swaps
+            // onto it; the attach below then sees the file in place and no-ops.
+            if (ch !== activeCh && promoteSlavePreload(ch, attachCand, Math.max(0, startSec))) v = channelPlayers[ch];
             const shouldReseek =
                 !!frame.mediaOffsetSec &&
                 state.channelBackends[ch]?.file === attachCand.file &&
@@ -1378,6 +1492,7 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
             // Release decoder and backend - canPlay=false or channel absent.
             disposeChannelBackend(ch);
             clearVideoSrc(v);
+            clearPreloadSlot(ch);
         }
     }
     // Hide the view-mode button on single-channel trips - layout choice is moot.
@@ -1876,7 +1991,9 @@ function activeSlaveTarget(slaveCh: Channel, masterPosSec: number): SlaveTarget 
  */
 function applySlaveTarget(slaveCh: Channel, s: HTMLVideoElement, target: SlaveTarget): void {
     if (videoAttachedFile.get(s) !== target.cand.file) {
-        attachCandidateToVideo(slaveCh, s, target.cand, false);
+        if (!promoteSlavePreload(slaveCh, target.cand, target.positionSec)) {
+            attachCandidateToVideo(slaveCh, s, target.cand, false);
+        }
         return;
     }
     const duration = Number.isFinite(s.duration) ? s.duration : Number.POSITIVE_INFINITY;
@@ -1921,7 +2038,9 @@ export function driftSyncSlaves(): void {
         // slave loadedmetadata handler position it. At most one swap per file
         // boundary - the attached file then matches until the next window.
         if (videoAttachedFile.get(s) !== target.cand.file) {
-            attachCandidateToVideo(ch, s, target.cand, false);
+            if (!promoteSlavePreload(ch, target.cand, target.positionSec)) {
+                attachCandidateToVideo(ch, s, target.cand, false);
+            }
             return;
         }
         if (s.readyState < 2) return;

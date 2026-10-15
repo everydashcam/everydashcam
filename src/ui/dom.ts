@@ -40,8 +40,9 @@ export const ALL_CHANNELS: readonly Channel[] = ["front", "rear", "interior", "s
  * the pointer "who is active" changes. The CSS class .preload-slot is moved
  * synchronously via syncSlotRoles so visibility/pointer-events apply to the right one.
  *
- * Slave channels do not use preload (a micro-pause on file change is accepted
- * as a trade-off): activeSlotIdx[ch] is always 0 for them and slot[1] stays empty.
+ * Slave channels get the same treatment when the device can afford the extra
+ * decoders (see canPreloadSlaveChannels / promoteSlavePreload in player.ts);
+ * otherwise their slot[1] stays empty and they reload at each file change.
  */
 const channelPlayerSlots: Record<Channel, [HTMLVideoElement, HTMLVideoElement]> = {
     front: [$id<HTMLVideoElement>("player"), $id<HTMLVideoElement>("player-preload")],
