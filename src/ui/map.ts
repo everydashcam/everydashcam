@@ -807,16 +807,16 @@ export function ensureMap(): maplibregl.Map | null {
     }
     state.map = map;
     mapGpsStatus = buildGpsStatusBadge(dom.mapWrap);
-    chaseRenderCadence = installMapRenderCadence(map, () => {
-        const frame = chaseVideoFrame(performance.now());
+    followRenderCadence = installMapRenderCadence(map, () => {
+        const frame = followVideoFrame(performance.now());
         if (
             !frame ||
-            chaseAppliedVideo !== dom.player ||
-            chaseAppliedFrame?.file !== frame.file ||
-            chaseAppliedFrame.src !== frame.src
+            followAppliedVideo !== dom.player ||
+            followAppliedFrame?.file !== frame.file ||
+            followAppliedFrame.src !== frame.src
         )
             return null;
-        return chaseAppliedFrame;
+        return followAppliedFrame;
     });
     syncProviderCamera();
 
@@ -2442,8 +2442,10 @@ function initMiniMapHover(): void {
 // tabs (CPU savings). Text metrics are updated via timeupdate instead - no point
 // writing to the DOM at 60 Hz.
 //
-// Chase samples presented video frames; other visible motion uses rAF.
-// Idle/hidden maps only need the drift-sync cadence.
+// Following modes (follow / rotate / chase) sample presented video frames, so
+// the camera and marker move once per decoded frame rather than once per
+// display refresh; other visible motion uses rAF. Idle/hidden maps only need
+// the drift-sync cadence.
 // Media events wake a sleeping loop immediately for playback and paused seeks.
 let markerRafHandle: number | null = null;
 let markerTimerHandle: ReturnType<typeof setTimeout> | null = null;
@@ -2453,21 +2455,21 @@ let slowLaneLastMs = 0;
 // Previous fast-lane timestamp, for the filter's frame dt.
 let lastFrameMs = 0;
 
-let chaseRenderCadence: MapRenderCadence | null = null;
-let chaseAppliedFrame: PlayerFrameObservation | null = null;
-let chaseAppliedVideo: HTMLVideoElement | null = null;
+let followRenderCadence: MapRenderCadence | null = null;
+let followAppliedFrame: PlayerFrameObservation | null = null;
+let followAppliedVideo: HTMLVideoElement | null = null;
 
-function chaseVideoFrame(now: number): PlayerFrameObservation | null {
+function followVideoFrame(now: number): PlayerFrameObservation | null {
     const map = state.map;
     const video = dom.player;
     if (
-        !chaseRenderCadence?.enabled ||
+        !followRenderCadence?.enabled ||
         !map ||
         !state.mapReady ||
         !state.hasTrack ||
         !state.mapExpanded ||
         !getViewPanels().map ||
-        state.followMode !== "chase" ||
+        state.followMode === "off" ||
         state.exportModeOpen ||
         state.transcodeInProgress ||
         document.hidden ||
@@ -2928,7 +2930,7 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
             // work (no GPS / GPS window ended) - drift sync needs no marker.
             markerLoopOnAfterTick?.();
         }
-        const frame = chaseVideoFrame(now);
+        const frame = followVideoFrame(now);
         if (frame && frame === markerFrame) {
             scheduleTick(true);
             return;
@@ -2938,9 +2940,9 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
         pendingFrameDtMs = 0;
         // Publish only after camera and marker writes, so a native render that
         // precedes this tick cannot consume a not-yet-applied video frame.
-        chaseAppliedFrame = frame;
-        chaseAppliedVideo = dom.player;
-        chaseRenderCadence?.refresh();
+        followAppliedFrame = frame;
+        followAppliedVideo = dom.player;
+        followRenderCadence?.refresh();
         scheduleTick(isAnimating);
     };
     lastFrameMs = performance.now();

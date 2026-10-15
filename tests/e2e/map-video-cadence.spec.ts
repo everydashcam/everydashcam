@@ -177,7 +177,19 @@ async function measureChase(page: Page) {
     });
 }
 
-function expectMovingWindow(result: Awaited<ReturnType<typeof measureChase>>): void {
+type FollowMode = "chase" | "follow" | "rotate";
+
+/** Switches the expanded map from its Chase entry to a flat following mode and
+ *  waits for the one-off camera ease to finish. */
+async function switchFollowMode(page: Page, mode: Exclude<FollowMode, "chase">): Promise<void> {
+    await page.locator(`.map-follow-seg[data-follow-mode="${mode}"]`).click();
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.followMode)).toBe(mode);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.map?.getPitch() ?? 99)).toBeLessThan(1);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.map?.isMoving() ?? true)).toBe(false);
+    await waitForMapIdle(page);
+}
+
+function expectMovingWindow(result: Awaited<ReturnType<typeof measureChase>>, mode: FollowMode = "chase"): void {
     expect(result.playingBefore).toBe(true);
     expect(result.playingAfter).toBe(true);
     expect(result.samePlayer).toBe(true);
@@ -189,11 +201,11 @@ function expectMovingWindow(result: Awaited<ReturnType<typeof measureChase>>): v
     expect(result.decodedFrames).toBeGreaterThan(8);
     expect(result.animationFrames).toBeGreaterThan(8);
     expect(result.centerShift).toBeGreaterThan(0.000001);
-    expect(result.mode).toBe("chase");
+    expect(result.mode).toBe(mode);
 }
 
-function expectVideoCadence(result: Awaited<ReturnType<typeof measureChase>>): void {
-    expectMovingWindow(result);
+function expectVideoCadence(result: Awaited<ReturnType<typeof measureChase>>, mode: FollowMode = "chase"): void {
+    expectMovingWindow(result, mode);
     expect(result.videoFrames).toBeGreaterThan(8);
     expect(result.animationFrames, "display refresh remains distinct from the measured video cadence").toBeGreaterThan(
         result.videoFrames * 1.3,
@@ -217,6 +229,21 @@ test("Chase paints at the presented video cadence while playback and following a
     await testInfo.attach("map-video-cadence", { body: JSON.stringify(result), contentType: "application/json" });
     expectVideoCadence(result);
 });
+
+for (const mode of ["follow", "rotate"] as const) {
+    test(`${mode} paints at the presented video cadence while playback and following advance`, async ({
+        page,
+    }, testInfo) => {
+        await openChase(page);
+        await switchFollowMode(page, mode);
+        const result = await measureChase(page);
+        await testInfo.attach(`map-video-cadence-${mode}`, {
+            body: JSON.stringify(result),
+            contentType: "application/json",
+        });
+        expectVideoCadence(result, mode);
+    });
+}
 
 test("a paused seek updates the Chase camera and returns to idle without new video frames", async ({ page }) => {
     await openChase(page);
