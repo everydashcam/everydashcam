@@ -3,7 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { createMseFixture } from "../helpers/mse-fixtures.js";
-import { expect, gotoApp, loadTrip, presetLocalStorage, SAMPLE_NOGPS, shot, test } from "./_fixtures.js";
+import {
+    expect,
+    gotoApp,
+    loadTrip,
+    pausePlayback,
+    presetLocalStorage,
+    SAMPLE_70MAI,
+    SAMPLE_NOGPS,
+    shot,
+    test,
+} from "./_fixtures.js";
 
 interface RecoveryFault {
     remaining: number;
@@ -307,4 +317,48 @@ test("retries a failed slave while the healthy camera keeps playing", async ({ p
         .poll(() => page.locator("#player-rear").evaluate((v: HTMLVideoElement) => v.readyState))
         .toBeGreaterThanOrEqual(2);
     expect(await page.locator("#player").evaluate((v: HTMLVideoElement) => v.src)).toBe(healthy.source);
+});
+
+test("moves on to the next clip when the decoder fails in the current clip's tail", async ({ page }) => {
+    await presetLocalStorage(page);
+    await gotoApp(page, "en");
+    // A real two-clip, three-camera trip: the clip boundary the tail failure
+    // has to cross, with slaves that reload behind the master.
+    await loadTrip(page, SAMPLE_70MAI);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.trips[0]?.frames.length ?? 0)).toBe(2);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame ?? -1)).toBe(0);
+    const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    await expect.poll(() => master.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime)).toBeGreaterThan(0.1);
+    // Paused, so the 2 s fixture clip cannot reach its natural end during the
+    // check: only the injected failure can move the player to the next clip.
+    await pausePlayback(page);
+    const firstSource = await master.evaluate((v: HTMLVideoElement) => v.currentSrc);
+    // A truncated final GOP: the decoder gives up a second before the indexed
+    // end. Report that position through the element the player consults.
+    await master.evaluate((video: HTMLVideoElement) => {
+        const duration = video.duration;
+        Object.defineProperty(video, "currentTime", { configurable: true, get: () => duration - 1 });
+        Object.defineProperty(video, "error", {
+            configurable: true,
+            value: { code: MediaError.MEDIA_ERR_DECODE, message: "injected tail decode fault" },
+        });
+        video.dispatchEvent(new Event("error"));
+        Reflect.deleteProperty(video, "error");
+        Reflect.deleteProperty(video, "currentTime");
+    });
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame ?? -1)).toBe(1);
+    await expect(page.locator(".viewer")).not.toHaveClass(/playback-failed|codec-unsupported/);
+    await expect
+        .poll(() => master.evaluate((v: HTMLVideoElement) => v.currentSrc !== "" && v.currentSrc))
+        .not.toBe(firstSource);
+    // The user had paused: the next clip is ready but does not start on its own.
+    await expect.poll(() => master.evaluate((v: HTMLVideoElement) => v.paused && v.readyState >= 2)).toBe(true);
+    await master.evaluate((v: HTMLVideoElement) => v.play());
+    await expect.poll(() => master.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime)).toBeGreaterThan(0.05);
+    expect(
+        await page.evaluate(() =>
+            window.__everydashcam.state.trips[0]!.frames.every((frame) => frame.channels.front?.canPlay === true),
+        ),
+        "a tail failure is not a codec rejection",
+    ).toBe(true);
 });

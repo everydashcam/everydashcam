@@ -251,6 +251,12 @@ export class PerFileMseBackend {
         return this.failed;
     }
 
+    /** True while seekTo() holds the <video> paused for its own reseek. The
+     *  player must not read that pause as the user stopping playback. */
+    get isPausedBySeek(): boolean {
+        return this.pausedBySeek;
+    }
+
     /**
      * Enqueues an op behind any in-flight attach/seekTo. Errors are swallowed
      * for the chain so a failed op does not poison subsequent ones - the

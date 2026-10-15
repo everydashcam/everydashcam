@@ -102,6 +102,7 @@ import {
 } from "./player-zoom.js";
 import { initPlayerMetrics, refreshMetricsFromActiveFrame, resyncMetricsForTrip } from "./player-metrics.js";
 import { isPreloadReadyForPromotion } from "./player-preload.js";
+import { isClipTailFailure } from "./playback-tail.js";
 import { syncExportButton } from "./player-export-button.js";
 import { initPlayerFullscreen, syncFullscreenButton, toggleFullscreen } from "./player-fullscreen.js";
 import { persistCurrentLayout, restoreLayoutForTrip } from "./player-layout-pref.js";
@@ -211,6 +212,19 @@ function captureFrameNow(): void {
 
 /** Whether playback was active before a src change - auto-resumes after load. */
 let pendingPlay = false;
+
+// Whether the user wants playback to run. The media element cannot answer
+// that on its own: a clip end, a source swap, the MSE backend holding the
+// element for its own reseek and a fatal decode error all leave `paused` true
+// without the user stopping anything. The flag follows the user-visible
+// play/pause transitions (see isInternalPause) and playFrame's autoPlay, and
+// is what decode-failure retries and the preview throttle consult.
+let isPlaybackIntended = false;
+/** The active clip was closed by a decode failure in its tail (see
+ *  handleRuntimeDecodeFailure) rather than by 'ended'. The element then sits
+ *  in an error state short of its duration, so isAtTripEnd cannot read the
+ *  end off the element. Reset whenever a clip is (re)started. */
+let activeClipEndedByFailure = false;
 /** Target position inside the next file (applied to currentTime on loadedmetadata). */
 let pendingFileOffset = 0;
 
@@ -383,6 +397,7 @@ function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
 
     swapActiveSlot(masterCh);
     state.active = { trip: state.active.trip, frame: nextFrameIdx };
+    activeClipEndedByFailure = false;
 
     // Slave channels (if any) are moved to their next-frame files via
     // attachCandidateToVideo - micro-pause for slaves, but master plays without
@@ -402,10 +417,11 @@ function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
     updatePlayerProgressUi();
     syncCaptureButton();
 
-    // Start playback. Ignore play() reject - autoplay policy could theoretically
-    // fire, but master was already playing before the swap so a user gesture is
-    // on record.
-    newActive.play().catch(() => {});
+    // Start playback when it is wanted. Ignore play() reject - autoplay policy
+    // could theoretically fire, but master was already playing before the swap
+    // so a user gesture is on record. A clip closed while the user had paused
+    // (a tail decode failure on a paused element) stays paused on the next clip.
+    if (isPlaybackIntended) newActive.play().catch(() => {});
 
     log.info("preload promoted to active", {
         channel: masterCh,
@@ -458,6 +474,7 @@ export function playFrame(
     if (!frame) return;
     const picked = pickFrameChannel(frame, mainChannel());
     if (!picked) return;
+    activeClipEndedByFailure = false;
     const video = picked.candidate;
     const fileOffsetSec = startOffsetSec + frameMediaOffset(frame, picked.channel);
     // Do NOT update composition.channelOrder[0] to picked.channel. If the current
@@ -616,6 +633,7 @@ export function playFrame(
         // this point is synchronous, so the sequence cannot have changed.)
         showCodecUnsupportedOverlay(video.codec);
         pendingPlay = false;
+        isPlaybackIntended = false;
         pendingFileOffset = 0;
         // Zoom is pointless on an unplayable video - the decoder returns nothing.
         resetVideoZoom();
@@ -671,6 +689,7 @@ export function playFrame(
         setPendingSeek((trip.timeline.segments[frameIdx]?.contentStart ?? 0) + startOffsetSec);
     }
     pendingPlay = autoPlay;
+    isPlaybackIntended = autoPlay;
     pendingFileOffset = fileOffsetSec;
     syncFrameToGrid(frame, picked.channel, fileOffsetSec);
     if (isReusableMaster) {
@@ -760,8 +779,7 @@ function markCandidateUnplayable(cand: VideoCandidate, ch: Channel): void {
     cand.canPlay = false;
     disposeChannelBackend(ch);
     if (!state.active) return;
-    const wasPlaying = !dom.player.paused;
-    playFrame(state.active.trip, state.active.frame, 0, wasPlaying);
+    playFrame(state.active.trip, state.active.frame, 0, isPlaybackIntended);
 }
 
 interface PlaybackRetryPosition {
@@ -796,7 +814,10 @@ function playbackRetryPosition(v: HTMLVideoElement): PlaybackRetryPosition {
               : v.currentTime;
     return {
         offsetSec: Math.max(0, offsetSec),
-        autoPlay: isMaster ? pendingPlay || resumeAfterSeekTarget !== null || !v.paused : !activePlayer().paused,
+        // Not the element's paused flag: a fatal decode error and a reload both
+        // leave it paused while the user never stopped playback, and a slave
+        // must follow the user's intent, not a master that is itself reloading.
+        autoPlay: isPlaybackIntended,
     };
 }
 
@@ -877,6 +898,27 @@ function handleRuntimeDecodeFailure(
         return;
     }
     const isMaster = v === activePlayer();
+    if (isClipTailFailure(position.offsetSec, cand.durationSec)) {
+        // A truncated final GOP (power-cut clip end) fails here on every
+        // retry. Treat it as the clip end: the master moves on exactly like on
+        // 'ended'; a slave holds its last frame until the boundary re-attaches it.
+        log.warn("decode failure in the clip tail, treating it as the clip end", {
+            file: cand.file.name,
+            channel: ch,
+            reason,
+            offsetSec: position.offsetSec,
+            durationSec: cand.durationSec,
+        });
+        if (isMaster) {
+            // The element will not reach 'ended' on its own; park it paused so
+            // the play button reads the real state, and remember why the clip
+            // closed in case nothing follows (isAtTripEnd).
+            v.pause();
+            activeClipEndedByFailure = true;
+            finishActiveClip();
+        }
+        return;
+    }
     const used = decodeRetryCount.get(cand) ?? 0;
     if (used < MAX_DECODE_RETRIES) {
         decodeRetryCount.set(cand, used + 1);
@@ -1911,6 +1953,8 @@ function isAtTripEnd(): boolean {
     const af = activeFrame();
     if (!af) return false;
     if (state.active!.frame !== af.trip.frames.length - 1) return false;
+    // A clip closed by a tail decode failure never reports ended or its duration.
+    if (activeClipEndedByFailure) return true;
     // ended event is the most reliable signal; currentTime vs durationSec is a fallback
     // (in HLS/MSE ended may not fire correctly; our <video src=blob> works fine).
     if (dom.player.ended) return true;
@@ -2013,6 +2057,7 @@ function clearPendingSeekIfLanded(): void {
 /** Arms the seekThenPlay latch: resume playback once a seek lands near `target`. */
 function armResumeAfterSeek(target: number): void {
     resumeAfterSeekTarget = target;
+    isPlaybackIntended = true;
     if (resumeAfterSeekTimer !== null) clearTimeout(resumeAfterSeekTimer);
     // Same 6s bound as the pending-seek pin: past any realistic SD-card file open.
     resumeAfterSeekTimer = setTimeout(disarmResumeAfterSeek, 6000);
@@ -2270,12 +2315,14 @@ export function initPlayer(): void {
     });
 
     onActivePlayerEvent("play", () => {
+        isPlaybackIntended = true;
         syncPreviewThrottle();
         forEachSlave((s) => {
             s.play().catch(() => {});
         });
     });
     onActivePlayerEvent("pause", () => {
+        if (!isInternalPause()) isPlaybackIntended = false;
         syncPreviewThrottle();
         forEachSlave((s) => {
             s.pause();
@@ -2431,63 +2478,97 @@ export function initPlayer(): void {
         resumePlaybackIfSeekLanded();
     });
 
-    onActivePlayerEvent("ended", () => {
-        if (!state.active) return;
-        const trip = state.trips[state.active.trip];
-        if (!trip) return;
-        const isLastFrame = state.active.frame >= trip.frames.length - 1;
-        let nextFrameIdx: number | null;
-        if (!isLastFrame) {
-            nextFrameIdx = state.active.frame + 1;
-            // Crossing a recording pause: the footage axis collapses it, so
-            // playback jumps forward in wall-clock. Tell the user why the clock
-            // skipped. Loop-wraps (the branch below) are not a pause - no toast.
-            const seg = trip.timeline.segments[nextFrameIdx];
-            const gap = seg ? trip.timeline.gaps.find((g) => g.contentPos === seg.contentStart) : undefined;
-            if (gap) {
-                notify({
-                    severity: "info",
-                    messageKey: "player.pauseSkipped",
-                    messageParams: { duration: formatDuration(gap.durationSec) },
-                });
-            }
-        } else if (state.tripEndBehavior === "loop") {
-            nextFrameIdx = 0;
-        } else if (
-            state.tripEndBehavior === "advance" &&
-            !(getSelectedRange() && state.isPreviewZoom) &&
-            !state.exportModeOpen
-        ) {
-            // Advance to the chronologically next trip (by startUtc, independent of
-            // the sidebar sort order). A Preview-clip window falls through to the
-            // stop path below - a bounded clip ending must not jump trips. An
-            // inspection zoom does NOT block advance: it follows the playhead
-            // through the whole trip, so trip end behaves like the unzoomed case.
-            // No next trip -> also stop (parked on the last-by-time trip). Open
-            // export mode also stops so a resumed clip cannot auto-advance and let
-            // the trip switch silently wipe the export range being assembled
-            // (resetExportRangeForTrip).
-            const nextTripIdx = chronologicalNextTripIndex(state.active.trip);
-            if (nextTripIdx >= 0) {
-                playFrame(nextTripIdx, 0, 0, true);
-                return;
-            }
-            syncPlayButton();
-            updatePlayerProgressUi();
-            return;
-        } else {
-            // Last file, not looping - leave the player at the end, progress at maximum.
-            syncPlayButton();
-            updatePlayerProgressUi();
+    onActivePlayerEvent("ended", finishActiveClip);
+    initPlayerControls();
+}
+
+/**
+ * What happens when the active clip is over: the next clip of the trip (via
+ * the warm preload slot when it is ready, else a full reload), a loop wrap,
+ * the chronologically next trip, or a stop. Wired to 'ended' and reused when a
+ * decode failure in the clip tail stands in for an end the decoder cannot reach.
+ */
+function finishActiveClip(): void {
+    if (!state.active) return;
+    const trip = state.trips[state.active.trip];
+    if (!trip) return;
+    const isLastFrame = state.active.frame >= trip.frames.length - 1;
+    let nextFrameIdx: number | null;
+    if (!isLastFrame) {
+        nextFrameIdx = state.active.frame + 1;
+        // Crossing a recording pause: the footage axis collapses it, so
+        // playback jumps forward in wall-clock. Tell the user why the clock
+        // skipped. Loop-wraps (the branch below) are not a pause - no toast.
+        const seg = trip.timeline.segments[nextFrameIdx];
+        const gap = seg ? trip.timeline.gaps.find((g) => g.contentPos === seg.contentStart) : undefined;
+        if (gap) {
+            notify({
+                severity: "info",
+                messageKey: "player.pauseSkipped",
+                messageParams: { duration: formatDuration(gap.durationSec) },
+            });
+        }
+    } else if (state.tripEndBehavior === "loop") {
+        nextFrameIdx = 0;
+    } else if (
+        state.tripEndBehavior === "advance" &&
+        !(getSelectedRange() && state.isPreviewZoom) &&
+        !state.exportModeOpen
+    ) {
+        // Advance to the chronologically next trip (by startUtc, independent of
+        // the sidebar sort order). A Preview-clip window falls through to the
+        // stop path below - a bounded clip ending must not jump trips. An
+        // inspection zoom does NOT block advance: it follows the playhead
+        // through the whole trip, so trip end behaves like the unzoomed case.
+        // No next trip -> also stop (parked on the last-by-time trip). Open
+        // export mode also stops so a resumed clip cannot auto-advance and let
+        // the trip switch silently wipe the export range being assembled
+        // (resetExportRangeForTrip).
+        const nextTripIdx = chronologicalNextTripIndex(state.active.trip);
+        if (nextTripIdx >= 0) {
+            playFrame(nextTripIdx, 0, 0, isPlaybackIntended);
             return;
         }
-        // Try swapping the preload slot first (no micro-pause). If the preload hasn't warmed up yet,
-        // the file doesn't match, or the master channel for the next frame is different,
-        // tryPromotePreloadAsActive returns false and we fall back to a normal playFrame (100-300ms decoder reload).
-        if (tryPromotePreloadAsActive(nextFrameIdx)) return;
-        playFrame(state.active.trip, nextFrameIdx, 0, true);
-    });
+        stopAtTripEnd();
+        return;
+    } else {
+        // Last file, not looping - leave the player at the end, progress at maximum.
+        stopAtTripEnd();
+        return;
+    }
+    // Try swapping the preload slot first (no micro-pause). If the preload hasn't warmed up yet,
+    // the file doesn't match, or the master channel for the next frame is different,
+    // tryPromotePreloadAsActive returns false and we fall back to a normal playFrame (100-300ms decoder reload).
+    if (tryPromotePreloadAsActive(nextFrameIdx)) return;
+    playFrame(state.active.trip, nextFrameIdx, 0, isPlaybackIntended);
+}
 
+/** The trip is over and nothing follows: playback is no longer intended, so
+ *  background previews may use the decoders again. */
+function stopAtTripEnd(): void {
+    isPlaybackIntended = false;
+    syncPreviewThrottle();
+    syncPlayButton();
+    updatePlayerProgressUi();
+}
+
+/**
+ * A 'pause' that playback itself caused rather than the user: the clip reached
+ * its end (finishActiveClip decides what follows), a source swap or seek with a
+ * resume already armed, or the MSE backend holding the element for its own
+ * reseek. Only the other pauses express the user's intent to stop.
+ */
+function isInternalPause(): boolean {
+    const v = dom.player;
+    if (v.ended) return true;
+    if (pendingPlay || resumeAfterSeekTarget !== null) return true;
+    return state.channelBackends[effectiveMasterChannel()]?.isPausedBySeek === true;
+}
+
+/** Toolbar/keyboard/scrubber subsystems and the timeupdate pipeline; the
+ *  second half of initPlayer, split out so the media-event plumbing above
+ *  stays readable. */
+function initPlayerControls(): void {
     onActivePlayerEvent("play", syncPlayButton);
     onActivePlayerEvent("pause", syncPlayButton);
     onActivePlayerEvent("volumechange", syncMuteButton);
@@ -2574,5 +2655,5 @@ function refreshMetricsHere(): void {
 /** Mirrors the real playing state onto the preview-generation throttle: while a
  *  trip plays, background preview decoding yields the hardware decoder pool. */
 function syncPreviewThrottle(): void {
-    setPreviewPlaybackActive(!dom.player.paused);
+    setPreviewPlaybackActive(isPlaybackIntended);
 }
