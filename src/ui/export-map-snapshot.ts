@@ -54,13 +54,17 @@ import { MAP_PROVIDER_REGISTRY, MAX_MAP_PITCH_DEG } from "./map-provider-registr
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { waitForMapEvent } from "./map-events.js";
 import { addSpeedTrack } from "./map-track.js";
+import {
+    MAP_SNAPSHOT_HEIGHT as SNAPSHOT_HEIGHT,
+    MAP_SNAPSHOT_WIDTH as SNAPSHOT_WIDTH,
+    exportAdaptiveZoomDelta,
+    zoomForDiameterKm,
+} from "../transcode/map-snapshot-camera.js";
 
 const log = createLogger("export-map-snapshot");
 
-/** Source-of-truth size of the off-screen snapshot canvas (px). Picked so a
- * 25%-of-1080p slot (~480 px) and a 200% slot (~960 px) both look crisp. */
-const SNAPSHOT_WIDTH = 640;
-const SNAPSHOT_HEIGHT = 480; // 4:3 to match the on-screen preview overlay
+// Snapshot size and the zoom / adaptive-zoom math live in map-snapshot-camera.ts,
+// shared with the worker-side pose reuse so both agree on the ground scale.
 // Clamp for the snapshot's device-pixel ratio. The snapshot renders at
 // SNAPSHOT_WIDTH logical px and is then scaled into a small overlay slot, so the
 // GL buffer only needs enough device px to fill that slot crisply. The export
@@ -82,15 +86,6 @@ const EARTH_R = 6378137;
 // Tilt ceiling - mirrors the live map's CHASE_MAX_PITCH_DEG. Past ~70 the
 // renderer pulls in far too many tiles near the horizon for little gain.
 const EXPORT_CHASE_MAX_PITCH = MAX_MAP_PITCH_DEG;
-// Speed-adaptive zoom: zoom out by up to this many levels as speed rises so the
-// road ahead stays in view. Unlike the live chase (fixed 16.8..15.4, always
-// above maxzoom), the export base zoom comes from the user's km-scale slider, so
-// at wider zoomKm (or the default 1 km at highway speed) the display zoom CAN
-// sink below the source maxzoom 14. The 3D building layer (minzoom 14, opacity
-// ramp already 0 at z14 - see addBuildings3dLayer) then renders nothing, so
-// buildings fade out on wide/highway shots by design.
-const EXPORT_ADAPTIVE_MAX_OUT = 1.3;
-const EXPORT_ADAPTIVE_FULL_SPEED_MS = 33; // ~120 km/h -> full zoom-out
 // Top camera padding (fraction of viewport height) so the car sits in the lower
 // third under tilt, opening up the road ahead. North-up keeps zero padding.
 const CHASE_TOP_PADDING_FRAC = 0.34;
@@ -106,28 +101,6 @@ const PREWARM_BUDGET_MS = 60_000;
 function clampExportPitch(deg: number | undefined): number {
     if (deg === undefined || !Number.isFinite(deg)) return 0;
     return Math.max(0, Math.min(EXPORT_CHASE_MAX_PITCH, deg));
-}
-
-/** Speed-adaptive zoom delta (<= 0): 0 at rest, -EXPORT_ADAPTIVE_MAX_OUT at the
- *  full-speed end. Added to the base display zoom. */
-function exportAdaptiveZoomDelta(speedMs: number | undefined): number {
-    const f = Math.max(0, Math.min(1, (speedMs ?? 0) / EXPORT_ADAPTIVE_FULL_SPEED_MS));
-    return -EXPORT_ADAPTIVE_MAX_OUT * f;
-}
-
-/** Computes a maplibre zoom level so the visible diameter (across viewportWidthPx)
- *  is ~diameterKm. Uses 78271.5, the meters-per-pixel-at-zoom-0 for MapLibre's
- *  512 px tiles - NOT the 256-tile 156543.03. With the 256 constant the zoom came
- *  out one level too high (2x too zoomed in), so a "100 m" slot actually showed
- *  ~50 m. */
-function zoomForDiameterKm(lat: number, diameterKm: number, viewportWidthPx: number): number {
-    // Floor the DIAMETER at 1 metre (not 1 km). The old `Math.max(1, diameterKm)`
-    // clamped the kilometre value, collapsing the entire 100 m..1 km slider range
-    // to a single 1 km zoom - "the scale never changes below 1 km".
-    const diameterM = Math.max(1, diameterKm * 1000);
-    const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
-    const metersPerPx = diameterM / viewportWidthPx;
-    return Math.log2((78271.5 * cosLat) / metersPerPx);
 }
 
 /** Coarse haversine in meters; enough for "have we moved a viewport-width yet". */
@@ -448,9 +421,11 @@ export async function createExportMapSnapshotter(
                 const headingUp = camera.supportsHeadingUp && chase?.headingUp === true;
                 if (headingUp) addBuildings3dLayer(map, theme);
                 else removeBuildings3dLayer(map);
+                // Infinity = the full-speed end of the adaptive ramp, i.e. the
+                // widest zoom the run can reach.
                 const targetZoom =
                     headingUp && chase?.adaptiveZoom
-                        ? baseZoom + exportAdaptiveZoomDelta(EXPORT_ADAPTIVE_FULL_SPEED_MS)
+                        ? baseZoom + exportAdaptiveZoomDelta(Number.POSITIVE_INFINITY)
                         : baseZoom;
                 await waitForMapEvent(map, "idle", timeoutMs, {
                     signal,

@@ -87,6 +87,7 @@ import {
     round2,
 } from "./pipeline-common.js";
 import { drawMapPlaceholder } from "./map-overlay.js";
+import { createReusingMapSnapshotter } from "./map-snapshot-camera.js";
 import { drawTelemetryOverlays } from "./telemetry-overlays.js";
 
 const log = createLogger("transcode");
@@ -279,6 +280,17 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                 gSource: recordsHaveAccel(overlays.gpsRecords) ? "recorded" : "derived",
             });
         }
+        // Every map snapshot is a main-thread MapLibre render (the single most
+        // expensive per-frame step when the map is on), so frames whose camera
+        // did not visibly move paint the previous render again. Owns every
+        // bitmap it hands out; disposed once the frame loop is over.
+        const mapSnapshots =
+            mapSnapshotter && overlays?.map
+                ? createReusingMapSnapshotter(mapSnapshotter, {
+                      headingUp: overlays.map.headingUp,
+                      adaptiveZoom: overlays.map.adaptiveZoom,
+                  })
+                : null;
 
         onProgress({
             stage: "preparing",
@@ -352,12 +364,10 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
 
         const flushFrame = async (p: PendingFrame): Promise<void> => {
             let sampleClosed = false;
-            // Tracks whether p.snapPromise has been taken charge of (consumed by
-            // consumeMapSnapshot, which closes its bitmap, or explicitly drained). If
-            // we throw/skip before reaching it - e.g. abort at the top - the finally
-            // drains it so the in-flight bitmap / worker promise never dangles into an
-            // unhandled rejection when the snapshotter is torn down.
-            let snapHandled = !p.snapPromise;
+            // A skipped/aborted frame leaves its snapshot promise unconsumed: that
+            // is fine, the reusing snapshotter owns the bitmap and the rejection
+            // handler attached at issue time keeps a late failure from surfacing
+            // as unhandled.
             try {
                 if (signal.aborted) throw new DOMException("aborted", "AbortError");
                 if (sampleSource && frameNeedsNoComposite(p.sample, widthPx, heightPx)) {
@@ -388,16 +398,12 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                     if (overlays.map && !p.framePos.hasFix && !mapOverlayFailed) {
                         drawMapPlaceholder(ctx, widthPx, heightPx, overlays.map);
                     }
+                    // Map disabled by an earlier frame's failure after this frame's
+                    // request was already in flight: leave it undrawn.
                     if (p.snapPromise && overlays.map) {
-                        snapHandled = true;
-                        if (mapOverlayFailed) {
-                            // Map disabled by an earlier frame's failure after this
-                            // frame's request was already in flight: drain the bitmap so
-                            // its GPU surface is not leaked, but do not draw it.
-                            p.snapPromise.then((bm) => bm.close()).catch(() => {});
-                        } else {
+                        if (!mapOverlayFailed) {
                             // Failure policy (disable-for-the-run latch, AbortError
-                            // rethrow, bitmap close) lives in consumeMapSnapshot.
+                            // rethrow) lives in consumeMapSnapshot.
                             mapOverlayFailed = await consumeMapSnapshot(
                                 ctx,
                                 widthPx,
@@ -424,9 +430,6 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                 reportProgress(framesDone, totalBytesWritten, false);
             } finally {
                 if (!sampleClosed) p.sample.close();
-                if (!snapHandled && p.snapPromise) {
-                    p.snapPromise.then((bm) => bm.close()).catch(() => {});
-                }
             }
         };
 
@@ -573,8 +576,8 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                                         // Gated on hasFix, not just finiteness: a long dropout
                                         // interpolates finite-but-fabricated coordinates, and
                                         // the map placeholder is drawn instead.
-                                        if (framePos.hasFix && overlays.map && mapSnapshotter && !mapOverlayFailed) {
-                                            snapPromise = mapSnapshotter.snapshot({
+                                        if (framePos.hasFix && overlays.map && mapSnapshots && !mapOverlayFailed) {
+                                            snapPromise = mapSnapshots.snapshot({
                                                 lat: framePos.lat,
                                                 lon: framePos.lon,
                                                 bearingDeg: framePos.headingDeg,
@@ -681,10 +684,10 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                     await joinAllOrThrowFirst([runSegmentVideo(), runSegmentAudio()]);
                 } finally {
                     // Decode-ahead leftover: on an error/abort that escaped the loop
-                    // before the final flush, the box still holds one decoded frame
-                    // and its in-flight snapshot. Close them so we neither leak a
-                    // VideoSample (Chromium's ~60-frame decoder queue -> stall) nor a
-                    // GPU bitmap. No-op on the normal path (the box was nulled above).
+                    // before the final flush, the box still holds one decoded frame.
+                    // Close it so we do not leak a VideoSample (Chromium's ~60-frame
+                    // decoder queue -> stall); its in-flight snapshot belongs to the
+                    // reusing snapshotter. No-op on the normal path (nulled above).
                     const leftover = decodeAhead.frame;
                     if (leftover) {
                         try {
@@ -692,7 +695,6 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                         } catch {
                             /* already closed */
                         }
-                        leftover.snapPromise?.then((bm) => bm.close()).catch(() => {});
                         decodeAhead.frame = null;
                     }
                     // firstInput (segIdx 0) is held for the whole loop and disposed
@@ -709,8 +711,10 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             log.error("transcode aborted or failed", { framesDone, err: String(err) });
             throw err;
         } finally {
-            // Release the reused input before flushing the output encoder.
+            // Release the reused input before flushing the output encoder. Every
+            // frame has been composited by now, so the retained map bitmaps go too.
             firstInput.dispose();
+            mapSnapshots?.dispose();
         }
 
         // Output duration is the source span compressed by the speed factor.
@@ -740,6 +744,10 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             achievedKbps: achievedKbps(totalBytesWritten, outputDurationSec),
             ...encoderDiagnostics.summarize(),
             elapsedMs: Math.round(performance.now() - startMs),
+            // Render vs reuse split of the map snapshots: tells a "slow export
+            // with the map on" report whether the main-thread renders were the
+            // bound and how much the pose reuse took off them.
+            ...(mapSnapshots ? { mapSnapshots: mapSnapshots.stats() } : {}),
             mapOverlayDropped: mapOverlayFailed,
             decodeTruncated,
             audioDroppedHeterogeneous,

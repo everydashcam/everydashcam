@@ -70,6 +70,7 @@ import {
     round2,
 } from "./pipeline-common.js";
 import { drawMapPlaceholder } from "./map-overlay.js";
+import { createReusingMapSnapshotter } from "./map-snapshot-camera.js";
 import { drawTelemetryOverlays } from "./telemetry-overlays.js";
 import { createVideoSourceResolver } from "./normalize-degenerate-video.js";
 import { locateMonotonicSegment } from "./segment-locator.js";
@@ -334,6 +335,15 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                 gSource: recordsHaveAccel(output.overlays.gpsRecords) ? "recorded" : "derived",
             });
         }
+        // Pose-based snapshot reuse, see pipeline.ts. Owns every bitmap it
+        // hands out; disposed with the slots once the tick loop is over.
+        const mapSnapshots =
+            mapSnapshotter && output.overlays?.map
+                ? createReusingMapSnapshotter(mapSnapshotter, {
+                      headingUp: output.overlays.map.headingUp,
+                      adaptiveZoom: output.overlays.map.adaptiveZoom,
+                  })
+                : null;
 
         onProgress({
             stage: "preparing",
@@ -613,8 +623,8 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                     let snapPromise: Promise<ImageBitmap> | null = null;
                     // A long dropout can interpolate finite but fabricated
                     // coordinates - the placeholder is drawn instead of a snapshot.
-                    if (framePos?.hasFix && overlayMapOpts && mapSnapshotter && !mapOverlayFailed) {
-                        snapPromise = mapSnapshotter.snapshot({
+                    if (framePos?.hasFix && overlayMapOpts && mapSnapshots && !mapOverlayFailed) {
+                        snapPromise = mapSnapshots.snapshot({
                             lat: framePos.lat,
                             lon: framePos.lon,
                             bearingDeg: framePos.headingDeg,
@@ -630,23 +640,11 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                         snapPromise.catch(() => {});
                     }
 
-                    let samples: (VideoSample | null)[];
-                    try {
-                        samples = await joinAllOrThrowFirst(
-                            source.slotChannels.map((_, slotIdx) => getSlotSampleForFrame(slotIdx, tripTimeSec)),
-                        );
-                    } catch (err) {
-                        // Slot decode / abort threw before the snapshot was consumed.
-                        // Free the in-flight bitmap (consumeMapSnapshot is below and now
-                        // unreachable) so a cancelled split+map export does not strand a
-                        // GPU surface per outstanding frame.
-                        if (snapPromise)
-                            snapPromise.then(
-                                (b) => b.close(),
-                                () => {},
-                            );
-                        throw err;
-                    }
+                    // A slot decode / abort throwing here leaves the in-flight
+                    // snapshot unconsumed; the reusing snapshotter owns its bitmap.
+                    const samples = await joinAllOrThrowFirst(
+                        source.slotChannels.map((_, slotIdx) => getSlotSampleForFrame(slotIdx, tripTimeSec)),
+                    );
 
                     // Compose split-screen directly into the final output canvas.
                     // Blur rects resolve at the content time of the frame each slot
@@ -835,6 +833,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             throw err;
         } finally {
             await disposeAllSlots();
+            mapSnapshots?.dispose();
         }
 
         const result = await finalizeTranscodeOutput({
@@ -860,6 +859,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             achievedKbps: achievedKbps(totalBytesWritten, framesDone / outputFps),
             ...encoderDiagnostics.summarize(),
             elapsedMs: Math.round(performance.now() - startMs),
+            ...(mapSnapshots ? { mapSnapshots: mapSnapshots.stats() } : {}),
             mapOverlayDropped: mapOverlayFailed,
             decodeTruncated,
             audioDroppedHeterogeneous,

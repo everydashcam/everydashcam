@@ -172,6 +172,15 @@ export interface OverlayMapPipelineOpts {
     scalePct: number;
     zoomKm: number;
     shape: MapShape;
+    /** Chase camera (heading-up, tilted) rather than north-up. The render
+     *  itself reads the full map config on the main thread; the pipeline only
+     *  needs to know how a pose change moves pixels, so it can reuse a
+     *  snapshot across frames whose camera did not visibly move
+     *  (map-snapshot-camera.ts). */
+    headingUp: boolean;
+    /** Chase only: the zoom follows speed, so a speed change can invalidate
+     *  an otherwise identical pose. */
+    adaptiveZoom: boolean;
 }
 
 export interface TranscodeProgress {

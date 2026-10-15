@@ -480,8 +480,10 @@ export function createH264SampleSource(
  *  - AbortError is rethrown (cancellation belongs to the caller);
  *  - any other failure returns true ("disable the map overlay for the rest of
  *    the run") - the overlay is opt-in cosmetic, losing a 4-minute export to
- *    a tile-server hiccup is a bad trade;
- *  - the bitmap is closed on every path (GPU memory).
+ *    a tile-server hiccup is a bad trade.
+ * The bitmap is NOT closed here: it belongs to the pipeline's reusing
+ * snapshotter (map-snapshot-camera.ts), which may hand the same bitmap to
+ * several frames and releases it itself.
  */
 export async function consumeMapSnapshot(
     ctx: OffscreenCanvasRenderingContext2D,
@@ -491,17 +493,14 @@ export async function consumeMapSnapshot(
     snapPromise: Promise<ImageBitmap>,
     framesDone: number,
 ): Promise<boolean> {
-    let bitmap: ImageBitmap | null = null;
     try {
-        bitmap = await snapPromise;
+        const bitmap = await snapPromise;
         drawMapOverlay(ctx, bitmap, widthPx, heightPx, mapOpts);
         return false;
     } catch (mapErr) {
         if (mapErr instanceof Error && mapErr.name === "AbortError") throw mapErr;
         log.warn("map overlay disabled after snapshot failure", { err: String(mapErr), framesDone });
         return true;
-    } finally {
-        if (bitmap) bitmap.close();
     }
 }
 

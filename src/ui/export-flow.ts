@@ -381,6 +381,8 @@ export function buildOverlayPipelineArgs(trip: Trip): OverlayPipelineArgs | null
                   scalePct: s.overlayMap.scalePct,
                   zoomKm: s.overlayMap.zoomKm,
                   shape: s.overlayMap.shape,
+                  headingUp: s.overlayMap.mode === "chase",
+                  adaptiveZoom: s.overlayMap.adaptiveZoom,
               }
             : null,
         clock: textOpts(s.overlayClock),
