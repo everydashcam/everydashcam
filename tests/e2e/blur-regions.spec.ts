@@ -676,15 +676,15 @@ test.describe("blur regions", () => {
         await expect(status).toHaveText("Sections with plates: 0", { timeout: 120_000 });
         await page.locator(".export-panel__detect-settings > summary").click();
         const plateThreshold = page.getByRole("slider", { name: "License plates", exact: true });
-        await expect(plateThreshold).toHaveValue("0.7");
+        await expect(plateThreshold).toHaveValue("0.5");
         await plateThreshold.focus();
         await page.keyboard.press("End");
         await expect(plateThreshold).toHaveValue("1");
-        await expect(page.locator("html")).toHaveAttribute("data-detect-threshold-requests", "[0.7,0.7,1,1]");
+        await expect(page.locator("html")).toHaveAttribute("data-detect-threshold-requests", "[0.5,0.5,1,1]");
         await expect(status).toHaveText("Sections with plates: 0", { timeout: 120_000 });
         await page.getByRole("button", { name: "Reset defaults" }).click();
-        await expect(plateThreshold).toHaveValue("0.7");
-        await expect(page.locator("html")).toHaveAttribute("data-detect-threshold-requests", "[0.7,0.7,1,1,0.7,0.7]");
+        await expect(plateThreshold).toHaveValue("0.5");
+        await expect(page.locator("html")).toHaveAttribute("data-detect-threshold-requests", "[0.5,0.5,1,1,0.5,0.5]");
         await expect(status).toHaveText("Sections with plates: 0", { timeout: 120_000 });
         // Both source files are analyzed independently at the chosen quality.
         await expect(page.locator("html")).toHaveAttribute(

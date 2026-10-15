@@ -12,13 +12,13 @@ export const DETECTION_THRESHOLD_MAX = 1;
 export const DETECTION_THRESHOLD_STEP = 0.01;
 
 /** Face candidates and single-hit confirmation share one score floor. */
-export const FACE_SCORE_MIN = 0.7;
+export const FACE_SCORE_MIN = 0.5;
 
 /** Shared acceptance policy for sparse propagation and source-frame detection.
  * Every independent seed must meet its own confidence floor. These are scores,
  * not measured probabilities of correct anonymization. */
 export const DETECTION_POLICIES: Readonly<Record<"plate" | "face", Readonly<DetectionPolicy>>> = {
-    plate: { seedScoreMin: 0.7 },
+    plate: { seedScoreMin: 0.5 },
     face: { seedScoreMin: FACE_SCORE_MIN },
 };
 

@@ -38,9 +38,9 @@ for (const locale of ["en", "ru"] as const) {
             const reset = settings.getByRole("button", {
                 name: locale === "en" ? "Reset defaults" : "Вернуть по умолчанию",
             });
-            await expect(faces).toHaveValue("0.7");
-            await expect(plates).toHaveValue("0.7");
-            await expect(faces).toHaveAttribute("aria-valuetext", locale === "en" ? "0.70" : "0,70");
+            await expect(faces).toHaveValue("0.5");
+            await expect(plates).toHaveValue("0.5");
+            await expect(faces).toHaveAttribute("aria-valuetext", locale === "en" ? "0.50" : "0,50");
             await expect(reset).toBeDisabled();
             await faces.focus();
             await page.keyboard.press("Home");
@@ -50,10 +50,10 @@ for (const locale of ["en", "ru"] as const) {
             await expect(plates).toHaveValue("1");
             await expect(reset).toBeEnabled();
             await reset.click();
-            await expect(faces).toHaveValue("0.7");
-            await expect(plates).toHaveValue("0.7");
+            await expect(faces).toHaveValue("0.5");
+            await expect(plates).toHaveValue("0.5");
             await expect(reset).toBeDisabled();
-            const defaults = settings.getByText(locale === "en" ? "Default: 0.70" : "По умолчанию: 0,70", {
+            const defaults = settings.getByText(locale === "en" ? "Default: 0.50" : "По умолчанию: 0,50", {
                 exact: true,
             });
             await expect(defaults).toHaveCount(2);
