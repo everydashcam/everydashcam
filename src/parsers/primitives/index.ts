@@ -109,20 +109,24 @@ import { threeSixtyGpsJsonlPrimitive } from "./360gps-jsonl.js";
 //      lose the sample-validated track path - with it the accel stream, which
 //      no text log carries. Cost of the late position is zero: a file without a
 //      subtitle track fails those markers on the sample table alone.
-//   8. juscar-ts        - hasLigoGpsMarker + MPEG-TS sync; its PES extractor
+//   8. ligogps-trailer-ts - sync index.tsGpsTrailer check for the
+//      LigoGPS/LCAI plaintext trailer at EOF (.ts files). First among the TS
+//      primitives: the order among them is cost only - each rejects the
+//      others' files (a trailer at EOF vs a signature in the PES stream) - and
+//      this one answers from the index, while juscar-ts below also claims a
+//      trailer camera that muxes an ENCIPHERED LigoGPS PES (Blackview X5S
+//      PRO) and then reads the whole file before rejecting it for lacking
+//      plaintext records.
+//   8a. juscar-ts       - hasLigoGpsMarker + MPEG-TS sync; its PES extractor
 //      supplies the stronger dialect check, so renamed clips remain importable.
-//   8a. ligogps-trailer-ts - sync index.tsGpsTrailer check for the
-//      LigoGPS/LCAI plaintext trailer at EOF (.ts files). Sits with the other
-//      TS primitives; among them the order is cost only - each rejects the
-//      others' files (a trailer at EOF vs a signature in the PES stream).
-//   8c. ts-pes-gps      - INNOVV / DOD LS600W records in a private PES. After
-//      novatek-ts: all three probe TS bodies, and each rejects the others'
-//      signatures, so order is cost, not correctness.
 //   8b. novatek-ts      - Novatek GPS struct in a private PES (MPEG-TS).
 //      Mutually exclusive with juscar-ts by content (LIGOGPSINFO literal vs
 //      binary record signature - each rejects the other); juscar goes first
 //      only because its marker is a precomputed boolean while this one scans
 //      headerBytes at 188-byte stride.
+//   8c. ts-pes-gps      - INNOVV / DOD LS600W records in a private PES. After
+//      novatek-ts: all three probe TS bodies, and each rejects the others'
+//      signatures, so order is cost, not correctness.
 //   9. freegps-70mai    - hasFreeGpsMarker plus a canonical name or the strong
 //      70mai block signature. Before generic freegps so the ddmm*1e5 dialect is
 //      not misread as VIOFO Type 3; renamed VIOFO/Vantrue blocks still reject.
@@ -152,8 +156,8 @@ export const VIDEO_EMBEDDED_PRIMITIVES: readonly Primitive[] = [
     nextbaseSubtitlePrimitive,
     nmeaSubtitlePrimitive,
     gpsLogNbmtPrimitive,
-    juscarTsPrimitive,
     ligoGpsTrailerTsPrimitive,
+    juscarTsPrimitive,
     novatekTsPrimitive,
     tsPesGpsPrimitive,
     freegps70maiPrimitive,

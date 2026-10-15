@@ -17,6 +17,9 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ClassifiedFile, dispatchParseVideoEmbeddedGps } from "../registry.js";
+import { buildMp4Index, DEFAULT_PROBE_BYTES, probeMarkers } from "../internal/mp4-index.js";
+import { juscarTsPrimitive } from "../primitives/juscar-ts.js";
+import { ligoGpsTrailerTsPrimitive } from "../primitives/ligogps-trailer-ts.js";
 import { vendorFileKey } from "../../vendor-file-key.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -406,5 +409,111 @@ describe("embedded GPS dispatch gate: precedence of the text-log atoms", () => {
         expect(result.appliedExtractors).toContain("nmea-subtitle");
         expect(result.appliedExtractors).not.toContain("gpslog-atom-nbmt");
         expect(result.records.length).toBeGreaterThan(0);
+    });
+});
+
+describe("embedded GPS dispatch gate: TS trailer ahead of the PES scanners", () => {
+    it("takes the EOF table without scanning a stream that only carries an enciphered LigoGPS PES", async () => {
+        // Blackview X5S PRO shape: a private PES whose body opens with the
+        // LIGOGPSINFO literal (enciphered, never plaintext) inside the stream,
+        // and the readable table at EOF. juscar-ts claims the literal and
+        // would read every packet before rejecting the file; the trailer
+        // primitive must win first. Larger than the marker probe so a full
+        // scan is visible as bytes read beyond the probe window.
+        const TS_PACKET = 188;
+        const nullPackets = Math.ceil((8 * 1024 * 1024) / TS_PACKET);
+        const body = Buffer.alloc(TS_PACKET * (nullPackets + 1), 0xff);
+        for (let i = 0; i < nullPackets + 1; i++) {
+            body[i * TS_PACKET] = 0x47;
+            body[i * TS_PACKET + 1] = 0x1f;
+            body[i * TS_PACKET + 2] = 0xff;
+            body[i * TS_PACKET + 3] = 0x10;
+        }
+        // Packet 1: PUSI on PID 0x300, private_stream_2, 152-byte PES.
+        const pes = TS_PACKET;
+        body[pes + 1] = 0x43;
+        body[pes + 2] = 0x00;
+        body.set([0x00, 0x00, 0x01, 0xbf, 0x00, 0x98], pes + 4);
+        for (let i = pes + 10; i < pes + TS_PACKET; i++) body[i] = (i * 7) & 0xff;
+        // The enciphered LigoGPS chunk shape the probe keys on: the literal,
+        // then the "####" marker 0x14 bytes in (see findLigoGpsChunkOffset).
+        body.write("LIGOGPSINFO", pes + 10, "latin1");
+        body.write("####", pes + 10 + 0x14, "latin1");
+        const happy = readFileSync(resolve(HERE, "ligogps-trailer-ts/synthetic-happy.TS"));
+        const trailer = happy.subarray(2 * TS_PACKET);
+        const name = "20260904_202849F.ts";
+        const file = new File([Uint8Array.from(Buffer.concat([body, trailer]))], name);
+        const vf = { file, relativePath: name };
+
+        const index = await buildMp4Index(file, { probeBytes: 0 });
+        await probeMarkers(file, index, DEFAULT_PROBE_BYTES);
+        expect(index.hasLigoGpsMarker, "the enciphered PES carries the LigoGPS literal").toBe(true);
+        expect(await juscarTsPrimitive.marker(vf, index), "juscar-ts yields to the verified EOF table").toBe(false);
+        const expected = await ligoGpsTrailerTsPrimitive.parse(vf, index);
+        expect(expected.records.length).toBeGreaterThan(0);
+
+        const original = Blob.prototype.arrayBuffer;
+        let bytesRead = 0;
+        Blob.prototype.arrayBuffer = function (this: Blob) {
+            bytesRead += this.size;
+            return original.call(this);
+        };
+        try {
+            const classified: ClassifiedFile[] = [
+                { file: vf, role: "video", sidecarId: null, sidecarMp4: null, logExtractorId: null },
+            ];
+            const result = await dispatchParseVideoEmbeddedGps(classified, undefined, 1, undefined, "light-only");
+            expect(result.winningExtractorByFileKey.get(vendorFileKey(vf))).toBe("ligogps-trailer-ts");
+            expect(result.records).toHaveLength(expected.records.length);
+            expect(bytesRead, "bytes read by the dispatch").toBeLessThan(DEFAULT_PROBE_BYTES + 1024 * 1024);
+        } finally {
+            Blob.prototype.arrayBuffer = original;
+        }
+    });
+
+    it("leaves a no-fix clip with an empty EOF table unread past the probe", async () => {
+        // The empty table yields no records, so the dispatcher walks on; the
+        // juscar-ts marker must still reject the stream instead of proving
+        // the absence of plaintext records by reading the whole file.
+        const TS_PACKET = 188;
+        const nullPackets = Math.ceil((8 * 1024 * 1024) / TS_PACKET);
+        const body = Buffer.alloc(TS_PACKET * (nullPackets + 1), 0xff);
+        for (let i = 0; i < nullPackets + 1; i++) {
+            body[i * TS_PACKET] = 0x47;
+            body[i * TS_PACKET + 1] = 0x1f;
+            body[i * TS_PACKET + 2] = 0xff;
+            body[i * TS_PACKET + 3] = 0x10;
+        }
+        const pes = TS_PACKET;
+        body[pes + 1] = 0x43;
+        body[pes + 2] = 0x00;
+        body.set([0x00, 0x00, 0x01, 0xbf, 0x00, 0x98], pes + 4);
+        for (let i = pes + 10; i < pes + TS_PACKET; i++) body[i] = (i * 7) & 0xff;
+        body.write("LIGOGPSINFO", pes + 10, "latin1");
+        body.write("####", pes + 10 + 0x14, "latin1");
+        const empty = readFileSync(resolve(HERE, "ligogps-trailer-ts/real-anonymized-empty.TS"));
+        const trailer = empty.subarray(empty.length - 36);
+        const name = "20260904_205125F.ts";
+        const file = new File([Uint8Array.from(Buffer.concat([body, trailer]))], name);
+        const vf = { file, relativePath: name };
+
+        const original = Blob.prototype.arrayBuffer;
+        let bytesRead = 0;
+        Blob.prototype.arrayBuffer = function (this: Blob) {
+            bytesRead += this.size;
+            return original.call(this);
+        };
+        try {
+            const classified: ClassifiedFile[] = [
+                { file: vf, role: "video", sidecarId: null, sidecarMp4: null, logExtractorId: null },
+            ];
+            const result = await dispatchParseVideoEmbeddedGps(classified, undefined, 1, undefined, "light-only");
+            expect(result.records).toHaveLength(0);
+            expect(result.errors).toEqual([]);
+            expect(result.winningExtractorByFileKey.size).toBe(0);
+            expect(bytesRead, "bytes read by the dispatch").toBeLessThan(DEFAULT_PROBE_BYTES + 1024 * 1024);
+        } finally {
+            Blob.prototype.arrayBuffer = original;
+        }
     });
 });
