@@ -18,6 +18,9 @@
 
 import { cloneBlurRegions, type BlurRegion, type BlurStyle } from "../blur-regions.js";
 import { sliceTripChannelForRange } from "../export-range.js";
+import { groupDetectionFindings, type DetectionFinding } from "../tracking/detection-review.js";
+import { unionIntervals } from "../tracking/interval-set.js";
+import type { DetectionAnalysis } from "../tracking/detection-analysis.js";
 import { DETECTION_QUALITY_DEFAULT, type DetectionQuality } from "../tracking/detection-sampling.js";
 import { DETECTION_POLICIES, detectionPolicy, type DetectionThresholds } from "../tracking/detector-policy.js";
 import { createLogger } from "../log.js";
@@ -72,12 +75,14 @@ export interface DetectCounts {
 interface TrackCacheEntry {
     /** Full ownership window, independent of the current export trim. */
     source: TrackSegment;
-    /** Complete analyzed portion of that window; extensions replace it whole. */
+    /** Complete analyzed portion of that window. */
     segment: TrackSegment;
     quality: DetectionQuality;
     threshold: number;
     tracks: DetectResultTrack[];
     sourceFrames: DetectResult["sourceFrames"];
+    uncertainFrames: DetectResult["sourceFrames"];
+    analysis?: DetectionAnalysis;
 }
 
 interface TripDetectState {
@@ -90,7 +95,13 @@ interface TripDetectState {
      *  the active trip or the style selector changes between channels. */
     style: BlurStyle;
     /** Last completed pass; `key` names the params it covered. */
-    result: { key: string; regions: BlurRegion[]; counts: DetectCounts } | null;
+    result: {
+        key: string;
+        regions: BlurRegion[];
+        counts: DetectCounts;
+        findings: DetectionFinding[];
+        uncertain: DetectionFinding[];
+    } | null;
     /** One analysis per source window, kind and quality at its last threshold. Only changed boundary
      *  windows need inference when a multi-file export grows or moves. */
     trackCache: Map<Channel, Partial<Record<DetectKind, TrackCacheEntry[]>>>;
@@ -385,7 +396,7 @@ export function detectPassState(): { fraction: number } | null {
     return running && trip && running.trip === trip ? { fraction: running.fraction } : null;
 }
 
-/** Fresh per-kind track counts for the current params, or null (stale / off). */
+/** Fresh per-kind review group counts for the current params, or null (stale / off). */
 export function detectCounts(): DetectCounts | null {
     const trip = activeTrip();
     if (!trip) return null;
@@ -403,6 +414,24 @@ export function detectRegions(): BlurRegion[] {
     const params = passParams(trip);
     const result = tripState(trip).result;
     return params && result && result.key === params.key ? result.regions : [];
+}
+
+/** Navigation groups have no role in preview or exported mask geometry. */
+export function detectFindings(): readonly DetectionFinding[] {
+    const trip = activeTrip();
+    if (!trip) return [];
+    const params = passParams(trip);
+    const result = tripState(trip).result;
+    return params && result && result.key === params.key ? result.findings : [];
+}
+
+/** Failed recovery frames are review targets, never fabricated blur geometry. */
+export function detectUncertainFindings(): readonly DetectionFinding[] {
+    const trip = activeTrip();
+    if (!trip) return [];
+    const params = passParams(trip);
+    const result = tripState(trip).result;
+    return params && result && result.key === params.key ? result.uncertain : [];
 }
 
 /** Style represented by auto regions of the active trip, even before a pass
@@ -586,22 +615,31 @@ function trackRegionSpan(
     startSec: number,
     endSec: number,
     sourceFrames: DetectResult["sourceFrames"],
-): { startSec: number; endSec: number } | null {
+): DetectionFinding | null {
     let s = Math.max(startSec, track.startSec);
+    let seekSec = s;
     const e = Math.min(endSec, track.endSec);
     if (e <= s) return null;
     let lo = 0;
     let hi = sourceFrames.length - 1;
     while (lo <= hi) {
         const mid = (lo + hi) >>> 1;
-        if (sourceFrames[mid]!.contentSec <= startSec) lo = mid + 1;
+        if (sourceFrames[mid]!.contentSec <= s) lo = mid + 1;
         else hi = mid - 1;
     }
     const frame = sourceFrames[hi];
-    if (frame && startSec < frame.contentSec + frame.durationSec) {
+    const frameEnd = frame
+        ? Math.min(e, frame.contentSec + frame.durationSec, sourceFrames[hi + 1]?.contentSec ?? e)
+        : s;
+    if (frame && s < frameEnd) {
+        // Seek inside the first displayed frame, including a fractional trim.
+        // Exact frame boundaries can round back to the preceding browser frame.
+        // Missing timing keeps the requested start; compressed geometry cannot
+        // supply a trustworthy frame duration.
+        seekSec = s + (frameEnd - s) / 2;
         s = Math.max(track.startSec, frame.contentSec);
     }
-    return { startSec: s, endSec: e };
+    return { startSec: s, endSec: e, seekSec };
 }
 
 function buildRegion(
@@ -705,19 +743,18 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
         try {
             controller.signal.throwIfAborted();
             const regions: BlurRegion[] = [];
-            const counts: DetectCounts = { plate: 0, face: 0 };
+            const reviewIntervalsByKind: Record<DetectKind, DetectionFinding[]> = { plate: [], face: [] };
+            const uncertainIntervals: DetectionFinding[] = [];
             for (let i = 0; i < windows.length; i++) {
                 controller.signal.throwIfAborted();
                 const { channel, source, segment } = windows[i]!;
                 const startSec = segment.tripStart + segment.startInFile;
                 const endSec = segment.tripStart + segment.endInFile;
-                // A new edge seed can track arbitrarily far into the previous
-                // range, while an old seed can be its extension's only evidence.
-                // Fixed overlap/delta stitching would lose those covers.
-                // TODO: retain raw detector anchors and tracker continuation in
-                // the worker before replacing whole-window extension analysis.
+                // The worker reuses only trajectories whose two checkpoint
+                // boundaries survive the new range. Trims need no worker work.
                 const chCache = st.trackCache.get(channel) ?? {};
                 const analyzeIntervalsByKind: DetectRequestData["analyzeIntervalsByKind"] = {};
+                const cachedAnalysisByKind: DetectRequestData["cachedAnalysisByKind"] = {};
                 for (const kind of params.kinds) {
                     const cached = chCache[kind]?.find(
                         (entry) =>
@@ -730,6 +767,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         cached.segment.startInFile <= segment.startInFile &&
                         cached.segment.endInFile >= segment.endInFile;
                     analyzeIntervalsByKind[kind] = isCovered ? [] : [{ startSec, endSec }];
+                    if (!isCovered && cached?.analysis) cachedAnalysisByKind[kind] = cached.analysis;
                 }
                 // Cached geometry must not disappear behind a queued Follow just
                 // because the user narrowed an already analyzed export range.
@@ -743,6 +781,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         quality: params.quality,
                         thresholds: params.thresholds,
                         analyzeIntervalsByKind,
+                        cachedAnalysisByKind,
                         plateModelUrl: PLATE_MODEL_URL,
                         faceModelUrl: FACE_MODEL_URL,
                         trackerModelUrl: TRACKER_MODEL_URL,
@@ -781,6 +820,8 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                                 threshold: params.thresholds[kind],
                                 tracks: result.tracksByKind[kind] ?? [],
                                 sourceFrames: result.sourceFrames,
+                                uncertainFrames: result.uncertainFramesByKind?.[kind] ?? [],
+                                analysis: result.analysisByKind?.[kind],
                             },
                         ];
                     }
@@ -836,10 +877,20 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                             sameSourceWindow(entry.source, source),
                     );
                     if (!entry) continue;
+                    for (const frame of entry.uncertainFrames) {
+                        const start = Math.max(startSec, frame.contentSec);
+                        const end = Math.min(endSec, frame.contentSec + frame.durationSec);
+                        if (end > start)
+                            uncertainIntervals.push({ startSec: start, endSec: end, seekSec: (start + end) / 2 });
+                    }
                     for (const track of entry.tracks) {
                         const span = trackRegionSpan(track, startSec, endSec, entry.sourceFrames);
                         if (!span) continue;
-                        counts[kind] += 1;
+                        reviewIntervalsByKind[kind].push({
+                            startSec: Math.max(startSec, span.startSec),
+                            endSec: span.endSec,
+                            seekSec: span.seekSec,
+                        });
                         regions.push(
                             buildRegion(kind, channel, st.style, {
                                 startSec: span.startSec,
@@ -856,7 +907,20 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
             // The style may have changed while a long multi-channel pass ran.
             // Normalize once at commit so the completed result is never mixed.
             for (const region of regions) region.style = st.style;
-            st.result = { key: params.key, regions, counts };
+            // Counts describe each kind across all selected cameras/files;
+            // navigation visits their combined active time only once.
+            const counts: DetectCounts = {
+                plate: unionIntervals(reviewIntervalsByKind.plate).length,
+                face: unionIntervals(reviewIntervalsByKind.face).length,
+            };
+            const findings = groupDetectionFindings([...reviewIntervalsByKind.plate, ...reviewIntervalsByKind.face]);
+            st.result = {
+                key: params.key,
+                regions,
+                counts,
+                findings,
+                uncertain: groupDetectionFindings(uncertainIntervals),
+            };
             return true;
         } catch (err) {
             if ((err as DOMException)?.name === "AbortError") {

@@ -24,9 +24,7 @@ function coverage(mask: CropRect, target: CropRect): number {
     return (width * height) / (target.wPct * target.hPct);
 }
 
-test("local YOLO recovers a real plate tracker loss between discovery scans and stops at exit", async ({
-    page,
-}, testInfo) => {
+test("a real plate tracker loss triggers same-frame detection through exit", async ({ page }, testInfo) => {
     test.setTimeout(testInfo.project.metadata.requireWebGpu ? 600_000 : 120_000);
     const workers = readdirSync(resolve(REPO_ROOT, "dist/assets")).filter((name) =>
         /^tracker-worker-.*\.js$/.test(name),
@@ -82,25 +80,18 @@ test("local YOLO recovers a real plate tracker loss between discovery scans and 
     await testInfo.attach("plate-recovery-result", { path, contentType: "application/json" });
     const stats = result.statsByKind.plate;
     expect(stats).toBeDefined();
-    const recoveryScans = stats!.recoveryScans ?? 0;
-    const recoveryTiles = stats!.recoveryTiles ?? 0;
-    expect(recoveryScans, "real tracker rejection triggers same-frame detection").toBeGreaterThan(0);
-    expect(recoveryScans, "at most one recovery scan per unscheduled source frame").toBeLessThanOrEqual(
-        motion.frames.length - 4,
-    );
-    expect(recoveryTiles, "recovery uses a nonempty local subset").toBeGreaterThanOrEqual(recoveryScans);
-    expect(recoveryTiles, "recovery does not rerun the complete four-tile grid").toBeLessThan(recoveryScans * 4);
-    expect(stats!.scans - recoveryScans, "balanced discovery keeps its original schedule").toBe(4);
-    expect(stats!.tiles - recoveryTiles, "scheduled scans retain all four tiles").toBe(16);
-    expect(stats!.trackUpdates, "the real tracker advances before recovery").toBeGreaterThan(0);
+    expect(stats!.recoveryScans).toBe(3);
+    expect(stats!.scans).toBe(4 + stats!.recoveryScans!);
+    expect(stats!.tiles).toBe(stats!.scans * 4);
+    expect(stats!.recoveredTracks).toBe(3);
+    expect(stats!.trackUpdates).toBeGreaterThan(0);
     const tracks = result.tracksByKind.plate ?? [];
-    expect(
-        tracks.some((track) => track.bestScore >= 0.7),
-        "recovery retains the real seed confidence floor",
-    ).toBe(true);
-    // Only the first scheduled scan contains the plate. Additional independent
-    // detector hits therefore come from recovery before the exit at 0.28 s.
-    expect(tracks.reduce((count, track) => count + track.detHits, 0)).toBeGreaterThan(1);
+    expect(tracks).toHaveLength(4);
+    expect(tracks.every((track) => track.detHits === 1)).toBe(true);
+    expect(Math.max(...tracks.map((track) => track.endSec)), "covers the last partially visible plate").toBeCloseTo(
+        0.28,
+    );
+    expect(result.uncertainFramesByKind?.plate).toEqual([]);
     const regions: BlurRegion[] = tracks.map((track, index) => ({
         id: `plate-${index}`,
         channel: "front",

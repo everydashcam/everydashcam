@@ -1093,6 +1093,7 @@ export type I18nKey =
     | "export.blur.detect.hint"
     | "export.blur.detect.review"
     | "export.blur.detect.reviewFindings"
+    | "export.blur.detect.reviewUncertain"
     | "export.blur.detect.needsGpu"
     | "export.blur.detect.consent"
     | "export.blur.detect.download"

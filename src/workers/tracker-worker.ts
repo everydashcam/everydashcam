@@ -21,13 +21,9 @@ import { createFollowSampler } from "../tracking/follow-sampling.js";
 import { chooseAnalysisWidth } from "../tracking/analysis-resolution.js";
 import { type RawDetection, type TileRect } from "../tracking/detect-common.js";
 import { DetectionTileCache } from "../tracking/detection-tile-cache.js";
-import {
-    filterRecoveryDetections,
-    planDetectionRecovery,
-    type DetectionRecoveryPlan,
-} from "../tracking/detection-recovery.js";
 import { DetectionScanCache, type DetectionScanEntry } from "../tracking/detection-scan-cache.js";
 import { createDetectionSampler } from "../tracking/detection-sampling.js";
+import { type DetectionCheckpoint, planDetectionReuse } from "../tracking/detection-analysis.js";
 import { detectionSampleTiming, withFinalSample } from "../tracking/detection-decode.js";
 import { shouldVerifyPlateContext, resolvePlateContextDetections } from "../tracking/detection-context.js";
 import { DetectionPropagation, type SeedDetection } from "../tracking/detection-propagation.js";
@@ -292,8 +288,8 @@ async function runTrackPass(
     };
 }
 
-// All automatic passes follow detector seeds in both directions. Quality
-// changes discovery cadence; a missed scan must not disable verified tracking.
+// Every checkpoint owns its displayed frame. Independent masks may fill only
+// the unchecked frames on either side; empty scheduled scans are hard boundaries.
 
 const DETECT_MARGIN_PCT: Record<DetectKind, number> = { plate: 0.12, face: 0.35 };
 
@@ -310,7 +306,6 @@ interface FrameDetector {
 
 interface DetectIntervalState {
     bounds: TimeInterval;
-    completed: NonNullable<DetectResult["tracksByKind"][DetectKind]>;
 }
 
 interface DetectionObservation extends SourceFrameTiming {
@@ -360,8 +355,8 @@ async function runDetectPass(
         plate: detectionPolicy(req.thresholds?.plate ?? DETECTION_POLICIES.plate.seedScoreMin),
         face: detectionPolicy(req.thresholds?.face ?? DETECTION_POLICIES.face.seedScoreMin),
     };
-    // Keep weak plate maintenance evidence, but never discard candidates
-    // above a lower user-selected seed floor. Face proposals use one floor.
+    // Same-frame tile/context corroboration can use weak plate proposals;
+    // only the final resolved score may seed an independent trajectory.
     const candidateFloors = {
         plate: Math.min(PLATE_SCORE_MIN, policies.plate.seedScoreMin),
         face: policies.face.seedScoreMin,
@@ -382,33 +377,63 @@ async function runDetectPass(
     const tracksByKind: DetectResult["tracksByKind"] = {};
     const sourceFrames = new Map<number, DetectResult["sourceFrames"][number]>();
     const intervalsByKind = new Map<DetectKind, DetectIntervalState[]>();
+    const checkpointsByKind = new Map<DetectKind, Map<number, DetectionCheckpoint>>();
+    const retainedByKind = new Map<DetectKind, Set<number>>();
+    const cachedScansByKind = new Map<DetectKind, Map<number, DetectionCheckpoint>>();
     for (const kind of req.kinds) {
         statsByKind[kind] = {
             scans: 0,
             tiles: 0,
-            recoveryScans: 0,
-            recoveryTiles: 0,
             inferMs: 0,
             trackUpdates: 0,
             backwardUpdates: 0,
             trackMs: 0,
             seededTracks: 0,
-            unconfirmedTracks: 0,
             highMotionUpdates: 0,
-            recoveryUpdates: 0,
             calibrationUpdates: 0,
             contextChecks: 0,
         };
         tracksByKind[kind] = [];
+        const requested = req.analyzeIntervalsByKind[kind] ?? [];
+        const candidate = req.cachedAnalysisByKind?.[kind];
+        const cached =
+            req.segments.length === 1 &&
+            requested.length === 1 &&
+            candidate?.quality === req.quality &&
+            candidate.threshold === policies[kind].seedScoreMin
+                ? candidate
+                : undefined;
+        const plan =
+            requested.length === 1 ? planDetectionReuse(cached, requested[0]!) : { intervals: requested, retained: [] };
         intervalsByKind.set(
             kind,
-            (req.analyzeIntervalsByKind[kind] ?? []).map((bounds) => ({
-                bounds,
-                completed: [],
-            })),
+            plan.intervals.map((bounds) => ({ bounds })),
         );
+        checkpointsByKind.set(kind, new Map(plan.retained.map((checkpoint) => [checkpoint.contentSec, checkpoint])));
+        retainedByKind.set(kind, new Set(plan.retained.map((checkpoint) => checkpoint.contentSec)));
+        cachedScansByKind.set(
+            kind,
+            new Map(cached?.checkpoints.map((checkpoint) => [checkpoint.contentSec, checkpoint])),
+        );
+        // Only completed displayed timing is reusable. Failed/aborted passes
+        // never return a snapshot, and the client keeps the previous one.
+        for (const frame of cached?.sourceFrames ?? []) {
+            if (
+                frame.contentSec + frame.durationSec <= requested[0]!.endSec &&
+                frame.contentSec + frame.durationSec > requested[0]!.startSec
+            )
+                sourceFrames.set(frame.contentSec, {
+                    contentSec: frame.contentSec,
+                    // A frame cut by the new end is decoded again. Keep its
+                    // source-measured duration instead of clipping on the
+                    // content axis, which can round differently after an offset.
+                    durationSec: frame.durationSec,
+                });
+        }
     }
-    const decodeIntervals = unionIntervals(req.kinds.flatMap((kind) => req.analyzeIntervalsByKind[kind] ?? []));
+    const decodeIntervals = unionIntervals(
+        req.kinds.flatMap((kind) => intervalsByKind.get(kind)!.map(({ bounds }) => bounds)),
+    );
     const detectors = new Map<DetectKind, FrameDetector>();
     for (const kind of req.kinds) {
         if (!intervalsByKind.get(kind)!.length) continue;
@@ -459,6 +484,13 @@ async function runDetectPass(
                 };
                 const timeOrigin = await getInputTimeOrigin(input);
                 const firstTimestamp = await vtrack.getFirstTimestamp();
+                // A retained checkpoint names an exact source frame. Reversing
+                // its content-time conversion can round below its PTS, making
+                // samples() yield a predecessor that becomes an extra checkpoint.
+                const resumeTimestamp = req.kinds
+                    .filter((kind) => retainedByKind.get(kind)!.has(interval.startSec))
+                    .map((kind) => checkpointsByKind.get(kind)!.get(interval.startSec)!.sourceTimestamp)[0];
+                const startTimestamp = resumeTimestamp ?? startLocal + timeOrigin;
                 const expectedStartSec = seg.tripStart + Math.max(startLocal, firstTimestamp - timeOrigin);
                 const expectedEndSec = seg.tripStart + endLocal;
                 if (expectedEndSec <= expectedStartSec) continue;
@@ -466,15 +498,18 @@ async function runDetectPass(
                 const frameTimings: Array<{ contentSec: number; durationSec: number }> = [];
                 const observations = new Map<DetectKind, Map<number, DetectionObservation>>();
                 // Forward states can overlap the same presentation frame at a
-                // fractional boundary. Share even empty/partial scan results;
-                // reverse propagation consumes the saved observations only.
+                // fractional boundary. Share their complete checkpoint scans.
                 const scans = new Map<DetectKind, DetectionScanCache>();
-                const recoveryPlans = new WeakMap<DetectionScanEntry, DetectionRecoveryPlan>();
+                const checkpointIndices = new Map<DetectKind, number[]>();
                 const samplers = new Map<DetectKind, ReturnType<typeof createDetectionSampler>>();
                 for (const kind of req.kinds) {
                     observations.set(kind, new Map());
+                    checkpointIndices.set(kind, []);
                     scans.set(kind, new DetectionScanCache());
-                    samplers.set(kind, createDetectionSampler(req.quality, seg.tripStart + startLocal));
+                    samplers.set(
+                        kind,
+                        createDetectionSampler(req.quality, seg.tripStart + firstTimestamp - timeOrigin),
+                    );
                 }
                 const propagationEntries: Array<{
                     kind: DetectKind;
@@ -482,6 +517,7 @@ async function runDetectPass(
                     propagation: DetectionPropagation;
                 }> = [];
                 const propagationByState = new Map<DetectIntervalState, DetectionPropagation>();
+                const propagationKinds = new Map<DetectionPropagation, DetectKind>();
                 let trackerSession: VitTrackerSession | null = null;
                 let reverseSampleBytesHint = 0;
                 let forwardWindowStartIndex = 0;
@@ -501,7 +537,6 @@ async function runDetectPass(
                     frame: OffscreenCanvas,
                     contentSec: number,
                     requested: readonly TileRect[],
-                    recovery: boolean,
                 ) => {
                     const scan = scans.get(kind)!.entryFor(contentSec);
                     const missing = scan.missingTiles(requested);
@@ -515,10 +550,8 @@ async function runDetectPass(
                     signal.throwIfAborted();
                     if (scan.tileCount === 0) {
                         stat.scans++;
-                        if (recovery) stat.recoveryScans!++;
                     }
                     stat.tiles += missing.length;
-                    if (recovery) stat.recoveryTiles! += missing.length;
                     scan.record(missing, boxes);
                     return scan;
                 };
@@ -578,7 +611,7 @@ async function runDetectPass(
                     timing: { contentSec: number; durationSec: number },
                 ) => {
                     const tiles = tileCache.forFrame(frame.width, frame.height);
-                    const scan = await scanTiles(kind, frame, timing.contentSec, tiles, false);
+                    const scan = await scanTiles(kind, frame, timing.contentSec, tiles);
                     const observation = await makeObservation(
                         kind,
                         frame,
@@ -586,6 +619,16 @@ async function runDetectPass(
                         detectors.get(kind)!.merge(scan.boxes),
                     );
                     observations.get(kind)!.set(timing.contentSec, observation);
+                };
+                const redetect = async (kind: DetectKind, index: number, draw: () => OffscreenCanvas) => {
+                    const timing = frameTimings[index]!;
+                    if (!observations.get(kind)!.has(timing.contentSec)) {
+                        await infer(kind, draw(), timing);
+                        statsByKind[kind]!.recoveryScans = (statsByKind[kind]!.recoveryScans ?? 0) + 1;
+                    }
+                    // Supplemental observations do not become fixed checkpoints:
+                    // they only replace failed branches within their owner window.
+                    return observations.get(kind)!.get(timing.contentSec)!.seeds;
                 };
                 let segmentProgress = 0;
                 const progress = (endSec: number, phase: "forward" | "backward" | "complete", reverseFraction = 0) => {
@@ -616,7 +659,7 @@ async function runDetectPass(
                 // sample needs a last-packet query; ordinary trims avoid a full
                 // container duration scan, and EOF decode has warmed the index.
                 for await (const { sample, isLast } of withFinalSample(
-                    measureDecode(sink.samples(startLocal + timeOrigin, endLocal + timeOrigin), timings),
+                    measureDecode(sink.samples(startTimestamp, endLocal + timeOrigin), timings),
                 )) {
                     signal.throwIfAborted();
                     decodedFrames++;
@@ -653,9 +696,28 @@ async function runDetectPass(
                     decodedEndSec = Math.max(decodedEndSec, frameEndSec);
                     for (const kind of req.kinds) {
                         if (!isActive(kind, timing)) continue;
-                        if (!samplers.get(kind)!(timing.contentSec, frameEndSec >= expectedEndSec - 1e-6)) continue;
-                        displayFrame ??= drawDisplaySample(sample);
-                        await infer(kind, displayFrame, timing);
+                        const isEndpoint = intervalsByKind
+                            .get(kind)!
+                            .some(
+                                ({ bounds }) =>
+                                    timing.contentSec < bounds.endSec &&
+                                    frameEndSec >= Math.min(bounds.endSec, expectedEndSec) - 1e-6,
+                            );
+                        if (!samplers.get(kind)!(timing.contentSec, isEndpoint)) continue;
+                        const cached = cachedScansByKind.get(kind)!.get(timing.contentSec);
+                        if (cached) {
+                            observations.get(kind)!.set(timing.contentSec, { ...timing, seeds: cached.seeds });
+                        } else {
+                            displayFrame ??= drawDisplaySample(sample);
+                            await infer(kind, displayFrame, timing);
+                        }
+                        if (!retainedByKind.get(kind)!.has(timing.contentSec))
+                            checkpointsByKind.get(kind)!.set(timing.contentSec, {
+                                ...observations.get(kind)!.get(timing.contentSec)!,
+                                sourceTimestamp: sample.timestamp,
+                                tracks: [],
+                            });
+                        checkpointIndices.get(kind)!.push(frameIndex);
                     }
                     const liveCount = propagationEntries.reduce(
                         (count, { state, propagation }) =>
@@ -672,12 +734,16 @@ async function runDetectPass(
                         return displayFrame ?? frame;
                     };
                     // Discovery and forward tracking consume the same source
-                    // frame. Keep timing/anchors for the later reverse pass,
+                    // frame. Keep seed timing for the later reverse pass,
                     // but never decode this whole window a second time.
                     // Retain every source frame's timing. Propagation uses
-                    // 15 Hz with explicit fast-motion/recovery safeguards.
+                    // 15 Hz with calibration and fast-motion safeguards.
                     for (const kind of req.kinds) {
-                        const seeds = observations.get(kind)!.get(timing.contentSec)?.seeds;
+                        // A retained checkpoint still stops adjacent new tracks,
+                        // but its own complete trajectory needs no model state.
+                        const seeds = retainedByKind.get(kind)!.has(timing.contentSec)
+                            ? []
+                            : observations.get(kind)!.get(timing.contentSec)?.seeds;
                         for (const state of intervalsByKind.get(kind)!) {
                             if (timing.contentSec >= state.bounds.endSec || frameEndSec <= state.bounds.startSec)
                                 continue;
@@ -691,11 +757,12 @@ async function runDetectPass(
                                 );
                                 // No positive seed means no tracker session. Reuse
                                 // the detector runtime; ViTTrack still uses its WASM EP.
-                                trackerSession ??= await getTrackerSession(
-                                    "webgpu",
-                                    req.trackerModelUrl,
-                                    req.ortAssets,
-                                );
+                                if (req.quality !== "thorough")
+                                    trackerSession ??= await getTrackerSession(
+                                        "webgpu",
+                                        req.trackerModelUrl,
+                                        req.ortAssets,
+                                    );
                                 signal.throwIfAborted();
                                 propagation = new DetectionPropagation(trackerSession, {
                                     margin: DETECT_MARGIN_PCT[kind],
@@ -708,41 +775,20 @@ async function runDetectPass(
                                     stats: statsByKind[kind]!,
                                     signal,
                                 });
-                                propagation.beginForwardWindow(Math.max(firstIndex, forwardWindowStartIndex));
+                                const checkpoints = checkpointIndices.get(kind)!;
+                                propagation.beginForwardWindow(
+                                    Math.max(firstIndex, forwardWindowStartIndex),
+                                    checkpoints[checkpoints.length - 2] ?? null,
+                                );
                                 propagationByState.set(state, propagation);
+                                propagationKinds.set(propagation, kind);
                                 propagationEntries.push({ kind, state, propagation });
                             }
                             // Detector scan frames already have display
                             // pixels; reuse them for crops and templates.
-                            await propagation.forward(trackingFrame, frameIndex, seeds, async (lost) => {
-                                const plan = planDetectionRecovery(
-                                    lost,
-                                    frame.width,
-                                    frame.height,
-                                    tileCache.forFrame(frame.width, frame.height),
-                                );
-                                if (plan.tiles.length === 0) return [];
-                                displayFrame ??= drawDisplaySample(sample);
-                                const scan = await scanTiles(kind, displayFrame, timing.contentSec, plan.tiles, true);
-                                const previousPlan = recoveryPlans.get(scan);
-                                const combinedPlan = previousPlan
-                                    ? { regions: [...previousPlan.regions, ...plan.regions], tiles: [] }
-                                    : plan;
-                                recoveryPlans.set(scan, combinedPlan);
-                                // Always merge original per-tile proposals. Feeding a
-                                // previous envelope back into NMS would make grouping
-                                // depend on which loss requested its tiles first.
-                                const accepted = filterRecoveryDetections(
-                                    detectors.get(kind)!.merge(scan.boxes),
-                                    combinedPlan,
-                                    Math.max(policies[kind].seedScoreMin, policies[kind].strongScore),
-                                    frame.width,
-                                    frame.height,
-                                );
-                                const observation = await makeObservation(kind, displayFrame, timing, accepted);
-                                observations.get(kind)!.set(timing.contentSec, observation);
-                                return observation.seeds;
-                            });
+                            await propagation.forward(trackingFrame, frameIndex, seeds, () =>
+                                redetect(kind, frameIndex, () => (displayFrame ??= drawDisplaySample(sample))),
+                            );
                         }
                     }
                     progress(frameEndSec, "forward");
@@ -758,24 +804,18 @@ async function runDetectPass(
                 }
                 const backwardStartedAt = performance.now();
                 for (const { propagation } of propagationEntries) propagation.endForwardWindow();
-                // Discovery groups keep independent identity matching.
+                // Independent seeds share decoded pixels but never evidence.
                 // Nearby groups share decoded frames within a bounded cohort.
                 const reverseGroups = new Map<
                     number,
                     {
                         startIndex: number;
                         branchCount: number;
-                        recoveryWarmupFrames: number;
                         hasHighMotion: boolean;
                         propagations: DetectionPropagation[];
                     }
                 >();
                 const requiredReverseIndices = new Set<number>();
-                for (const [index, timing] of frameTimings.entries()) {
-                    if (req.kinds.some((kind) => observations.get(kind)!.get(timing.contentSec)?.seeds.length)) {
-                        requiredReverseIndices.add(index);
-                    }
-                }
                 for (const { propagation } of propagationEntries) {
                     for (const job of propagation.backwardJobs()) {
                         requiredReverseIndices.add(job.startIndex);
@@ -783,14 +823,12 @@ async function runDetectPass(
                         if (group) {
                             group.startIndex = Math.min(group.startIndex, job.startIndex);
                             group.branchCount++;
-                            group.recoveryWarmupFrames = Math.max(group.recoveryWarmupFrames, job.recoveryWarmupFrames);
                             group.hasHighMotion ||= job.hasHighMotion;
                             if (!group.propagations.includes(propagation)) group.propagations.push(propagation);
                         } else {
                             reverseGroups.set(job.seedIndex, {
                                 startIndex: job.startIndex,
                                 branchCount: 1,
-                                recoveryWarmupFrames: job.recoveryWarmupFrames,
                                 hasHighMotion: job.hasHighMotion,
                                 propagations: [propagation],
                             });
@@ -800,9 +838,6 @@ async function runDetectPass(
                 const reverseWork = [...reverseGroups].reduce(
                     (sum, [seedIndex, group]) => sum + seedIndex - group.startIndex,
                     0,
-                );
-                const propagationKinds = new Map(
-                    propagationEntries.map(({ propagation, kind }) => [propagation, kind]),
                 );
                 const reverseSink = new VideoSampleSink(vtrack);
                 let reverseDone = 0;
@@ -824,9 +859,8 @@ async function runDetectPass(
                         group.started = true;
                         if (!hasWork(group)) reverseDone += group.seedIndex - group.startIndex;
                     };
-                    // Retain pixels on each branch's inference grid, detector
-                    // anchors and safety exceptions. Still consume every source
-                    // timing so holds, gaps and identity boundaries stay exact.
+                    // Retain pixels on each branch's inference grid and safety
+                    // exceptions. Consume every timing to preserve holds and gaps.
                     let sampleBytesHint = reverseSampleBytesHint;
                     // Include the seed in the first bounded block. A separate
                     // getSample would decode the same GOP prefix an extra time.
@@ -920,10 +954,6 @@ async function runDetectPass(
                                 const samplesByIndex = new Map(retained.map(({ index, sample }) => [index, sample]));
                                 for (let index = endIndex - 1; index >= nextEndIndex; index--) {
                                     signal.throwIfAborted();
-                                    // Older groups settle this frame first.
-                                    // Their ready prefix can then safely stop
-                                    // younger duplicates without waiting for
-                                    // unrelated earlier frames to finish.
                                     const needed = cohort.some((group) => group.seedIndex === index || hasWork(group));
                                     if (!needed) continue;
                                     if (
@@ -968,11 +998,10 @@ async function runDetectPass(
                                         } else if (hasWork(group)) {
                                             for (const propagation of group.propagations) {
                                                 const kind = propagationKinds.get(propagation)!;
-                                                await propagation.backward(
-                                                    trackingFrame,
-                                                    index,
-                                                    observations.get(kind)!.get(frameTimings[index]!.contentSec)?.seeds,
-                                                    group.seedIndex,
+                                                await propagation.backward(trackingFrame, index, group.seedIndex, () =>
+                                                    redetect(kind, index, () =>
+                                                        drawDisplaySample(samplesByIndex.get(index)!),
+                                                    ),
                                                 );
                                                 group.hasHighMotion ||= propagation.hasBackwardHighMotion(
                                                     group.seedIndex,
@@ -1013,7 +1042,18 @@ async function runDetectPass(
                         }
                     }
                 }
-                for (const { state, propagation } of propagationEntries) state.completed.push(...propagation.finish());
+                for (const { kind, propagation } of propagationEntries) {
+                    for (const [sec, tracks] of propagation.finishByCheckpoint())
+                        checkpointsByKind
+                            .get(kind)!
+                            .get(sec)!
+                            .tracks.push(...tracks);
+                    for (const [sec, frames] of propagation.uncertainFramesByCheckpoint()) {
+                        const checkpoint = checkpointsByKind.get(kind)!.get(sec)!;
+                        checkpoint.uncertainFrames ??= [];
+                        checkpoint.uncertainFrames.push(...frames);
+                    }
+                }
                 timings.backwardMs += performance.now() - backwardStartedAt;
                 progress(expectedEndSec, "complete");
             } finally {
@@ -1022,15 +1062,38 @@ async function runDetectPass(
         }
         decodeDoneSec += interval.endSec - interval.startSec;
     }
+    const completedFrames = [...sourceFrames.values()].sort((a, b) => a.contentSec - b.contentSec);
+    const analysisByKind: NonNullable<DetectResult["analysisByKind"]> = {};
+    const uncertainFramesByKind: NonNullable<DetectResult["uncertainFramesByKind"]> = {};
     for (const kind of req.kinds) {
-        tracksByKind[kind] = intervalsByKind.get(kind)!.flatMap(({ completed }) => completed);
+        const checkpoints = [...checkpointsByKind.get(kind)!.values()].sort((a, b) => a.contentSec - b.contentSec);
+        tracksByKind[kind] = checkpoints.flatMap(({ tracks }) => tracks).sort((a, b) => a.startSec - b.startSec);
+        uncertainFramesByKind[kind] = [
+            ...new Map(
+                checkpoints.flatMap((checkpoint) =>
+                    (checkpoint.uncertainFrames ?? []).map((frame) => [frame.contentSec, frame] as const),
+                ),
+            ).values(),
+        ].sort((a, b) => a.contentSec - b.contentSec);
+        const requested = req.analyzeIntervalsByKind[kind] ?? [];
+        if (req.segments.length === 1 && requested.length === 1) {
+            analysisByKind[kind] = {
+                bounds: requested[0]!,
+                quality: req.quality,
+                threshold: policies[kind].seedScoreMin,
+                checkpoints,
+                sourceFrames: completedFrames,
+            };
+        }
         statsByKind[kind]!.inferMs = Math.round(statsByKind[kind]!.inferMs);
         statsByKind[kind]!.trackMs = Math.round(statsByKind[kind]!.trackMs);
     }
     return {
         tracksByKind,
         statsByKind,
-        sourceFrames: [...sourceFrames.values()].sort((a, b) => a.contentSec - b.contentSec),
+        analysisByKind,
+        uncertainFramesByKind,
+        sourceFrames: completedFrames,
         decodedFrames,
         passMs: Math.round(performance.now() - passStartMs),
         timings: {

@@ -26,6 +26,8 @@ export const detectThreshold: typeof Detect.detectThreshold = (kind) => DETECTIO
 export const anyDetectEnabled: typeof Detect.anyDetectEnabled = () => false;
 export const detectPassState: typeof Detect.detectPassState = () => null;
 export const detectCounts: typeof Detect.detectCounts = () => null;
+export const detectFindings: typeof Detect.detectFindings = () => [];
+export const detectUncertainFindings: typeof Detect.detectUncertainFindings = () => [];
 export const detectRegions: typeof Detect.detectRegions = () => [];
 export const detectStyle: typeof Detect.detectStyle = () => null;
 export const detectStale: typeof Detect.detectStale = () => false;

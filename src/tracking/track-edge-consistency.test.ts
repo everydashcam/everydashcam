@@ -112,7 +112,7 @@ describe("TrackEdgeConsistency", () => {
         expect(history.needsVerification(box(4), FRAME_W, FRAME_H, 0.09)).toBe(false);
     });
 
-    it("resets motion evidence at a trusted reanchor or a backward clock discontinuity", () => {
+    it("resets motion evidence on an explicit reset or a backward clock discontinuity", () => {
         const history = new TrackEdgeConsistency();
         observe(history, [10, 2, -6]);
         history.reset();

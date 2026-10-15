@@ -271,9 +271,9 @@ describe("TrackAppearanceReference", () => {
     it("requires positive confirmation on a suspicious transition without a preceding mismatch", () => {
         const state = guard();
         expect(state.rejects(ambiguous)).toBe(false);
-        expect(state.rejects(ambiguous, true)).toBe(true);
+        expect(state.rejects(ambiguous, { requireConfirmation: true })).toBe(true);
         expect(state.needsVerification).toBe(true);
-        expect(state.rejects(recovered, true)).toBe(false);
+        expect(state.rejects(recovered, { requireConfirmation: true })).toBe(false);
         expect(state.needsVerification).toBe(false);
     });
 
@@ -285,7 +285,7 @@ describe("TrackAppearanceReference", () => {
             32,
         );
         const fragment = buildAppearanceSample(pixels(pattern), 32, 32, { x: 0, y: 0, w: 0.25, h: 1 });
-        expect(state.rejects(null, true)).toBe(true);
+        expect(state.rejects(null, { requireConfirmation: true })).toBe(true);
         for (const candidate of [null, flat, fragment]) {
             expect(state.rejects(candidate)).toBe(true);
             expect(state.needsVerification).toBe(true);
@@ -293,7 +293,7 @@ describe("TrackAppearanceReference", () => {
         expect(state.rejects(reference)).toBe(false);
     });
 
-    it("abstains without a usable reference and resets uncertainty on a trusted reanchor", () => {
+    it("abstains without a usable reference and resets uncertainty for a new seed", () => {
         const state = new TrackAppearanceReference();
         const flat = buildAppearanceSample(
             pixels(() => 128),
@@ -302,15 +302,15 @@ describe("TrackAppearanceReference", () => {
         );
         for (const seed of [null, flat]) {
             state.setSeed(seed);
-            expect(state.rejects(occluder, true)).toBe(false);
-            expect(state.rejects(null, true)).toBe(false);
+            expect(state.rejects(occluder, { requireConfirmation: true })).toBe(false);
+            expect(state.rejects(null, { requireConfirmation: true })).toBe(false);
             expect(state.needsVerification).toBe(false);
         }
         state.setSeed(reference);
         expect(state.rejects(occluder)).toBe(true);
         state.setSeed(occluder);
         expect(state.needsVerification).toBe(false);
-        expect(state.rejects(occluder, true)).toBe(false);
+        expect(state.rejects(occluder, { requireConfirmation: true })).toBe(false);
         expect(state.rejects(reference)).toBe(true);
         state.setSeed(null);
         expect(state.needsVerification).toBe(false);
@@ -329,23 +329,29 @@ describe("TrackAppearanceReference", () => {
         expect(state.rejects(reference)).toBe(false);
     });
 
-    it("checks proposed anchors without clearing or creating uncertainty", () => {
+    it("rejects provisional weak matches without making later ambiguous frames uncertain", () => {
         const state = guard();
-        expect(state.confirms(occluder)).toBe(false);
-        expect(state.needsVerification).toBe(false);
+        for (const candidate of [ambiguous, occluder, null]) {
+            expect(state.rejects(candidate, { provisional: true })).toBe(true);
+            expect(state.needsVerification).toBe(false);
+            expect(state.rejects(ambiguous)).toBe(false);
+        }
+    });
+
+    it("preserves an existing mismatch on failed provisional checks and clears it on confirmation", () => {
+        const state = guard();
         expect(state.rejects(occluder)).toBe(true);
-        expect(state.confirms(recovered)).toBe(true);
-        expect(state.needsVerification).toBe(true);
-        expect(state.confirms(ambiguous)).toBe(false);
-        expect(state.confirms(null)).toBe(false);
-        expect(state.needsVerification).toBe(true);
-        expect(state.rejects(reference)).toBe(false);
+        for (const candidate of [ambiguous, null]) {
+            expect(state.rejects(candidate, { provisional: true })).toBe(true);
+            expect(state.needsVerification).toBe(true);
+        }
+        expect(state.rejects(recovered, { provisional: true })).toBe(false);
         expect(state.needsVerification).toBe(false);
     });
 
-    it("cannot confirm an anchor without usable seed and candidate information", () => {
+    it("cannot rescue a weak response without usable seed and candidate information", () => {
         const state = new TrackAppearanceReference();
-        expect(state.confirms(reference)).toBe(false);
+        expect(state.rejects(reference, { provisional: true })).toBe(true);
         state.setSeed(reference);
         const flat = buildAppearanceSample(
             pixels(() => 128),
@@ -353,9 +359,11 @@ describe("TrackAppearanceReference", () => {
             32,
         );
         const fragment = buildAppearanceSample(pixels(pattern), 32, 32, { x: 0, y: 0, w: 0.25, h: 1 });
-        expect(state.confirms(flat)).toBe(false);
-        expect(state.confirms(fragment)).toBe(false);
+        for (const candidate of [flat, fragment, null]) {
+            expect(state.rejects(candidate, { provisional: true })).toBe(true);
+            expect(state.needsVerification).toBe(false);
+        }
         state.setSeed(flat);
-        expect(state.confirms(reference)).toBe(false);
+        expect(state.rejects(reference, { provisional: true })).toBe(true);
     });
 });

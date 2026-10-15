@@ -26,7 +26,7 @@ function normalize(box: TrackBox, frameW: number, frameH: number, timeSec: numbe
 /** Flags a possible switch to an inward distractor after outward edge motion.
  * A real target can reverse too: the query requests independent verification.
  * Only rejected suspicious transitions start a short recovery window; continued
- * rejection then latches a loss until a trusted reanchor. Observe accepted model
+ * rejection then latches a loss until a new track is initialized. Observe accepted model
  * updates only, excluding the seed's initial localization. Time advances in
  * tracking order, including when source frames run backward. */
 export class TrackEdgeConsistency {

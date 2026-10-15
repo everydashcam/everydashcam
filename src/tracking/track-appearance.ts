@@ -342,22 +342,22 @@ export class TrackAppearanceReference {
         return this.uncertain;
     }
 
-    /** Check a proposed external anchor without accepting it or clearing a
-     * pending mismatch. Missing reference or candidate pixels are not evidence. */
-    confirms(candidate: AppearanceSample | null): boolean {
-        return (
-            this.seed !== null && candidate !== null && isPositiveConfirmation(usableComparison(this.seed, candidate))
-        );
-    }
-
-    rejects(candidate: AppearanceSample | null, requireConfirmation = false): boolean {
-        if (!this.seed) return false;
+    /** A provisional check can rescue a weak model response, but failure is not
+     * evidence of an identity switch. Only successful confirmation changes its state. */
+    rejects(
+        candidate: AppearanceSample | null,
+        {
+            requireConfirmation = false,
+            provisional = false,
+        }: { requireConfirmation?: boolean; provisional?: boolean } = {},
+    ): boolean {
+        if (!this.seed) return provisional;
         const comparison = candidate ? usableComparison(this.seed, candidate) : null;
-        if (this.uncertain || requireConfirmation) {
-            this.uncertain = !isPositiveConfirmation(comparison);
-        } else {
-            this.uncertain = isClearMismatch(comparison);
-        }
-        return this.uncertain;
+        const rejected =
+            this.uncertain || requireConfirmation || provisional
+                ? !isPositiveConfirmation(comparison)
+                : isClearMismatch(comparison);
+        if (!rejected || !provisional) this.uncertain = rejected;
+        return rejected;
     }
 }

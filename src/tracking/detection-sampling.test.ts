@@ -28,10 +28,23 @@ describe("detection discovery cadence", () => {
         expect(sampledIndices("thorough", 30, 1)).toEqual(Array.from({ length: 31 }, (_, index) => index));
     });
 
+    it.each([60, 120, 240])("caps thorough detection at 30 Hz on %i fps footage", (fps) => {
+        expect(sampledIndices("thorough", fps, 1)).toEqual(
+            Array.from({ length: 31 }, (_, index) => (index * fps) / 30),
+        );
+    });
+
+    it.each([30, 60])("keeps the dense source grid after a fractional trim at %i fps", (fps) => {
+        const sample = createDetectionSampler("thorough", 0);
+        const selected = Array.from({ length: fps / 5 }, (_, index) => 0.2 + index / fps).filter((sec) => sample(sec));
+        expect(selected).toHaveLength(6);
+        for (const [index, sec] of selected.entries()) expect(sec).toBeCloseTo(0.2 + index / 30);
+    });
+
     it("keeps a fractional trim's displayed predecessor and the final off-grid frame", () => {
-        const sample = createDetectionSampler("balanced", 3.02);
+        const sample = createDetectionSampler("balanced", 0);
         const times = [3, 3 + 1 / 30, 3.25, 3.3, 3.5, 3.51];
-        expect(times.filter((time, index) => sample(time, index === times.length - 1))).toEqual([3, 3.3, 3.51]);
+        expect(times.filter((time, index) => sample(time, index === times.length - 1))).toEqual([3, 3.25, 3.5, 3.51]);
     });
 
     it("resumes at the next grid position after a timestamp jump", () => {
@@ -39,6 +52,22 @@ describe("detection discovery cadence", () => {
         const times = [0, 0.5, 2.4, 2.9, 3, 3.5, 4];
         expect(times.filter((time) => sample(time))).toEqual([0, 2.4, 3, 4]);
     });
+
+    it.each(["fast", "balanced", "thorough"] as const)(
+        "keeps interior %s checkpoints fixed across trims",
+        (quality) => {
+            const selected = (first: number) => {
+                const sample = createDetectionSampler(quality, 0);
+                return Array.from({ length: 180 - first }, (_, index) => first + index).filter((index) =>
+                    sample(index / 60),
+                );
+            };
+            const full = selected(0);
+            const trimmed = selected(19);
+            expect(trimmed[0], "the first displayed frame remains a forced checkpoint").toBe(19);
+            expect(trimmed.slice(1)).toEqual(full.filter((index) => index > 19));
+        },
+    );
 
     it("preserves detector endpoint overrides without applying Follow duplicate filtering", () => {
         const sample = createDetectionSampler("balanced", 10.02);
@@ -50,7 +79,7 @@ describe("detection discovery cadence", () => {
         expect(sample(10.28, true)).toBe(true);
         const thorough = createDetectionSampler("thorough", 10.02);
         expect(thorough(10)).toBe(true);
-        expect(thorough(10)).toBe(true);
+        expect(thorough(10)).toBe(false);
     });
 
     it("preserves detector timing validation after sharing its grid", () => {

@@ -95,7 +95,8 @@ import {
     detectEnabled,
     detectQuality,
     detectThreshold,
-    detectRegions,
+    detectFindings,
+    detectUncertainFindings,
     detectStyle,
     type DetectKind,
     detectPassState,
@@ -1241,7 +1242,9 @@ const FOLLOW_GROUPS: readonly BlurAssetGroupId[] = ["track"];
 let blurDetectStripEl: HTMLDivElement | null = null;
 let blurDetectStatusEl: HTMLDivElement | null = null;
 let detectReviewCursor = 0;
+let detectUncertainCursor = 0;
 let detectReviewTrip: ReturnType<typeof activeTrip> = null;
+let detectReviewResults: ReturnType<typeof detectFindings> | null = null;
 let blurDetectPlatesCbEl: HTMLInputElement | null = null;
 let blurDetectFacesCbEl: HTMLInputElement | null = null;
 let blurDetectGpuNoteEl: HTMLDivElement | null = null;
@@ -1819,6 +1822,7 @@ function syncDetectGroup(): void {
     if (reviewTrip !== detectReviewTrip) {
         detectReviewTrip = reviewTrip;
         detectReviewCursor = 0;
+        detectUncertainCursor = 0;
     }
     if (blurDetectPlatesCbEl) {
         blurDetectPlatesCbEl.checked = detectEnabled("plate");
@@ -1853,6 +1857,13 @@ function syncDetectGroup(): void {
     const kinds = enabledDetectKinds();
     const pass = detectPassState();
     const counts = detectCounts();
+    const findings = counts ? detectFindings() : null;
+    if (findings !== detectReviewResults) {
+        detectReviewResults = findings;
+        detectReviewCursor = 0;
+        detectUncertainCursor = 0;
+        detectStatusSig = null;
+    }
     const sig = pass
         ? `p${Math.round(pass.fraction * 100)}`
         : counts && kinds.length > 0
@@ -1878,24 +1889,32 @@ function syncDetectGroup(): void {
         if (kinds.includes("plate")) parts.push(t("export.blur.detect.countPlates", { n: counts.plate }));
         if (kinds.includes("face")) parts.push(t("export.blur.detect.countFaces", { n: counts.face }));
         el.appendChild(trackerMessageNode(parts.join(" · ")));
-        const findings = detectRegions()
-            .slice()
-            .sort((a, b) => a.startSec - b.startSec);
-        if (findings.length > 0) {
+        const uncertain = detectUncertainFindings();
+        if (uncertain.length > 0) {
+            const review = document.createElement("button");
+            review.type = "button";
+            review.className = "export-panel__secondary-btn export-panel__blur-uncertain-btn";
+            review.textContent = t("export.blur.detect.reviewUncertain", { n: uncertain.length });
+            review.addEventListener("click", () => {
+                const live = detectUncertainFindings();
+                if (live.length === 0) return;
+                const finding = live[detectUncertainCursor % live.length]!;
+                detectUncertainCursor = (detectUncertainCursor + 1) % live.length;
+                seekPresentedContentTime(finding.seekSec);
+            });
+            el.appendChild(review);
+        }
+        if (findings && findings.length > 0) {
             const review = document.createElement("button");
             review.type = "button";
             review.className = "export-panel__secondary-btn export-panel__blur-review-btn";
             review.textContent = t("export.blur.detect.reviewFindings");
             review.addEventListener("click", () => {
-                const live = detectRegions()
-                    .slice()
-                    .sort((a, b) => a.startSec - b.startSec);
+                const live = detectFindings();
                 if (live.length === 0) return;
                 const finding = live[detectReviewCursor % live.length]!;
                 detectReviewCursor = (detectReviewCursor + 1) % live.length;
-                // Keep short findings strictly inside their exclusive end.
-                // The midpoint also avoids seeking just before the first frame.
-                seekPresentedContentTime(finding.startSec + Math.min(0.1, (finding.endSec - finding.startSec) / 2));
+                seekPresentedContentTime(finding.seekSec);
             });
             el.appendChild(review);
         } else {

@@ -23,10 +23,10 @@
 // update() crops a 256x256 search window around the last box (factor 4), runs
 // the model with BOTH tensors (ORT sessions are stateless - unlike OpenCV DNN,
 // where setInput("template") persists across forward() calls) and decodes the
-// 16x16 confidence/size/offset maps into the next box. On score < threshold
-// the box deliberately does NOT move (OpenCV behavior): the target is likely
-// occluded and following the noise would drag the box away; the caller decides
-// when a low-score streak means the target is gone. Beyond OpenCV we also reject
+// 16x16 confidence/size/offset maps into the next box. Candidate ranking uses a
+// softened Hann window. A response below the full Hann threshold still needs
+// positive frozen-appearance confirmation: motion alone can depress that score.
+// The caller decides when a low-score streak means the target is gone. We also reject
 // a confident-but-physically-implausible step (teleport across the frame, sudden
 // size jump, runaway that fills the frame) - a `rejected` update behaves like a
 // low-score one (guards + rationale in track-guards.ts).
@@ -53,6 +53,9 @@ export type { TrackBox } from "./track-guards.js";
 const TEMPLATE_SIZE = 128;
 const SEARCH_SIZE = 256;
 const MAP_SIZE = 16;
+/** Blend the spatial prior halfway toward uniform confidence so a displaced
+ * target can beat a weaker central response. */
+const HANN_INFLUENCE = 0.5;
 /** OpenCV default: "safe threshold to filter out black frames". */
 export const VITTRACK_SCORE_THRESHOLD = 0.2;
 
@@ -228,8 +231,7 @@ export class VitTrack {
         return this.geometry.box;
     }
 
-    /** Seeds a new object. Continuing detector hits use reanchor so they cannot
-     *  renew the original object's total growth budget. */
+    /** Seeds an independent object with its own frozen appearance and size cap. */
     init(frame: TrackingFrame, frameW: number, frameH: number, box: TrackBox): void {
         const { crop } = this.runtime.crop(frame, frameW, frameH, box, 2);
         preprocessInto(crop, this.templateWorkspace);
@@ -240,31 +242,6 @@ export class VitTrack {
         this.edgeConsistency.reset();
         this.elapsedSec = 0;
         this.uncertain = false;
-    }
-
-    /** Refreshes a matched object's template while preserving its original
-     *  size cap and settled guards. False leaves the existing template intact. */
-    reanchor(
-        frame: TrackingFrame,
-        frameW: number,
-        frameH: number,
-        box: TrackBox,
-        requireAppearanceConfirmation = false,
-    ): boolean {
-        if (!this.geometry) throw new Error("vittrack: reanchor before init");
-        const sample = captureTexture(this.textureCtx, frame, frameW, frameH, box);
-        // A weak class hit is maintenance evidence, not permission to replace
-        // the object's identity. Confirm it against the frozen reference first.
-        if (requireAppearanceConfirmation && !this.appearanceReference.confirms(sample?.appearance ?? null))
-            return false;
-        if (!this.geometry.reanchor(box, frameW, frameH)) return false;
-        const { crop } = this.runtime.crop(frame, frameW, frameH, box, 2);
-        preprocessInto(crop, this.templateWorkspace);
-        this.textureReference.setSeed(sample);
-        this.appearanceReference.setSeed(sample?.appearance ?? null);
-        this.edgeConsistency.reset();
-        this.uncertain = false;
-        return true;
     }
 
     /** Advances by one analyzed frame, `dtSec` seconds after the previous one.
@@ -305,7 +282,7 @@ export class VitTrack {
             let maxVal = Number.NEGATIVE_INFINITY;
             let maxIdx = 0;
             for (let i = 0; i < MAP_SIZE * MAP_SIZE; i++) {
-                const v = conf[i]! * HANN[i]!;
+                const v = conf[i]! * (1 - HANN_INFLUENCE + HANN_INFLUENCE * HANN[i]!);
                 if (v > maxVal) {
                     maxVal = v;
                     maxIdx = i;
@@ -313,9 +290,15 @@ export class VitTrack {
             }
             let rejected = false;
             let edgeReversal = false;
+            let score = maxVal;
+            // Relaxed ranking must not promote a distant lookalike past identity
+            // checks. Keep the full Hann prior as the appearance-verification
+            // gate, even when the relaxed score already clears the threshold.
+            const motionPenalized =
+                conf[maxIdx]! * HANN[maxIdx]! < VITTRACK_SCORE_THRESHOLD && conf[maxIdx]! >= VITTRACK_SCORE_THRESHOLD;
             let reason: "low-score" | "texture-collapse" | "appearance" | "geometry" | null =
                 maxVal < VITTRACK_SCORE_THRESHOLD ? "low-score" : null;
-            if (maxVal >= VITTRACK_SCORE_THRESHOLD) {
+            if (maxVal >= VITTRACK_SCORE_THRESHOLD || motionPenalized) {
                 const mx = maxIdx % MAP_SIZE;
                 const my = Math.trunc(maxIdx / MAP_SIZE);
                 const plane = MAP_SIZE * MAP_SIZE;
@@ -337,6 +320,7 @@ export class VitTrack {
                 const cyPx = cand.y + cand.h / 2;
                 edgeReversal = this.edgeConsistency.needsVerification(cand, frameW, frameH, this.elapsedSec);
                 const verifyAppearance =
+                    motionPenalized ||
                     this.uncertain ||
                     this.appearanceReference.needsVerification ||
                     edgeReversal ||
@@ -361,7 +345,10 @@ export class VitTrack {
                     reason = "texture-collapse";
                 } else if (
                     verifyAppearance &&
-                    this.appearanceReference.rejects(sample?.appearance ?? null, edgeReversal)
+                    this.appearanceReference.rejects(sample?.appearance ?? null, {
+                        requireConfirmation: edgeReversal,
+                        provisional: motionPenalized,
+                    })
                 ) {
                     rejected = true;
                     reason = "appearance";
@@ -369,13 +356,23 @@ export class VitTrack {
                     rejected = !geometry.acceptCandidate(cand);
                     if (rejected) reason = "geometry";
                 }
+                if (!rejected && motionPenalized) {
+                    score = conf[maxIdx]!;
+                    reason = null;
+                }
+                // An unconfirmed weak candidate retains ordinary low-score
+                // behavior; its proposed edge reversal is not trusted evidence.
+                if (rejected && motionPenalized) {
+                    edgeReversal = false;
+                    reason = "low-score";
+                }
             }
             this.uncertain = reason !== null;
             if (!this.uncertain) this.edgeConsistency.observeAccepted(geometry.box, frameW, frameH, this.elapsedSec);
             else this.edgeConsistency.observeRejected(this.elapsedSec, edgeReversal);
             return {
                 box: geometry.box,
-                score: maxVal,
+                score,
                 rejected,
                 lost: this.edgeConsistency.lost,
                 diagnostics: { reason },

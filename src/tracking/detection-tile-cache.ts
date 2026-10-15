@@ -1,6 +1,6 @@
 import { type TileRect, tileRects } from "./detect-common.js";
 
-/** Share discovery and recovery geometry for the current decoded dimensions.
+/** Share detector tile geometry for the current decoded dimensions.
  * A single source track can change resolution or display orientation. Retain
  * only the latest grid; earlier scan results own their separate tile coverage. */
 export class DetectionTileCache {

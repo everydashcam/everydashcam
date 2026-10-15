@@ -87,7 +87,7 @@ describe("TrackGeometry", () => {
         expect(geometry.acceptCandidate({ ...scaled, x: scaled.x - 5, w: 80 })).toBe(false);
     });
 
-    it("stops a gradual balloon despite repeated detector anchors and a resize", () => {
+    it("stops a gradual balloon through accepted predictions and a resize", () => {
         const geometry = new TrackGeometry(centered(FRAME_W * 0.05, FRAME_H * 0.05), FRAME_W, FRAME_H);
         settle(geometry);
         let scale = 1;
@@ -105,22 +105,12 @@ describe("TrackGeometry", () => {
             if (!geometry.acceptCandidate(next)) {
                 stopped = true;
                 expect(step, "small plausible steps precede the total growth limit").toBeGreaterThan(10);
-                expect(geometry.reanchor(next, FRAME_W * scale, FRAME_H * scale)).toBe(false);
                 expect(geometry.box).toEqual(current);
                 break;
             }
-            expect(geometry.reanchor(next, FRAME_W * scale, FRAME_H * scale)).toBe(true);
             expect(geometry.box.w / (FRAME_W * scale)).toBeLessThanOrEqual(0.15);
         }
         expect(stopped, "the chain stops before a small seed becomes a large cover").toBe(true);
-    });
-
-    it("does not restart the size-rate warmup on a detector anchor", () => {
-        const geometry = new TrackGeometry(centered(100, 50), FRAME_W, FRAME_H);
-        settle(geometry);
-        expect(geometry.reanchor(centered(110, 55), FRAME_W, FRAME_H)).toBe(true);
-        geometry.advanceFrame(FRAME_W, FRAME_H, DT);
-        expect(geometry.acceptCandidate(centered(143, 72))).toBe(false);
     });
 
     it("keeps the absolute cap after an extended loss", () => {

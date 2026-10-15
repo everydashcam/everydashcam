@@ -31,10 +31,11 @@ To run every scenario in a feature file, use the full entry point, for example
 
 Real plate/face inference also has an explicit required project:
 `npm run test:e2e -- --project=detectors-webgpu --workers=1`. It runs short
-plate and face motion cases, thorough small-plate continuity and tracker-loss
-recovery; missing WebGPU or `shader-f16` fails instead of skipping. On a local
-desktop, add `--headed`
-when the headless browser cannot acquire its hardware adapter.
+plate and face motion cases, negative small-plate checkpoints, 60 fps mask copying,
+same-frame detector recovery after tracker loss, and cached range extensions
+compared with fresh inference; missing WebGPU or `shader-f16` fails instead of
+skipping. On a local desktop, add `--headed` when the headless browser cannot
+acquire its hardware adapter.
 
 The separate Linux CI job installs Mesa lavapipe and selects its ICD through
 [`VK_DRIVER_FILES`](https://docs.mesa3d.org/install.html#vulkan). Chromium's

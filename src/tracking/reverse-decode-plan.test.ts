@@ -128,36 +128,6 @@ describe("planReverseFrameIndices", () => {
         ]);
     });
 
-    it("adds recovery warmup beyond calibration without shifting the normal reverse cadence", () => {
-        const frames = framesAtRate(13, 60);
-        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 0 }])).toEqual([
-            0, 4, 8, 9, 10, 11, 12,
-        ]);
-        expect(planReverseFrameIndices(frames, [{ ...group(12), recoveryWarmupFrames: 5 }])).toEqual([
-            0, 4, 7, 8, 9, 10, 11, 12,
-        ]);
-        expect(planReverseFrameIndices(frames, [{ ...group(12, 1, 10), recoveryWarmupFrames: 5 }])).toEqual([
-            10, 11, 12,
-        ]);
-    });
-
-    it("retains normal and recovery phases in a mixed cohort", () => {
-        const groups = [group(12), { ...group(13), recoveryWarmupFrames: 2 }];
-        expect(planReverseFrameIndices(framesAtRate(14, 60), groups)).toEqual([0, 1, 4, 5, 8, 9, 10, 11, 12, 13]);
-        expect(planReverseCohorts(groups)).toEqual([groups]);
-    });
-
-    it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
-        "rejects invalid recovery warmup %s",
-        (warmup) => {
-            const invalid = { ...group(10), recoveryWarmupFrames: warmup };
-            expect(() => planReverseCohorts([invalid])).toThrow("reverse decode recovery warmup is invalid");
-            expect(() => planReverseFrameIndices(framesAtRate(20, 30), [invalid])).toThrow(
-                "reverse decode recovery warmup is invalid",
-            );
-        },
-    );
-
     it("retains every high-motion frame while keeping other groups sparse", () => {
         const frames = framesAtRate(14, 60);
         expect(planReverseFrameIndices(frames, [{ ...group(12), hasHighMotion: false }])).toEqual([

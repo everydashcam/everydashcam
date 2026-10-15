@@ -11,6 +11,7 @@ import type { DetectionQuality } from "../tracking/detection-sampling.js";
 import type { DetectionThresholds } from "../tracking/detector-policy.js";
 import type { TimeInterval } from "../tracking/interval-set.js";
 import type { SourceFrameTiming } from "../tracking/propagated-track.js";
+import type { DetectionAnalysis } from "../tracking/detection-analysis.js";
 import type { CropRect } from "../transcode/compose.js";
 
 /** One decode window within one source file, positioned on the content axis. */
@@ -82,11 +83,14 @@ export interface DetectRequestData {
     kinds: DetectKind[];
     /** Discovery cadence; tracking fills the intervals between detector scans. */
     quality: DetectionQuality;
-    /** Per-kind seed and confirmation floors; omitted values use the defaults. */
+    /** Per-kind confidence floors; omitted values use the defaults. */
     thresholds?: Partial<DetectionThresholds>;
     /** Per kind: complete ranges requiring analysis. The client sends the full
      *  requested range on a cache miss, or [] when an enclosing pass is cached. */
     analyzeIntervalsByKind: Partial<Record<DetectKind, TimeInterval[]>>;
+    /** Completed evidence from the same source ownership window. The worker
+     * replans boundary dependencies before reusing any trajectory. */
+    cachedAnalysisByKind?: Partial<Record<DetectKind, DetectionAnalysis>>;
     /** Same-origin detector model URLs, resolved on the main thread. */
     plateModelUrl: string;
     faceModelUrl: string;
@@ -105,13 +109,7 @@ export interface DetectProgressData {
  *  coordinates. Interpolated positions are expanded to actual source frames;
  *  keyframes use hold interpolation for the duration of each source frame.
  *  detHits/bestScore retain the detector evidence for diagnostics. */
-export interface DetectResultTrack {
-    detHits: number;
-    bestScore: number;
-    startSec: number;
-    endSec: number;
-    keyframes: Array<{ contentSec: number; rect: CropRect }>;
-}
+export type DetectResultTrack = import("../tracking/detect-track.js").DetectedTrack;
 
 /** Pass effort counters, per kind. The client logs them once per pass - the
  *  arbiter for "the pass feels slow" field reports: which kind ate the time
@@ -121,9 +119,6 @@ export interface DetectPassStats {
     scans: number;
     /** Tile inferences across those scans. */
     tiles: number;
-    /** Subset of scans/tiles used to verify an actual sparse tracker loss. */
-    recoveryScans?: number;
-    recoveryTiles?: number;
     /** Wall ms inside the detector. */
     inferMs: number;
     /** Tracker update calls across this kind's objects, in both directions. */
@@ -134,11 +129,12 @@ export interface DetectPassStats {
     trackMs: number;
     /** Detector proposals that created a new trajectory. */
     seededTracks?: number;
-    /** Seeded trajectories rejected for insufficient detector evidence. */
-    unconfirmedTracks?: number;
-    /** Off-grid updates with a motion, recovery or calibration reason. */
+    /** Extra full scans triggered by a tracker rejection, shared per frame. */
+    recoveryScans?: number;
+    /** Fresh detector seeds replacing rejected tracker branches. */
+    recoveredTracks?: number;
+    /** Off-grid updates with a motion or calibration reason. */
     highMotionUpdates?: number;
-    recoveryUpdates?: number;
     calibrationUpdates?: number;
     /** Full-frame checks of large plate proposals, included in tiles/inferMs. */
     contextChecks?: number;
@@ -146,7 +142,12 @@ export interface DetectPassStats {
 
 export interface DetectResult {
     tracksByKind: Partial<Record<DetectKind, DetectResultTrack[]>>;
+    /** Frames where tracking and same-frame detection both failed to locate an object. */
+    uncertainFramesByKind?: Partial<Record<DetectKind, SourceFrameTiming[]>>;
     statsByKind: Partial<Record<DetectKind, DetectPassStats>>;
+    /** Returned only for single-window requests; committed by the client after
+     * success so cancellation never replaces completed evidence. */
+    analysisByKind?: Partial<Record<DetectKind, DetectionAnalysis>>;
     /** Sorted unique displayed source frames on the content axis, shared by
      * both detector kinds. Durations include a verified held final-video tail.
      * Geometry keyframes can be compressed, so cached trims need these exact

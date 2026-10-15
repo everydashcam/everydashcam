@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Animate the credited public-domain portrait crop; no external downloads.
-// Usage: node scripts/make-face-detector-motion-fixture.mjs [--rotated]
+// Usage: node scripts/make-face-detector-motion-fixture.mjs [--rotated | --60fps]
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
@@ -10,6 +10,44 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const outputDir = resolve(dirname(fileURLToPath(import.meta.url)), "../tests/testdata/detector-motion");
+if (process.argv.includes("--60fps")) {
+    const filename = "face-motion-60fps.mp4";
+    execFileSync("ffmpeg", [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        resolve(outputDir, "face-motion.mp4"),
+        "-vf",
+        "fps=60",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "main",
+        "-pix_fmt",
+        "yuv420p",
+        "-crf",
+        "8",
+        "-preset",
+        "slow",
+        "-g",
+        "60",
+        "-bf",
+        "0",
+        "-movflags",
+        "+faststart",
+        resolve(outputDir, filename),
+    ]);
+    writeFileSync(
+        resolve(outputDir, `${filename}.source.md`),
+        "# Public-domain portrait motion at 60 fps\n\n" +
+            "Derived from [the credited portrait fixture](face-motion.mp4.source.md) with [the generator](../../../scripts/make-face-detector-motion-fixture.mjs) using `--60fps`. The original NASA attribution applies. Contains no user recording or private data.\n\n" +
+            "Each original 30 fps frame is repeated twice, with H.264 Main encoding at CRF 8. Duration and geometry match `face-motion.json`; each box holds for two 60 fps frames. Tests verify 30 Hz detection and copied masks on unchecked neighboring frames without loading ViTTrack.\n",
+    );
+    process.exit(0);
+}
 if (process.argv.includes("--rotated")) {
     const temporary = mkdtempSync(resolve(tmpdir(), "face-motion-rotation-"));
     const coded = resolve(temporary, "coded.mp4");

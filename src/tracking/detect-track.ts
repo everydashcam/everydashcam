@@ -10,8 +10,8 @@ export interface TrackKeyframe {
     rect: CropRect;
 }
 
-/** A confirmed detector sequence, ready to become an auto blur region. Hit
- *  counts and best scores retain confirmation evidence for diagnostics. */
+/** An accepted detector seed and its bounded mask, ready to become an auto
+ * blur region. Hit counts and scores retain detector evidence for diagnostics. */
 export interface DetectedTrack {
     startSec: number;
     endSec: number;

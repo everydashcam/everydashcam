@@ -81,7 +81,7 @@ export function captureTexture(
     };
 }
 
-/** A fixed appearance reference. Only init or a trusted explicit reanchor sets
+/** A fixed appearance reference. Only initializing a new track sets
  * it; accepting a prediction must never teach the guard to trust its mistakes.
  * This catches severe texture collapse, not general identity switches. */
 export class TrackTextureReference {

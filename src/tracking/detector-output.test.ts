@@ -40,10 +40,7 @@ describe("detector output mapping", () => {
             },
             detections,
         );
-        expect(detections).toEqual([
-            { x: 170, y: 220, w: 20, h: 40, score: 0.5 },
-            { x: 211, y: 220, w: 18, h: 40, score: 0.75 },
-        ]);
+        expect(detections).toEqual([{ x: 211, y: 220, w: 18, h: 40, score: 0.75 }]);
     });
 
     it("maps channels-first plates including close plates and drops scores below the candidate floor", () => {

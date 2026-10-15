@@ -76,8 +76,8 @@ export default defineConfig({
             name: "detectors-webgpu",
             default: false,
             metadata: { requireWebGpu: true },
-            testMatch: /(?:detector-motion|plate-recovery)\.spec\.ts/,
-            grep: /every frame of a brief fast-moving (?:plate|face)|thorough real detector covers all 24 small-plate frames|genuine large plate|only the final frame seeds reverse tracking|local YOLO recovers/,
+            testMatch: /(?:detector-motion|plate-recovery|detection-cache)\.spec\.ts/,
+            grep: /checkpoint cache matches fresh|every frame of a brief fast-moving (?:plate|face)|thorough real detector covers only eligible small-plate checkpoint hits|genuine large plate|only the final frame seeds reverse tracking|a real plate tracker loss|60 fps face/,
             outputDir: resolve(ARTIFACT_ROOT, "test-results/detectors"),
             use: {
                 channel: "chromium",

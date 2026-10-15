@@ -51,7 +51,9 @@ const plateCase = {
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
     hasForwardUpdates: true,
+    hasFastReverseMotion: false,
     thresholds: undefined as DetectRequestData["thresholds"],
+    uncoveredVisibleIndices: [] as number[],
     expectsBackwardUpdates: true,
     minimumContextChecks: 0,
     tilesPerScan: 1,
@@ -72,7 +74,9 @@ const faceCase = {
     minimumBackwardUpdates: 0,
     expectsTrackUpdates: true,
     hasForwardUpdates: true,
+    hasFastReverseMotion: false,
     thresholds: undefined as DetectRequestData["thresholds"],
+    uncoveredVisibleIndices: [] as number[],
     expectsBackwardUpdates: true,
     minimumContextChecks: 0,
     tilesPerScan: 1,
@@ -104,6 +108,20 @@ const longPlateCase = {
 const cases = [
     plateCase,
     faceCase,
+    {
+        ...faceCase,
+        label: "every frame of a 60 fps face using 30 Hz detection and adjacent box copies",
+        motion: {
+            ...faceCase.motion,
+            filename: "face-motion-60fps.mp4",
+            fps: 60,
+            frames: faceCase.motion.frames.flatMap((frame, index) => [
+                { ...frame, contentSec: index / 30 },
+                { ...frame, contentSec: (index * 2 + 1) / 60 },
+            ]),
+        },
+        expectedScans: 25,
+    },
     {
         ...faceCase,
         label: "rejects faces below the chosen 1.00 threshold",
@@ -170,10 +188,16 @@ const cases = [
     {
         ...longPlateCase,
         quality: "fast" as const,
-        label: "all moving plate frames before and after one discovery hit",
-        startSec: 0.4,
-        expectedScans: 4,
+        label: "all moving plate frames after an off-grid starting checkpoint",
+        motion: {
+            ...longPlateCase.motion,
+            frames: longPlateCase.motion.frames.filter((frame) => frame.contentSec >= 1.4),
+        },
+        startSec: 1.4,
+        expectedScans: 3,
         singleSeedSec: 1.4,
+        expectedBeforeSeed: 0,
+        expectsBackwardUpdates: false,
     },
     {
         ...longPlateCase,
@@ -184,25 +208,30 @@ const cases = [
             durationSec: 43 / 30,
             frames: longPlateCase.motion.frames.filter((frame) => frame.contentSec < 43 / 30),
         },
-        // The first scan is blank; the second is the final displayed frame.
+        // The first and 1 s grid scans are blank; only the final frame seeds.
         // Reverse must discover fast motion itself without a forward update.
         startSec: 0.4,
-        expectedScans: 2,
+        expectedScans: 3,
         singleSeedSec: 1.4,
         expectedAfterSeed: 0,
         hasForwardUpdates: false,
+        hasFastReverseMotion: true,
     },
     {
         ...longPlateCase,
         quality: "fast" as const,
-        label: "a 48 by 12 pixel plate on both sides of one tiled discovery hit",
+        label: "a 48 by 12 pixel plate after an off-grid starting checkpoint",
         motion: {
             ...crispSmallPlateMotion,
-            frames: crispSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
+            frames: crispSmallPlateMotion.frames
+                .filter((frame) => frame.contentSec >= 1.4)
+                .map((frame) => ({ ...frame, boxes: frame.plates })),
         },
-        startSec: 0.4,
-        expectedScans: 4,
+        startSec: 1.4,
+        expectedScans: 3,
         singleSeedSec: 1.4,
+        expectedBeforeSeed: 0,
+        expectsBackwardUpdates: false,
         // The measured detector seed is 64 by 20 px after coverage padding;
         // keep the absolute allowance small without treating quantization as drift.
         maxMaskArea: 2.5,
@@ -227,13 +256,17 @@ const cases = [
         label: "a small plate with bounded reverse calibration and sparse tracking",
         motion: {
             ...slowSmallPlateMotion,
-            frames: slowSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
+            durationSec: 85 / 30,
+            frames: slowSmallPlateMotion.frames
+                .filter((frame) => frame.contentSec < 85 / 30)
+                .map((frame) => ({ ...frame, boxes: frame.plates })),
         },
         startSec: 0.8,
-        expectedScans: 7,
+        expectedScans: 4,
         singleSeedSec: 2.8,
         expectedBeforeSeed: 12,
-        expectedAfterSeed: 11,
+        expectedAfterSeed: 0,
+        hasForwardUpdates: false,
         // Calibration adds one source sample before returning to 15 Hz.
         minimumBackwardUpdates: 5,
         maxMaskArea: 2.5,
@@ -242,29 +275,38 @@ const cases = [
     {
         ...longPlateCase,
         quality: "balanced" as const,
-        label: "all 24 small-plate frames across intermediate discovery scans",
+        label: "a small-plate endpoint beside an empty checkpoint without filling its misses",
         motion: {
             ...slowSmallPlateMotion,
-            frames: slowSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
+            durationSec: 85 / 30,
+            frames: slowSmallPlateMotion.frames
+                .filter((frame) => frame.contentSec < 85 / 30)
+                .map((frame) => ({ ...frame, boxes: frame.plates })),
         },
         startSec: 0.3,
-        expectedScans: 24,
-        // Sparse reverse updates cross a discovery interval; rejected scans
-        // must not clip the twelve earlier displayed frames.
-        minimumBackwardUpdates: 5,
+        expectedScans: 12,
+        // Only the forced endpoint at 2.8 s is eligible. The preceding
+        // grid scan at 2.767 s excludes all earlier visible frames.
+        expectsTrackUpdates: false,
+        uncoveredVisibleIndices: Array.from({ length: 12 }, (_, index) => 72 + index),
         maxMaskArea: 2.5,
         tilesPerScan: 4,
     },
     {
         ...longPlateCase,
         quality: "thorough" as const,
-        label: "all 24 small-plate frames when additional scans miss or reject the moving target",
+        label: "only eligible small-plate checkpoint hits without filling detector misses",
         motion: {
             ...slowSmallPlateMotion,
             frames: slowSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
         },
         startSec: 0.3,
         expectedScans: slowSmallPlateMotion.frames.length - Math.round(0.3 * slowSmallPlateMotion.fps),
+        // Only frames 84 and 85 clear the selected confidence floor.
+        uncoveredVisibleIndices: [
+            ...Array.from({ length: 12 }, (_, i) => 72 + i),
+            ...Array.from({ length: 10 }, (_, i) => 86 + i),
+        ],
         maxMaskArea: 2.5,
         tilesPerScan: 4,
     },
@@ -305,12 +347,14 @@ for (const {
     minimumBackwardUpdates,
     expectsTrackUpdates,
     hasForwardUpdates,
+    hasFastReverseMotion,
     thresholds,
+    uncoveredVisibleIndices,
     expectsBackwardUpdates,
     minimumContextChecks,
     tilesPerScan,
 } of cases) {
-    const usesTracker = !expectedMiss;
+    const usesTracker = !expectedMiss && quality !== "thorough";
     test(
         `${quality} real detector ${expectedMiss ? label : `covers ${label}`} ${usesTracker ? "with bidirectional ViTTrack" : "without loading ViTTrack"}`,
         { tag: "@golden-blur" },
@@ -457,20 +501,14 @@ self.postMessage = function(message, ...args) {
             expect(result.timings!.sourceEndQueries, "ordinary trims need no last-packet scan").toBe(
                 motion.filename === "face-held-tail.mp4" ? 1 : 0,
             );
-            const recoveryScans = stats!.recoveryScans ?? 0;
-            const recoveryTiles = stats!.recoveryTiles ?? 0;
             const contextChecks = stats!.contextChecks ?? 0;
-            if (
-                quality === "thorough" &&
-                splitSec === null &&
-                ["plate-motion.mp4", "face-motion.mp4"].includes(motion.filename)
-            ) {
-                expect(
-                    stats!.trackUpdates,
-                    "frequent detector anchors retain the 15 Hz inference budget",
-                ).toBeLessThanOrEqual(8);
+            const recoveryScans = stats!.recoveryScans ?? 0;
+            if (quality === "thorough") {
+                expect(stats!.trackUpdates, "dense detection never invokes ViTTrack").toBe(0);
+                expect(result.timings!.backwardSamples).toBe(0);
+                expect(recoveryScans).toBe(0);
             }
-            expect(stats!.scans - recoveryScans, "detector follows the selected discovery policy").toBe(expectedScans);
+            expect(stats!.scans, "fixed discovery plus shared same-frame recovery").toBe(expectedScans + recoveryScans);
             expect(
                 contextChecks,
                 "large plate proposals are verified against full-frame context",
@@ -481,17 +519,9 @@ self.postMessage = function(message, ...args) {
                     "context corroboration does not add independent detector evidence",
                 ).toBe(expectedScans);
             }
-            expect(
-                stats!.tiles - recoveryTiles - contextChecks,
-                "discovery retains the source-resolution tile grid",
-            ).toBe(expectedScans * tilesPerScan);
-            expect(recoveryTiles, "recovery never scans a frame tile twice").toBeLessThanOrEqual(
-                recoveryScans * tilesPerScan,
+            expect(stats!.tiles - contextChecks, "discovery retains the source-resolution tile grid").toBe(
+                (expectedScans + recoveryScans) * tilesPerScan,
             );
-            if (!usesTracker) {
-                expect(recoveryScans).toBe(0);
-                expect(recoveryTiles).toBe(0);
-            }
             if (usesTracker && expectsTrackUpdates) {
                 if (expectsBackwardUpdates) {
                     expect(stats!.backwardUpdates, "positive discovery tracks preceding source frames").toBeGreaterThan(
@@ -515,11 +545,11 @@ self.postMessage = function(message, ...args) {
                         stats!.calibrationUpdates,
                         "reverse motion is calibrated from the next source frame",
                     ).toBeGreaterThan(0);
-                    expect(
-                        stats!.highMotionUpdates,
-                        "reverse-only fast motion restores source cadence",
-                    ).toBeGreaterThan(0);
-                    expect(recoveryScans, "reverse calibration does not add forward recovery evidence").toBe(0);
+                    if (hasFastReverseMotion)
+                        expect(
+                            stats!.highMotionUpdates,
+                            "reverse-only fast motion restores source cadence",
+                        ).toBeGreaterThan(0);
                 }
                 expect(stats!.trackMs, "tracker inference time is measured").toBeGreaterThan(0);
             } else {
@@ -561,9 +591,9 @@ self.postMessage = function(message, ...args) {
                 );
                 expect(
                     (result.tracksByKind[kind] ?? []).reduce((sum, track) => sum + track.detHits, 0),
-                    "one discovery hit plus bounded recovery evidence supports both directions",
-                ).toBeLessThanOrEqual(1 + recoveryScans);
-                expect(stats!.seededTracks, "recovery retains the original discovery trajectory").toBe(1);
+                    "each recovery carries its own same-frame detector evidence",
+                ).toBe(1 + (stats!.recoveredTracks ?? 0));
+                expect(stats!.seededTracks, "one eligible checkpoint starts one trajectory").toBe(1);
             }
             if (measuresReverseDecode) {
                 // At 30 fps calibration adds one retained sample. The first
@@ -579,38 +609,26 @@ self.postMessage = function(message, ...args) {
                     "calibrated sparse reverse tracking stays within the measured decode budget",
                 ).toBeLessThanOrEqual(245);
             }
-            if (motion.filename === "small-plate-crisp-slow-motion.mp4" && quality !== "fast") {
-                expect(
-                    result.timings!.reverseBlocks,
-                    "detector anchors still exercise multiple reverse blocks",
-                ).toBeGreaterThanOrEqual(2);
-            }
             for (const [frameIndex, frame] of motion.frames.entries()) {
                 const masks = regions.flatMap((region) => {
                     const mask = regionRectAt(region, frame.contentSec);
                     return mask ? [mask] : [];
                 });
-                if (usesTracker) {
+                if (uncoveredVisibleIndices.includes(frameIndex)) {
+                    expect(frame.boxes.length, "fixture includes the missed target").toBeGreaterThan(0);
+                    expect(
+                        masks,
+                        `negative checkpoint bounds coverage at ${frame.contentSec.toFixed(3)}s`,
+                    ).toHaveLength(0);
+                    continue;
+                }
+                // Independent seeds on adjacent checkpoints may both cover an
+                // unchecked frame. Review grouping must not remove either mask.
+                if (frame.boxes.length > 0) {
+                    expect(masks.length).toBeGreaterThanOrEqual(frame.boxes.length);
                     const nextFrameSec = motion.frames[frameIndex + 1]?.contentSec ?? motion.durationSec;
                     const straddlesSplit = splitSec !== null && frame.contentSec < splitSec && splitSec < nextFrameSec;
-                    if (straddlesSplit && masks.length === 2) {
-                        // Independent segments both observe this displayed predecessor.
-                        // Only its exactly identical cover may overlap the cut; no
-                        // tracker state or identity is carried across the boundary.
-                        expect(frame.boxes, "the shared boundary frame has one object").toHaveLength(1);
-                        expect(masks[1], "shared boundary frame covers are pixel-identical").toEqual(masks[0]);
-                        const active = regions.filter((region) => regionRectAt(region, frame.contentSec) !== null);
-                        expect(active.filter((region) => region.endSec === splitSec)).toHaveLength(1);
-                        expect(
-                            active.filter(
-                                (region) => region.startSec === frame.contentSec && region.endSec > splitSec!,
-                            ),
-                        ).toHaveLength(1);
-                    } else if (frame.boxes.length > 0) {
-                        expect(masks, `one mask per visible object at ${frame.contentSec.toFixed(3)}s`).toHaveLength(
-                            frame.boxes.length,
-                        );
-                    }
+                    expect(masks.length).toBeLessThanOrEqual(frame.boxes.length * (straddlesSplit ? 3 : 2));
                 }
                 for (const box of frame.boxes) {
                     const coverage = Math.max(0, ...masks.map((mask) => coveredFraction(mask, box)));

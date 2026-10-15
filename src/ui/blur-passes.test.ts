@@ -50,6 +50,9 @@ import {
     _resetForTests as resetDetection,
     captureDetectExportRequest,
     detectEnabled,
+    detectCounts,
+    detectFindings,
+    detectUncertainFindings,
     detectQuality,
     detectThreshold,
     detectPassState,
@@ -238,6 +241,8 @@ describe("blur pass lifecycle", () => {
         endpoints.workerEndpoint.postMessage({ __k: "res", id: rearRequest.id, ok: true, result: makeDetectResult() });
         await flushMicrotasks();
         expect(detectRegions().map((region) => region.channel)).toEqual(["front", "rear"]);
+        expect(detectCounts()).toEqual({ plate: 1, face: 0 });
+        expect(detectFindings()).toHaveLength(1);
 
         ui.channels = ["front", "rear"];
         ensureDetectPass();
@@ -392,12 +397,14 @@ describe("blur pass lifecycle", () => {
             label: "a stationary track whose geometry keyframe is much older than the displayed frame",
             startSec: 2.01,
             expectedStartSec: 2,
+            expectedSeekSec: (2.01 + 2 + 1 / 30) / 2,
             sourceFrames: makeDetectResult().sourceFrames,
         },
         {
             label: "a variable-duration source frame",
             startSec: 1.05,
             expectedStartSec: 1.021,
+            expectedSeekSec: (1.05 + 1.094) / 2,
             sourceFrames: [
                 { contentSec: 1.002, durationSec: 0.019 },
                 { contentSec: 1.021, durationSec: 0.073 },
@@ -408,6 +415,7 @@ describe("blur pass lifecycle", () => {
             label: "the exact exclusive end of the preceding frame",
             startSec: 1.021,
             expectedStartSec: 1.021,
+            expectedSeekSec: (1.021 + 1.094) / 2,
             sourceFrames: [
                 { contentSec: 1.002, durationSec: 0.019 },
                 { contentSec: 1.021, durationSec: 0.073 },
@@ -417,6 +425,7 @@ describe("blur pass lifecycle", () => {
             label: "a source gap with no displayed predecessor covering the trim",
             startSec: 1.5,
             expectedStartSec: 1.5,
+            expectedSeekSec: 1.5,
             sourceFrames: [
                 { contentSec: 0.96, durationSec: 0.04 },
                 { contentSec: 2, durationSec: 0.04 },
@@ -426,40 +435,45 @@ describe("blur pass lifecycle", () => {
             label: "the first frame of a later source segment",
             startSec: 1.02,
             expectedStartSec: 1.007,
+            expectedSeekSec: (1.02 + 1.048) / 2,
             sourceFrames: [
                 { contentSec: 0.967, durationSec: 0.04 },
                 { contentSec: 1.007, durationSec: 0.041 },
             ],
         },
-    ])("limits cached trim support to $label", async ({ startSec, expectedStartSec, sourceFrames }) => {
-        await downloadBlurAssets(["detect-plate"]);
-        setDetectEnabled("plate", true);
-        const initial = ensureDetectRegionsForExport(
-            captureDetectExportRequest()!,
-            new AbortController().signal,
-            () => {},
-        );
-        await flushMicrotasks();
-        const result = makeDetectResult();
-        result.sourceFrames = sourceFrames;
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
-        expect(await initial).toHaveLength(1);
+    ])(
+        "limits cached trim support to $label",
+        async ({ startSec, expectedStartSec, expectedSeekSec, sourceFrames }) => {
+            await downloadBlurAssets(["detect-plate"]);
+            setDetectEnabled("plate", true);
+            const initial = ensureDetectRegionsForExport(
+                captureDetectExportRequest()!,
+                new AbortController().signal,
+                () => {},
+            );
+            await flushMicrotasks();
+            const result = makeDetectResult();
+            result.sourceFrames = sourceFrames;
+            endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+            expect(await initial).toHaveLength(1);
 
-        ui.range = { startTripSec: startSec, endTripSec: 2.5 };
-        const trimmed = await ensureDetectRegionsForExport(
-            captureDetectExportRequest()!,
-            new AbortController().signal,
-            () => {},
-        );
-        expect(requests, "a contained trim reuses the completed pass").toHaveLength(1);
-        expect(trimmed).toMatchObject([{ startSec: expectedStartSec, endSec: 2.5 }]);
-        expect(trimmed[0]!.keyframes[0]!.contentSec, "geometry remains available to the hold resolver").toBe(0);
-        expect(regionRectAt(trimmed[0]!, expectedStartSec)).toEqual(makeRegion().keyframes[0]!.rect);
-        expect(
-            regionRectAt(trimmed[0]!, expectedStartSec - 0.0001),
-            "support never extends to an earlier frame",
-        ).toBeNull();
-    });
+            ui.range = { startTripSec: startSec, endTripSec: 2.5 };
+            const trimmed = await ensureDetectRegionsForExport(
+                captureDetectExportRequest()!,
+                new AbortController().signal,
+                () => {},
+            );
+            expect(requests, "a contained trim reuses the completed pass").toHaveLength(1);
+            expect(trimmed).toMatchObject([{ startSec: expectedStartSec, endSec: 2.5 }]);
+            expect(detectFindings()[0]!.seekSec).toBeCloseTo(expectedSeekSec);
+            expect(trimmed[0]!.keyframes[0]!.contentSec, "geometry remains available to the hold resolver").toBe(0);
+            expect(regionRectAt(trimmed[0]!, expectedStartSec)).toEqual(makeRegion().keyframes[0]!.rect);
+            expect(
+                regionRectAt(trimmed[0]!, expectedStartSec - 0.0001),
+                "support never extends to an earlier frame",
+            ).toBeNull();
+        },
+    );
 
     it("retains the observed final-frame mask when a cached trim lies entirely in its held tail", async () => {
         await downloadBlurAssets(["detect-plate"]);
@@ -507,51 +521,97 @@ describe("blur pass lifecycle", () => {
     it.each([
         { edge: "start", startTripSec: 1 - 1 / 30, endTripSec: 3 },
         { edge: "end", startTripSec: 1, endTripSec: 3 + 1 / 30 },
-    ])(
-        "reanalyzes the complete source window after a one-frame $edge extension",
-        async ({ startTripSec, endTripSec }) => {
-            await downloadBlurAssets(["detect-plate"]);
-            setDetectEnabled("plate", true);
-            ui.range = { startTripSec: 1, endTripSec: 3 };
-            const initial = ensureDetectRegionsForExport(
-                captureDetectExportRequest()!,
-                new AbortController().signal,
-                () => {},
-            );
-            await flushMicrotasks();
+    ])("passes completed checkpoint evidence for a one-frame $edge extension", async ({ startTripSec, endTripSec }) => {
+        await downloadBlurAssets(["detect-plate"]);
+        setDetectEnabled("plate", true);
+        ui.range = { startTripSec: 1, endTripSec: 3 };
+        const initial = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        const completed = makeDetectResult();
+        completed.analysisByKind = {
+            plate: {
+                bounds: { startSec: 1, endSec: 3 },
+                quality: "balanced",
+                threshold: 0.7,
+                sourceFrames: completed.sourceFrames,
+                checkpoints: [],
+            },
+        };
+        endpoints.workerEndpoint.postMessage({
+            __k: "res",
+            id: requests[0]!.id,
+            ok: true,
+            result: completed,
+        });
+        expect(await initial).toHaveLength(1);
+
+        ui.range = { startTripSec, endTripSec };
+        const expanded = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        expect(requests, "every newly included frame receives inference").toHaveLength(2);
+        const request = requests[1]!;
+        expect(request.data).toMatchObject({
+            analyzeIntervalsByKind: { plate: [{ startSec: startTripSec, endSec: endTripSec }] },
+            cachedAnalysisByKind: completed.analysisByKind,
+            trackerModelUrl: TRACKER_MODEL_URL,
+            ortAssets: TRACKER_ORT_ASSETS.webgpu,
+        });
+        expect(request.data).not.toHaveProperty("trackerOrtAssets");
+        const replacement = makeDetectResult();
+        replacement.tracksByKind.plate![0]!.startSec = startTripSec;
+        replacement.tracksByKind.plate![0]!.endSec = endTripSec;
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: replacement });
+        expect(await expanded, "the complete analysis replaces old tracks without duplicate covers").toMatchObject([
+            { startSec: startTripSec, endSec: endTripSec, interpolation: "hold" },
+        ]);
+        expect(detectRegions()).toHaveLength(1);
+    });
+
+    it.each(["cancelled", "failed"] as const)("retains completed evidence after a %s extension", async (outcome) => {
+        await downloadBlurAssets(["detect-plate"]);
+        setDetectEnabled("plate", true);
+        ensureDetectPass();
+        await flushMicrotasks();
+        const completed = makeDetectResult();
+        completed.analysisByKind = {
+            plate: {
+                bounds: { startSec: 0, endSec: 3 },
+                quality: "balanced",
+                threshold: 0.7,
+                sourceFrames: completed.sourceFrames,
+                checkpoints: [],
+            },
+        };
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result: completed });
+        await flushMicrotasks();
+        ui.range.endTripSec = 4;
+        const controller = new AbortController();
+        const pending = ensureDetectRegionsForExport(captureDetectExportRequest()!, controller.signal, () => {});
+        const rejected = expect(pending).rejects.toThrow();
+        await flushMicrotasks();
+        if (outcome === "cancelled") controller.abort();
+        else
             endpoints.workerEndpoint.postMessage({
                 __k: "res",
-                id: requests[0]!.id,
-                ok: true,
-                result: makeDetectResult(),
+                id: requests[1]!.id,
+                ok: false,
+                error: { name: "Error", message: "decode failed" },
             });
-            expect(await initial).toHaveLength(1);
-
-            ui.range = { startTripSec, endTripSec };
-            const expanded = ensureDetectRegionsForExport(
-                captureDetectExportRequest()!,
-                new AbortController().signal,
-                () => {},
-            );
-            await flushMicrotasks();
-            expect(requests, "every newly included frame receives inference").toHaveLength(2);
-            const request = requests[1]!;
-            expect(request.data).toMatchObject({
-                analyzeIntervalsByKind: { plate: [{ startSec: startTripSec, endSec: endTripSec }] },
-                trackerModelUrl: TRACKER_MODEL_URL,
-                ortAssets: TRACKER_ORT_ASSETS.webgpu,
-            });
-            expect(request.data).not.toHaveProperty("trackerOrtAssets");
-            const replacement = makeDetectResult();
-            replacement.tracksByKind.plate![0]!.startSec = startTripSec;
-            replacement.tracksByKind.plate![0]!.endSec = endTripSec;
-            endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: replacement });
-            expect(await expanded, "the complete analysis replaces old tracks without duplicate covers").toMatchObject([
-                { startSec: startTripSec, endSec: endTripSec, interpolation: "hold" },
-            ]);
-            expect(detectRegions()).toHaveLength(1);
-        },
-    );
+        await rejected;
+        ensureDetectPass();
+        await flushMicrotasks();
+        expect(requests[2]!.data).toMatchObject({ cachedAnalysisByKind: completed.analysisByKind });
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[2]!.id, ok: true, result: completed });
+        await flushMicrotasks();
+    });
 
     it.each([
         { edge: "start", startTripSec: 0.5, endTripSec: 11, changed: [0] },
@@ -593,6 +653,8 @@ describe("blur pass lifecycle", () => {
         }
         const original = await initial;
         expect(original).toHaveLength(3);
+        expect(detectCounts()).toEqual({ plate: 1, face: 0 });
+        expect(detectFindings()).toMatchObject([{ startSec: 1, endSec: 11 }]);
 
         ui.range = { startTripSec, endTripSec };
         const extended = ensureDetectRegionsForExport(
@@ -718,16 +780,16 @@ describe("blur pass lifecycle", () => {
 
     it("keeps Save-time thresholds and reanalyzes only the changed detector kind", async () => {
         await downloadBlurAssets(["detect-plate", "detect-face"]);
-        expect(detectThreshold("face")).toBe(0.45);
+        expect(detectThreshold("face")).toBe(0.7);
         expect(detectThreshold("plate")).toBe(0.7);
         setDetectEnabled("plate", true);
         setDetectEnabled("face", true);
         const captured = captureDetectExportRequest()!;
         const initial = ensureDetectRegionsForExport(captured, new AbortController().signal, () => {});
         await flushMicrotasks();
-        expect(requests[0]!.data).toMatchObject({ thresholds: { plate: 0.7, face: 0.45 } });
+        expect(requests[0]!.data).toMatchObject({ thresholds: { plate: 0.7, face: 0.7 } });
         setDetectThreshold("face", 0.1);
-        expect(captured.params.thresholds.face).toBe(0.45);
+        expect(captured.params.thresholds.face).toBe(0.7);
         const result = makeDetectResult();
         result.tracksByKind.face = result.tracksByKind.plate;
         endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
@@ -750,7 +812,7 @@ describe("blur pass lifecycle", () => {
         expect(detectThreshold("face")).toBe(0.1);
         expect(detectThreshold("plate")).toBe(0.7);
 
-        setDetectThreshold("face", 0.45);
+        setDetectThreshold("face", 0.7);
         const restored = ensureDetectRegionsForExport(
             captureDetectExportRequest()!,
             new AbortController().signal,
@@ -758,7 +820,7 @@ describe("blur pass lifecycle", () => {
         );
         await flushMicrotasks();
         expect(requests[2]!.data).toMatchObject({
-            thresholds: { plate: 0.7, face: 0.45 },
+            thresholds: { plate: 0.7, face: 0.7 },
             analyzeIntervalsByKind: { plate: [], face: [{ startSec: 0, endSec: 3 }] },
         });
         endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[2]!.id, ok: true, result });
@@ -1052,4 +1114,91 @@ describe("blur pass lifecycle", () => {
         expect(original.params.endSec).toBe(3);
         expect(changed.params.startSec).toBe(0.001);
     });
+});
+
+it.each([false, true])(
+    "unions active time across kinds while retaining export masks and cached trims (face bridges gap: %s)",
+    async (bridge) => {
+        await downloadBlurAssets(["detect-plate", "detect-face"]);
+        setDetectEnabled("plate", true);
+        setDetectEnabled("face", true);
+        ensureDetectPass();
+        await flushMicrotasks();
+        const result = makeDetectResult();
+        const base = result.tracksByKind.plate![0]!;
+        result.tracksByKind.plate = [
+            {
+                ...base,
+                startSec: 0,
+                endSec: 1,
+            },
+            {
+                ...base,
+                startSec: 0.6,
+                endSec: 1.5,
+                keyframes: [{ contentSec: 0.6, rect: base.keyframes[0]!.rect }],
+            },
+            {
+                ...base,
+                startSec: 2.1,
+                endSec: 3,
+                keyframes: [{ contentSec: 2.1, rect: base.keyframes[0]!.rect }],
+            },
+        ];
+        result.tracksByKind.face = [{ ...result.tracksByKind.plate[0]!, endSec: bridge ? 2.2 : 1 }];
+        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+        await flushMicrotasks();
+        expect(detectCounts()).toEqual({ plate: 2, face: 1 });
+        const seeks = detectFindings().map((finding) => finding.seekSec);
+        expect(seeks).toHaveLength(bridge ? 1 : 2);
+        expect(seeks[0]).toBeCloseTo(1 / 60);
+        if (!bridge) expect(seeks[1]).toBeCloseTo(2.1 + 1 / 60);
+        expect(detectRegions()).toHaveLength(4);
+        const exported = await ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        expect(exported).toEqual(detectRegions());
+        expect(exported.filter((region) => regionRectAt(region, 0.8))).toHaveLength(3);
+        expect(exported.filter((region) => regionRectAt(region, 2))).toHaveLength(bridge ? 1 : 0);
+        ui.range = { startTripSec: 0.71, endTripSec: 0.72 };
+        ensureDetectPass();
+        await flushMicrotasks();
+        expect(requests).toHaveLength(1);
+        expect(detectFindings()).toHaveLength(1);
+        for (const finding of detectFindings()) {
+            expect(finding.seekSec).toBeCloseTo(0.715);
+        }
+    },
+);
+
+it("keeps failed recovery review separate from masks and clips it on cached trims", async () => {
+    await downloadBlurAssets(["detect-plate"]);
+    setDetectEnabled("plate", true);
+    ensureDetectPass();
+    await flushMicrotasks();
+    const result = makeDetectResult();
+    result.uncertainFramesByKind = {
+        plate: [
+            { contentSec: 1, durationSec: 0.04 },
+            { contentSec: 1.04, durationSec: 0.04 },
+        ],
+    };
+    endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+    await flushMicrotasks();
+    expect(detectUncertainFindings()).toEqual([{ startSec: 1, endSec: 1.08, seekSec: 1.02 }]);
+    const masks = detectRegions();
+    expect(masks).toHaveLength(1);
+    expect(detectCounts()).toEqual({ plate: 1, face: 0 });
+    ui.range = { startTripSec: 1.01, endTripSec: 1.03 };
+    ensureDetectPass();
+    await flushMicrotasks();
+    expect(requests).toHaveLength(1);
+    expect(detectUncertainFindings()).toEqual([{ startSec: 1.01, endSec: 1.03, seekSec: 1.02 }]);
+    ui.range = { startTripSec: 1.1, endTripSec: 1.2 };
+    ensureDetectPass();
+    await flushMicrotasks();
+    expect(detectUncertainFindings()).toEqual([]);
+    expect(requests).toHaveLength(1);
 });

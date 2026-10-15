@@ -1,4 +1,4 @@
-import { fitsTrackSizeCap, isPlausibleStep, seedSizeCap, type SizeCap, type TrackBox } from "./track-guards.js";
+import { isPlausibleStep, seedSizeCap, type SizeCap, type TrackBox } from "./track-guards.js";
 
 /** Geometry and timing stay together: a rejected prediction leaves both the
  *  reference box and its age intact until a later prediction is accepted. */
@@ -43,16 +43,6 @@ export class TrackGeometry {
             this.frameW = frameW;
             this.frameH = frameH;
         }
-    }
-
-    /** The detector caller owns identity matching. Anchoring a matched object
-     *  refreshes its geometry without granting another growth budget or warmup. */
-    reanchor(box: TrackBox, frameW: number, frameH: number): boolean {
-        this.resizeFrame(frameW, frameH);
-        if (!fitsTrackSizeCap(box, this.cap)) return false;
-        this.currentBox = { ...box };
-        this.sinceAcceptedSec = 0;
-        return true;
     }
 
     acceptCandidate(candidate: TrackBox): boolean {
