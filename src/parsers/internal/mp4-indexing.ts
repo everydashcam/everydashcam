@@ -36,10 +36,14 @@ import {
 
 const log = createLogger("mp4-indexing");
 
-// Mediabunny recommends at least 256 packets for reliable CFR/VFR detection.
-// This bounded prefix scan follows the container duration scan, while its result
-// drives frame stepping and re-encode timing as well as the details panel.
-const FPS_PROBE_PACKETS = 256;
+// Bounded prefix scan behind the container duration scan; its result drives
+// frame stepping and re-encode timing as well as the details panel. Mediabunny
+// defaults to 256 packets, but the non-ISOBMFF demuxers read whole packets even
+// for a metadata-only pass, so on a 4K transport stream 256 packets cost ~36 MB
+// against ~4 MB for 64 - a real difference on removable media. 64 packets still
+// span 2-3 s of video, enough to settle the timestamp lattice and to notice a
+// dropped frame; MP4 reads its rate from stts and never comes through here.
+const FPS_PROBE_PACKETS = 64;
 
 /** Index result + optional moov bytes (only when the caller asked for them). */
 export interface IndexedWithMoov {
