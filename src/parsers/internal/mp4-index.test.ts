@@ -5,7 +5,7 @@
 // touching the thumbnail children).
 
 import { describe, expect, it } from "vitest";
-import { buildMp4Index, UDTA_HEAD_BYTES } from "./mp4-index.js";
+import { buildMp4Index, DEFAULT_PROBE_BYTES, MAX_PROBE_BYTES, probeMarkers, UDTA_HEAD_BYTES } from "./mp4-index.js";
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, (ch) => ch.charCodeAt(0) & 0xff);
 
@@ -161,5 +161,68 @@ describe("buildMp4Index: kodakVersion from frea/'ver '", () => {
         const bytes = concatBytes([FTYP, freaBox([box("ver ", ascii("3.01.054  \0"))])]);
         const index = await buildMp4Index(new File([bytes], "k.mp4"), { probeBytes: 0 });
         expect(index.kodakVersion).toBe("3.01.054");
+    });
+});
+
+describe("buildMp4Index: top-level free box", () => {
+    // 8 MB of zero padding: DDPAI, 70mai and Thinkware reserve a `free` box of
+    // this shape and never put telemetry in it.
+    const PADDING = 8 * 1024 ** 2;
+
+    it("leaves a padding free box unread", async () => {
+        const bytes = concatBytes([FTYP, box("free", new Uint8Array(PADDING)), box("mdat", new Uint8Array(64))]);
+        const file = new TrackingFile([bytes], "pad.mp4");
+        const index = await buildMp4Index(file, { probeBytes: 0 });
+        expect(index.topLevelFreeBox).toBeNull();
+        expect(index.freeBoxView).toBeNull();
+        expect(index.freeGpsBoxInsideFree).toBeNull();
+        const widest = Math.max(...file.readRanges.map(([start, end]) => end - start));
+        expect(widest, "largest single read").toBeLessThan(1024);
+    });
+
+    it("loads a free box whose children carry the BlackVue gps/3gf boxes", async () => {
+        const gpsPayload = ascii("$GPRMC,120000.000,A,5540.0000,N,03730.0000,E,0.0,0.0,010124,,,A*00\r\n");
+        const free = box(
+            "free",
+            concatBytes([box("cprt", ascii("Pittasoft")), box("gps ", gpsPayload), box("3gf ", new Uint8Array(24))]),
+        );
+        const bytes = concatBytes([FTYP, free, box("mdat", new Uint8Array(64))]);
+        const index = await buildMp4Index(new TrackingFile([bytes], "bv.mp4"), { probeBytes: 0 });
+        expect(index.freeBoxView).not.toBeNull();
+        expect(index.freeGpsBoxInsideFree).not.toBeNull();
+        expect(index.free3gfBoxInsideFree).not.toBeNull();
+        const gps = index.freeGpsBoxInsideFree!;
+        expect(gps.end - gps.payloadStart).toBe(gpsPayload.length);
+    });
+});
+
+describe("probeMarkers: window extension", () => {
+    it("extends an existing probe window instead of re-reading it", async () => {
+        // Literals at 5 MB and 7 MB: invisible to the default window, both
+        // inside the maximum one. The escalation read must start where the
+        // first probe ended.
+        const mdat = new Uint8Array(MAX_PROBE_BYTES);
+        mdat.set(ascii("freeGPS "), 5 * 1024 ** 2);
+        mdat.set(ascii("freeGPS "), 7 * 1024 ** 2);
+        const bytes = concatBytes([FTYP, box("mdat", mdat)]);
+        const file = new TrackingFile([bytes], "probe.mp4");
+        const index = await buildMp4Index(file, { probeBytes: 0 });
+        file.readRanges.length = 0;
+
+        await probeMarkers(file, index, DEFAULT_PROBE_BYTES);
+        expect(index.freeGpsSeedOffsets).toEqual([]);
+        expect(index.hasFreeGpsMarker).toBe(false);
+        expect(file.readRanges).toEqual([[0, DEFAULT_PROBE_BYTES]]);
+
+        await probeMarkers(file, index, MAX_PROBE_BYTES);
+        expect(file.readRanges).toEqual([
+            [0, DEFAULT_PROBE_BYTES],
+            [DEFAULT_PROBE_BYTES, MAX_PROBE_BYTES],
+        ]);
+        expect(index.headerBytes!.byteLength).toBe(MAX_PROBE_BYTES);
+        expect(index.hasFreeGpsMarker).toBe(true);
+        expect(index.freeGpsSeedOffsets).toEqual([FTYP.length + 8 + 5 * 1024 ** 2, FTYP.length + 8 + 7 * 1024 ** 2]);
+        // The stitched window is one contiguous view of the file head.
+        expect(index.headerView!.getUint32(0, false)).toBe(FTYP.length);
     });
 });

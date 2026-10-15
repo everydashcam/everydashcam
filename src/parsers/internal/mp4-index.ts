@@ -456,13 +456,14 @@ export async function buildMp4Index(file: File, opts: BuildMp4IndexOptions = {})
     const durationSec = moovView ? readMvhdDurationSec(moovView) : null;
     const createdUtc = moovView ? readMvhdCreationTime(moovView) : null;
 
-    // Step 4: free box (BlackVue X-series). Load only its payload when present.
+    // Step 4: free box (BlackVue X-series). Loaded whole only when its head
+    // shows the telemetry children; a padding `free` box stays unread.
     let topLevelFreeBox: Box | null = null;
     let freeBoxView: DataView | null = null;
     let freeGpsBoxInsideFree: Box | null = null;
     let free3gfBoxInsideFree: Box | null = null;
     const freeTop = topLevel.find((b) => b.type === "free");
-    if (freeTop) {
+    if (freeTop && (await freeBoxOpensWithTelemetryChildren(file, freeTop))) {
         try {
             const freeBuf = await file.slice(freeTop.offset, freeTop.offset + freeTop.size).arrayBuffer();
             freeBoxView = new DataView(freeBuf);
@@ -631,13 +632,23 @@ export async function buildMp4Index(file: File, opts: BuildMp4IndexOptions = {})
 export async function probeMarkers(file: File, index: Mp4Index, bytes: number): Promise<void> {
     const want = Math.min(bytes, index.fileSize, MAX_PROBE_BYTES);
     if (want <= 0) return;
-    if (index.headerBytes && index.headerBytes.byteLength >= want) return; // already covered
+    const have = index.headerBytes?.byteLength ?? 0;
+    if (have >= want) return; // already covered
 
     try {
-        const buf = await file.slice(0, want).arrayBuffer();
-        const u8 = new Uint8Array(buf);
+        // Extend the window instead of re-reading it: the escalation from the
+        // default to the maximum probe then pays only for the new tail.
+        const tail = new Uint8Array(await file.slice(have, want).arrayBuffer());
+        let u8: Uint8Array;
+        if (index.headerBytes && have > 0) {
+            u8 = new Uint8Array(have + tail.byteLength);
+            u8.set(index.headerBytes, 0);
+            u8.set(tail, have);
+        } else {
+            u8 = tail;
+        }
         index.headerBytes = u8;
-        index.headerView = new DataView(buf);
+        index.headerView = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
         index.hasLigoGpsMarker = findLigoGpsChunkOffset(u8) !== null;
         // Collect up to 8 freeGPS hit offsets as seeds for jump-scan. More
         // than 8 wastes a tiny bit of CPU for diminishing accuracy - median
@@ -648,6 +659,48 @@ export async function probeMarkers(file: File, index: Mp4Index, bytes: number): 
         // IO failure - leave markers undefined, primitives degrade by trying
         // their full parse path (which can self-detect format and bail).
     }
+}
+
+/** Cap on the `free` child-walk: BlackVue writes a handful of boxes there. */
+const FREE_CHILD_WALK_MAX = 16;
+
+/**
+ * Whether a top-level `free` box starts with a run of child boxes that
+ * includes the `gps `/`3gf ` carriers BlackVue X-series writes there. Walks
+ * child headers with 16-byte reads so a padding `free` box - DDPAI, 70mai and
+ * Thinkware reserve 8-20 MB of it - costs a few bytes instead of a full read.
+ * The first header that is not a plausible box ends the walk: padding is
+ * zero- or junk-filled, never a box chain.
+ */
+async function freeBoxOpensWithTelemetryChildren(
+    file: File,
+    free: { offset: number; size: number; headerSize: number },
+): Promise<boolean> {
+    const end = free.offset + free.size;
+    let pos = free.offset + free.headerSize;
+    try {
+        for (let i = 0; i < FREE_CHILD_WALK_MAX && pos + 8 <= end; i++) {
+            const hdr = new DataView(await file.slice(pos, Math.min(pos + 16, end)).arrayBuffer());
+            if (hdr.byteLength < 8) return false;
+            let size = hdr.getUint32(0);
+            let header = 8;
+            const type = String.fromCharCode(hdr.getUint8(4), hdr.getUint8(5), hdr.getUint8(6), hdr.getUint8(7));
+            if (!/^[\x20-\x7e]{4}$/.test(type)) return false;
+            if (size === 1) {
+                if (hdr.byteLength < 16) return false;
+                size = hdr.getUint32(8) * 0x100000000 + hdr.getUint32(12);
+                header = 16;
+            } else if (size === 0) {
+                size = end - pos;
+            }
+            if (size < header || pos + size > end) return false;
+            if (type === "gps " || type === "3gf ") return true;
+            pos += size;
+        }
+    } catch {
+        // IO failure - the full read below would fail the same way.
+    }
+    return false;
 }
 
 /** Cap on the frea child-walk: a genuine Kodak/Rexing frea has 3-4 children
