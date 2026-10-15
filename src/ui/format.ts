@@ -70,17 +70,37 @@ function tripTitleClock(
     const includeYear = start.getUTCFullYear() !== currentYear || end.getUTCFullYear() !== currentYear;
     // timeZone:"UTC" everywhere a displayClockDate is formatted - the shift is
     // already inside the Date (see the displayClockDate contract).
+    const { dateFmt, timeFmt } = tripTitleFormatters(locale, includeYear);
+    return { start, end, dateFmt, timeFmt };
+}
+
+// Intl.DateTimeFormat construction resolves locale data and compiles a
+// pattern; the sidebar builds two per card on every full render, which on a
+// long list is the single most expensive part of the rebuild. The pair only
+// varies by locale and year visibility, so it is memoized on that key.
+const tripTitleFormatterCache = new Map<string, { dateFmt: Intl.DateTimeFormat; timeFmt: Intl.DateTimeFormat }>();
+
+function tripTitleFormatters(
+    locale: string,
+    includeYear: boolean,
+): { dateFmt: Intl.DateTimeFormat; timeFmt: Intl.DateTimeFormat } {
+    const key = `${locale}|${includeYear ? "y" : "n"}`;
+    const cached = tripTitleFormatterCache.get(key);
+    if (cached) return cached;
     const dateOpts: Intl.DateTimeFormatOptions = includeYear
         ? { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }
         : { day: "numeric", month: "short", timeZone: "UTC" };
-    const dateFmt = new Intl.DateTimeFormat(locale, dateOpts);
-    const timeFmt = new Intl.DateTimeFormat(locale, {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-    });
-    return { start, end, dateFmt, timeFmt };
+    const formatters = {
+        dateFmt: new Intl.DateTimeFormat(locale, dateOpts),
+        timeFmt: new Intl.DateTimeFormat(locale, {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "UTC",
+        }),
+    };
+    tripTitleFormatterCache.set(key, formatters);
+    return formatters;
 }
 
 /**

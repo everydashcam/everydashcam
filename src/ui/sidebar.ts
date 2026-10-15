@@ -865,21 +865,49 @@ export function updateTripPreview(trip: Trip, dataUrl: string): void {
 export function updateActiveFrameHighlight(tripIdx: number, prevFrameIdx: number, nextFrameIdx: number): void {
     const trip = state.trips[tripIdx];
     if (!trip) return;
-    const tripLi = dom.list.querySelector(`li.trip[data-trip-index="${tripIdx}"]`);
+    const tripLi = dom.list.querySelector<HTMLLIElement>(`li.trip[data-trip-index="${tripIdx}"]`);
     if (!tripLi) return;
-    const setActive = (fIdx: number, on: boolean): void => {
-        if (fIdx < 0 || fIdx >= trip.frames.length) return;
-        const li = Array.from(tripLi.querySelectorAll<HTMLLIElement>(".trip-files > li")).find(
-            (row) => fIdx >= Number(row.dataset.frameIndex) && fIdx <= Number(row.dataset.frameEndIndex),
-        );
-        if (li) {
-            li.classList.toggle("active", on);
-            if (on) li.setAttribute("aria-current", "true");
-            else li.removeAttribute("aria-current");
-        }
+    setFrameRowActive(tripLi, trip, prevFrameIdx, false);
+    setFrameRowActive(tripLi, trip, nextFrameIdx, true);
+}
+
+/** Toggles the active class + aria-current on the clip row that covers frame
+ *  `frameIdx` of `trip` inside its card. Out-of-range indices are ignored. */
+function setFrameRowActive(tripLi: HTMLLIElement, trip: Trip, frameIdx: number, on: boolean): void {
+    if (frameIdx < 0 || frameIdx >= trip.frames.length) return;
+    const row = Array.from(tripLi.querySelectorAll<HTMLLIElement>(".trip-files > li")).find(
+        (candidate) =>
+            frameIdx >= Number(candidate.dataset.frameIndex) && frameIdx <= Number(candidate.dataset.frameEndIndex),
+    );
+    if (!row) return;
+    row.classList.toggle("active", on);
+    if (on) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+}
+
+/**
+ * Moves the active highlight from one trip card to another without rebuilding
+ * the list: the card's and the clip row's active class + aria-current are the
+ * only things in a card that depend on the active trip (see buildTripCard), and
+ * a full renderTrips on every trip switch cost tens of milliseconds of DOM work
+ * on long libraries - on every auto-advance between trips, mid-playback.
+ * `prev` is null when no trip was active before.
+ */
+export function syncActiveTripHighlight(
+    prev: { trip: number; frame: number } | null,
+    next: { trip: number; frame: number },
+): void {
+    const setTripActive = (location: { trip: number; frame: number }, on: boolean): void => {
+        const trip = state.trips[location.trip];
+        const tripLi = dom.list.querySelector<HTMLLIElement>(`li.trip[data-trip-index="${location.trip}"]`);
+        if (!trip || !tripLi) return;
+        tripLi.classList.toggle("active", on);
+        if (on) tripLi.setAttribute("aria-current", "true");
+        else tripLi.removeAttribute("aria-current");
+        setFrameRowActive(tripLi, trip, location.frame, on);
     };
-    setActive(prevFrameIdx, false);
-    setActive(nextFrameIdx, true);
+    if (prev && prev.trip !== next.trip) setTripActive(prev, false);
+    setTripActive(next, true);
 }
 
 export function syncSortControls(): void {

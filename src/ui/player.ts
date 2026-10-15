@@ -69,12 +69,17 @@ import {
     SLAVE_DRIFT_MAX_SEC,
     swapActiveSlot,
 } from "./dom.js";
-import { hideCodecUnsupportedOverlay, showCodecUnsupportedOverlay, showPlaybackFailureOverlay } from "./empty-state.js";
+import {
+    hideCodecUnsupportedOverlay,
+    showCodecUnsupportedOverlay,
+    showPlaybackFailureOverlay,
+    syncEmptyState,
+} from "./empty-state.js";
 import { channelDisplayLabel, formatDuration, formatTime } from "./format.js";
 import { registerGpsSyncRefreshListener } from "./gps-sync-refresh.js";
 import { notify } from "./notifications.js";
 import { ensureMarkerLoop, refreshMap, resetFollowInteractionPause, smoothCameraToCurrentPosition } from "./map.js";
-import { setDrawerOpen } from "./mobile-drawer.js";
+import { setDrawerOpen, syncBrowseState } from "./mobile-drawer.js";
 import { captureCurrentFrame, syncCaptureButton } from "./player-capture.js";
 import { hideLoadingOverlay, showLoadingOverlay } from "./player-loading-overlay.js";
 import { initFrameStep } from "./player-frame-step.js";
@@ -119,7 +124,7 @@ import {
 import { initPlayerVolume, syncMuteButton, toggleMuted } from "./player-volume.js";
 import { setPreviewPlaybackActive } from "./trip-preview.js";
 import { attachPointerDrag } from "./pointer-drag.js";
-import { clearOpeningTrip, renderTrips, updateActiveFrameHighlight } from "./sidebar.js";
+import { clearOpeningTrip, renderTrips, syncActiveTripHighlight, updateActiveFrameHighlight } from "./sidebar.js";
 import { exportPanelState, resetExportRangeForTrip, subscribeExportState } from "./export-state.js";
 import {
     activeFrame,
@@ -598,6 +603,7 @@ export function playFrame(
 
     const tripChanged = !state.active || state.active.trip !== tripIdx;
     const prevFrameIdx = state.active ? state.active.frame : -1;
+    const prevActive = state.active ? { trip: state.active.trip, frame: state.active.frame } : null;
 
     // Playback is taking over: clear the click "opening" spinner unconditionally.
     // Must run for BOTH a trip change AND a re-activation of the already-open trip
@@ -678,10 +684,14 @@ export function playFrame(
         // On trip change, update the total duration and rebuild the chart for the new track.
         dom.playerBar.total.textContent = formatTime(trip.timeline.contentDurationSec);
         rebuildChartFromTrip(trip);
-        // Full sidebar re-render only on trip change; within the same trip it's
-        // cheaper to toggle the active-class on the <li> (the else branch). The
-        // "opening" spinner was already cleared at the top of playFrame.
-        renderTrips();
+        // The sidebar is not rebuilt on a trip switch; the three things the
+        // old full renderTrips did for an activation happen directly: the
+        // viewer leaves its empty state, the card highlight moves (the
+        // "opening" spinner was already cleared at the top of playFrame), and
+        // the mobile browse surface collapses into the watch layout.
+        syncEmptyState();
+        syncActiveTripHighlight(prevActive, { trip: tripIdx, frame: frameIdx });
+        syncBrowseState();
 
         // Trip activation log - useful for bug reports like "picked a trip, black player /
         // grey map / no audio". Logged once per trip change (intra-trip frame navigation is not logged).
