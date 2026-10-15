@@ -9,6 +9,7 @@ import type { BlurRegion } from "../blur-regions.js";
 import { applyTrackResult, followSeed } from "../blur-follow.js";
 import { sliceTripChannelForRange } from "../export-range.js";
 import { createLogger } from "../log.js";
+import { captureSentryException, captureSentryMessage } from "../sentry.js";
 import type { Trip } from "../trips.js";
 import {
     TRACK_NOTIFY_PROGRESS,
@@ -239,6 +240,11 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
                 // subject followed across the whole trip). Say so rather than
                 // vanish silently.
                 log.warn("track pass timed out", { region: region.id });
+                captureSentryMessage("blur tracking timed out", {
+                    level: "error",
+                    fingerprint: ["blur_tracking_timeout"],
+                    tags: { feature: "blur", stage: "tracking" },
+                });
                 notify({ severity: "warn", messageKey: "export.blur.track.timeout" });
                 return "failed";
             } else {
@@ -247,6 +253,7 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
             }
         } else {
             log.warn("track pass failed", { region: region.id, err: String(err) });
+            captureSentryException(err, { tags: { feature: "blur", stage: "tracking" } });
             notify({ severity: "warn", messageKey: "export.blur.track.failed" });
             return "failed";
         }

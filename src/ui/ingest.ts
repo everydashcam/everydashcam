@@ -127,10 +127,9 @@ export async function ingestFiles(vfiles: VendorFile[], origin: IngestOrigin | n
             // instead of a leaked browser exception string.
             notify({ severity: "error", messageKey: "ingest.error.loadFailed" });
             const reason = err instanceof Error ? err.name || "Error" : "unknown";
-            // Most severe user-facing ingest outcome: the app loaded nothing.
-            // Capture the real exception (stack), fingerprint by error name (the
-            // message can embed a filename/path from a deeper throw).
-            captureSentryException(err, { fingerprint: ["ingest_failed", reason], tags: { reason } });
+            // Preserve stack-based grouping so unrelated parser and worker
+            // defects do not collapse into a single generic Error issue.
+            captureSentryException(err, { tags: { feature: "ingest", reason } });
         }
     } finally {
         state.ingestController = null;

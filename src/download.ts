@@ -20,12 +20,10 @@ export function downloadBlob(blob: Blob, filename: string): void {
     } catch (err) {
         // Revoke now: the deferred revoke below is never reached on this path, and
         // a created-but-unused object URL leaks for the page lifetime otherwise.
-        // Rethrow with the filename so the failure is diagnosable - callers that
-        // catch (feedback/gpx) log it, and an uncaught one is picked up by the
-        // global error hook (app.ts) into the ring buffer. No logger import here:
-        // log.ts depends on this module, and a cycle is disallowed.
+        // Preserve the original failure without putting a private download name
+        // into an exception that the global error reporter may transmit.
         URL.revokeObjectURL(url);
-        throw new Error(`download failed: ${filename}`, { cause: err });
+        throw new Error("download failed", { cause: err });
     }
     // Deferred revoke - an immediate revoke can cancel the download on slower
     // engines that have not started reading the blob yet.

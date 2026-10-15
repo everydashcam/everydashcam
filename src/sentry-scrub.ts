@@ -20,21 +20,25 @@
 // (drives codec/container expectations) while the basename (which encodes the
 // recording date/time, sometimes a serial, and free user text) is the PII.
 const MEDIA_EXT =
-    "mp4|m4v|mov|ts|m2ts|avi|mkv|webm|insv|360|jdr|chk|lrv|gpx|nmea|map|gps|3gf|rvmi|csv|txt|json|jpg|jpeg|png|webp";
+    "mp4|m4v|mov|ts|m2ts|avi|mkv|webm|insv|360|jdr|chk|lrv|gpx|nmea|map|gps|3gf|rvmi|csv|txt|json|jpg|jpeg|png|webp|everydashcam|dashcamigo";
+const MEDIA_EXTENSION_RE = new RegExp(`\\.(${MEDIA_EXT})$`, "i");
 
-// A filename token: word chars / dash / dot ending in a known extension. NO
-// space in the class on purpose - including it makes the match eat the
-// preceding prose ("no video track in file X.MP4" -> the whole phrase). A
-// space-containing user name ("My Trip.mp4") only masks the last word here; the
-// object walker fully masks file-keyed VALUES via maskFilename regardless.
-const FILENAME_RE = new RegExp(`[\\w\\-.]+\\.(${MEDIA_EXT})\\b`, "gi");
-// Windows drive paths: C:\Users\...\clip.mp4
-const WIN_PATH_RE = /[A-Za-z]:\\[^\s"')]+/g;
+// Unquoted filenames cannot be separated reliably from surrounding prose when
+// they contain spaces. Keep user filenames in structured fields at call sites.
+const FILENAME_RE = new RegExp(`[^\\s/\\\\:"'<>|?*=]+\\.(${MEDIA_EXT})\\b`, "gi");
+const QUOTED_FILENAME_RE = new RegExp(`(["'\x60])(?:(?!\\1)[^\\r\\n])+\\.(${MEDIA_EXT})\\1`, "gi");
+const WIN_PATH_RE = /[A-Za-z]:[/\\][^\s"')]+/g;
 // Unix paths under user/volume roots - the segments that carry a person's name
 // or a labeled SD card.
-const UNIX_PATH_RE = /\/(?:Users|home|Volumes|media|mnt|storage|var)\/[^\s"')]+/gi;
+const UNIX_PATH_RE = /\/(?:Users|home|Volumes|media|mnt|storage|var|private|tmp|root|sdcard)\/[^\s"')]+/gi;
 // Opaque object URLs - no PII by themselves but noise and origin-correlatable.
 const BLOB_URL_RE = /blob:[^\s"')]+/gi;
+const FILE_URL_RE = /file:\/\/[^\s"')]+/gi;
+// Map tile paths disclose location even without a query string. General log
+// messages need no URL; stack frames retain sanitized asset paths separately.
+const RESOURCE_URL_RE = /(?:https?|everydashcam-tile):\/\/[^\s"')]+/gi;
+const DATA_URL_RE = /data:[^\s"')]+/gi;
+const EMAIL_RE = /[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi;
 // A decimal lat,lon pair in free text (>=3 decimals each, to avoid masking
 // innocuous small decimals). We never put coordinates in messages by design,
 // but this is a cheap last-ditch guard for a future log line that does.
@@ -46,6 +50,7 @@ const LONG_DIGITS_RE = /\d{8,}/g;
 // rounding is the project's anonymize convention, but a crash report has no
 // use for location at all, so we drop rather than coarsen.
 const DROP_KEY_RE = /^(lat|lon|lng|latitude|longitude|coord|coords|coordinate|coordinates|gps|geo)$/i;
+const SECRET_KEY_RE = /^(password|passwd|secret|token|accessToken|apiKey|authorization|cookie|cookies|email)$/i;
 // Object keys whose value is a file name / path / URL - masked to extension.
 // Deliberately broad and substring-based: ANY key containing "name" (incl.
 // `worker_name`, `extractorName`, ...) gets its value masked to "***". When a
@@ -53,28 +58,21 @@ const DROP_KEY_RE = /^(lat|lon|lng|latitude|longitude|coord|coords|coordinate|co
 // this regex - name the key so it does not match (e.g. `worker`, `pool`,
 // `extractor`). Loosening risks leaking a real file name; renaming costs
 // nothing.
-const FILENAME_KEY_RE = /(file|filename|name|path|relativepath|relpath|url|src|downloadname|gpxname|bloburl|href)/i;
+const FILENAME_KEY_RE = /(file|name|path|url|src|href|folder|directory)/i;
 
 const MAX_DEPTH = 5;
 const MAX_ARRAY = 50;
 const MAX_STRING = 1024;
 
 /**
- * Masks a file name / path to its extension. Strips any directory part first,
- * so "/Volumes/SD/Front/clip.MP4" -> "***.mp4". Returns "***" when there is no
- * usable extension. Never returns the original basename.
+ * Masks a file name / path to a supported media or sidecar extension. Returns
+ * "***" for other values, including dotted folder labels and URLs.
  */
 export function maskFilename(value: string): string {
     // Take the basename across both separator styles.
     const base = value.split(/[/\\]/).pop() ?? value;
-    const dot = base.lastIndexOf(".");
-    if (dot > 0 && dot < base.length - 1) {
-        const ext = base.slice(dot + 1).toLowerCase();
-        // Only treat a short, alphanumeric tail as a real extension; otherwise
-        // a dotted name (e.g. "v1.2.3") would leak through the "ext".
-        if (/^[a-z0-9]{1,5}$/.test(ext)) return `***.${ext}`;
-    }
-    return "***";
+    const extension = MEDIA_EXTENSION_RE.exec(base)?.[1];
+    return extension ? `***.${extension.toLowerCase()}` : "***";
 }
 
 /**
@@ -85,10 +83,20 @@ export function maskFilename(value: string): string {
  */
 export function scrubMessage(input: string): string {
     if (!input) return input;
-    let s = input.length > MAX_STRING ? input.slice(0, MAX_STRING) : input;
+    // Redact before truncating: cutting a long filename before its extension
+    // would otherwise prevent the filename matcher from recognizing it.
+    if (input.length > MAX_STRING * 16) return "[message too long]";
+    let s = input;
+    s = s.replace(
+        QUOTED_FILENAME_RE,
+        (_match, quote: string, ext: string) => `${quote}***.${ext.toLowerCase()}${quote}`,
+    );
+    s = s.replace(BLOB_URL_RE, "blob:[redacted]");
+    s = s.replace(FILE_URL_RE, "[path]");
+    s = s.replace(RESOURCE_URL_RE, "[url]");
+    s = s.replace(DATA_URL_RE, "data:[redacted]");
     s = s.replace(WIN_PATH_RE, "[path]");
     s = s.replace(UNIX_PATH_RE, "[path]");
-    s = s.replace(BLOB_URL_RE, "blob:[redacted]");
     // Filenames after paths so a path's leaf does not get double-processed in a
     // confusing way (the path is already collapsed to [path]).
     s = s.replace(FILENAME_RE, (m) => {
@@ -97,7 +105,8 @@ export function scrubMessage(input: string): string {
     });
     s = s.replace(COORD_PAIR_RE, "[coords]");
     s = s.replace(LONG_DIGITS_RE, "#");
-    return s;
+    s = s.replace(EMAIL_RE, "[email]");
+    return s.slice(0, MAX_STRING);
 }
 
 /**
@@ -110,19 +119,19 @@ export function scrubValue(value: unknown): unknown {
     return walk(value, 0, new WeakSet());
 }
 
-function walk(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+function walk(value: unknown, depth: number, seen: WeakSet<object>, isFilename = false): unknown {
     if (value === null || value === undefined) return value;
     const t = typeof value;
-    if (t === "string") return scrubMessage(value as string);
+    if (t === "string") return isFilename ? maskFilename(value as string) : scrubMessage(value as string);
     if (t === "number" || t === "boolean") return value;
-    if (t === "bigint") return `${value}`;
+    if (t === "bigint") return scrubMessage(`${value}`);
     if (t === "function" || t === "symbol") return `[${t}]`;
     if (depth >= MAX_DEPTH) return "[truncated]";
 
     if (Array.isArray(value)) {
         if (seen.has(value)) return "[circular]";
         seen.add(value);
-        const out = value.slice(0, MAX_ARRAY).map((v) => walk(v, depth + 1, seen));
+        const out = value.slice(0, MAX_ARRAY).map((v) => walk(v, depth + 1, seen, isFilename));
         if (value.length > MAX_ARRAY) out.push(`[+${value.length - MAX_ARRAY} more]`);
         return out;
     }
@@ -133,12 +142,9 @@ function walk(value: unknown, depth: number, seen: WeakSet<object>): unknown {
         seen.add(obj);
         const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(obj)) {
-            if (DROP_KEY_RE.test(k)) continue; // coordinate-bearing key - drop
-            if (typeof v === "string" && FILENAME_KEY_RE.test(k)) {
-                out[k] = maskFilename(v);
-                continue;
-            }
-            out[k] = walk(v, depth + 1, seen);
+            if (DROP_KEY_RE.test(k) || SECRET_KEY_RE.test(k.replace(/[_-]/g, ""))) continue;
+            const safeKey = MEDIA_EXTENSION_RE.test(k) ? maskFilename(k) : scrubMessage(k);
+            out[safeKey] = walk(v, depth + 1, seen, FILENAME_KEY_RE.test(k));
         }
         return out;
     }
@@ -150,13 +156,38 @@ function walk(value: unknown, depth: number, seen: WeakSet<object>): unknown {
 // dependency-free leaf that the node test environment can import directly.
 interface ScrubbableBreadcrumb {
     message?: string;
+    category?: string;
     data?: Record<string, unknown>;
+    [k: string]: unknown;
+}
+interface ScrubbableStacktrace {
+    frames?: Array<{
+        filename?: string;
+        abs_path?: string;
+        function?: string;
+        vars?: unknown;
+        pre_context?: unknown;
+        context_line?: unknown;
+        post_context?: unknown;
+        [k: string]: unknown;
+    }>;
     [k: string]: unknown;
 }
 interface ScrubbableEvent {
     message?: string | { formatted?: string; message?: string };
-    request?: { url?: string; headers?: unknown; cookies?: unknown; [k: string]: unknown };
-    exception?: { values?: Array<{ value?: string; [k: string]: unknown }> };
+    logentry?: { message?: string; params?: unknown[] };
+    request?: { url?: string; method?: string; [k: string]: unknown };
+    user?: unknown;
+    exception?: {
+        values?: Array<{
+            type?: string;
+            value?: string;
+            mechanism?: Record<string, unknown>;
+            stacktrace?: ScrubbableStacktrace;
+            [k: string]: unknown;
+        }>;
+    };
+    debug_meta?: { images?: Array<{ code_file?: string; debug_file?: string | null; [k: string]: unknown }> };
     breadcrumbs?: ScrubbableBreadcrumb[];
     extra?: Record<string, unknown>;
     contexts?: Record<string, unknown>;
@@ -174,28 +205,68 @@ interface ScrubbableEvent {
  */
 export function scrubBreadcrumb<T extends ScrubbableBreadcrumb>(bc: T): T {
     if (typeof bc.message === "string") bc.message = scrubMessage(bc.message);
+    if (typeof bc.category === "string") bc.category = scrubMessage(bc.category);
     if (bc.data && typeof bc.data === "object") bc.data = scrubValue(bc.data) as Record<string, unknown>;
     return bc;
 }
 
+// Source-map lookup needs the exact asset basename (including numeric hashes).
+// Keep HTTP(S) asset locations, but never credentials, query state or local paths.
+function scrubSourceLocation(value: string): string {
+    const withoutState = value.split(/[?#]/, 1)[0] ?? "";
+    if (/^file:/i.test(value) || /^[A-Za-z]:[/\\]/.test(value) || value.search(UNIX_PATH_RE) >= 0) {
+        return "[path]";
+    }
+    if (/^blob:/i.test(value)) return "blob:[redacted]";
+    if (/^data:/i.test(value)) return "data:[redacted]";
+    if (/^https?:\/\//i.test(withoutState)) {
+        try {
+            const url = new URL(withoutState);
+            url.username = "";
+            url.password = "";
+            return url.toString();
+        } catch {
+            return "[url]";
+        }
+    }
+    return withoutState
+        .replace(BLOB_URL_RE, "blob:[redacted]")
+        .replace(FILE_URL_RE, "[path]")
+        .replace(DATA_URL_RE, "data:[redacted]")
+        .replace(WIN_PATH_RE, "[path]")
+        .replace(UNIX_PATH_RE, "[path]");
+}
+
+function scrubStacktrace(stacktrace: ScrubbableStacktrace): void {
+    for (const frame of stacktrace.frames ?? []) {
+        if (typeof frame.filename === "string") frame.filename = scrubSourceLocation(frame.filename);
+        if (typeof frame.abs_path === "string") frame.abs_path = scrubSourceLocation(frame.abs_path);
+        if (typeof frame.function === "string") frame.function = scrubMessage(frame.function);
+        // Local variables and inline source are unnecessary for uploaded source
+        // maps and can contain recording data from generated worker code.
+        delete frame.vars;
+        delete frame.pre_context;
+        delete frame.context_line;
+        delete frame.post_context;
+    }
+}
+
 /**
  * Scrubs a full Sentry error event in place and returns it. Used from
- * beforeSend. Strips the request query string and headers (the page URL/query
- * and Referer are sent regardless of sendDefaultPii), scrubs exception values,
- * breadcrumbs, extra and contexts.
+ * beforeSend. Removes private request/user data, scrubs diagnostic fields and
+ * retains stack/source-map metadata needed to resolve application frames.
  */
 export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
-    // Request: keep only the path (drop query/hash that could carry state),
-    // remove headers (Referer/UA) and cookies. Browser/OS still come from
-    // Sentry's parsed contexts.browser, not from these raw headers.
+    // Keep only routing metadata. Body, query_string, env, headers and cookies
+    // can all disclose private data, regardless of the SDK collection options.
     if (event.request) {
-        if (typeof event.request.url === "string") {
-            const q = event.request.url.search(/[?#]/);
-            if (q >= 0) event.request.url = event.request.url.slice(0, q);
-        }
-        event.request.headers = undefined;
-        event.request.cookies = undefined;
+        const { url, method } = event.request;
+        event.request = {
+            ...(typeof url === "string" ? { url: scrubSourceLocation(url) } : {}),
+            ...(typeof method === "string" ? { method: scrubMessage(method) } : {}),
+        };
     }
+    delete event.user;
 
     if (typeof event.message === "string") {
         event.message = scrubMessage(event.message);
@@ -204,11 +275,22 @@ export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
             event.message.formatted = scrubMessage(event.message.formatted);
         if (typeof event.message.message === "string") event.message.message = scrubMessage(event.message.message);
     }
+    if (event.logentry) {
+        if (typeof event.logentry.message === "string") event.logentry.message = scrubMessage(event.logentry.message);
+        if (event.logentry.params) event.logentry.params = scrubValue(event.logentry.params) as unknown[];
+    }
 
     if (event.exception?.values) {
         for (const v of event.exception.values) {
+            if (typeof v.type === "string") v.type = scrubMessage(v.type);
             if (typeof v.value === "string") v.value = scrubMessage(v.value);
+            if (v.mechanism) v.mechanism = scrubValue(v.mechanism) as Record<string, unknown>;
+            if (v.stacktrace) scrubStacktrace(v.stacktrace);
         }
+    }
+    for (const image of event.debug_meta?.images ?? []) {
+        if (typeof image.code_file === "string") image.code_file = scrubSourceLocation(image.code_file);
+        if (typeof image.debug_file === "string") image.debug_file = scrubSourceLocation(image.debug_file);
     }
 
     if (Array.isArray(event.breadcrumbs)) {
@@ -219,13 +301,25 @@ export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
         event.extra = scrubValue(event.extra) as Record<string, unknown>;
     }
     if (event.contexts && typeof event.contexts === "object") {
-        // contexts.trace carries only SDK-generated hex ids and a status - no
-        // PII by construction. The generic digit-run scrub eats 8+ digit runs
-        // inside trace_id ("dd2c50a88642490..." -> "dd2c50a#..."), and Sentry
-        // then flags the event with an invalid_data ingestion error. Exempt it.
+        // Preserve only valid SDK-generated IDs verbatim. The rest of the trace
+        // context can contain arbitrary data and needs the same scrubbing.
         const trace = event.contexts.trace;
         event.contexts = scrubValue(event.contexts) as Record<string, unknown>;
-        if (trace !== undefined) event.contexts.trace = trace;
+        const scrubbedTrace = event.contexts.trace;
+        if (trace && typeof trace === "object" && scrubbedTrace && typeof scrubbedTrace === "object") {
+            for (const [key, length] of [
+                ["trace_id", 32],
+                ["span_id", 16],
+                ["parent_span_id", 16],
+            ] as const) {
+                const id = (trace as Record<string, unknown>)[key];
+                if (typeof id === "string" && new RegExp(`^[a-f0-9]{${length}}$`, "i").test(id)) {
+                    (scrubbedTrace as Record<string, unknown>)[key] = id;
+                } else {
+                    delete (scrubbedTrace as Record<string, unknown>)[key];
+                }
+            }
+        }
     }
     if (event.tags && typeof event.tags === "object") {
         event.tags = scrubValue(event.tags) as Record<string, unknown>;

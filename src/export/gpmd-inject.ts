@@ -133,8 +133,8 @@ export async function injectClipGpmf(args: {
         // product requirement (the whole RAM path exists to preserve it), so a
         // silent failure here is a real defect worth seeing.
         captureSentryException(err, {
-            fingerprint: ["gpmd_inject_failed", err instanceof Error ? err.name : "unknown"],
-            tags: { sample_count: String(sampleCount) },
+            tags: { feature: "export", stage: "gpmd-inject" },
+            extra: { sampleCount },
         });
         return false;
     }

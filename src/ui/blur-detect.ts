@@ -24,6 +24,7 @@ import type { DetectionAnalysis } from "../tracking/detection-analysis.js";
 import { DETECTION_QUALITY_DEFAULT, type DetectionQuality } from "../tracking/detection-sampling.js";
 import { DETECTION_POLICIES, detectionPolicy, type DetectionThresholds } from "../tracking/detector-policy.js";
 import { createLogger } from "../log.js";
+import { captureSentryException, captureSentryMessage } from "../sentry.js";
 import { tripAllCandidates } from "../trips.js";
 import type { Trip } from "../trips.js";
 import type { Channel } from "../parsers/types.js";
@@ -136,6 +137,8 @@ interface RunningDetect {
     controller: AbortController;
     /** Settles when the pass stores a result (true) or fails/cancels (false). */
     promise: Promise<boolean>;
+    /** Retains the original failure for an awaiting export's capture boundary. */
+    failure?: unknown;
     armTimeout: () => void;
     /** An export has adopted this exact pass. UI reconciliation must not abort
      *  it when playback auto-advances or the active trip changes: the export is
@@ -598,7 +601,7 @@ export async function ensureDetectRegionsForExport(
         try {
             const ok = await run.promise;
             if (signal.aborted) throw new DOMException("aborted", "AbortError");
-            if (!ok) throw new Error("detect pass failed");
+            if (!ok) throw run.failure ?? new Error("detect pass failed");
         } finally {
             signal.removeEventListener("abort", onAbort);
             unsubscribe();
@@ -926,14 +929,28 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
             if ((err as DOMException)?.name === "AbortError") {
                 if (timedOut) {
                     lastFailedRun = { trip: run.trip, key: params.key };
+                    run.failure = new Error("blur detection timed out");
                     log.warn("detect pass timed out", { key: params.key });
+                    if (!run.exportProtected) {
+                        captureSentryMessage("blur detection timed out", {
+                            level: "error",
+                            fingerprint: ["blur_detection_timeout"],
+                            tags: { feature: "blur", stage: "detection" },
+                        });
+                    }
                     notify({ severity: "warn", messageKey: "export.blur.detect.failed" });
                 } else {
                     log.info("detect pass cancelled", { key: params.key });
                 }
             } else {
                 lastFailedRun = { trip: run.trip, key: params.key };
+                run.failure = err;
                 log.warn("detect pass failed", { key: params.key, err: String(err) });
+                // Save-time detection is already awaited and captured by the
+                // export flow. A live preview pass has no other error boundary.
+                if (!run.exportProtected) {
+                    captureSentryException(err, { tags: { feature: "blur", stage: "detection" } });
+                }
                 notify({ severity: "warn", messageKey: "export.blur.detect.failed" });
             }
             return false;

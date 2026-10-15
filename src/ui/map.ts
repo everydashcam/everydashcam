@@ -689,10 +689,6 @@ function observeViewerMap(map: maplibregl.Map, surface: "main" | "mini"): void {
         lostViewerMapStyles.delete(map);
         if (pendingStyle) setViewerMapStyle(map, pendingStyle);
         log.info(`${prefix}webgl context restored`);
-        captureSentryMessage("map webgl context restored", {
-            fingerprint: ["map_webgl_context_restored"],
-            tags: { map: surface },
-        });
     });
     stubMissingStyleImages(map);
 }

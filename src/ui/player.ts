@@ -1127,20 +1127,21 @@ function retryPlaybackCandidate(cand: VideoCandidate, ch: Channel): void {
 }
 
 /** Retry a transient failure once, then offer an explicit retry without
- * changing source capabilities. Only a genuine codec rejection is permanent. */
+ * changing source capabilities. Returns true only for a newly surfaced failure
+ * worth reporting; recovery, damaged tails and stale events stay as breadcrumbs. */
 function handleRuntimeDecodeFailure(
     cand: VideoCandidate,
     ch: Channel,
     recoverable: boolean,
     reason: string,
     position = playbackRetryPosition(channelPlayers[ch]),
-): void {
+): boolean {
     const v = channelPlayers[ch];
-    if (!cand.canPlay || runtimePlaybackFailures.has(cand) || recoveringCandidates.has(cand)) return;
-    if (videoAttachedFile.get(v) !== cand.file) return;
+    if (!cand.canPlay || runtimePlaybackFailures.has(cand) || recoveringCandidates.has(cand)) return false;
+    if (videoAttachedFile.get(v) !== cand.file) return false;
     if (!recoverable) {
         markCandidateUnplayable(cand, ch);
-        return;
+        return true;
     }
     const isMaster = v === activePlayer();
     if (isClipTailFailure(position.offsetSec, cand.durationSec)) {
@@ -1179,14 +1180,14 @@ function handleRuntimeDecodeFailure(
                 updatePlayerProgressUi();
             }
         }
-        return;
+        return false;
     }
     const used = decodeRetryCount.get(cand) ?? 0;
     if (used < MAX_DECODE_RETRIES) {
         decodeRetryCount.set(cand, used + 1);
         log.warn("transient decode failure, re-attaching camera", { file: cand.file.name, channel: ch, reason });
         void restartCandidate(cand, ch, position);
-        return;
+        return false;
     }
     log.warn("transient decode failure exhausted retries", { file: cand.file.name, channel: ch, reason });
     runtimePlaybackFailures.set(cand, position);
@@ -1195,6 +1196,7 @@ function handleRuntimeDecodeFailure(
     const af = activeFrame();
     if (af) applyTileLayoutRoles(af.frame, effectiveMasterChannel());
     if (isMaster) showRuntimePlaybackFailure(cand, ch);
+    return true;
 }
 
 /**
@@ -1207,7 +1209,13 @@ function onBackendError(cand: VideoCandidate, ch: Channel, reason: string): void
     if (!cand.canPlay) return; // already marked - no re-render needed
     const recoverable = !reason.startsWith("mime-not-supported");
     log.warn("per-file mse backend failed", { file: cand.file.name, channel: ch, reason, recoverable });
-    handleRuntimeDecodeFailure(cand, ch, recoverable, reason);
+    if (handleRuntimeDecodeFailure(cand, ch, recoverable, reason)) {
+        captureSentryMessage("video backend failed", {
+            level: "warning",
+            fingerprint: ["mse_backend_fail", reason],
+            tags: { feature: "playback", backend: "mse", reason, codec: cand.codec ?? "unknown" },
+        });
+    }
 }
 
 /**
@@ -2712,23 +2720,22 @@ export function initPlayer(): void {
             // under preview contention) -> retry; SRC_NOT_SUPPORTED(4) is a genuine
             // codec rejection -> permanent overlay.
             if (err.code === MediaError.MEDIA_ERR_DECODE || err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-                handleRuntimeDecodeFailure(
+                const backend = state.channelBackends[ch] ? "mse" : "native";
+                const failed = handleRuntimeDecodeFailure(
                     cand,
                     ch,
                     err.code === MediaError.MEDIA_ERR_DECODE,
                     `native-mediaerror-${err.code}`,
                     position,
                 );
-                // Native-pipeline decode failure: which broken-container quirk slipped
-                // past ingest repair (the err.message often names it, e.g.
-                // DEMUXER_ERROR_COULD_NOT_OPEN / PIPELINE_ERROR_DECODE). The message
-                // is scrubbed before send; no filename leaves.
-                captureSentryMessage("native video decode failed", {
-                    level: "warning",
-                    fingerprint: ["video_decode_error", String(err.code), cand?.codec ?? "unknown"],
-                    tags: { code: String(err.code), codec: cand?.codec ?? "unknown" },
-                    extra: { mediaErrorMessage: err.message },
-                });
+                if (failed) {
+                    captureSentryMessage("video decode failed", {
+                        level: "warning",
+                        fingerprint: ["video_decode_error", String(err.code), cand.codec ?? "unknown"],
+                        tags: { feature: "playback", backend, code: String(err.code), codec: cand.codec ?? "unknown" },
+                        extra: { mediaErrorMessage: err.message },
+                    });
+                }
             }
         }),
     );

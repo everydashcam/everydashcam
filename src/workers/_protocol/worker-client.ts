@@ -77,6 +77,9 @@ export interface WorkerClientOptions {
      * worker for the slot.
      */
     onCrash?: (err: Error) => void;
+    /** False when onCrash forwards even idle crashes into a recovery boundary
+     * that owns reporting, such as playback's retry-or-fail decision. */
+    reportIdleCrash?: boolean;
 }
 
 /** The handle returned by createWorkerClient. */
@@ -244,11 +247,11 @@ export function createWorkerClient(endpoint: WorkerEndpoint, opts: WorkerClientO
         // Capture ONLY when no request is in flight: a crash mid-request rejects
         // that request, which surfaces (and is captured) at the awaiting call
         // site (e.g. ingest top-level catch) - capturing here too would double-
-        // report the same crash. An empty `pending` is the real blind spot
-        // (idle / prewarm / module-load crash) that nothing downstream sees.
-        if (pending.size === 0) {
+        // report the same crash. An empty `pending` is otherwise a blind spot,
+        // unless onCrash explicitly delegates reporting to a recovery boundary.
+        if (pending.size === 0 && opts.reportIdleCrash !== false) {
             captureSentryException(err, {
-                fingerprint: ["worker_crash", opts.name, crashKind],
+                fingerprint: ["worker_crash", opts.name, isLoadFailure ? crashKind : "{{ default }}"],
                 tags: { worker: opts.name, crash_kind: crashKind },
             });
         }
@@ -263,7 +266,7 @@ export function createWorkerClient(endpoint: WorkerEndpoint, opts: WorkerClientO
         const err = new Error(`${opts.name} messageerror`);
         // Same dedup rationale as handleError: only the no-in-flight-request
         // case is the blind spot worth capturing here.
-        if (pending.size === 0) {
+        if (pending.size === 0 && opts.reportIdleCrash !== false) {
             captureSentryException(err, {
                 fingerprint: ["worker_crash", opts.name, "messageerror"],
                 tags: { worker: opts.name, crash_kind: "messageerror" },

@@ -6,7 +6,7 @@
 // video" majority never reports). Sentry turns that into automatic crash +
 // capability-gap signal. The single strongest reason is release-health by
 // browser/os/version under the capability gate (which API combo actually fails
-// in the wild), so BrowserSession (Release Health) is kept on.
+// in the wild), so page sessions (Release Health) are kept on.
 //
 // Hard constraints honored here:
 //  - Privacy first. The project sells "video never leaves your machine"; the
@@ -79,7 +79,7 @@ const pending: PendingCapture[] = [];
 // Tags / contexts requested before load (e.g. the capability signature) -
 // applied once the SDK is ready and then carried on every event.
 let pendingTags: Record<string, string> | null = null;
-const pendingContexts: Array<{ name: string; context: Record<string, unknown> }> = [];
+const pendingContexts = new Map<string, Record<string, unknown>>();
 
 /** Build-time DSN. Empty => crash reporting is not built into this bundle. */
 export function getSentryDsn(): string {
@@ -172,9 +172,7 @@ async function loadAndInit(): Promise<void> {
     // Build-time dead-code elimination: when VITE_SENTRY_DSN is UNSET, Vite
     // folds this to `if (!undefined)` and Rollup drops the import() + the entire
     // @sentry chunk - a self-hosted fork that omits the var ships zero Sentry
-    // bytes. (An explicit empty value still disables at runtime via the
-    // crashReportingEnabled gate above but may leave the unused chunk in dist;
-    // omit the var entirely to strip it - see .env.example.)
+    // bytes. An explicit empty value is folded away too.
     if (!import.meta.env.VITE_SENTRY_DSN) return;
     loading = true;
     try {
@@ -192,8 +190,10 @@ async function loadAndInit(): Promise<void> {
             dsn: getSentryDsn(),
             release: APP_VERSION,
             environment,
+            isEnabled: crashReportingEnabled,
             beforeSend: (event) => {
                 if (!crashReportingEnabled()) return null;
+                if (event.exception?.values?.some((exception) => exception.type === "AbortError")) return null;
                 if (sentThisSession >= SESSION_EVENT_CAP) return null;
                 sentThisSession++;
                 // scrubEvent mutates in place; the Sentry event type is a
@@ -215,8 +215,8 @@ async function loadAndInit(): Promise<void> {
             for (const [k, v] of Object.entries(pendingTags)) sentryApi.setTag(k, v);
             pendingTags = null;
         }
-        for (const c of pendingContexts) sentryApi.setContext(c.name, c.context);
-        pendingContexts.length = 0;
+        for (const [name, context] of pendingContexts) sentryApi.setContext(name, context);
+        pendingContexts.clear();
 
         // Forward the central logger into Sentry as breadcrumbs (scrubbed in
         // beforeBreadcrumb). No events from here - uncaught/rejection events
@@ -262,7 +262,7 @@ function syncClientWithConsent(): void {
         setLogSink(null);
         pending.length = 0;
         pendingTags = null;
-        pendingContexts.length = 0;
+        pendingContexts.clear();
         if (sentryApi) {
             try {
                 void sentryApi.close().catch((err: unknown) => log.warn("crash reporting shutdown failed", err));
@@ -297,10 +297,11 @@ export function captureSentryMessage(message: string, ctx: CaptureContext = {}):
 
 /**
  * Curated exception capture (a real thrown failure with a stack). No-op unless
- * built and enabled. Skip AbortError at the call site (user cancel is not a bug).
+ * built and enabled. User cancellation is never an error report.
  */
 export function captureSentryException(error: unknown, ctx: CaptureContext = {}): void {
     if (!crashReportingEnabled()) return;
+    if (error instanceof Error && error.name === "AbortError") return;
     if (sentryApi) sendException(error, ctx);
     else queue({ kind: "exception", error, ctx });
 }
@@ -314,7 +315,7 @@ function sendMessage(message: string, ctx: CaptureContext): void {
     if (!sentryApi) return;
     try {
         sentryApi.captureMessage(scrubMessage(message), {
-            level: ctx.level ?? "info",
+            level: ctx.level ?? "warning",
             fingerprint: ctx.fingerprint,
             tags: ctx.tags,
             extra: ctx.extra ? (scrubValue(ctx.extra) as Record<string, unknown>) : undefined,
@@ -359,7 +360,7 @@ export function setSentryContext(name: string, context: Record<string, unknown>)
     if (!crashReportingEnabled()) return;
     const safe = scrubValue(context) as Record<string, unknown>;
     if (sentryApi) sentryApi.setContext(name, safe);
-    else pendingContexts.push({ name, context: safe });
+    else pendingContexts.set(name, safe);
 }
 
 // Breadcrumb sink wired into the central logger. Message + data are scrubbed in
@@ -368,8 +369,13 @@ function forwardLogToSentry(entry: LogSinkEntry): void {
     if (!sentryApi || !crashReportingEnabled()) return;
     const level: BreadcrumbLevel = entry.level === "warn" ? "warning" : entry.level;
     const data: Record<string, unknown> = {};
-    if (entry.ctx) Object.assign(data, entry.ctx);
-    if (entry.err) {
+    // Annotation storage/restore errors can quote arbitrary note text. Their
+    // messages are static; retain that trail while keeping payloads local.
+    const isNotesLog = /^(?:annotations(?:-sidecar)?|notes-storage-choice|migration-restore)(?::|$)/.test(entry.ns);
+    if (entry.ctx && !isNotesLog) Object.assign(data, entry.ctx);
+    // Unknown extensions are arbitrary filename suffixes, including user text.
+    delete data.byExtension;
+    if (entry.err && !isNotesLog) {
         // Key deliberately does NOT contain "name": the scrubber's
         // FILENAME_KEY_RE masks any *name* key's value to "***" (per its own
         // contract: rename the key, never loosen the regex).
@@ -400,6 +406,6 @@ export function _resetForTests(): void {
     runtimeEnabled = null;
     pending.length = 0;
     pendingTags = null;
-    pendingContexts.length = 0;
+    pendingContexts.clear();
     setLogSink(null);
 }

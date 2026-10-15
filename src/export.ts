@@ -301,11 +301,11 @@ export async function exportClip({
             // (no period, lowercase). They surface to the user only via the
             // generic "Error: ..." plate in export-modal, which is rare and
             // already reads like a debug breadcrumb.
-            throw new Error(`no video track in file ${segments[0]!.file.name}`);
+            throw new Error("no video track in file");
         }
         const videoCodec = await firstVideoTrack.getCodec();
         if (!videoCodec) {
-            throw new Error(`unable to detect video codec in file ${segments[0]!.file.name}`);
+            throw new Error("unable to detect video codec in file");
         }
         // Preflight the decoder config before output.start(). The first video
         // packet carries it into the moov sample entry; if it is null the muxer
@@ -314,7 +314,7 @@ export async function exportClip({
         // the save dialog and gets a truncated file instead of a clean failure.
         const firstVideoDecoderConfig = await firstVideoTrack.getDecoderConfig();
         if (!firstVideoDecoderConfig) {
-            throw new Error(`unable to read video decoder config in file ${segments[0]!.file.name}`);
+            throw new Error("unable to read video decoder config in file");
         }
         // Packet copies retain the source presentation, including reflection and translation.
         const transformationMatrix = await firstVideoTrack.getTransformationMatrix();
@@ -468,7 +468,7 @@ export async function exportClip({
             try {
                 const v = segIdx === 0 ? firstVideoTrack : await input.getPrimaryVideoTrack();
                 if (!v) {
-                    throw new Error(`no video track in file ${seg.file.name}`);
+                    throw new Error("no video track in file");
                 }
                 const a = audioSource
                     ? segIdx === 0
@@ -496,11 +496,11 @@ export async function exportClip({
                         verifyKeyPackets: true,
                     })) ?? (await videoSink.getFirstKeyPacket({ verifyKeyPackets: true }));
                 if (!videoStartPacket) {
-                    throw new Error(`no decodable video packets in file ${seg.file.name}`);
+                    throw new Error("no decodable video packets in file");
                 }
                 const videoEndPacket = await lastVideoPacketInRange(videoSink, v, sourceEnd, signal);
                 if (!videoEndPacket || videoEndPacket.sequenceNumber < videoStartPacket.sequenceNumber) {
-                    throw new Error(`no video packets in selected range in file ${seg.file.name}`);
+                    throw new Error("no video packets in selected range in file");
                 }
                 // Only the output head can hide decoder preroll with an edit list.
                 // Internal joins keep complete GOPs, but retain any video delay
@@ -579,7 +579,7 @@ export async function exportClip({
                     // exported file, not just the head.
                     pkt = await videoSink.getNextPacket(pkt, { verifyKeyPackets: true });
                 }
-                if (videoCount === 0) throw new Error(`no decodable video packets in file ${seg.file.name}`);
+                if (videoCount === 0) throw new Error("no decodable video packets in file");
 
                 // A following file starts on the recording clock, including any
                 // audio-only tail. B-frame references can still extend that span.
@@ -837,7 +837,7 @@ async function assertVideoCompatibility(
         try {
             const track = await input.getPrimaryVideoTrack();
             const config = await track?.getDecoderConfig();
-            if (!track || !config) throw new Error(`unable to read video decoder config in file ${file.name}`);
+            if (!track || !config) throw new Error("unable to read video decoder config in file");
             if (
                 config.codec !== first.codec ||
                 config.codedWidth !== first.codedWidth ||

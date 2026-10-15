@@ -1,8 +1,8 @@
 // Exercise the real SDK with an intercepted fetch boundary. No event leaves
 // the process, including automatic client reports and session envelopes.
-import { getClient, getIsolationScope } from "@sentry/browser";
+import { captureSession, getClient, getIsolationScope, startSession } from "@sentry/browser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createLogger } from "./log.js";
+import { createLogger, getLogBuffer } from "./log.js";
 import {
     CRASH_REPORTING_STORAGE_KEY,
     _resetForTests,
@@ -42,7 +42,6 @@ async function interceptedFetch(_input: string | URL | Request, init?: RequestIn
 
 beforeEach(() => {
     _resetForTests();
-    getIsolationScope().clear();
     requests = [];
     shouldHoldRequests = false;
     vi.stubGlobal("fetch", interceptedFetch);
@@ -66,6 +65,82 @@ afterEach(async () => {
 });
 
 describe("crash reporting consent lifecycle", () => {
+    it("starts a fresh page session after opt-in and counts exceptions without treating messages as errors", async () => {
+        vi.stubGlobal("document", {});
+        getIsolationScope().setUser({ id: "private-user", email: "private@example.com", ip_address: "192.0.2.1" });
+        initSentry();
+        await vi.dynamicImportSettled();
+        await getClient()?.flush(1000);
+        const sessions = () =>
+            requests
+                .filter((request) => request.body.includes('"type":"session"'))
+                .map((request) => {
+                    const session: { sid: string; init: boolean; errors: number; status: string } = JSON.parse(
+                        request.body.split("\n")[2]!,
+                    );
+                    return session;
+                });
+        expect(sessions()).toHaveLength(1);
+        const first = sessions()[0]!;
+        expect(first).toMatchObject({ init: true, errors: 0, status: "ok" });
+
+        captureSentryMessage("capability warning", { level: "warning" });
+        await getClient()?.flush(1000);
+        expect(sessions()).toHaveLength(2);
+        expect(sessions()[1]).toMatchObject({ sid: first.sid, errors: 0, status: "ok" });
+        captureSentryException(new Error("handled processing failure"));
+        await getClient()?.flush(1000);
+        expect(sessions()).toHaveLength(3);
+        expect(sessions()[2]).toMatchObject({ sid: first.sid, init: false, errors: 1 });
+
+        setCrashReportingEnabled(false);
+        expect(getIsolationScope().getSession()).toBeUndefined();
+        expect(getIsolationScope().getUser()).toEqual({});
+        setCrashReportingEnabled(true);
+        await vi.dynamicImportSettled();
+        await getClient()?.flush(1000);
+        expect(sessions()).toHaveLength(4);
+        expect(sessions()[3]).toMatchObject({ init: true, errors: 0, status: "ok" });
+        expect(sessions()[3]!.sid).not.toBe(first.sid);
+        const payload = requests.map((request) => request.body).join("\n");
+        expect(payload).not.toContain("private-user");
+        expect(payload).not.toContain("private@example.com");
+        expect(payload).not.toContain("192.0.2.1");
+    });
+
+    it("blocks session envelopes as soon as persisted consent is withdrawn", async () => {
+        initSentry();
+        await vi.dynamicImportSettled();
+        startSession({ ignoreDuration: true });
+        captureSession();
+        await getClient()?.flush(1000);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.body).toContain('"type":"session"');
+
+        storedChoices.set(CRASH_REPORTING_STORAGE_KEY, "off");
+        // The storage event can be queued behind a session update.
+        captureSession();
+        await getClient()?.flush(1000);
+        expect(requests).toHaveLength(1);
+    });
+
+    it("forgets active breadcrumbs, tags and contexts across opt-out", async () => {
+        initSentry();
+        await vi.dynamicImportSettled();
+        setSentryTags({ phase: "old-enabled-tag" });
+        setSentryContext("phase", { state: "old-enabled-context" });
+        createLogger("sentry-test").info("old-enabled-breadcrumb");
+        setCrashReportingEnabled(false);
+        setCrashReportingEnabled(true);
+        await vi.dynamicImportSettled();
+        captureSentryMessage("new report after opt-in");
+        await getClient()?.flush(1000);
+        const payload = requests.map((request) => request.body).join("\n");
+        expect(payload).toContain("new report after opt-in");
+        expect(payload).not.toContain("old-enabled");
+        expect(getIsolationScope().getScopeData().contexts.phase).toBeUndefined();
+    });
+
     it("stops the active transport after another tab opts out", async () => {
         setCrashReportingEnabled(true);
         await vi.dynamicImportSettled();
@@ -260,5 +335,123 @@ describe("crash reporting consent lifecycle", () => {
         expect(payload).toContain("new client report");
         expect(payload).not.toContain("old pending report");
         expect(payload).not.toContain("disabled");
+    });
+});
+
+describe("errors-only reporting", () => {
+    it("keeps arbitrary extension histograms local while retaining safe ingest counts", async () => {
+        initSentry();
+        await vi.dynamicImportSettled();
+        const byExtension = { ".mp4": 1, ".private-suffix": 1 };
+        createLogger("ingest").info("ingest started", { byExtension, totalFiles: 2 });
+        captureSentryMessage("ingest produced no playable trips");
+        await getClient()?.flush(1000);
+        const payload = requests.map((request) => request.body).join("\n");
+        expect(payload).toContain("ingest started");
+        expect(payload).toContain('"totalFiles":2');
+        expect(payload).not.toContain("byExtension");
+        expect(payload).not.toContain("private-suffix");
+        expect(
+            getLogBuffer()
+                .filter((entry) => entry.ns === "ingest")
+                .at(-1)?.ctx,
+        ).toEqual({
+            byExtension,
+            totalFiles: 2,
+        });
+    });
+
+    it.each(["annotations", "annotations-sidecar", "notes-storage-choice", "migration-restore"])(
+        "keeps %s note details in the local ring while sending the static diagnostic trail",
+        async (namespace) => {
+            initSentry();
+            await vi.dynamicImportSettled();
+            const logger = createLogger(namespace);
+            logger.warn("note storage payload failed", { err: "private-note-context", note: "private-note-text" });
+            logger.error("note storage operation failed", new Error("private-note-error"));
+            captureSentryMessage("annotation persistence failed", {
+                level: "error",
+                tags: { feature: "annotations" },
+            });
+            await getClient()?.flush(1000);
+            const payload = requests.map((request) => request.body).join("\n");
+            expect(payload).toContain("annotation persistence failed");
+            expect(payload).toContain("note storage payload failed");
+            expect(payload).toContain("note storage operation failed");
+            expect(payload).toContain(`"category":"${namespace}"`);
+            expect(payload).not.toContain("private-note");
+            const local = getLogBuffer().filter((entry) => entry.ns === namespace);
+            expect(local.find((entry) => entry.msg === "note storage payload failed")?.ctx).toEqual({
+                err: "private-note-context",
+                note: "private-note-text",
+            });
+            expect(local.find((entry) => entry.msg === "note storage operation failed")?.err?.message).toBe(
+                "private-note-error",
+            );
+        },
+    );
+
+    it("drops manual and automatic cancellation reports but preserves real exceptions", async () => {
+        initSentry();
+        captureSentryException(new DOMException("cancelled pending", "AbortError"));
+        await vi.dynamicImportSettled();
+        captureSentryException(new DOMException("cancelled active", "AbortError"));
+        getClient()?.captureException(new DOMException("cancelled unhandled", "AbortError"));
+        captureSentryException(new Error("actual processing failure"));
+        await getClient()?.flush(1000);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.body).toContain("actual processing failure");
+        expect(requests[0]?.body).not.toContain("cancelled");
+    });
+
+    it("keeps only the latest context queued before initialization", async () => {
+        setSentryContext("phase", { state: "superseded-context" });
+        setSentryContext("phase", { state: "current-context" });
+        initSentry();
+        captureSentryMessage("queued report");
+        await vi.dynamicImportSettled();
+        await getClient()?.flush(1000);
+        expect(requests[0]?.body).toContain("current-context");
+        expect(requests[0]?.body).not.toContain("superseded-context");
+    });
+
+    it("limits reports across client restarts without sending client-report envelopes", async () => {
+        initSentry();
+        await vi.dynamicImportSettled();
+        for (let i = 0; i < 55; i++) {
+            captureSentryMessage(`failure ${i}`);
+            await getClient()?.flush(1000);
+        }
+        expect(requests).toHaveLength(50);
+        setCrashReportingEnabled(false);
+        setCrashReportingEnabled(true);
+        await vi.dynamicImportSettled();
+        captureSentryMessage("failure after restart");
+        await getClient()?.flush(1000);
+        expect(requests).toHaveLength(50);
+        expect(requests.every((request) => !request.body.includes('"type":"client_report"'))).toBe(true);
+    });
+
+    it("sends scrubbed exception stacks and manual breadcrumbs without raw user data", async () => {
+        initSentry();
+        await vi.dynamicImportSettled();
+        createLogger("sentry-test").warn("processing failed", {
+            filename: "Private Family Trip.mp4",
+            lat: 55.7558,
+            lon: 37.6173,
+            codec: "hevc",
+        });
+        const error = new Error('cannot read "Private Family Trip.mp4"');
+        error.stack = "Error: failed\n    at decode (https://everydashcam.app/assets/player.js?token=secret:42:7)";
+        captureSentryException(error, { tags: { operation: "playback" } });
+        await getClient()?.flush(1000);
+        const payload = requests.map((request) => request.body).join("\n");
+        expect(payload).toContain("player.js");
+        expect(payload).toContain('"lineno":42');
+        expect(payload).toContain("hevc");
+        expect(payload).not.toContain("Private Family");
+        expect(payload).not.toContain("secret");
+        expect(payload).not.toContain("55.7558");
+        expect(payload).not.toContain("37.6173");
     });
 });

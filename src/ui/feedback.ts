@@ -241,8 +241,7 @@ function downloadReport(): void {
         // Meta-signal: our OWN report channel failed (often an OOM). Without this
         // it never reaches us - the user cannot send the report that failed.
         captureSentryException(err, {
-            fingerprint: ["feedback_report_failed", err instanceof Error ? err.name : "unknown"],
-            tags: { preset: preset ?? "unknown" },
+            tags: { feature: "feedback-report", preset: preset ?? "unknown" },
         });
         return;
     }

@@ -5,6 +5,7 @@
 // unavailability degrades to session-only annotations, never an error.
 
 import { createLogger } from "../log.js";
+import { captureSentryMessage } from "../sentry.js";
 import {
     compareAnnotationVersions,
     loadAllAnnotations,
@@ -39,16 +40,39 @@ const tripMetasByAnchor = new Map<string, Map<string, TripMetaAnnotation>>();
 // id -> LIVE timeline marker (tombstones excluded).
 const markersById = new Map<string, MarkerAnnotation>();
 let isStoreAvailable = true;
+let hasOpenedStore = false;
 let persistenceStatusHook: ((available: boolean) => void) | null = null;
 let initialLoadSettled: Promise<void> = Promise.resolve();
 
-function markPersistenceFailure(): void {
+function markPersistenceFailure(error: unknown, operation: "load" | "save" | "merge" | "import"): void {
     if (!isStoreAvailable) return;
     isStoreAvailable = false;
+    // Unavailable storage at startup is an expected session-only mode. Report
+    // a later loss of durability once per outage, without annotation content or
+    // browser exception text (a structured-clone error can describe the note).
+    if (hasOpenedStore && operation !== "load" && !(error instanceof Error && error.name === "AbortError")) {
+        const errorKind =
+            error instanceof Error &&
+            [
+                "QuotaExceededError",
+                "UnknownError",
+                "InvalidStateError",
+                "DataCloneError",
+                "TransactionInactiveError",
+            ].includes(error.name)
+                ? error.name
+                : "unknown";
+        captureSentryMessage("annotation persistence failed", {
+            level: "error",
+            fingerprint: ["annotation_persistence_failed", errorKind],
+            tags: { feature: "annotations", operation, error_kind: errorKind },
+        });
+    }
     persistenceStatusHook?.(false);
 }
 
 function markPersistenceSuccess(): void {
+    hasOpenedStore = true;
     if (isStoreAvailable) return;
     isStoreAvailable = true;
     persistenceStatusHook?.(true);
@@ -96,7 +120,7 @@ export function initAnnotations(onLoaded?: () => void): void {
             log.warn("annotation store unavailable, session-only annotations", {
                 err: err instanceof Error ? err.message : String(err),
             });
-            markPersistenceFailure();
+            markPersistenceFailure(err, "load");
         });
 }
 
@@ -742,6 +766,7 @@ export function _resetForTests(): void {
     markersById.clear();
     provisionalMarkerAnchors.clear();
     isStoreAvailable = true;
+    hasOpenedStore = false;
     persistenceStatusHook = null;
     initialLoadSettled = Promise.resolve();
 }
@@ -805,7 +830,7 @@ function persistRecord(record: AnnotationRecord): void {
         .then(markPersistenceSuccess)
         .catch((err: unknown) => {
             log.warn("annotation save failed", { err: err instanceof Error ? err.message : String(err) });
-            markPersistenceFailure();
+            markPersistenceFailure(err, "save");
         });
     annotationsChangedHook?.();
 }
@@ -917,7 +942,7 @@ export function applyMergedRecords(
             .then(markPersistenceSuccess)
             .catch((err: unknown) => {
                 log.warn("merged annotation save failed", { err: err instanceof Error ? err.message : String(err) });
-                markPersistenceFailure();
+                markPersistenceFailure(err, "merge");
             });
     }
     return changed;
@@ -936,7 +961,7 @@ export async function persistImportedRecords(records: readonly AnnotationRecord[
         return true;
     } catch (err) {
         log.warn("imported annotation save failed", { err: err instanceof Error ? err.message : String(err) });
-        markPersistenceFailure();
+        markPersistenceFailure(err, "import");
         return false;
     }
 }

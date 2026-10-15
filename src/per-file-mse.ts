@@ -29,7 +29,6 @@
 // At file end: worker emits feed-done, we call endOfStream.
 
 import { createLogger } from "./log.js";
-import { captureSentryMessage } from "./sentry.js";
 import {
     MSE_NOTIFY_DROP_AUDIO,
     MSE_NOTIFY_ERROR,
@@ -334,6 +333,8 @@ export class PerFileMseBackend {
             });
             this.client = createWorkerClient(worker, {
                 name: "per-file-mse",
+                // Playback reports only after its retry/tail recovery fails.
+                reportIdleCrash: false,
                 onCrash: () => this.fail("worker-crashed"),
                 onNotification: (msg) => this.onWorkerNotification(msg.type, msg.data),
             });
@@ -845,19 +846,6 @@ export class PerFileMseBackend {
             reason,
             error: message,
         });
-        // Which container/codec quirks refuse to play in the wild that the
-        // canPlay pre-check missed. A classified message (not an exception);
-        // reason is a closed enum, including mime-not-supported:<mime> (safe).
-        // No filename - the reason carries the signal. A prewarmed backend
-        // that fails before any attach is dropped by the player and the clip
-        // starts cold; that cold attach reports a genuine failure once.
-        if (this.video) {
-            captureSentryMessage("video backend failed", {
-                level: "warning",
-                fingerprint: ["mse_backend_fail", reason],
-                tags: { reason },
-            });
-        }
         // Resolve waiters so callers do not hang.
         this.seekDoneResolver?.();
         this.seekDoneResolver = null;

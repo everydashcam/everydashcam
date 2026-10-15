@@ -551,7 +551,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                         err: pull.error,
                     });
                     if (framesDone === 0) {
-                        throw new Error(`cannot decode video ${fileName ?? ""}: ${pull.error}`);
+                        throw new Error("cannot decode video", { cause: pull.error });
                     }
                 }
                 return;

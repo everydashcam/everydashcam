@@ -106,7 +106,6 @@ test("allows configured services and blocks unrelated map subdomains", async ({ 
         "https://tile.openstreetmap.org/0/0/0.png",
         "https://tiles.api-maps.yandex.ru/v1/tiles/",
         "https://cloudflareinsights.com/cdn-cgi/rum",
-        "https://o4511528520843264.ingest.de.sentry.io/api/1/envelope/",
     ];
     const blocked = "https://unconfigured.openfreemap.org/tile";
     const result = await page.evaluate(

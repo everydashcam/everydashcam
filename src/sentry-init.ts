@@ -16,18 +16,22 @@
 import {
     addBreadcrumb,
     browserApiErrorsIntegration,
-    browserSessionIntegration,
+    captureSession,
     captureException,
     captureMessage,
     dedupeIntegration,
     functionToStringIntegration,
+    getCurrentScope,
+    getIsolationScope,
     globalHandlersIntegration,
     httpContextIntegration,
-    inboundFiltersIntegration,
+    eventFiltersIntegration,
     init,
     linkedErrorsIntegration,
+    makeFetchTransport,
     setContext,
     setTag,
+    startSession,
 } from "@sentry/browser";
 import type { Breadcrumb, ErrorEvent } from "@sentry/browser";
 
@@ -35,6 +39,7 @@ export interface SentryClientOptions {
     dsn: string;
     release: string;
     environment: string;
+    isEnabled: () => boolean;
     beforeSend: (event: ErrorEvent) => ErrorEvent | null;
     beforeBreadcrumb: (breadcrumb: Breadcrumb) => Breadcrumb | null;
 }
@@ -56,7 +61,7 @@ export interface SentryClient {
  *
  * Errors-only: explicit integration list (defaultIntegrations:false), NO
  * breadcrumbs integration (no automatic console/dom/fetch/xhr crumbs), no
- * tracing, no replay, no feedback, no profiling. sendDefaultPii:false. Noise
+ * tracing, no replay, no feedback, no profiling. Noise
  * filters mirror app.ts's ring-buffer isNoise.
  */
 export function initSentryClient(opts: SentryClientOptions): SentryClient {
@@ -65,22 +70,49 @@ export function initSentryClient(opts: SentryClientOptions): SentryClient {
         dsn: opts.dsn,
         release: opts.release,
         environment: opts.environment,
-        // TODO: migrate this privacy policy to explicit dataCollection settings
-        // before upgrading to SDK 11, which removes sendDefaultPii.
-        sendDefaultPii: false,
-        transportOptions: { fetchOptions: { signal: requests.signal } },
+        // v11 collects more data by default; keep every category explicit.
+        dataCollection: {
+            userInfo: false,
+            cookies: false,
+            httpHeaders: false,
+            httpBodies: [],
+            urlQueryParams: false,
+            graphQL: { document: false, variables: false },
+            genAI: { inputs: false, outputs: false },
+            databaseQueryData: false,
+            queues: false,
+            stackFrameVariables: false,
+            frameContextLines: 0,
+        },
+        // Curated messages have stable fingerprints; synthetic stacks would
+        // count capability warnings as errored sessions in v11.
+        attachStacktrace: false,
+        sendClientReports: false,
+        maxBreadcrumbs: 50,
+        beforeSendLog: () => null,
+        beforeSendMetric: () => null,
+        transportOptions: {
+            fetchOptions: { signal: requests.signal, credentials: "omit", referrerPolicy: "no-referrer" },
+        },
+        transport: (options) => {
+            const transport = makeFetchTransport(options);
+            return {
+                ...transport,
+                // Sessions bypass beforeSend. Consent must guard every envelope,
+                // including work queued by a client that has since been closed.
+                send: (envelope) =>
+                    !requests.signal.aborted && opts.isEnabled() ? transport.send(envelope) : Promise.resolve({}),
+            };
+        },
         defaultIntegrations: false,
         integrations: [
             globalHandlersIntegration(),
             browserApiErrorsIntegration(),
-            inboundFiltersIntegration(),
+            eventFiltersIntegration(),
             functionToStringIntegration(),
             linkedErrorsIntegration(),
             dedupeIntegration(),
             httpContextIntegration(),
-            // Release Health (crash-free sessions by browser/os/version) - the
-            // strongest reason to run Sentry here. Separate quota from errors.
-            browserSessionIntegration(),
         ],
         ignoreErrors: [
             /^ResizeObserver loop/,
@@ -97,9 +129,17 @@ export function initSentryClient(opts: SentryClientOptions): SentryClient {
             /^Program failed to link: (null)?$/,
         ],
         denyUrls: [/chrome-extension:\/\//, /moz-extension:\/\//, /safari-extension:\/\//, /^extensions\//],
-        beforeSend: opts.beforeSend,
+        beforeSend: (event) => (requests.signal.aborted ? null : opts.beforeSend(event)),
         beforeBreadcrumb: opts.beforeBreadcrumb,
     });
+    // One Release Health session per enabled page lifetime. Owning this here
+    // also starts a fresh session after opt-in; BrowserSession.setupOnce would
+    // not run again after consent teardown clears the SDK scopes.
+    if (typeof document !== "undefined") {
+        // Session serialization bypasses beforeSend and dataCollection.userInfo.
+        startSession({ ignoreDuration: true, user: {} });
+        captureSession();
+    }
     return {
         captureException,
         captureMessage,
@@ -111,7 +151,17 @@ export function initSentryClient(opts: SentryClientOptions): SentryClient {
             // async window, and abort requests already handed to the transport.
             if (client) client.getOptions().enabled = false;
             requests.abort();
-            return client?.close() ?? true;
+            // v11 removed Scope.clear(); explicitly forget the state this
+            // adapter owns so re-enabling cannot resurrect old breadcrumbs.
+            for (const scope of [getIsolationScope(), getCurrentScope()]) {
+                scope.clearBreadcrumbs();
+                scope.setSession();
+                scope.setUser(null);
+                const data = scope.getScopeData();
+                for (const key of Object.keys(data.tags)) scope.setTag(key, undefined);
+                for (const key of Object.keys(data.contexts)) scope.setContext(key, null);
+            }
+            return client?.close(1000) ?? true;
         },
     };
 }

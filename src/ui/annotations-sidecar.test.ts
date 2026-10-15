@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VendorFile } from "../parsers/types.js";
 import type { AnnotationRecord, NotesFileRecord, RememberedFolder, TripMetaAnnotation } from "../persist/types.js";
 import type { NotesConnector } from "./folder-sources.js";
+import * as sentry from "../sentry.js";
 
 const mocks = vi.hoisted(() => ({
     annotationHook: null as (() => void) | null,
@@ -122,6 +123,7 @@ interface FakeNotesFile {
     replace(text: string): void;
     setReadFailure(fails: boolean): void;
     setWritePermission(state: PermissionState): void;
+    setWriteFailure(error: Error | null): void;
 }
 
 function fakeNotesFile(
@@ -133,6 +135,7 @@ function fakeNotesFile(
     let readFails = false;
     let writePermission = initialWritePermission;
     let writeCount = 0;
+    let writeFailure: Error | null = null;
     const handle = {
         kind: "file",
         name,
@@ -148,6 +151,7 @@ function fakeNotesFile(
             return "granted" as const;
         },
         async createWritable() {
+            if (writeFailure) throw writeFailure;
             let staged = "";
             return {
                 async write(value: string) {
@@ -173,6 +177,9 @@ function fakeNotesFile(
         },
         setWritePermission: (state) => {
             writePermission = state;
+        },
+        setWriteFailure: (error) => {
+            writeFailure = error;
         },
     };
 }
@@ -212,6 +219,7 @@ beforeEach(() => {
 
 afterEach(() => {
     _resetForTests();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
 });
 
@@ -486,6 +494,51 @@ describe("active notes file", () => {
         await flushPendingSidecarWrites();
 
         expect(attention).toHaveBeenCalledOnce();
+        await expect(mocks.connector!.status()).resolves.toEqual({
+            state: "needsAttention",
+            fileName: "notes.dashcamigo",
+        });
+    });
+
+    it("reports a notes write outage once and reports a later outage after recovery", async () => {
+        const capture = vi.spyOn(sentry, "captureSentryMessage");
+        const notes = fakeNotesFile(payload([], 2));
+        mocks.notesState = { id: "global", handle: notes.handle, access: "file" };
+        mocks.records.set("pending", tripMeta("pending", "folder-1", 200));
+        initAnnotationsSidecar();
+        notes.setWriteFailure(new DOMException("private note contents", "UnknownError"));
+
+        mocks.annotationHook?.();
+        await flushPendingSidecarWrites();
+        mocks.annotationHook?.();
+        await flushPendingSidecarWrites();
+        expect(capture).toHaveBeenCalledExactlyOnceWith("notes file write failed", {
+            level: "error",
+            fingerprint: ["notes_file_write_failed"],
+            tags: { feature: "annotations", storage: "sidecar" },
+        });
+
+        notes.setWriteFailure(null);
+        mocks.annotationHook?.();
+        await flushPendingSidecarWrites();
+        expect(notes.writes()).toBe(1);
+        notes.setWriteFailure(new Error("another private note"));
+        mocks.annotationHook?.();
+        await flushPendingSidecarWrites();
+        expect(capture).toHaveBeenCalledTimes(2);
+        expect(JSON.stringify(capture.mock.calls)).not.toContain("private note");
+    });
+
+    it.each(["AbortError", "NotAllowedError", "SecurityError"])("keeps a notes write %s local", async (errorKind) => {
+        const capture = vi.spyOn(sentry, "captureSentryMessage");
+        const notes = fakeNotesFile(payload([], 2));
+        mocks.notesState = { id: "global", handle: notes.handle, access: "file" };
+        initAnnotationsSidecar();
+        notes.setWriteFailure(new DOMException("unavailable", errorKind));
+
+        mocks.annotationHook?.();
+        await flushPendingSidecarWrites();
+        expect(capture).not.toHaveBeenCalled();
         await expect(mocks.connector!.status()).resolves.toEqual({
             state: "needsAttention",
             fileName: "notes.dashcamigo",

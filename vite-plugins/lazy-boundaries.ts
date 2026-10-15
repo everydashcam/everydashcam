@@ -4,7 +4,8 @@ import type { OutputChunk } from "rolldown";
 import { normalizePath, type Plugin, type ResolvedConfig } from "vite";
 
 // Match source identities, not generated chunk names or minified signatures.
-const LAZY_PACKAGES = /\/node_modules\/(maplibre-gl|chart\.js|chartjs-plugin-zoom|mediabunny|onnxruntime-web)\//;
+const LAZY_PACKAGES =
+    /\/node_modules\/(maplibre-gl|chart\.js|chartjs-plugin-zoom|mediabunny|onnxruntime-web|@sentry\/[^/]+)\//;
 // These metadata helpers are shared with the eager ingest/cache UI.
 const EAGER_PARSER_HELPERS = new Set([
     "cache-revisions.ts",

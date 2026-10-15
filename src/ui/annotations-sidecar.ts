@@ -7,6 +7,7 @@
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { createLogger } from "../log.js";
+import { captureSentryMessage } from "../sentry.js";
 import type { VendorFile } from "../parsers/types.js";
 import {
     buildSidecarPayload,
@@ -678,6 +679,18 @@ async function writeSidecar(): Promise<boolean> {
     } catch (err) {
         await writable?.abort().catch(() => {});
         log.warn("notes-file write failed", { err: err instanceof Error ? err.message : String(err) });
+        if (
+            !writeFailed &&
+            !(err instanceof Error && ["AbortError", "NotAllowedError", "SecurityError"].includes(err.name))
+        ) {
+            // Only the durability failure leaves the browser, never the file
+            // contents, handle name or a parser's text-bearing exception.
+            captureSentryMessage("notes file write failed", {
+                level: "error",
+                fingerprint: ["notes_file_write_failed"],
+                tags: { feature: "annotations", storage: "sidecar" },
+            });
+        }
         notifyWriteFailure();
         return false;
     }

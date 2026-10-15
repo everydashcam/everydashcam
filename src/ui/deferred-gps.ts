@@ -5,6 +5,7 @@
 
 import type { ClassifiedFile } from "../parsers/registry.js";
 import { createLogger } from "../log.js";
+import { captureSentryException } from "../sentry.js";
 import { tripAllCandidates, type VideoCandidate } from "../trips.js";
 
 import { restampProvisionalMarkers } from "./annotations.js";
@@ -15,6 +16,7 @@ import {
     scheduleIndexCacheWrite,
 } from "./ingest-cache.js";
 import { embeddedResultHasEffect, mergeAccelIntoCandidates } from "./ingest-core.js";
+import { reportParseErrors } from "./ingest-diagnostics.js";
 import { commitRecordingTripsWhilePreservingIngest, reanchorRecordingCandidates } from "./ingest-regroup.js";
 import { applyEmbeddedGpsFailures, applyEmbeddedGpsResult } from "./embedded-gps-state.js";
 import { vendorFileKey } from "./ingest-candidate.js";
@@ -236,7 +238,7 @@ async function runDeferredGpsLoadBody(
             "all",
         );
     } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
+        if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
             aborted = true;
             log.info("deferred gps cancelled", { tripIdx: session.startedTripIdx, files: targets.length });
         } else {
@@ -246,6 +248,10 @@ async function runDeferredGpsLoadBody(
             // until a full re-ingest, with nothing shown to the user.
             failed = true;
             log.error("deferred gps failed", err);
+            captureSentryException(err, {
+                tags: { feature: "ingest", stage: "deferred-gps" },
+                extra: { fileCount: targets.length },
+            });
         }
     } finally {
         // Reference counts keep an older aborted session from clearing the
@@ -339,6 +345,7 @@ async function runDeferredGpsLoadBody(
 
     if (result && result.errors.length > 0) {
         log.warn("deferred embedded gps errors", { tripIdx: session.startedTripIdx, errors: result.errors });
+        reportParseErrors("deferred-embedded", result.errors);
     }
 
     renderTrips();

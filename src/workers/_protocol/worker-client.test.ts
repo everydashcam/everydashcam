@@ -235,6 +235,38 @@ describe("createWorkerClient + createWorkerServer", () => {
         expect(terminated()).toBe(true);
     });
 
+    it.each(["error", "messageerror"] as const)(
+        "leaves an idle %s to a caller that owns recovery and reporting",
+        (event) => {
+            const pair = makePairedEndpoints();
+            const onCrash = vi.fn();
+            const client = createWorkerClient(pair.mainEndpoint, {
+                name: "playback",
+                reportIdleCrash: false,
+                onCrash,
+            });
+            if (event === "error") pair.fireMainError({});
+            else pair.fireMainMessageError({});
+
+            expect(onCrash).toHaveBeenCalledTimes(1);
+            expect(client.disposed).toBe(true);
+            expect(pair.terminated()).toBe(true);
+            expect(captureSentryException).not.toHaveBeenCalled();
+        },
+    );
+
+    it("keeps stack-based grouping for idle runtime exceptions", () => {
+        const pair = makePairedEndpoints();
+        createWorkerClient(pair.mainEndpoint, { name: "runtime" });
+        const error = new TypeError("invalid state");
+        pair.fireMainError({ error });
+
+        expect(captureSentryException).toHaveBeenCalledWith(
+            expect.objectContaining({ name: "TypeError", stack: error.stack }),
+            expect.objectContaining({ fingerprint: ["worker_crash", "runtime", "{{ default }}"] }),
+        );
+    });
+
     it("multiple concurrent requests stay correlated by id", async () => {
         const { mainEndpoint, workerEndpoint } = makePairedEndpoints();
         const replies = new Map<number, (result: number) => void>();

@@ -60,6 +60,25 @@ const CSP_SCRIPT_SRC_RE = /(Content-Security-Policy:[^\n]*?script-src 'self')(\s
 // The full header line, to lift the policy value for the meta variant.
 const CSP_HEADER_LINE_RE = /Content-Security-Policy: ([^\n]+)/;
 
+/** Allow only the configured reporting origin, without embedding DSN credentials or its project path. */
+export function addSentryConnectSource(policy: string, dsn: string | undefined): string {
+    if (!dsn?.trim()) return policy;
+    let origin: string;
+    try {
+        const url = new URL(dsn);
+        if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");
+        origin = url.origin;
+    } catch {
+        throw new Error("csp-hash: VITE_SENTRY_DSN must be an HTTP(S) URL");
+    }
+    if (!/(?:^|;\s*)connect-src\s/.test(policy)) throw new Error("csp-hash: connect-src directive missing");
+    return policy.replace(/(^|;\s*)(connect-src\s+)([^;]*)/, (_match, start, directive, sources: string) => {
+        const tokens = sources.trim().split(/\s+/);
+        if (!tokens.includes(origin)) tokens.push(origin);
+        return `${start}${directive}${tokens.join(" ")}`;
+    });
+}
+
 // Derives the meta-deliverable policy from the header policy: the identical
 // string minus the directives the CSP spec ignores in <meta> delivery
 // (of those, this project only uses frame-ancestors).
@@ -120,9 +139,15 @@ export interface CspHashPluginOptions extends MetaCspOptions {
 }
 
 export function cspHashPlugin(options: CspHashPluginOptions = {}): Plugin {
+    let sentryDsn: string | undefined;
     return {
         name: "everydashcam-csp-hash",
         apply: "build",
+        configResolved(config) {
+            // Vite has resolved public environment variables, including explicit
+            // process overrides. Build-only SENTRY_* credentials never enter CSP.
+            sentryDsn = config.env.VITE_SENTRY_DSN;
+        },
         closeBundle() {
             const distDir = resolve(process.cwd(), "dist");
             const indexPath = resolve(distDir, "index.html");
@@ -140,7 +165,12 @@ export function cspHashPlugin(options: CspHashPluginOptions = {}): Plugin {
             if (!CSP_SCRIPT_SRC_RE.test(headers)) {
                 throw new Error("csp-hash: script-src 'self' anchor not found in dist/_headers");
             }
-            const updated = headers.replace(CSP_SCRIPT_SRC_RE, `$1 ${directive}$2`);
+            const updated = headers
+                .replace(CSP_SCRIPT_SRC_RE, `$1 ${directive}$2`)
+                .replace(
+                    CSP_HEADER_LINE_RE,
+                    (_match, policy: string) => `Content-Security-Policy: ${addSentryConnectSource(policy, sentryDsn)}`,
+                );
             writeFileSync(headersPath, updated);
 
             if (!(options.metaCsp ?? Boolean(process.env.META_CSP))) return;

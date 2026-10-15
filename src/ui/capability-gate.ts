@@ -184,26 +184,18 @@ export function surfaceDegradedCapabilities(): void {
             messageKey: insecureOrigin ? "caps.notice.insecureContext" : "caps.notice.editor",
         });
         // Record the capability ids actually missing, not a hard-coded
-        // "webCodecsDecode": an encode-only gap reported as decode misleads
-        // exactly the release-health data this event exists for.
+        // "webCodecsDecode": an encode-only gap must stay identifiable in logs.
         for (const id of ["webCodecsDecode", "webCodecsEncode"] as const) {
             if (toastGaps.includes(id)) fired.push(id);
         }
-        // Separates the http-origin population from the outdated-browser one in
-        // both the GA event and the Sentry fingerprint.
+        // Keep an http-origin gap distinguishable from an outdated browser.
         if (insecureOrigin) fired.push("secureContext");
     }
 
     if (fired.length === 0) return;
     ackDismiss(setKey);
-    // Release-health: how many real users lose the editor / decode and on which
-    // engine+os. Warning-level message; fingerprint by the sorted fired set.
-    captureSentryMessage("browser capability degraded", {
-        level: "warning",
-        fingerprint: ["capability_degraded", fired.slice().sort().join(",")],
-        tags: capabilityTags(report),
-        extra: { shown: fired },
-    });
+    // Expected browser limitations stay in capability context and breadcrumbs;
+    // only a blocking gate or an actual failed operation creates an issue.
     log.info("degraded notice shown", { shown: fired });
 }
 

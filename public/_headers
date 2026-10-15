@@ -102,9 +102,8 @@
   #   canvas snapshots, provider hosts for tile images.
   # - connect-src - fetch for map tiles/styles + CF Web Analytics beacon events
   #   on cloudflareinsights.com/cdn-cgi/rum.
-  #   Plus Sentry crash reporting: envelope POST to the project's ingest host
-  #   o4511528520843264.ingest.de.sentry.io (one host shared by beta and prod -
-  #   they differ by project id inside the DSN, not by host).
+  #   csp-hash.ts adds the exact Sentry ingest origin from VITE_SENTRY_DSN
+  #   when crash reporting is configured; builds without a DSN omit it.
   # - worker-src 'self' blob: - our own bundled workers (MapLibre's included)
   #   are same-origin; blob: covers onnxruntime-web, which can wrap its worker
   #   script in a blob URL.
@@ -118,4 +117,4 @@
   # - upgrade-insecure-requests - http:// → https:// upgrade (defense-in-depth
   #   on top of the .app HSTS preload; ignored in Report-Only, works correctly
   #   in enforce).
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://tiles.openfreemap.org https://tile.openstreetmap.org https://tiles.api-maps.yandex.ru; connect-src 'self' https://tiles.openfreemap.org https://vector.openstreetmap.org https://tile.openstreetmap.org https://tiles.api-maps.yandex.ru https://cloudflareinsights.com https://o4511528520843264.ingest.de.sentry.io; worker-src 'self' blob:; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; frame-src 'none'; child-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://tiles.openfreemap.org https://tile.openstreetmap.org https://tiles.api-maps.yandex.ru; connect-src 'self' https://tiles.openfreemap.org https://vector.openstreetmap.org https://tile.openstreetmap.org https://tiles.api-maps.yandex.ru https://cloudflareinsights.com; worker-src 'self' blob:; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; frame-src 'none'; child-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests

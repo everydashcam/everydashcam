@@ -250,6 +250,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Verify source-map upload tooling
+        run: node_modules/.bin/sentry-cli sourcemaps upload --help
       - name: Build with hosted instrumentation
         run: npm run build
 

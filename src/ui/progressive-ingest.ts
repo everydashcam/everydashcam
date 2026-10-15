@@ -12,7 +12,7 @@ import {
     type VideoAssociationIndex,
 } from "../gps-association.js";
 import { createLogger } from "../log.js";
-import { captureSentryMessage } from "../sentry.js";
+import { captureSentryException, captureSentryMessage } from "../sentry.js";
 import { SLICE_COST_STREAM_ABOVE } from "../parsers/internal/mp4-walker.js";
 import { cameraFingerprint } from "../parsers/camera-fingerprint.js";
 import { classifyFilenameClockTimelapse, classifyFilenameTime } from "../parsers/filename/index.js";
@@ -55,7 +55,7 @@ import {
     reanchorRecordingCandidates,
     registerRecordingWorkCoordinator,
 } from "./ingest-regroup.js";
-import { countByExtension, embeddedResultHasEffect } from "./ingest-core.js";
+import { embeddedResultHasEffect } from "./ingest-core.js";
 import { createRecordingAccelStore } from "./recording-accel.js";
 import { reportParseErrors, reportSkippedGpsRecords } from "./ingest-diagnostics.js";
 import { planEmbeddedGpsQueue } from "./embedded-gps-queue.js";
@@ -1020,10 +1020,11 @@ async function readRecordingData(
             flushHeldCloneGroups();
             dispatchGpsBatch();
         } catch (err) {
-            if (err instanceof Error && err.name === "AbortError") return;
+            if (signal.aborted || (err instanceof Error && err.name === "AbortError")) return;
             session.metadataReadFailed = true;
             session.controller.abort();
             log.warn("recording metadata stage failed", { err: err instanceof Error ? err.message : String(err) });
+            captureSentryException(err, { tags: { feature: "ingest", stage: "recording-metadata" } });
             return;
         }
         if (signal.aborted) return;
@@ -1356,13 +1357,16 @@ async function completeProgressiveRun(run: ProgressiveIngestRun, generation: num
 
     const ctx = run.context;
     if (state.trips.length === 0 && !ctx.hasUnsupportedFormats) {
-        captureSentryMessage("ingest produced no playable trips", {
-            level: "warning",
-            fingerprint: ["ingest_nothing_loaded"],
-            extra: { byExtension: countByExtension(ctx.sourceFiles), fileCount: ctx.sourceFiles.length },
-        });
-        if (looksLikeRecordings(ctx.sourceFiles)) showNoRecordingsModal();
-        else notify({ severity: "warn", messageKey: "status.nothingLoaded" });
+        if (looksLikeRecordings(ctx.sourceFiles)) {
+            captureSentryMessage("ingest produced no playable trips", {
+                level: "warning",
+                fingerprint: ["ingest_nothing_loaded"],
+                // Unknown filename suffixes are user text, so the detailed
+                // extension histogram stays in the local ingest log.
+                extra: { fileCount: ctx.sourceFiles.length, candidateCount: ctx.allCandidates.length },
+            });
+            showNoRecordingsModal();
+        } else notify({ severity: "warn", messageKey: "status.nothingLoaded" });
     }
 
     reportSkippedGpsRecords(ctx.skippedLinesBaseline);

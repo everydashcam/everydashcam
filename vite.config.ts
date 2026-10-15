@@ -140,7 +140,7 @@ const NO_INDEX =
 // Sentry instrumentation is enabled only when all three build-time secrets are
 // present. The plugin injects release/debug IDs in the exact build that produces
 // the deployed assets, but the network upload runs as a bounded, non-fatal
-// workflow step after Vite exits. Keeping sentry-cli out of Vite's writeBundle
+// workflow step after Vite exits. Keeping uploads out of Vite's writeBundle
 // hook prevents a Sentry API outage from hanging the entire deploy. Public source
 // maps remain available for DevTools even without Sentry credentials.
 const SENTRY_INSTRUMENTATION = Boolean(
@@ -308,6 +308,7 @@ export default defineConfig(({ command }) => {
                           create: false,
                           finalize: false,
                           setCommits: false,
+                          deploy: false,
                       },
                       telemetry: false,
                       sourcemaps: {

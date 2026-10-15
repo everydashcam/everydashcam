@@ -24,12 +24,14 @@ Build variables and secrets belong in GitHub Actions. The workflow `env:`
 blocks and `.env.example` define the current contract:
 
 - `VITE_SENTRY_DSN` enables crash reporting in production;
-  `VITE_SENTRY_DSN_STAGING` does the same for staging. An absent DSN compiles
-  crash reporting out.
+  `VITE_SENTRY_DSN_STAGING` does the same for staging. An absent or empty DSN
+  compiles the SDK out. The built CSP permits only the configured ingest origin.
 - `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` enable production
   source-map upload; staging uses `SENTRY_PROJECT_STAGING`. Upload is bounded
   and non-fatal. Web builds publish source maps for DevTools independently of
   Sentry credentials; maps stay out of the PWA precache. Portable HTML omits them.
+  The upload command uses the explicit `@sentry/cli` dependency in
+  [package.json](../package.json), independently of the bundler plugin's internal CLI.
 - `INDEXNOW_KEY` enables the production ownership file and post-deploy ping.
   Its storage and rotation rules live in [the SEO guide](seo.md#indexnow).
 
