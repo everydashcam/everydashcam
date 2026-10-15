@@ -428,14 +428,15 @@ describe("injectGpmdTrackIntoOpen - in-place injection before the commit", () =>
         expect(a.equals(b)).toBe(true);
     });
 
-    /** Open-writable fake over a plain buffer whose Nth write can be made to fail. */
+    /** Open-writable fake over a plain buffer whose Nth write can be made to fail. A
+     *  failing write still lands its bytes first: on native FSA the error can surface
+     *  after the data reached the swap file, which is what the restore must undo. */
     function fakeOpenWritable(initial: Uint8Array, failWrites: number[]) {
         let buf = new Uint8Array(initial);
         let writes = 0;
         const writable = {
             async write(params: { type: "write"; position: number; data: Uint8Array }): Promise<void> {
                 writes++;
-                if (failWrites.includes(writes)) throw new DOMException("disk full", "QuotaExceededError");
                 const end = params.position + params.data.byteLength;
                 if (end > buf.byteLength) {
                     const grown = new Uint8Array(end);
@@ -443,6 +444,7 @@ describe("injectGpmdTrackIntoOpen - in-place injection before the commit", () =>
                     buf = grown;
                 }
                 buf.set(params.data, params.position);
+                if (failWrites.includes(writes)) throw new DOMException("disk full", "QuotaExceededError");
             },
             async truncate(size: number): Promise<void> {
                 buf = buf.slice(0, size);

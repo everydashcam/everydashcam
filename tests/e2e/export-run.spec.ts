@@ -242,9 +242,9 @@ test.describe("export run", () => {
         expect(r!.ftyp).toBe(true);
         expect(r!.moov).toBe(true);
         expect(r!.mdat).toBe(true);
-        // GPMF on the re-encode path goes through the findMoovInFile fallback (the
-        // worker mux has no onMoov on the main thread), the branch the stream-copy
-        // tests do NOT cover.
+        // GPMF on the re-encode path: the worker relays its captured moov and the
+        // track is written into the still-open output by the before-commit hook
+        // (transcode-shim.ts), a different wiring from the stream-copy tests.
         expect(r!.gpmd, "GPMF track must inject on the re-encode path too").toBe(true);
         // Audio survives the re-encode: the 70mai source is AAC, so the pipeline
         // stream-copies its packets through the compositing export with NO audio
@@ -509,7 +509,7 @@ test.describe("export run (in-memory, no native FSA)", () => {
 
     test("stream-copy buffers in memory and offers a Download button with a valid MP4", async ({ page }) => {
         // Single channel -> stream-copy. GPMF kept by default; on the in-memory
-        // handle the re-open + truncate+append injection works too.
+        // handle the in-place truncate + tail write before the commit works too.
         const includes = page.locator(".top-panel__channel-include");
         await expect(includes).toHaveCount(3);
         await includes.nth(2).click();
@@ -538,15 +538,16 @@ test.describe("export run (in-memory, no native FSA)", () => {
         expect(r!.soun, "audio must be copied into the in-memory stream-copy export").toBe(true);
     });
 
-    test("re-encode buffers in memory and injects GPMF via the snapshot+walk fallback", async ({
+    test("re-encode buffers in memory and injects GPMF into the open in-memory output", async ({
         page,
         browserName,
     }) => {
-        // The most complex path in this changeset, and the only one with no other
-        // coverage: worker mux -> createWorkerWritableProxy -> InMemoryMuxWritable
-        // commit -> postProcessTelemetry with NO capturedMoov -> handle.getFile()
-        // snapshot + findMoovInFile -> InMemoryInjectionWritable staged replay ->
-        // takeDownloadBlob. Keep all 3 channels -> split-screen -> re-encode.
+        // The only end-to-end coverage of this wiring: worker mux ->
+        // createWorkerWritableProxy (deferred commit) -> before-commit hook with
+        // the moov the worker captured -> injectGpmdTrackIntoOpen on the
+        // InMemoryMuxWritable -> commit -> takeDownloadBlob. The re-open fallback
+        // (no captured moov: getFile snapshot + findMoovInFile) has unit coverage
+        // only. Keep all 3 channels -> split-screen -> re-encode.
         // Firefox: H.264 encode is broken (Bugzilla 1918769); skip Gecko explicitly
         // (the probe below can't detect it - isConfigSupported lies).
         test.skip(browserName === "firefox", "Firefox WebCodecs H.264 encode is broken (Bugzilla 1918769)");

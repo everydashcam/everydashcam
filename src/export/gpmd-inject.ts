@@ -237,10 +237,10 @@ export async function injectGpmdTrack(
  *
  * Unlike the re-open path there is no "abort drops the staged ops" safety net
  * - a truncate that is not followed by a tail would commit a moov-less file.
- * So a failed (or cancelled) tail write puts the original moov back before
- * rethrowing: the caller then commits a valid MP4 without telemetry. If even
- * that restore fails the output is damaged and OutputDamagedError tells the
- * caller to discard it.
+ * So a failed (or cancelled) tail write truncates back and puts the original
+ * moov back before rethrowing: the caller then commits a valid MP4 without
+ * telemetry. If even that restore fails the output is damaged and
+ * OutputDamagedError tells the caller to discard it.
  */
 export async function injectGpmdTrackIntoOpen(
     writable: GpmdInjectionWritable,
@@ -264,7 +264,11 @@ export async function injectGpmdTrackIntoOpen(
             data: built.tail as Uint8Array<ArrayBuffer>,
         });
     } catch (err) {
+        // The failed write may have landed part of the tail past the end of the
+        // original moov, so cut back to the truncate point before putting the
+        // moov back - the restored file must end where the untouched one did.
         try {
+            await writable.truncate(built.moovStartAbs);
             await writable.write({
                 type: "write",
                 position: built.moovStartAbs,
