@@ -2375,10 +2375,24 @@ const SCAN_CHUNK_SIZE = 4 << 20;
 const SCAN_PROBE_LIMIT = 16 << 20;
 
 /**
- * After the last found magic, scan this much more before stopping. Novatek
- * blocks stream densely (1/sec); an 8 MB gap reliably means the array ended.
+ * After the last found magic, scan at least this much more before stopping.
+ * Equal to the probe limit on purpose: a stream the marker probe can see at
+ * all has its first block within that distance of the file start, so its
+ * blocks sit no wider apart than that - at 1 Hz the floor covers 128 Mbps,
+ * beyond any dashcam. The allowance has to bridge one gap while only a single
+ * block is known: a 4K clip at 63 Mbps (VIOFO A329) spaces blocks 8.2 MB
+ * apart, and with an 8 MB floor a scan resuming right after its one seed ended
+ * before the chunk holding the next block. A linear pass from the file start
+ * only ever survived that spacing by chunk-grid luck.
  */
-const SCAN_TAIL_AFTER_LAST_HIT = 8 << 20;
+const SCAN_TAIL_AFTER_LAST_HIT = SCAN_PROBE_LIMIT;
+
+/**
+ * Once the spacing is known, the tail bail waits for this many consecutive
+ * missing blocks when that is longer than the fixed floor, so a clip whose
+ * spacing approaches the floor is not cut off by a single late block.
+ */
+const TAIL_BAIL_MISSING_BLOCKS = 3;
 
 /**
  * Hard limit for corrupt-format / infinite-scan safety. 4 GB = max FAT32 file
@@ -2390,33 +2404,36 @@ const SCAN_TAIL_AFTER_LAST_HIT = 8 << 20;
 const SCAN_HARD_LIMIT = 4 * 1024 ** 3;
 
 /**
- * Streaming chunked scan for freeGPS blocks + parse into GpsRecords.
+ * Streaming scan for freeGPS blocks + parse into GpsRecords. One pass in file
+ * order that switches between two reading modes as the block spacing allows:
  *
- * Two-strategy entry point:
+ *  - LINEAR: 4 MB chunks with a 32 KB overlap - the mode that sees every
+ *    block. It runs from the start when no seeds are known and resumes after
+ *    every missed prediction, so an irregular stretch (a parking-mode splice,
+ *    a burst of giant I-frames, GPS resuming after a tunnel) is read
+ *    exhaustively instead of ending the scan. Probe-bail (16 MB without any
+ *    block) and tail-bail (16 MB or three spacings past the last block) end it.
+ *  - JUMP: Novatek interleaves blocks at ~1 Hz, so on a steady bitrate the
+ *    next block sits about one median spacing past the last one. Once two
+ *    consecutive blocks are known - from the marker probe's seeds or from the
+ *    linear pass - the scan reads a 256 KB window around each prediction
+ *    (1 MB on a first miss) instead of the whole gap: 5-25x less IO than
+ *    linear on a 4K clip. A miss hands the cursor back to LINEAR, and two
+ *    fresh consecutive hits there bootstrap the next jump run; nothing is
+ *    ever re-scanned from the start.
  *
- *  1. PREDICTED-OFFSET JUMP SCAN (heuristic 1): if `seedOffsets` provides
- *     >= 2 hits, compute median delta Δ, predict next-block offsets and
- *     read 256 KB windows at each prediction. ~5-10x IO reduction vs the
- *     linear scan on a typical Novatek 4K HEVC clip (15 MB scanned vs
- *     ~500 MB - 1 GB). Drift-corrects Δ on every confirmed hit (action
- *     scenes with large I-frames shift the spacing).
+ * Jumping only pays when the spacing clearly exceeds the window: dense
+ * per-frame blocks (the 70mai dialect) stay linear, which reads each byte
+ * once instead of overlapping windows.
  *
- *  2. LINEAR FALLBACK: if jump scan cannot bootstrap (no seeds), explicitly
- *     fails (low yield, irregular spacing), or for files we have no seeds
- *     for (no probeMarkers run), falls back to the 4 MB-chunk sequential
- *     pass with tail-bail / probe-bail.
+ * Blocks are parsed strictly in file order on both paths because the injected
+ * block parser may be stateful (anchor-scan lock, cold-start clock jump).
  *
- * Does not expose offsets - parsing happens in the same pass because after
- * finding a magic we immediately need ~32 KB of payload, which is readily
- * available in the chunk with the overlap.
- *
- * @param seedOffsets Absolute file offsets of `freeGPS ` hits already
- *                    located by the probe (Mp4Index.freeGpsSeedOffsets).
- *                    First 2-3 entries seed the median-Δ estimate; passing
- *                    more is fine but yields diminishing returns.
- * @param signal      Abort signal from ingest; checked between chunks /
- *                    between predicted reads. Throws DOMException("AbortError")
- *                    on abort.
+ * @param seedOffsets Absolute offsets of `freeGPS ` literals the marker probe
+ *                    found (Mp4Index.freeGpsSeedOffsets). They must be the
+ *                    first blocks of the file in order, which the probe
+ *                    guarantees: the scan resumes right after the last seed.
+ * @param signal      Checked between reads; throws DOMException("AbortError").
  */
 export async function streamScanFreeGps(
     file: File,
@@ -2424,11 +2441,191 @@ export async function streamScanFreeGps(
     seedOffsets?: readonly number[],
     parseBlock: ParseFreeGpsBlock = parseFreeGpsBlock,
 ): Promise<ParsedRecords> {
-    if (seedOffsets && seedOffsets.length >= 2) {
-        const jumpResult = await jumpScanFreeGps(file, seedOffsets, signal, parseBlock);
-        if (jumpResult !== null) return jumpResult;
+    const fileSize = file.size;
+    const limit = Math.min(fileSize, SCAN_HARD_LIMIT);
+    const records: GpsRecord[] = [];
+    const skipped: SkippedLine[] = [];
+    // Absolute offsets of every parsed block in file order. Its tail drives
+    // the jump prediction; its last entry is the resume point of a linear run.
+    const hits: number[] = [];
+    let blockIndex = 0;
+
+    const checkAbort = (): void => {
+        if (signal?.aborted) throw new DOMException("freegps scan aborted", "AbortError");
+    };
+    const lastHit = (): number => (hits.length > 0 ? hits[hits.length - 1]! : -1);
+    // A linear run resumes right past the last literal, not past its payload
+    // window: the mode that sees every block must not skip one that a dense
+    // dialect writes closer than a payload window after the previous one. The
+    // dedupe below keeps the literal itself from being parsed twice.
+    const linearResumePos = (): number => lastHit() + FREE_GPS_MAGIC_BYTES.length;
+    const recentDelta = (): number => medianDeltas(hits.slice(-(JUMP_MEDIAN_WINDOW + 1)));
+    /** Bytes past the last block after which the array is taken as finished. */
+    const tailBailBytes = (): number =>
+        hits.length >= 2
+            ? Math.max(SCAN_TAIL_AFTER_LAST_HIT, TAIL_BAIL_MISSING_BLOCKS * recentDelta())
+            : SCAN_TAIL_AFTER_LAST_HIT;
+
+    /** Parses the block whose literal sits at buf[localOff]; absOff is its file offset. */
+    const parseHit = (buf: Uint8Array, localOff: number, absOff: number): void => {
+        const payloadEnd = Math.min(localOff + BLOCK_PAYLOAD_SIZE, buf.length);
+        const view = new DataView(buf.buffer, buf.byteOffset + localOff, payloadEnd - localOff);
+        blockIndex++;
+        const blockRecords = parseBlock(view, file.name, readBoxSizeDword(buf, localOff));
+        if (blockRecords.length > 0) {
+            extendArray(records, blockRecords);
+        } else {
+            skipped.push({
+                line: blockIndex,
+                raw: `<freeGPS block @${absOff}, ${payloadEnd - localOff} bytes>`,
+                reason: "no matching variant or void/invalid record",
+            });
+        }
+        hits.push(absOff);
+    };
+
+    // Seeds are parsed first, in order, so they anchor the prediction without
+    // a linear pass over the probe window. Each read starts 4 bytes early so
+    // the box-size dword preceding the literal is covered.
+    const seeds = [...new Set(seedOffsets ?? [])]
+        .sort((a, b) => a - b)
+        .filter((off) => off >= 0 && off + 8 <= fileSize);
+    for (const absOff of seeds) {
+        checkAbort();
+        const readStart = Math.max(0, absOff - 4);
+        const readEnd = Math.min(absOff + BLOCK_PAYLOAD_SIZE, fileSize);
+        const buf = new Uint8Array(await file.slice(readStart, readEnd).arrayBuffer());
+        parseHit(buf, absOff - readStart, absOff);
     }
-    return linearStreamScanFreeGps(file, signal, parseBlock);
+
+    /**
+     * Linear run from `startPos`. Returns "jump-ready" once two blocks found
+     * in this run are spaced widely enough to predict the next one, "done"
+     * when a bail rule or the file end stops the scan.
+     */
+    const linearRun = async (startPos: number): Promise<{ pos: number; outcome: "done" | "jump-ready" }> => {
+        let pos = startPos;
+        // The last 32 KB of the previous chunk, so a block straddling the
+        // chunk boundary is always scanned in full.
+        let tail = new Uint8Array(0);
+        // A literal whose payload runs past the chunk: found but deferred to
+        // the next iteration, where it re-appears through the overlap. The
+        // bail rules count it as a hit so they cannot fire before it is parsed.
+        let pendingHitPos = -1;
+        let freshHits = 0;
+        while (pos < limit) {
+            checkAbort();
+            if (hits.length === 0 && pendingHitPos === -1 && pos >= SCAN_PROBE_LIMIT) return { pos, outcome: "done" };
+            const anchor = Math.max(lastHit(), pendingHitPos);
+            if (anchor !== -1 && pos > anchor + tailBailBytes()) return { pos, outcome: "done" };
+
+            const chunkEnd = Math.min(pos + SCAN_CHUNK_SIZE, fileSize);
+            const chunk = new Uint8Array(await file.slice(pos, chunkEnd).arrayBuffer());
+            const workspace = tail.length === 0 ? chunk : concat([tail, chunk]);
+            const workspaceStartAbs = pos - tail.length;
+            for (const localOff of findFreeGpsOffsetsInRange(workspace, 0, workspace.length)) {
+                const absOff = workspaceStartAbs + localOff;
+                // Seen through the overlap tail or by the jump run that handed over.
+                if (absOff <= lastHit()) continue;
+                if (localOff + BLOCK_PAYLOAD_SIZE > workspace.length && chunkEnd < fileSize) {
+                    pendingHitPos = absOff;
+                    break;
+                }
+                parseHit(workspace, localOff, absOff);
+                freshHits++;
+            }
+            // An explicit copy releases the chunk so the GC can reclaim it.
+            const tailLen = Math.min(BLOCK_PAYLOAD_SIZE, workspace.length);
+            const tailCopy = new Uint8Array(tailLen);
+            tailCopy.set(workspace.subarray(workspace.length - tailLen));
+            tail = tailCopy;
+            pos = chunkEnd;
+
+            // Two consecutive blocks seen by this run re-establish the spacing.
+            // A deferred straddling block is parsed before the jump starts, so
+            // the prediction never runs ahead of an unparsed hit.
+            if (freshHits >= 2 && pendingHitPos <= lastHit() && recentDelta() > JUMP_MIN_DELTA) {
+                return { pos, outcome: "jump-ready" };
+            }
+        }
+        return { pos, outcome: "done" };
+    };
+
+    const readWindow = async (
+        last: number,
+        predicted: number,
+        radius: number,
+    ): Promise<{ start: number; bytes: Uint8Array }> => {
+        // Never re-read the previous block's payload.
+        const start = Math.max(last + BLOCK_PAYLOAD_SIZE, predicted - radius);
+        const end = Math.min(predicted + radius + BLOCK_PAYLOAD_SIZE, fileSize);
+        return { start, bytes: new Uint8Array(await file.slice(start, end).arrayBuffer()) };
+    };
+
+    /**
+     * Jump run from the current last hit. Returns "miss" to hand over to a
+     * linear run - also at the file end, where the final block may sit short
+     * of the prediction: the linear run reads the remainder once.
+     */
+    const jumpRun = async (): Promise<"eof" | "miss"> => {
+        let delta = recentDelta();
+        while (true) {
+            checkAbort();
+            const last = lastHit();
+            const predicted = last + delta;
+            if (predicted >= limit) return linearResumePos() < limit ? "miss" : "eof";
+            let window = await readWindow(last, predicted, JUMP_WINDOW_BYTES >> 1);
+            let offsets = findFreeGpsOffsetsInRange(window.bytes, 0, window.bytes.length);
+            if (offsets.length === 0) {
+                window = await readWindow(last, predicted, JUMP_WINDOW_WIDE_BYTES >> 1);
+                offsets = findFreeGpsOffsetsInRange(window.bytes, 0, window.bytes.length);
+            }
+            let parsed = 0;
+            for (const localOff of offsets) {
+                const absOff = window.start + localOff;
+                if (absOff <= last) continue;
+                if (
+                    window.bytes.length - localOff < BLOCK_PAYLOAD_SIZE &&
+                    window.start + window.bytes.length < fileSize
+                ) {
+                    // The window edge cut the payload (a block drifting late).
+                    // Re-read the block whole rather than parsing it truncated,
+                    // which could drop the tail records of a multi-record
+                    // layout, or handing over to a 4 MB linear chunk.
+                    const readStart = Math.max(0, absOff - 4);
+                    const whole = new Uint8Array(
+                        await file.slice(readStart, Math.min(absOff + BLOCK_PAYLOAD_SIZE, fileSize)).arrayBuffer(),
+                    );
+                    parseHit(whole, absOff - readStart, absOff);
+                } else {
+                    parseHit(window.bytes, localOff, absOff);
+                }
+                parsed++;
+            }
+            if (parsed === 0) return "miss";
+            // Drift-correct on every hit: action scenes shift the spacing. A
+            // spacing that collapsed below the window is cheaper read linearly.
+            delta = recentDelta();
+            if (delta <= JUMP_MIN_DELTA) return "miss";
+        }
+    };
+
+    let pos = 0;
+    let mode: "linear" | "jump" = "linear";
+    if (hits.length >= 2 && recentDelta() > JUMP_MIN_DELTA) mode = "jump";
+    else if (hits.length > 0) pos = linearResumePos();
+    while (true) {
+        if (mode === "jump") {
+            if ((await jumpRun()) === "eof") break;
+            mode = "linear";
+            pos = linearResumePos();
+            continue;
+        }
+        const linear = await linearRun(pos);
+        if (linear.outcome === "done") break;
+        mode = "jump";
+    }
+    return { records, skipped };
 }
 
 /**
@@ -2460,126 +2657,15 @@ function readBoxSizeDword(buf: Uint8Array, literalOffset: number): number | unde
     return new DataView(buf.buffer, buf.byteOffset + literalOffset - 4, 4).getUint32(0, true);
 }
 
-/**
- * Linear streaming chunked scan - the original implementation. Used as a
- * fallback when jump scan cannot bootstrap or its yield is suspicious.
- */
-async function linearStreamScanFreeGps(
-    file: File,
-    signal: AbortSignal | undefined,
-    parseBlock: ParseFreeGpsBlock,
-): Promise<ParsedRecords> {
-    const records: GpsRecord[] = [];
-    const skipped: SkippedLine[] = [];
-
-    // Overlap = block size, so magic + full payload always fits in one of the
-    // two adjacent chunks (current or next after overlap merge).
-    const OVERLAP = BLOCK_PAYLOAD_SIZE;
-
-    const fileSize = file.size;
-    const limit = Math.min(fileSize, SCAN_HARD_LIMIT);
-
-    let pos = 0;
-    let foundCount = 0;
-    let lastHitPos = -1;
-    // Offset of a magic whose payload straddles the chunk boundary - found but
-    // deferred to the next iteration (it re-appears via the overlap tail).
-    // Tracked so the probe/tail bail checks count it as a hit; otherwise a
-    // boundary block after a long gap is silently dropped by tail-bail.
-    let pendingHitPos = -1;
-    let blockIndex = 0;
-
-    // tail buffer holds the last OVERLAP bytes of the previous chunk to
-    // handle records that straddle chunk boundaries. Initially empty.
-    let tail = new Uint8Array(0);
-
-    while (pos < limit) {
-        if (signal?.aborted) throw new DOMException("freegps scan aborted", "AbortError");
-
-        // Probe bail: no hits in the first SCAN_PROBE_LIMIT bytes → stop.
-        // A pending boundary hit counts as a hit - it just is not parsed yet.
-        if (foundCount === 0 && pendingHitPos === -1 && pos >= SCAN_PROBE_LIMIT) break;
-        // Tail bail: nothing new for SCAN_TAIL_AFTER_LAST_HIT bytes after the
-        // last parsed (or pending boundary) hit → stop.
-        if (foundCount > 0 && lastHitPos !== -1 && pos > Math.max(lastHitPos, pendingHitPos) + SCAN_TAIL_AFTER_LAST_HIT)
-            break;
-
-        const chunkEnd = Math.min(pos + SCAN_CHUNK_SIZE, fileSize);
-        const chunkAb = await file.slice(pos, chunkEnd).arrayBuffer();
-        const chunk = new Uint8Array(chunkAb);
-
-        // Prepend the tail from the previous chunk so blocks straddling a
-        // boundary are always scanned in full. workspaceStartAbs is the
-        // absolute file offset of workspace[0].
-        const workspace = tail.length === 0 ? chunk : concat([tail, chunk]);
-        const workspaceStartAbs = pos - tail.length;
-
-        // Found offsets are local to workspace; add workspaceStartAbs for absolute.
-        const localOffsets = findFreeGpsOffsetsInRange(workspace, 0, workspace.length);
-        for (const localOff of localOffsets) {
-            const absOff = workspaceStartAbs + localOff;
-
-            // Skip duplicates: this block may have been seen in the previous tail.
-            if (absOff <= lastHitPos) continue;
-
-            // If the payload does not fit in workspace, leave it for the next
-            // chunk (it will appear in the overlap). Do not parse a half-read block.
-            if (localOff + BLOCK_PAYLOAD_SIZE > workspace.length && chunkEnd < fileSize) {
-                // Remember the deferred position so the probe/tail bail checks
-                // do not fire before the block re-appears in the next chunk's
-                // overlap and gets parsed.
-                pendingHitPos = absOff;
-                break;
-            }
-
-            const payloadEnd = Math.min(localOff + BLOCK_PAYLOAD_SIZE, workspace.length);
-            const view = new DataView(workspace.buffer, workspace.byteOffset + localOff, payloadEnd - localOff);
-            blockIndex++;
-            const blockRecords = parseBlock(view, file.name, readBoxSizeDword(workspace, localOff));
-            if (blockRecords.length > 0) {
-                extendArray(records, blockRecords);
-            } else {
-                skipped.push({
-                    line: blockIndex,
-                    raw: `<freeGPS block @${absOff}, ${payloadEnd - localOff} bytes>`,
-                    reason: "no matching variant or void/invalid record",
-                });
-            }
-            foundCount++;
-            lastHitPos = absOff;
-        }
-
-        // Keep the last OVERLAP bytes for the next iteration. An explicit copy
-        // releases the reference to the old chunk so the GC can reclaim it.
-        const tailLen = Math.min(OVERLAP, workspace.length);
-        const tailCopy = new Uint8Array(tailLen);
-        tailCopy.set(workspace.subarray(workspace.length - tailLen));
-        tail = tailCopy;
-
-        pos = chunkEnd;
-    }
-
-    return { records, skipped };
-}
-
-// ===== Predicted-offset jump scan (heuristic 1) =====
+// ===== Predicted-offset jump run =====
 //
 // Novatek freeGPS blocks are interleaved with video frames at ~1 Hz. On a
-// constant-bitrate clip the spacing between adjacent blocks is constant;
-// on a variable-bitrate clip it fluctuates with I-frame size but stays
-// within a small fraction of the median. We exploit this: locate the first
-// few blocks via the marker probe (already in Mp4Index.freeGpsSeedOffsets),
-// compute the median delta, then predict each subsequent block's offset
-// and read just a 256 KB window around it.
-//
-// Failure modes:
-//   - Spacing too irregular (jitter > ~50% of median, e.g. on edited /
-//     spliced clips): consecutive predicted reads miss the magic, jump
-//     scan bails to the streaming fallback.
-//   - File ends or GPS array genuinely stops before file end: two
-//     consecutive misses end the loop cleanly.
-//   - File has no seeds (probe was off or marker absent in probe window):
-//     caller passes empty seedOffsets, jump scan is skipped entirely.
+// constant-bitrate clip the spacing between adjacent blocks is constant; on a
+// variable-bitrate clip it fluctuates with I-frame size but stays within a
+// small fraction of the median. The scan exploits this: with two or more
+// consecutive blocks known it computes the median delta, predicts each
+// subsequent block's offset and reads just a small window around it.
+// Misses hand the cursor to the linear run (see streamScanFreeGps).
 
 /** Window size around the predicted offset. 256 KB tolerates ~±128 KB
  *  drift per block. On a 4K HEVC clip with 1 Hz GPS, ~256 KB is enough
@@ -2587,13 +2673,8 @@ async function linearStreamScanFreeGps(
  *  may drift more - the median-Δ adapts on every hit. */
 const JUMP_WINDOW_BYTES = 0x40000; // 256 KB
 
-/** Widened window after a miss before declaring "no hit at prediction". */
+/** Widened window after a miss before handing over to the linear run. */
 const JUMP_WINDOW_WIDE_BYTES = 0x100000; // 1 MB
-
-/** Number of consecutive misses before bailing to linear fallback. Two is
- *  enough to handle a single anomalously-long gap (e.g. one giant I-frame)
- *  while not paying for 4+ misses on a genuinely irregular file. */
-const JUMP_MAX_CONSECUTIVE_MISSES = 2;
 
 /** How many of the most-recent deltas to median over. Fewer = faster drift
  *  adaptation; more = more stable estimate. 8 is a balance: covers ~8 sec
@@ -2601,213 +2682,10 @@ const JUMP_MAX_CONSECUTIVE_MISSES = 2;
  *  sustained scene changes. */
 const JUMP_MEDIAN_WINDOW = 8;
 
-/** Minimum yield ratio (recovered / expected) below which we discard jump
- *  scan results and re-run linear from scratch. expected = (fileSize -
- *  firstOffset) / Δ. 0.5 = if we got less than half of expected blocks
- *  the prediction was systematically wrong. */
-const JUMP_MIN_YIELD_RATIO = 0.5;
-
-/**
- * Predicted-offset jump scan. Returns null when the strategy is not
- * applicable (too few seeds, low yield) - caller falls back to linear scan.
- * Returns ParsedRecords on success.
- */
-async function jumpScanFreeGps(
-    file: File,
-    seedOffsetsRaw: readonly number[],
-    signal: AbortSignal | undefined,
-    parseBlock: ParseFreeGpsBlock,
-): Promise<ParsedRecords | null> {
-    // Sort + dedup just in case (probe collects in scan order, should already
-    // be sorted, but defensive).
-    const seedOffsets = [...new Set(seedOffsetsRaw)].sort((a, b) => a - b);
-    if (seedOffsets.length < 2) return null;
-
-    const fileSize = file.size;
-    const limit = Math.min(fileSize, SCAN_HARD_LIMIT);
-
-    const records: GpsRecord[] = [];
-    const skipped: SkippedLine[] = [];
-    const hitOffsets: number[] = [];
-    let blockIndex = 0;
-
-    // Parse the seed offsets first - we already know their positions, just
-    // need to read their payloads. Coalesce into one read if they fit in a
-    // single window.
-    const seedSpan = seedOffsets[seedOffsets.length - 1]! + BLOCK_PAYLOAD_SIZE - seedOffsets[0]!;
-    if (seedSpan <= 2 * JUMP_WINDOW_WIDE_BYTES) {
-        // Single coalesced read for the seed range.
-        const readStart = seedOffsets[0]!;
-        const readEnd = Math.min(seedOffsets[seedOffsets.length - 1]! + BLOCK_PAYLOAD_SIZE, fileSize);
-        try {
-            const buf = new Uint8Array(await file.slice(readStart, readEnd).arrayBuffer());
-            for (const absOff of seedOffsets) {
-                const localOff = absOff - readStart;
-                if (localOff < 0 || localOff + 8 > buf.length) continue;
-                const payloadEnd = Math.min(localOff + BLOCK_PAYLOAD_SIZE, buf.length);
-                const view = new DataView(buf.buffer, buf.byteOffset + localOff, payloadEnd - localOff);
-                blockIndex++;
-                const blockRecords = parseBlock(view, file.name, readBoxSizeDword(buf, localOff));
-                if (blockRecords.length > 0) extendArray(records, blockRecords);
-                else
-                    skipped.push({
-                        line: blockIndex,
-                        raw: `<freeGPS block @${absOff}, ${payloadEnd - localOff} bytes>`,
-                        reason: "no matching variant or void/invalid record",
-                    });
-                hitOffsets.push(absOff);
-            }
-        } catch {
-            return null; // IO failed - bail out, linear fallback retries from scratch.
-        }
-    } else {
-        // Seeds spread across the file (rare) - parse each individually.
-        for (const absOff of seedOffsets) {
-            if (signal?.aborted) throw new DOMException("freegps jump scan aborted", "AbortError");
-            try {
-                const end = Math.min(absOff + BLOCK_PAYLOAD_SIZE, fileSize);
-                // Start the read 4 bytes early so the box-size dword preceding
-                // the literal is covered; the view itself still starts at the
-                // literal, where every layout offset is anchored.
-                const readStart = Math.max(0, absOff - 4);
-                const buf = new Uint8Array(await file.slice(readStart, end).arrayBuffer());
-                const literalOff = absOff - readStart;
-                const view = toDataViewAtLiteral(buf, literalOff);
-                blockIndex++;
-                const blockRecords = parseBlock(view, file.name, readBoxSizeDword(buf, literalOff));
-                if (blockRecords.length > 0) extendArray(records, blockRecords);
-                else
-                    skipped.push({
-                        line: blockIndex,
-                        raw: `<freeGPS block @${absOff}, ${buf.length} bytes>`,
-                        reason: "no matching variant or void/invalid record",
-                    });
-                hitOffsets.push(absOff);
-            } catch {
-                return null;
-            }
-        }
-    }
-
-    if (hitOffsets.length < 2) return null;
-    let delta = medianDeltas(hitOffsets);
-    if (delta <= BLOCK_PAYLOAD_SIZE) return null; // pathological - blocks overlap or are wrong
-
-    // Last offset where a real (non-phantom) block was found. The yield check
-    // below measures against the span this actually covered, not the whole
-    // file - otherwise a clip whose GPS legitimately stops partway (tunnel /
-    // parking) fails the ratio and forces a linear re-scan of the exact prefix
-    // the jump scan already covered. Seeds are all real, so seed the tracker
-    // with the last one.
-    let lastRealHitOffset = hitOffsets[hitOffsets.length - 1]!;
-
-    let consecutiveMisses = 0;
-
-    while (true) {
-        if (signal?.aborted) throw new DOMException("freegps jump scan aborted", "AbortError");
-
-        const last = hitOffsets[hitOffsets.length - 1]!;
-        const predicted = last + delta;
-        if (predicted >= limit) break;
-
-        // Read window around predicted offset.
-        const winRadius = JUMP_WINDOW_BYTES >> 1;
-        let windowStart = Math.max(last + BLOCK_PAYLOAD_SIZE, predicted - winRadius);
-        let windowEnd = Math.min(predicted + winRadius + BLOCK_PAYLOAD_SIZE, fileSize);
-        let buf: Uint8Array;
-        try {
-            buf = new Uint8Array(await file.slice(windowStart, windowEnd).arrayBuffer());
-        } catch {
-            return null;
-        }
-
-        let offsets = findFreeGpsOffsetsInRange(buf, 0, buf.length);
-        // First-pass narrow window. If no hit, retry once with a wider window.
-        if (offsets.length === 0) {
-            const wideRadius = JUMP_WINDOW_WIDE_BYTES >> 1;
-            windowStart = Math.max(last + BLOCK_PAYLOAD_SIZE, predicted - wideRadius);
-            windowEnd = Math.min(predicted + wideRadius + BLOCK_PAYLOAD_SIZE, fileSize);
-            try {
-                buf = new Uint8Array(await file.slice(windowStart, windowEnd).arrayBuffer());
-            } catch {
-                return null;
-            }
-            offsets = findFreeGpsOffsetsInRange(buf, 0, buf.length);
-        }
-
-        if (offsets.length === 0) {
-            consecutiveMisses++;
-            if (consecutiveMisses >= JUMP_MAX_CONSECUTIVE_MISSES) break;
-            // Skip past the predicted offset and try the next predicted slot.
-            hitOffsets.push(predicted);
-            continue;
-        }
-
-        let pushedAny = false;
-        for (const localOff of offsets) {
-            const absOff = windowStart + localOff;
-            if (absOff <= last) continue; // ignore overlap with previous read
-            const payloadEnd = Math.min(localOff + BLOCK_PAYLOAD_SIZE, buf.length);
-            // Payload truncated at the window edge (e.g. the file's final
-            // block right before EOF) - unparseable, skip. Loop progress is
-            // guaranteed by the pushedAny check below, not by re-reading:
-            // nothing pushed means the next iteration would recompute the
-            // exact same window and skip the same block forever.
-            if (payloadEnd - localOff < 32) continue;
-            const view = new DataView(buf.buffer, buf.byteOffset + localOff, payloadEnd - localOff);
-            blockIndex++;
-            const blockRecords = parseBlock(view, file.name, readBoxSizeDword(buf, localOff));
-            if (blockRecords.length > 0) extendArray(records, blockRecords);
-            else
-                skipped.push({
-                    line: blockIndex,
-                    raw: `<freeGPS block @${absOff}, ${payloadEnd - localOff} bytes>`,
-                    reason: "no matching variant or void/invalid record",
-                });
-            hitOffsets.push(absOff);
-            lastRealHitOffset = absOff;
-            pushedAny = true;
-            // Update median Δ over the most recent JUMP_MEDIAN_WINDOW deltas.
-            // Phantom "predicted-but-missed" offsets pushed on miss (~line 700)
-            // do leak into this window, but they contribute deltas equal to
-            // the previous delta by construction (phantom = last + delta), so
-            // they pull the median back to the prior estimate rather than
-            // skewing it. At most JUMP_MAX_CONSECUTIVE_MISSES - 1 phantoms can
-            // sit between real hits, so the dilution is bounded.
-            delta = medianDeltas(hitOffsets.slice(-JUMP_MEDIAN_WINDOW - 1));
-            if (delta <= BLOCK_PAYLOAD_SIZE) return null; // pathological mid-scan
-        }
-
-        if (!pushedAny) {
-            // Every magic in the window was skipped (window-edge truncation /
-            // previous-read overlap) - same as a miss: push the phantom so
-            // `last` provably advances, otherwise the loop never terminates.
-            consecutiveMisses++;
-            if (consecutiveMisses >= JUMP_MAX_CONSECUTIVE_MISSES) break;
-            hitOffsets.push(predicted);
-            continue;
-        }
-        consecutiveMisses = 0;
-    }
-
-    // Yield check: if we got far less than expected, the median Δ was likely
-    // wrong and we missed most blocks. Fall back to linear scan. blockIndex
-    // counts parsed BLOCKS (records.length can exceed it on multi-record
-    // blocks, which would skew the per-block expectation).
-    const realHits = blockIndex;
-    const firstHit = hitOffsets[0]!;
-    // Project over the covered span [firstHit, lastRealHitOffset], NOT to EOF:
-    // if the scan hit blocks densely up to where GPS stopped, realHits matches
-    // expectedHits and we keep the result. A wrong median Δ that made the scan
-    // skip most blocks WITHIN that span still trips the ratio (expectedHits
-    // over the span far exceeds realHits) and falls back to linear.
-    const expectedHits = Math.floor((lastRealHitOffset - firstHit) / Math.max(delta, BLOCK_PAYLOAD_SIZE));
-    if (expectedHits > 4 && realHits < expectedHits * JUMP_MIN_YIELD_RATIO) {
-        return null;
-    }
-
-    return { records, skipped };
-}
+/** Smallest block spacing worth predicting. A window read costs this many
+ *  bytes, so below it the linear 4 MB chunks read every byte once with far
+ *  fewer calls - the dense per-frame 70mai dialect lands here. */
+const JUMP_MIN_DELTA = JUMP_WINDOW_BYTES + BLOCK_PAYLOAD_SIZE;
 
 /** Median of adjacent deltas in a sorted offsets array. Stable estimator
  *  against single-block outliers (one giant I-frame is one outlier delta,

@@ -226,12 +226,14 @@ type EmbeddedGpsExtractionMode = "all" | "light-only";
  * Light/mid/heavy/none gate for video-embedded extraction:
  *  - light: cheap structural reads (sample-table from moov, sparse free-gps
  *    slices, tail atoms).
- *  - mid: Novatek streaming where the predicted-offset jump scan can
- *    bootstrap (>= 2 freeGPS seed offsets in the probe window).
- *    Cost ~30 MB IO per file - safe to auto-parse without user prompt.
- *  - heavy: Novatek streaming with no seed offsets - the predicted-offset
- *    jump scan cannot bootstrap, only the linear 500 MB-1 GB fallback
- *    works. Deferred until the trip is opened.
+ *  - mid: Novatek streaming where the predicted-offset jump scan starts
+ *    right away (>= 2 freeGPS seed offsets in the probe window). Cost
+ *    ~30-90 MB IO per file - safe to auto-parse without user prompt.
+ *  - heavy: Novatek streaming with fewer than two seeds - the scan has to
+ *    walk linearly until it has seen two blocks before it can predict, and
+ *    with the first block past the probe window that walk is unbounded in
+ *    principle (a stream whose blocks sit tens of MB apart, or none at all
+ *    past a stray marker). Deferred until the trip is opened.
  *  - none: no GPS markers detected.
  *
  * Decision is made AFTER selecting an extractor - classifyEmbeddedGpsKind is
@@ -410,8 +412,8 @@ function buildWorkItems(videos: ClassifiedFile[]): WorkItem[] {
  *  3. cloneAcrossGroup (Juscar): for a group we parse one file, records are
  *     cloned onto the rest with mp4Filename rewritten.
  *  4. mode="light-only" defers files classified as "heavy" (Novatek streaming
- *     with no jump-scan seeds) to heavyFiles for a deferred full scan.
- *     "mid" files (jump-scan-able streaming, ~30 MB IO/file) still parse here.
+ *     with fewer than two jump-scan seeds) to heavyFiles for a deferred scan.
+ *     "mid" files (seeded streaming, ~30-90 MB IO/file) still parse here.
  */
 export async function dispatchParseVideoEmbeddedGps(
     classified: ClassifiedFile[],

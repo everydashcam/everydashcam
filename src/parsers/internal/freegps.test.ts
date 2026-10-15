@@ -221,35 +221,120 @@ describe("streamScanFreeGps: predicted-offset jump scan (heuristic 1)", () => {
         expect(counter.calls()).toBeLessThan(offsets.length * 1.5);
     }, 30_000);
 
-    it("still falls back to linear when a wrong median Δ skips blocks in the covered span", async () => {
-        // Pathology the yield check exists for: the median Δ underestimates the
-        // true average spacing, so the projected expectedHits far exceeds the
-        // real hits even over the covered span. Built from repeating units of 3
-        // tight blocks (Δ=40 KB, which drives the median) plus a 180 KB gap
-        // (which drives the average up). expectedHits(span/40 KB) ends up more
-        // than 2x realHits, so the jump scan is rejected and linear reruns.
+    it("stays linear when the spacing is below the jump window and parses each block once", async () => {
+        // Tight triplets (Δ=40 KB) with 180 KB gaps: the median spacing is
+        // far below the 256 KB window, so a prediction would read overlapping
+        // windows. The scan keeps its 4 MB chunks, finds every block and never
+        // re-reads a region - the old yield check used to force a second,
+        // linear pass over the same prefix here.
         const FILE_SIZE = 8 * 1024 ** 2;
         const TIGHT = 40 * 1024;
         const GAP = 180 * 1024;
         const offsets: number[] = [];
         let off = 256 * 1024;
         while (off + 24 <= FILE_SIZE) {
-            // Three tight blocks, then a big gap before the next unit.
             offsets.push(off);
             offsets.push(off + TIGHT);
             offsets.push(off + 2 * TIGHT);
             off = off + 2 * TIGHT + GAP;
         }
         const { file } = buildSparseFile(FILE_SIZE, offsets);
-        const seeds = offsets.slice(0, 3); // three tight blocks -> median Δ = 40 KB
+        const seeds = offsets.slice(0, 3);
         const counter = countingParseBlock();
         const result = await streamScanFreeGps(file, undefined, seeds, counter.parse);
-        // Linear fallback still recovers every block.
         expect(result.records.length + result.skipped.length).toBe(offsets.length);
-        // Fallback happened: jump parsed the blocks, then linear re-parsed them,
-        // so the parse count is well above one pass.
-        expect(counter.calls()).toBeGreaterThan(offsets.length * 1.5);
+        expect(counter.calls()).toBe(offsets.length);
     }, 30_000);
+
+    it("bootstraps the jump from the linear pass when no seeds are given", async () => {
+        // The first chunk already holds two consecutive blocks, so everything
+        // past it is read by prediction: far below the 200 MB a linear pass costs.
+        const FILE_SIZE = 200 * 1024 ** 2;
+        const STRIDE = 1.5 * 1024 ** 2;
+        const offsets: number[] = [];
+        for (let off = 256 * 1024; off + 24 <= FILE_SIZE; off += STRIDE) offsets.push(off);
+        const { file, readBytesTotal } = buildSparseFile(FILE_SIZE, offsets);
+        const counter = countingParseBlock();
+        const result = await streamScanFreeGps(file, undefined, undefined, counter.parse);
+        expect(result.records.length + result.skipped.length).toBe(offsets.length);
+        expect(counter.calls()).toBe(offsets.length);
+        expect(readBytesTotal.value).toBeLessThan(80 * 1024 ** 2);
+    }, 30_000);
+
+    it("returns to linear after a missed prediction and resumes jumping once blocks reappear", async () => {
+        // A 6 MB hole (four missing blocks - GPS dropped in a tunnel) halfway
+        // through a 1.5 MB-stride file. The prediction misses at the hole; the
+        // linear run crosses it within the tail allowance, re-establishes the
+        // spacing from the next two blocks and hands back to the jump. The old
+        // scan declared the array finished after two misses and lost the rest.
+        const FILE_SIZE = 150 * 1024 ** 2;
+        const STRIDE = 1.5 * 1024 ** 2;
+        const HOLE_START = 75 * 1024 ** 2;
+        const HOLE_END = HOLE_START + 6 * 1024 ** 2;
+        const offsets: number[] = [];
+        for (let off = 256 * 1024; off + 24 <= FILE_SIZE; off += STRIDE) {
+            if (off >= HOLE_START && off < HOLE_END) continue;
+            offsets.push(off);
+        }
+        const { file, readBytesTotal } = buildSparseFile(FILE_SIZE, offsets);
+        const seeds = offsets.slice(0, 3);
+        const counter = countingParseBlock();
+        const result = await streamScanFreeGps(file, undefined, seeds, counter.parse);
+        expect(result.records.length + result.skipped.length).toBe(offsets.length);
+        expect(counter.calls()).toBe(offsets.length);
+        expect(readBytesTotal.value).toBeLessThan(FILE_SIZE / 2);
+    }, 30_000);
+
+    it("waits for several missing blocks before ending a tail spaced wider than the fixed floor", async () => {
+        // 9 MB stride (4K at 70+ Mbps). One block sits 700 KB late - outside
+        // even the wide window - so the prediction misses and the linear run
+        // has to cross a full stride to find it; with the spacing known, the
+        // bail waits for three missing blocks (27 MB here, past the 16 MB floor).
+        const FILE_SIZE = 120 * 1024 ** 2;
+        const STRIDE = 9 * 1024 ** 2;
+        const offsets: number[] = [];
+        let i = 0;
+        for (let off = 1024 ** 2; off + 24 <= FILE_SIZE; off += STRIDE) {
+            offsets.push(i === 5 ? off + 700 * 1024 : off);
+            i++;
+        }
+        const { file } = buildSparseFile(FILE_SIZE, offsets);
+        const counter = countingParseBlock();
+        const result = await streamScanFreeGps(file, undefined, offsets.slice(0, 2), counter.parse);
+        expect(result.records.length + result.skipped.length).toBe(offsets.length);
+        expect(counter.calls()).toBe(offsets.length);
+    }, 30_000);
+
+    it("bridges a spacing wider than 8 MB from a single seed", async () => {
+        // One seed is all a 16 MB probe yields on a 63 Mbps 4K clip whose
+        // first block sits past 8 MB (VIOFO A329): the second block lies
+        // beyond the probe window. With no spacing known yet, the tail
+        // allowance bridges the gap on its own. A fixed 8 MB floor ended the
+        // scan after the seed: the chunk grid starts at the seed, so the bail
+        // check fired right before the chunk holding the next block.
+        const FILE_SIZE = 120 * 1024 ** 2;
+        const STRIDE = 8.2 * 1024 ** 2;
+        const offsets: number[] = [];
+        for (let off = 8.3 * 1024 ** 2; off + 24 <= FILE_SIZE; off += STRIDE) offsets.push(Math.floor(off));
+        const { file } = buildSparseFile(FILE_SIZE, offsets);
+        const counter = countingParseBlock();
+        const result = await streamScanFreeGps(file, undefined, offsets.slice(0, 1), counter.parse);
+        expect(result.records.length + result.skipped.length).toBe(offsets.length);
+        expect(counter.calls()).toBe(offsets.length);
+    }, 30_000);
+
+    it("resumes right after the last seed, so blocks closer than a payload window are kept", async () => {
+        // Blocks 20 KB apart (a per-frame dialect at a low bitrate) and the
+        // probe's eight seeds: resuming one payload window past the last seed
+        // would skip the block that follows it.
+        const offsets: number[] = [];
+        for (let off = 64 * 1024; off < 2 * 1024 ** 2; off += 20 * 1024) offsets.push(off);
+        const { file } = buildSparseFile(4 * 1024 ** 2, offsets);
+        const counter = countingParseBlock();
+        const result = await streamScanFreeGps(file, undefined, offsets.slice(0, 8), counter.parse);
+        expect(result.records.length + result.skipped.length).toBe(offsets.length);
+        expect(counter.calls()).toBe(offsets.length);
+    });
 });
 
 // ===== Block-variant fixtures and builders =====
