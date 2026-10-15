@@ -1138,6 +1138,11 @@ export function initChart(cb: ChartCallbacks): void {
             // right after a drag is the reset gesture, and letting its
             // component clicks through would seek mid-reset.
             if (chartPinchSuppressClick || chartDragSuppressClick) return;
+            // The progress bar lives inside this row and already seeks on its
+            // own pointerdown with its own px->sec mapping. Letting the bubbled
+            // click seek again lands a fraction of a second away from the first
+            // target, and on the MSE pipeline every seek restarts the feed.
+            if (e.target instanceof Node && dom.miniProgress?.contains(e.target)) return;
             const sec = chartSecAtClientX(e.clientX);
             if (sec !== null && Number.isFinite(sec)) callbacks.onSeekTripTime(sec);
         });
