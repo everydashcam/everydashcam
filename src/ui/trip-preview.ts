@@ -5,14 +5,15 @@
 // WebCodecs implementation rejects the same stream.
 //
 // Architecture: the primary decode/encode path runs in Web Workers
-// (src/workers/preview-worker.ts). The main thread only runs a pool of POOL_SIZE
+// (src/workers/preview-worker.ts). The main thread only runs a pool of previewPoolSize
 // workers and round-robins File objects across them, except for the rare native fallback.
 // Each File is passed via postMessage without copying (File is structured-cloneable; File.arrayBuffer()
 // in the worker reads content directly through the Blob backend).
 //
-// Why a pool: the browser's hardware-decoder pool has multiple slots (Chromium on Apple Silicon
-// hits VideoToolbox through 3-4 slots simultaneously). Sequential extraction left them idle.
-// On long lists (50+ trips, HEVC 4K) parallel extraction gives a real wall-clock speedup.
+// Why a pool: one extraction is a chain of short waits - Blob reads for moov and
+// the first keyframe, decoder session setup, a single decode, JPEG encode - and
+// the decoder sits idle between them. Several files in flight overlap those
+// waits; on long lists (50+ trips) that is a real wall-clock win.
 //
 // Storage: in-memory only (on the Trip object). Previews regenerate on reload since Files don't survive it.
 
@@ -32,9 +33,24 @@ import { createPreviewQueue } from "./trip-preview-queue.js";
 
 const log = createLogger("preview");
 
-/** Pool size. 2 is a compromise: more causes contention on the HEVC hardware decoder (M-chips have 3-4 VT slots, Intel iGPU 1-2); fewer wastes wall-clock. On typical 10-50 trip lists a 2× speedup over sequential is measurable. */
-const POOL_SIZE = 2;
-const previewQueue = createPreviewQueue(POOL_SIZE);
+/**
+ * Files decoded at once. Chrome traces on an Apple Silicon corpus showed the
+ * GPU process under half busy with two slots while the preview tail was still
+ * most of the ingest wall time. Three slots trim that tail by a few percent
+ * of total wall on the same corpus, so the pool overlaps waits rather than
+ * racing the decoder: each slot decodes a single keyframe, and more slots
+ * would only add decoder session churn. Over-subscribing hardware decoders
+ * degrades rather than fails: H.264 falls back to software decode, ordinary
+ * HEVC to the serialized native <video> path below. Low-core devices keep
+ * fewer slots, mirroring the indexer pool. Not measured on Intel integrated
+ * graphics.
+ */
+function previewPoolCapacity(): number {
+    const hardwareConcurrency = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency ?? 4) : 4;
+    return Math.max(1, Math.min(hardwareConcurrency - 1, 3));
+}
+const previewPoolSize = previewPoolCapacity();
+const previewQueue = createPreviewQueue(previewPoolSize);
 
 /** Player play/pause bridge: true while a trip actively plays. Idempotent. */
 export function setPreviewPlaybackActive(active: boolean): void {
@@ -43,7 +59,7 @@ export function setPreviewPlaybackActive(active: boolean): void {
 
 const pool = createWorkerPool({
     name: "preview",
-    capacity: POOL_SIZE,
+    capacity: previewPoolSize,
     factory: (idx, opts) => {
         // name is intentionally the same for all slots: Vite's worker plugin requires static options.
         // Slot index lives in the pool, not the DevTools label.
@@ -272,7 +288,7 @@ async function populateTripPreviewsImpl(
             }
         }
     };
-    const tasks = Array.from({ length: POOL_SIZE }, () => runOne());
+    const tasks = Array.from({ length: previewPoolSize }, () => runOne());
     await Promise.all(tasks);
 }
 
@@ -281,7 +297,7 @@ async function populateTripPreviewsImpl(
  * Cancels any previous run and starts fresh over the current state.trips.
  * Already-generated previews survive cancellation (cached on the Trip object).
  *
- * Parallelizes via POOL_SIZE workers; decoding and JPEG encode happen off the main thread.
+ * Parallelizes via previewPoolSize workers; decoding and JPEG encode happen off the main thread.
  *
  * onUpdate is called per ready preview with (trip, dataUrl) - the trip OBJECT,
  * resolved to its current index/card at paint time (stale schedule-time indices
