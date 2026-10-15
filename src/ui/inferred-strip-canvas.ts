@@ -25,7 +25,7 @@
 // Redraws on chart zoom/pan/resize/theme. Click → onSeek; click flash
 // is delegated through opts.onFlash to the host (chart.ts).
 
-import type { Chart } from "chart.js/auto";
+import type { Chart } from "chart.js";
 
 import { escapeHtml } from "../escape.js";
 import { t } from "../i18n/index.js";

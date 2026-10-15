@@ -5,7 +5,7 @@
 // This module MUST NOT import anything from ui/* - it is the dependency-graph
 // root among UI modules.
 
-import type { Chart } from "chart.js/auto";
+import type { Chart } from "chart.js";
 import type * as maplibregl from "maplibre-gl";
 
 import { recordsHaveGps } from "../parser.js";

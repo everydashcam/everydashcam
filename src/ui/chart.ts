@@ -10,24 +10,20 @@
 // holder below). All `Chart` references in this file are type positions
 // (state.chart, callback params) and are erased at build.
 import { hasSpeed, isSameTrackSegment } from "../gps-telemetry.js";
-import type { Chart, ChartDataset } from "chart.js/auto";
+import type { Chart, ChartDataset } from "chart.js";
 
-// --- lazy chart.js loading (T9) ---
-//
-// chart.js/auto + chartjs-plugin-zoom are ~240KB and only needed once a trip's
-// chart is built. A static value-import here (plus the eager Chart.register that
-// used to live in app.ts) put them in the landing entry chunk - modulepreloaded
-// before any trip opened. We load + register lazily, once. loadChart() is awaited
-// in runTripUiInit before initChart creates the instance, so the `ChartClass!`
-// assertion at the `new` site below always holds.
-type ChartCtor = typeof import("chart.js/auto")["Chart"];
+// Keep Chart.js and the zoom plugin behind the viewer's lazy boundary.
+// chart-library registers only the components used by the timeline through
+// static named imports, so the bundler can remove the other chart types.
+// runTripUiInit awaits loadChart before initChart creates an instance.
+type ChartCtor = typeof import("chart.js")["Chart"];
 let ChartClass: ChartCtor | null = null;
 
 // Loads chart.js + the zoom plugin (in parallel) and registers the plugin once,
 // memoized. The dynamic import() is what moves both libs out of the eager graph.
 export async function loadChart(): Promise<void> {
     if (ChartClass) return;
-    const [chartMod, zoomMod] = await Promise.all([import("chart.js/auto"), import("chartjs-plugin-zoom")]);
+    const [chartMod, zoomMod] = await Promise.all([import("./chart-library.js"), import("chartjs-plugin-zoom")]);
     // The plugin is the module's default export; normalize CJS/ESM interop the
     // same way as the maplibre loader (.default present under raw CJS, absent
     // when the bundler already unwrapped to the namespace).
