@@ -161,7 +161,9 @@ const SINK = process.env.EXPORT_SINK ?? "memory";
 
 test.use({ channel: "chrome" });
 
-const vendors = discoverVendors();
+// One folder per run, named explicitly: without PERF_SAMPLE_DIR discoverVendors()
+// enumerates the whole sample corpus and this spec would export every vendor.
+const vendors = process.env.PERF_SAMPLE_DIR ? discoverVendors() : [];
 if (vendors.length === 0) test.skip(true, "no sample folder selected (PERF_SAMPLE_DIR)");
 
 for (const vendor of vendors) {
@@ -246,7 +248,6 @@ for (const vendor of vendors) {
                 "video encoder config requested",
                 "encode ceiling below request",
                 "export failed",
-                "map snapshot perf",
                 "writable closed",
                 "gpmd track injected",
                 "found moov",
