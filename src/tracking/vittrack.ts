@@ -347,7 +347,7 @@ export class VitTrack {
                     verifyAppearance &&
                     this.appearanceReference.rejects(sample?.appearance ?? null, {
                         requireConfirmation: edgeReversal,
-                        provisional: motionPenalized,
+                        provisional: motionPenalized && !edgeReversal,
                     })
                 ) {
                     rejected = true;
@@ -360,10 +360,10 @@ export class VitTrack {
                     score = conf[maxIdx]!;
                     reason = null;
                 }
-                // An unconfirmed weak candidate retains ordinary low-score
-                // behavior; its proposed edge reversal is not trusted evidence.
-                if (rejected && motionPenalized) {
-                    edgeReversal = false;
+                // A weak response alone retains ordinary occlusion behavior.
+                // An independently rejected reversal still arms the edge-loss
+                // deadline before a distractor can inherit a larger travel budget.
+                if (rejected && motionPenalized && !edgeReversal) {
                     reason = "low-score";
                 }
             }
