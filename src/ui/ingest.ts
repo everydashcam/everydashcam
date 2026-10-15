@@ -326,8 +326,15 @@ async function ingestFilesInternal(
     setIngestStage(t("ingestOverlay.stage.parsingLogs"));
 
     // Parse logs before indexing so filename-owned records are ready now and
-    // recording-start hints can bind as soon as MP4 metadata arrives.
-    const logsResult = await mark("parseLogs", () => dispatchParseLogs(classified, videoAssociation, signal));
+    // recording-start hints can bind as soon as MP4 metadata arrives. Logs,
+    // GPS sidecars and accel sidecars are disjoint inputs parsed by the same
+    // worker pool, so they run together; their results are applied below in
+    // the fixed log -> sidecar -> accel order the merge semantics expect.
+    const [logsResult, sidecarResult, accelSidecarResult] = await Promise.all([
+        mark("parseLogs", () => dispatchParseLogs(classified, videoAssociation, signal)),
+        mark("parseSidecars", () => dispatchParseSidecars(classified, videoAssociation, signal)),
+        mark("parseAccelSidecars", () => dispatchParseAccelSidecars(classified, videoAssociation, signal)),
+    ]);
     if (logsResult.records.length > 0) {
         // Merge if a log already exists (new file may be a rotated version of the old one, or the same file dropped twice).
         // Dedup by (unixSeconds, lat, lon, mp4Filename) is required: re-dropping the same log doubles brake events, distance, and point density.
@@ -367,12 +374,9 @@ async function ingestFilesInternal(
     if (signal.aborted) throw new DOMException("ingest aborted", "AbortError");
     setIngestStage(t("ingestOverlay.stage.parsingSidecars"));
 
-    // Parse classifier-owned sidecars first. Loose GPX files are still unknown
+    // Apply classifier-owned sidecars first. Loose GPX files are still unknown
     // here: their manual destinations are resolved only after we know which
     // clips already received usable GPS from logs or exact-name sidecars.
-    const sidecarResult = await mark("parseSidecars", () =>
-        dispatchParseSidecars(classified, videoAssociation, signal),
-    );
     if (sidecarResult.records.length > 0) {
         // Sidecars (GPX, .map, .gps) carry only records - no extractor labels or
         // skipped-line diagnostics - so the other two batch fields are empty.
@@ -461,9 +465,6 @@ async function ingestFilesInternal(
 
     // Accel-only sidecars (BlackVue .3gf): accelerometer only, no GPS. They are
     // merged once recording clocks are ready.
-    const accelSidecarResult = await mark("parseAccelSidecars", () =>
-        dispatchParseAccelSidecars(classified, videoAssociation, signal),
-    );
     if (accelSidecarResult.errors.length > 0) {
         log.warn("accel-sidecar parse errors", {
             count: accelSidecarResult.errors.length,
