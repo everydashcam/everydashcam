@@ -306,7 +306,9 @@ export class PerFileMseBackend {
      * file's metadata without touching any <video>. The player warms the next
      * clip's backend while the current clip plays, so the attach at the clip
      * boundary only has to open the MediaSource. Resolves either way; a
-     * failure reaches the error handler, and attach() reports it again.
+     * failure reaches the error handler, after which the backend is dead
+     * (isFailed) and attach() exits silently - the player drops such a
+     * backend and attaches a fresh one instead.
      */
     prewarm(): Promise<void> {
         return this.enqueueOp(async () => {
@@ -323,8 +325,8 @@ export class PerFileMseBackend {
      * or failed meanwhile; the failure has already been reported.
      */
     private async ensureWorkerReady(): Promise<InitResult | null> {
-        if (this.initResult) return this.initResult;
         if (this.disposed || this.failed) return null;
+        if (this.initResult) return this.initResult;
         try {
             const worker = new Worker(new URL("./workers/per-file-mse-worker.ts", import.meta.url), {
                 type: "module",
@@ -846,12 +848,16 @@ export class PerFileMseBackend {
         // Which container/codec quirks refuse to play in the wild that the
         // canPlay pre-check missed. A classified message (not an exception);
         // reason is a closed enum, including mime-not-supported:<mime> (safe).
-        // No filename - the reason carries the signal.
-        captureSentryMessage("video backend failed", {
-            level: "warning",
-            fingerprint: ["mse_backend_fail", reason],
-            tags: { reason },
-        });
+        // No filename - the reason carries the signal. A prewarmed backend
+        // that fails before any attach is dropped by the player and the clip
+        // starts cold; that cold attach reports a genuine failure once.
+        if (this.video) {
+            captureSentryMessage("video backend failed", {
+                level: "warning",
+                fingerprint: ["mse_backend_fail", reason],
+                tags: { reason },
+            });
+        }
         // Resolve waiters so callers do not hang.
         this.seekDoneResolver?.();
         this.seekDoneResolver = null;
