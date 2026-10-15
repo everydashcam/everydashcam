@@ -192,8 +192,9 @@ interface FeedCycle {
      * reader leaves fragments unflushed while feedEmittedUpToSec - the only
      * thing the ahead-window sees - stands still, and the feed reads the
      * whole file into the muxer (seen on 2-channel MPEG-TS: a 135 s burst
-     * into the SourceBuffer and QuotaExceededError). Infinity when audio is
-     * absent or transcoded, since those paths cannot starve the muxer.
+     * into the SourceBuffer and QuotaExceededError). The ADPCM transcode path
+     * reports its encoder output through the same mark; Infinity only when
+     * the cycle has no audio track at all.
      */
     audioFedUpToSec: number;
     audioFeedDone: boolean;
@@ -217,6 +218,19 @@ function wakeFeedWaiters(): void {
     const fired = Array.from(feedWaiters);
     feedWaiters.clear();
     for (const w of fired) w();
+}
+
+/** Audio handed to the muxer up to `timestampSec`: releases video packets waiting behind it. */
+function noteAudioProgress(cycle: FeedCycle, timestampSec: number): void {
+    if (!(timestampSec > cycle.audioFedUpToSec)) return;
+    cycle.audioFedUpToSec = timestampSec;
+    wakeFeedWaiters();
+}
+
+/** The audio feed is over (end of track, abort or error): video no longer waits for it. */
+function finishAudioFeed(cycle: FeedCycle): void {
+    cycle.audioFeedDone = true;
+    wakeFeedWaiters();
 }
 
 function waitForFeedSignal(signal: AbortSignal): Promise<void> {
@@ -537,8 +551,8 @@ async function startNewFeedCycle(cycleId: number, armSeekDone: boolean): Promise
         // legitimately have a different bitrate, so the estimate rebases.
         bytesEmitted: 0,
         mediaSecondsCovered: 0,
-        // runFeed lowers this to the primer's timestamp when it starts a
-        // stream-copy audio feed; every other audio path leaves video ungated.
+        // runFeed arms these when it starts an audio feed; a cycle without
+        // audio leaves video ungated.
         audioFedUpToSec: Number.POSITIVE_INFINITY,
         audioFeedDone: true,
     };
@@ -552,7 +566,7 @@ async function startNewFeedCycle(cycleId: number, armSeekDone: boolean): Promise
     cycle.audioSource = dropAudio
         ? null
         : transcodeAdpcmAudio && adpcmReader && adpcmEncodeCodec
-          ? createEncodeAudioSource(adpcmEncodeCodec)
+          ? createEncodeAudioSource(adpcmEncodeCodec, (packet) => noteAudioProgress(cycle, packet.timestamp))
           : audioCodec
             ? new EncodedAudioPacketSource(audioCodec)
             : null;
@@ -825,6 +839,10 @@ async function runFeed(cycle: FeedCycle): Promise<void> {
             const primed = new Promise<void>((resolve) => {
                 resolvePrimed = resolve;
             });
+            // Video waits for encoder output (noteAudioProgress from the
+            // source's onEncodedPacket) exactly as it waits for copied packets.
+            cycle.audioFedUpToSec = Number.NEGATIVE_INFINITY;
+            cycle.audioFeedDone = false;
             const audioFeed = (async () => {
                 try {
                     await reader.feedToEnd(audioSource, target, framePtsOffset, signal, resolvePrimed);
@@ -832,6 +850,7 @@ async function runFeed(cycle: FeedCycle): Promise<void> {
                     if (!signal.aborted) fail("audio-transcode-threw", e);
                 } finally {
                     if (!signal.aborted) audioSource.close();
+                    finishAudioFeed(cycle);
                     // Never leave the video feed blocked: onFirstEmit does not
                     // fire if the range is empty (e.g. a seek past audio end) or
                     // the feed threw before its first sample.
@@ -966,18 +985,14 @@ async function feedAudio(
                 fail("audio-add-threw", e);
                 return;
             }
-            if (adjusted.timestamp > cycle.audioFedUpToSec) {
-                cycle.audioFedUpToSec = adjusted.timestamp;
-                wakeFeedWaiters();
-            }
+            noteAudioProgress(cycle, adjusted.timestamp);
             pkt = await sink.getNextPacket(pkt);
         }
     } finally {
         // Release video packets waiting past the last audio sample (the tail
         // tolerance in hasPlaybackAudioTail) before the muxer learns the
         // track is closed; a closed track no longer blocks fragment flushes.
-        cycle.audioFeedDone = true;
-        wakeFeedWaiters();
+        finishAudioFeed(cycle);
         // A live fragmented muxer waits for every open track before flushing.
         if (!signal.aborted) audioSource.close();
     }

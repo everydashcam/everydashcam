@@ -15,6 +15,7 @@ import {
     AudioSampleSource,
     canDecodeVideo,
     canEncodeVideo,
+    type EncodedPacket,
     getFirstEncodableAudioCodec,
     Quality,
     type VideoCodec,
@@ -91,11 +92,16 @@ export async function resolveEncodeAudioCodec(
  * One factory so all four paths request the byte-identical encoder config the
  * probe (resolveEncodeAudioCodec) checks - they can never drift apart.
  */
-export function createEncodeAudioSource(codec: "aac" | "opus"): AudioSampleSource {
+export function createEncodeAudioSource(
+    codec: "aac" | "opus",
+    /** Fires for every encoded packet right before it reaches the muxer. */
+    onEncodedPacket?: (packet: EncodedPacket) => void,
+): AudioSampleSource {
     return new AudioSampleSource({
         codec,
         quality: new Quality({ bitrate: AUDIO_TARGET_BITRATE }),
         transform: { numberOfChannels: AUDIO_TARGET_CHANNELS, sampleRate: AUDIO_TARGET_SAMPLE_RATE },
+        onEncodedPacket,
     });
 }
 
