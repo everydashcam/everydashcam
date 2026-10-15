@@ -486,6 +486,41 @@ export async function exportClip({
                 const videoStartShift = segIdx === 0 ? sourceStart : Math.min(sourceStart, videoStartPacket.timestamp);
                 let videoLastEndSec = videoStartShift;
 
+                // Audio cursor, advanced alongside the video walk below so the two
+                // tracks are copied in ONE pass over the file. A separate audio
+                // pass after the video re-read every page of the file (its audio
+                // packets sit between the video packets, and the demuxer's page
+                // cache does not span a whole file), which doubled the source IO -
+                // the cost that dominates an export straight off the camera's
+                // card. Interleaving also lands the output mdat in playback
+                // order instead of "all video, then all audio" per file.
+                let apkt: EncodedPacket | null =
+                    audioSink && audioSource
+                        ? ((await audioSink.getPacket(videoStartShift)) ?? (await audioSink.getFirstPacket()))
+                        : null;
+                // Copies audio packets presented before `untilSec` (source time).
+                // Keeps the source A/V offset; dropping a boundary frame avoids
+                // accumulating audio-frame rounding at every file join. Both tracks
+                // share the same shift, and the first audio packet may cross zero:
+                // the edit list hides its negative portion.
+                const copyAudioBefore = async (untilSec: number): Promise<void> => {
+                    while (apkt && audioSink && audioSource && apkt.timestamp < untilSec) {
+                        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+                        const timestamp = apkt.timestamp - videoStartShift + videoAccumSec;
+                        if (timestamp >= audioLastEndSec - 1e-6) {
+                            const shifted = apkt.clone({ timestamp });
+                            const meta = audioDecoderConfigPushed
+                                ? undefined
+                                : { decoderConfig: audioDecoderConfig ?? undefined };
+                            await audioSource.add(shifted, meta);
+                            audioDecoderConfigPushed = true;
+                            audioLastEndSec = timestamp + apkt.duration;
+                            audioCount++;
+                        }
+                        apkt = await audioSink.getNextPacket(apkt);
+                    }
+                };
+
                 let pkt: EncodedPacket | null = videoStartPacket;
                 while (pkt) {
                     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
@@ -506,6 +541,9 @@ export async function exportClip({
                     // the timestamp (shifted onto the continuous output timeline). The
                     // type it copies is the verifyKeyPackets-corrected one from the
                     // getNextPacket below, so the output sync-sample table stays right.
+                    // Audio up to this frame's presentation time goes first, so the
+                    // read position advances through the file once, in order.
+                    await copyAudioBefore(pkt.timestamp);
                     const shifted = pkt.clone({ timestamp: pkt.timestamp - videoStartShift + videoAccumSec });
                     const meta = videoDecoderConfigPushed ? undefined : { decoderConfig: firstVideoDecoderConfig };
                     await videoSource.add(shifted, meta);
@@ -521,8 +559,6 @@ export async function exportClip({
                 }
                 if (videoCount === 0) throw new Error(`no decodable video packets in file ${seg.file.name}`);
 
-                // Both tracks share the same shift. Keep the first audio packet
-                // crossing zero: the edit list hides its negative portion.
                 // A following file starts on the recording clock, including any
                 // audio-only tail. B-frame references can still extend that span.
                 const segmentEnd =
@@ -533,34 +569,9 @@ export async function exportClip({
                     if (reader) {
                         await reader.feedRange(adpcmSource, videoStartShift, segmentEnd, videoAccumSec, signal);
                     }
-                } else if (audioSink && audioSource) {
-                    const audioStartPacket =
-                        (await audioSink.getPacket(videoStartShift)) ?? (await audioSink.getFirstPacket());
-                    if (audioStartPacket) {
-                        let apkt: EncodedPacket | null = audioStartPacket;
-                        while (apkt) {
-                            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
-                            if (apkt.timestamp >= segmentEnd) break;
-                            const timestamp = apkt.timestamp - videoStartShift + videoAccumSec;
-                            // Keep the source A/V offset; dropping a boundary frame avoids
-                            // accumulating audio-frame rounding at every file join.
-                            if (timestamp < audioLastEndSec - 1e-6) {
-                                apkt = await audioSink.getNextPacket(apkt);
-                                continue;
-                            }
-                            const shifted = apkt.clone({
-                                timestamp,
-                            });
-                            const meta = audioDecoderConfigPushed
-                                ? undefined
-                                : { decoderConfig: audioDecoderConfig ?? undefined };
-                            await audioSource.add(shifted, meta);
-                            audioDecoderConfigPushed = true;
-                            audioLastEndSec = timestamp + apkt.duration;
-                            audioCount++;
-                            apkt = await audioSink.getNextPacket(apkt);
-                        }
-                    }
+                } else {
+                    // The audio tail past the last video frame (up to the segment end).
+                    await copyAudioBefore(segmentEnd);
                 }
 
                 videoAccumSec += videoSegDur;
