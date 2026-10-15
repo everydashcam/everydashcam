@@ -60,6 +60,7 @@ import { createRecordingAccelStore } from "./recording-accel.js";
 import { reportParseErrors, reportSkippedGpsRecords } from "./ingest-diagnostics.js";
 import { planEmbeddedGpsQueue } from "./embedded-gps-queue.js";
 import { applyEmbeddedGpsFailures, applyEmbeddedGpsResult } from "./embedded-gps-state.js";
+import { videoCloneAffinityKeyOf } from "./gps-extract-artifacts.js";
 import {
     dispatchParseVideoEmbeddedGpsViaWorker as dispatchParseVideoEmbeddedGps,
     mergeEmbeddedResults,
@@ -800,7 +801,23 @@ async function readRecordingData(
     let cacheSnapshotsHandedOff = false;
     let gpsBatch: ClassifiedFile[] = [];
     let gpsBatchMoov = new Map<string, Uint8Array>();
-    const embeddedBatchSize = 16;
+    // Clone groups (Juscar F/R share one GPS stream) must reach the worker in
+    // one request, or every member pays its own full parse. A member is held
+    // until each pending sibling has been indexed; failed and cached siblings
+    // count down too, so a broken file never strands its group.
+    const heldByCloneGroup = new Map<string, { files: ClassifiedFile[]; moov: Map<string, Uint8Array> }>();
+    const remainingByCloneGroup = new Map<string, number>();
+    const cloneGroupByCandidate = new Map<VideoCandidate, string>();
+    for (const candidate of pending) {
+        const group = videoCloneAffinityKeyOf({
+            file: candidate.file,
+            relativePath: candidate.relativePath,
+            sourceKey: candidate.sourceKey,
+        });
+        if (group === null) continue;
+        cloneGroupByCandidate.set(candidate, group);
+        remainingByCloneGroup.set(group, (remainingByCloneGroup.get(group) ?? 0) + 1);
+    }
 
     const finishTripMetadata = (tripIdx: number): void => {
         const candidates = session.candidatesByTrip.get(tripIdx);
@@ -831,11 +848,36 @@ async function readRecordingData(
         if (session.processedSourceFiles.has(file)) return;
         session.processedSourceFiles.add(file);
         for (const listener of session.progressListeners) listener(file);
+        releaseCloneGroupMember(candidate);
         const tripIdx = tripByCandidate.get(candidate);
         if (tripIdx === undefined) return;
         const remaining = (remainingByTrip.get(tripIdx) ?? 1) - 1;
         remainingByTrip.set(tripIdx, remaining);
         if (remaining === 0) finishTripMetadata(tripIdx);
+    };
+
+    const releaseCloneGroupMember = (candidate: VideoCandidate): void => {
+        const group = cloneGroupByCandidate.get(candidate);
+        if (group === undefined) return;
+        const remaining = (remainingByCloneGroup.get(group) ?? 1) - 1;
+        remainingByCloneGroup.set(group, remaining);
+        if (remaining > 0) return;
+        const held = heldByCloneGroup.get(group);
+        if (!held) return;
+        heldByCloneGroup.delete(group);
+        gpsBatch.push(...held.files);
+        for (const [key, bytes] of held.moov) gpsBatchMoov.set(key, bytes);
+        if (schedulingPolicy.cadence === "immediate") dispatchGpsBatch();
+    };
+
+    // Every group has been released once indexing settles; this only guards
+    // the final flush against a member that never reached the progress path.
+    const flushHeldCloneGroups = (): void => {
+        for (const held of heldByCloneGroup.values()) {
+            gpsBatch.push(...held.files);
+            for (const [key, bytes] of held.moov) gpsBatchMoov.set(key, bytes);
+        }
+        heldByCloneGroup.clear();
     };
 
     const dispatchGpsBatch = (): void => {
@@ -891,17 +933,29 @@ async function readRecordingData(
             };
             const gpsKey = vendorFileKey(file);
             gpsTargets.push(classified);
-            gpsBatch.push(classified);
             if (!inflightGpsKeys.has(gpsKey)) {
                 inflightGpsKeys.add(gpsKey);
                 state.inflightEmbeddedGps.set(gpsKey, (state.inflightEmbeddedGps.get(gpsKey) ?? 0) + 1);
             }
-            if (plan.cacheMoov && moovBytes) gpsBatchMoov.set(gpsKey, moovBytes);
-            // Fast local storage benefits from overlapping GPS shards with
-            // indexing. A metadata-only cache hit has no retained moov and
-            // simply lets the GPS worker read it once itself.
-            if (schedulingPolicy.cadence === "immediate" && gpsBatch.length >= embeddedBatchSize) {
-                dispatchGpsBatch();
+            const cachedMoov = plan.cacheMoov && moovBytes ? moovBytes : null;
+            const group = cloneGroupByCandidate.get(candidate);
+            if (group !== undefined) {
+                let held = heldByCloneGroup.get(group);
+                if (!held) {
+                    held = { files: [], moov: new Map() };
+                    heldByCloneGroup.set(group, held);
+                }
+                held.files.push(classified);
+                if (cachedMoov) held.moov.set(gpsKey, cachedMoov);
+            } else {
+                gpsBatch.push(classified);
+                if (cachedMoov) gpsBatchMoov.set(gpsKey, cachedMoov);
+                // Fast local storage overlaps GPS extraction with indexing: each
+                // indexed file goes out at once, and the pool's least-loaded
+                // routing plus the per-worker parse gate spread the load. A
+                // metadata-only cache hit has no retained moov and simply lets
+                // the GPS worker read it once itself.
+                if (schedulingPolicy.cadence === "immediate") dispatchGpsBatch();
             }
         }
         if (session.run) {
@@ -963,6 +1017,7 @@ async function readRecordingData(
                 await Promise.allSettled(metadataChecks);
                 if (signal.aborted) return;
             }
+            flushHeldCloneGroups();
             dispatchGpsBatch();
         } catch (err) {
             if (err instanceof Error && err.name === "AbortError") return;

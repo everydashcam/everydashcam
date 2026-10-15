@@ -8,8 +8,11 @@
 //
 // Sharding strategy: input classified[] is grouped by cloneAcrossGroup
 // affinity (Juscar pairs F/R/I share GPS, the dispatcher parses one and
-// clones), then groups are distributed across workers via shardKey.
-// This keeps clone-savings intact while giving each worker ~equal work.
+// clones), then each chunk becomes one pool request routed to the least
+// loaded slot. A chunk already holds its whole clone group, so no slot
+// pinning is needed; least-inflight routing also lets the many small batches
+// progressive ingest dispatches while indexing fill every slot instead of
+// stacking chunk N of every batch onto the same worker.
 
 import { createLogger } from "../log.js";
 import type { ClassifiedFile, DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
@@ -151,17 +154,12 @@ export function dispatchParseVideoEmbeddedGpsViaWorker(
         });
     }
 
-    const subResults = chunks.map((chunk, shardIdx) => {
+    const subResults = chunks.map((chunk) => {
         // All shards carry one token so their progress routes to this dispatch.
         const { request, transfer } = buildGpsExtractShardRequest(token, chunk, mode, prebuiltMoovByPath);
-        // shardKey pins same-affinity chunks to the same slot if dispatched
-        // back-to-back during the same session - but more importantly,
-        // distributes our N chunks across N distinct slots.
-        return pool.request<ExtractResult>(GPS_REQUEST_EXTRACT, request, {
-            signal,
-            shardKey: `shard-${shardIdx}`,
-            transfer,
-        });
+        // The pool counts a request against its slot synchronously, so the N
+        // chunks of one dispatch still land on N distinct slots.
+        return pool.request<ExtractResult>(GPS_REQUEST_EXTRACT, request, { signal, transfer });
     });
 
     return Promise.allSettled(subResults)

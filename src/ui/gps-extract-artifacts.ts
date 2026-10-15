@@ -6,9 +6,21 @@
 import { extendArray } from "../array-extend.js";
 import { VIDEO_CLONE_GROUPERS, videoCloneAffinityKey } from "../parsers/primitives/clone-groups.js";
 import type { ClassifiedFile, DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
-import type { AccelSample, GpsRecord, SkippedLine } from "../parsers/types.js";
+import type { AccelSample, GpsRecord, SkippedLine, VendorFile } from "../parsers/types.js";
 import { vendorFileKey } from "../vendor-file-key.js";
 import type { EmbeddedGpsExtractionMode, ExtractRequestData } from "../workers/gps-extract-protocol.js";
+
+/** Scoped clone-affinity key of one video, or null when no primitive clones
+ * GPS across a group containing it. Progressive ingest holds group members
+ * until all are indexed so they reach the worker in one request, and the shard
+ * planner below keeps them in one chunk; both must derive the same key. */
+export function videoCloneAffinityKeyOf(file: VendorFile): string | null {
+    for (const grouper of VIDEO_CLONE_GROUPERS) {
+        const group = grouper.cloneAcrossGroup(file);
+        if (group !== null) return videoCloneAffinityKey(grouper.id, file, group);
+    }
+    return null;
+}
 
 /** Splits videos while keeping cloneAcrossGroup peers in one worker shard. */
 export function shardByCloneAffinity(classified: ClassifiedFile[], n: number): ClassifiedFile[][] {
@@ -18,14 +30,7 @@ export function shardByCloneAffinity(classified: ClassifiedFile[], n: number): C
     const groups = new Map<string, ClassifiedFile[]>();
     const singletons: ClassifiedFile[] = [];
     for (const video of videos) {
-        let key: string | null = null;
-        for (const grouper of VIDEO_CLONE_GROUPERS) {
-            const group = grouper.cloneAcrossGroup(video.file);
-            if (group !== null) {
-                key = videoCloneAffinityKey(grouper.id, video.file, group);
-                break;
-            }
-        }
+        const key = videoCloneAffinityKeyOf(video.file);
         if (key === null) {
             singletons.push(video);
         } else {
