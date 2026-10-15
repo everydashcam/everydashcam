@@ -54,9 +54,8 @@ import { KNOTS_TO_MS, WrongFormatError } from "../types.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 import { utcSecondsFromYmdhms } from "./freegps.js";
 import type { Mp4Index } from "./mp4-index.js";
-import { collectPesBody, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import { collectPesBody, createTsPesScanPlanner, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
 
-const CHUNK_BYTES = 4 * 1024 * 1024;
 const RECORD_SIZE = 44;
 
 // Blueskysea B4K (Novatek NT96670) writes the SAME record behind a 164-byte
@@ -244,17 +243,17 @@ function decodeRecord(bytes: Uint8Array, off: number, mp4Filename: string): Deco
 }
 
 /**
- * Extracts GPS records from a Novatek-TS file: one sequential pass in 4 MB
- * chunks, parsing only PUSI packets of the GPS PID (locked on first match,
- * seeded from index.headerBytes when the probe already ran).
+ * Extracts GPS records from a Novatek-TS file: one pass in file order over the
+ * PUSI packets of the GPS PID (locked on first match, seeded from
+ * index.headerBytes when the probe already ran), reading bounded windows
+ * around each predicted PES once the cadence is known (see ts-walk.ts).
  *
  * Contract: throws WrongFormatError when the scan finds no GPS records
  * (false-positive marker - e.g. the filename-shape fallback on a foreign TS
  * file); a stream that never locks a GPS PID aborts early after
  * PID_LOCK_LIMIT_BYTES instead of scanning to EOF. Every returned record
  * has timeUnsynced=true and relStartSeconds relative to the first record -
- * see the local-clock note in the header. Honors `signal` between chunks
- * (a full pass reads the whole file).
+ * see the local-clock note in the header. Honors `signal` between buffers.
  */
 export async function extractNovatekTsGps(
     file: VendorFile,
@@ -270,25 +269,15 @@ export async function extractNovatekTsGps(
     let recordIdx = 0;
     let leadingNoFixSeconds = 0;
 
-    const fileSize = file.file.size;
-    let chunkStart = 0;
-    // A packet split across a chunk boundary is carried over as a tail.
-    let tail = new Uint8Array(0);
-
-    while (chunkStart < fileSize) {
+    // The planner serves the buffers: the marker probe first, linear chunks
+    // until the PID is locked, then predicted windows around each next PES
+    // (see ts-walk.ts). A packet or PES body cut at a buffer end is re-served
+    // at the start of the next buffer, so no tail is carried here.
+    const planner = createTsPesScanPlanner(file.file, { pid: gpsPid, prefix: index?.headerBytes, signal });
+    let range = await planner.next(0);
+    while (range !== null) {
         if (signal?.aborted) throw new DOMException("novatek-ts scan aborted", "AbortError");
-        const chunkEnd = Math.min(chunkStart + CHUNK_BYTES, fileSize);
-        const fresh = new Uint8Array(await file.file.slice(chunkStart, chunkEnd).arrayBuffer());
-
-        let buf: Uint8Array;
-        if (tail.length === 0) {
-            buf = fresh;
-        } else {
-            buf = new Uint8Array(tail.length + fresh.length);
-            buf.set(tail, 0);
-            buf.set(fresh, tail.length);
-        }
-
+        const { start, buf } = range;
         let off = 0;
         // Consecutive non-sync bytes seen while resyncing (see below).
         let desyncRun = 0;
@@ -331,7 +320,7 @@ export async function extractNovatekTsGps(
                 recordOff = bodyOff;
             } else if (looksLikeB4kRecordStart(buf, bodyOff, off + TS_SIZE)) {
                 const assembled = collectPesBody(buf, off, bodyOff, pid, B4K_PREFIX_BYTES + RECORD_SIZE);
-                // Buffer ran out mid-PES: leave this packet for the next chunk
+                // Buffer ran out mid-PES: leave this packet for the next buffer
                 // instead of judging a truncated body. "unavailable" falls
                 // through to the not-a-record path so the scan keeps moving.
                 if (assembled === "incomplete") break;
@@ -351,16 +340,17 @@ export async function extractNovatekTsGps(
                     recordIdx++;
                     skipped.push({
                         line: recordIdx,
-                        // `off` indexes the tail-prefixed buffer, so the
-                        // absolute file offset subtracts the carried tail.
-                        raw: `pes body without record signature at ~${chunkStart - tail.length + off}`,
+                        raw: `pes body without record signature at ~${start + off}`,
                         reason: "novatek-ts signature mismatch on gps pid",
                     });
                 }
                 off += TS_SIZE;
                 continue;
             }
-            gpsPid = pid; // first match locks the PID
+            if (gpsPid === null) {
+                gpsPid = pid; // first match locks the PID
+                planner.setPid(pid);
+            }
             recordIdx++;
             const outcome = decodeRecord(recordBytes, recordOff, file.file.name);
             if ("record" in outcome) {
@@ -369,23 +359,20 @@ export async function extractNovatekTsGps(
             } else {
                 skipped.push({
                     line: recordIdx,
-                    // Same tail-prefix correction as the signature-mismatch
-                    // diagnostic above.
-                    raw: `record at ~${chunkStart - tail.length + off}`,
+                    raw: `record at ~${start + off}`,
                     reason: outcome.skipReason,
                 });
             }
             off += TS_SIZE;
         }
 
-        tail = off < buf.length ? buf.slice(off) : new Uint8Array(0);
-        chunkStart = chunkEnd;
-
-        if (gpsPid === null && chunkStart >= PID_LOCK_LIMIT_BYTES) {
+        // Bound on bytes covered, like the chunk end of a plain linear pass.
+        if (gpsPid === null && start + buf.length >= PID_LOCK_LIMIT_BYTES) {
             throw new WrongFormatError(
                 `novatek-ts: no gps pes signature in the leading ${PID_LOCK_LIMIT_BYTES >> 20} mib of the stream`,
             );
         }
+        range = await planner.next(start + off);
     }
 
     if (records.length === 0) {

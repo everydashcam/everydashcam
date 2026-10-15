@@ -23,9 +23,11 @@
 // folder) but unconfirmed - we treat the prefix as informational only.
 //
 // Performance:
-//   - One sequential pass over the file in 4 MB chunks. Variant rear=front
-//     dedup is handled OUTSIDE this extractor (post-process in the
-//     dispatcher) - this function stays per-file and predictable.
+//   - One pass over the file in file order, driven by the predicted-offset
+//     planner in ts-walk.ts (bounded windows around each expected PES, exact
+//     by continuity-counter verification). Variant rear=front dedup is
+//     handled OUTSIDE this extractor (post-process in the dispatcher) - this
+//     function stays per-file and predictable.
 //   - Tight inner loop: 188-byte stride, byte-level comparisons, no PES
 //     reassembly. Typical 358 MB file: ~80 ms CPU, IO-bound on disk.
 
@@ -33,9 +35,8 @@ import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types
 import { KMH_TO_MS, WrongFormatError } from "../types.js";
 import { utcMillisecondsFromParts } from "./calendar.js";
 import type { Mp4Index } from "./mp4-index.js";
-import { pesBodyExtent, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import { createTsPesScanPlanner, pesBodyExtent, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
 
-const CHUNK_BYTES = 4 * 1024 * 1024;
 // PID seen in our only sample. Used as a fallback if the probe could not
 // find the real PID (e.g. on a heavily truncated file).
 const DEFAULT_GPS_PID = 0x300;
@@ -76,25 +77,14 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
     const skipped: SkippedLine[] = [];
     let recordIdx = 0;
 
-    // Streaming pass. At a chunk boundary a packet may be split - we carry the
-    // tail (the last < TS_SIZE bytes) over into the next chunk.
-    let tail = new Uint8Array(0);
-    const fileSize = file.file.size;
-    let chunkStart = 0;
-
-    while (chunkStart < fileSize) {
-        const chunkEnd = Math.min(chunkStart + CHUNK_BYTES, fileSize);
-        const fresh = new Uint8Array(await file.file.slice(chunkStart, chunkEnd).arrayBuffer());
-
-        let buf: Uint8Array;
-        if (tail.length === 0) {
-            buf = fresh;
-        } else {
-            buf = new Uint8Array(tail.length + fresh.length);
-            buf.set(tail, 0);
-            buf.set(fresh, tail.length);
-        }
-
+    // The planner serves the buffers: the marker probe first, then predicted
+    // windows around each next PES once the 1 Hz cadence is known (see
+    // ts-walk.ts). A packet split at a buffer end is re-served at the start of
+    // the next buffer, so no tail is carried here.
+    const planner = createTsPesScanPlanner(file.file, { pid: gpsPid, prefix: index.headerBytes });
+    let range = await planner.next(0);
+    while (range !== null) {
+        const { start, buf } = range;
         let off = 0;
         while (off + TS_SIZE <= buf.length) {
             if (buf[off] !== TS_SYNC) {
@@ -161,13 +151,7 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
             off += TS_SIZE;
         }
 
-        // Tail: everything not yet processed is carried over to the next chunk.
-        if (off < buf.length) {
-            tail = buf.slice(off);
-        } else {
-            tail = new Uint8Array(0);
-        }
-        chunkStart = chunkEnd;
+        range = await planner.next(start + off);
     }
 
     if (records.length === 0) {

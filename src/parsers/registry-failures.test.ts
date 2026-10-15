@@ -211,14 +211,16 @@ describe("terminal embedded GPS failure evidence", () => {
 
     it("suppresses a failed clone-group member when its peer supplies GPS", async () => {
         const bytes = fixture("__fixtures__/juscar/real-anonymized.TS");
-        let wholeFileReads = 0;
-        const front = video(
-            new UnreadableRangeFile(bytes, "20260429_182640F.ts", (start, end) => {
-                if (start !== 0 || end !== bytes.length) return false;
-                wholeFileReads++;
-                return wholeFileReads > 1;
-            }),
-        );
+        // The marker probe already holds the whole fixture and the extractor
+        // scans it from there, so the front file is padded past the probe
+        // window with null packets and its first read beyond it fails.
+        const TS_PACKET = 188;
+        const padding = new Uint8Array(Math.ceil((4 * 1024 * 1024) / TS_PACKET) * TS_PACKET).fill(0xff);
+        for (let at = 0; at < padding.length; at += TS_PACKET) padding.set([0x47, 0x1f, 0xff, 0x10], at);
+        const padded = new Uint8Array(bytes.length + padding.length);
+        padded.set(bytes, 0);
+        padded.set(padding, bytes.length);
+        const front = video(new UnreadableRangeFile(padded, "20260429_182640F.ts", (start) => start >= bytes.length));
         const rear = video(new File([bytes], "20260429_182640R.ts"));
 
         const result = await dispatchParseVideoEmbeddedGps([front, rear]);
