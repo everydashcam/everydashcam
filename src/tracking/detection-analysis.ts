@@ -4,7 +4,8 @@ import type { DetectionQuality } from "./detection-sampling.js";
 import { type TimeInterval, unionIntervals } from "./interval-set.js";
 import type { SourceFrameTiming } from "./propagated-track.js";
 
-/** Empty scheduled scans are evidence too: they stop both neighboring trajectories. */
+/** Scheduled scans bound both neighboring trajectories, including tracked
+ * observations on the boundary frame even when the scan itself is empty. */
 export interface DetectionCheckpoint extends SourceFrameTiming {
     /** Original source PTS for resuming decode without a content-time round trip. */
     sourceTimestamp: number;
@@ -44,6 +45,11 @@ export function planDetectionReuse(cached: DetectionAnalysis | undefined, bounds
     if (!retained.length) return { intervals: [{ ...bounds }], retained };
     const first = retained[0]!;
     const nextFrame = cached!.sourceFrames.find((frame) => frame.contentSec > first.contentSec);
+    // An overlapping boundary frame cannot be split at the next timestamp:
+    // that would shorten the preceding trajectory's verified checkpoint hold.
+    // Recompute the whole range to preserve the same masks as a fresh analysis.
+    if (nextFrame && first.contentSec + first.durationSec > nextFrame.contentSec + 1e-6)
+        return { intervals: [{ ...bounds }], retained: [] };
     return {
         intervals: unionIntervals([
             {

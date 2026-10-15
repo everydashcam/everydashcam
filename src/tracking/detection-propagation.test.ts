@@ -281,13 +281,14 @@ describe("DetectionPropagation", () => {
 
     it("keeps a checkpoint's pixel margin independent of later source dimensions", async () => {
         const tiny = { score: 0.8, rect: { xPct: 0.2, yPct: 0.4, wPct: 0.01, hPct: 0.008 } };
-        const { propagation } = setup([new ScriptedTracker(), new ScriptedTracker()], 2, undefined, 0.12);
+        const { propagation } = setup([new ScriptedTracker(), new ScriptedTracker()], 3, undefined, 0.12);
         await propagation.forward(FRAME, 0, [tiny]);
-        await propagation.forward({ width: 100, height: 50, close() {} }, 1, [tiny]);
+        await propagation.forward(FRAME, 1, []);
+        await propagation.forward({ width: 100, height: 50, close() {} }, 2, [tiny]);
         const groups = propagation.finishByCheckpoint();
         expect(groups.size).toBe(2);
         expect(groups.get(0)![0]!.keyframes[0]!.rect.xPct * FRAME.width).toBeCloseTo(199);
-        expect(groups.get(FRAME_SEC)![0]!.keyframes[0]!.rect.xPct * 100).toBeCloseTo(19);
+        expect(groups.get(2 * FRAME_SEC)![0]!.keyframes[0]!.rect.xPct * 100).toBeCloseTo(19);
     });
 
     it.each([30, 60])(
@@ -396,17 +397,18 @@ describe("DetectionPropagation", () => {
     });
 
     it.each([{ checkpoint: [] }, { checkpoint: [seed(0.2, 0.3)] }])(
-        "ends an accepted track at an empty or sub-threshold checkpoint (%j)",
+        "includes an empty or sub-threshold checkpoint before ending an accepted track (%j)",
         async ({ checkpoint }) => {
             const tracker = new ScriptedTracker();
             const { propagation } = setup([tracker], 7);
             for (let index = 0; index < 7; index++)
                 await propagation.forward(FRAME, index, index === 0 ? [seed()] : index === 3 ? checkpoint : undefined);
-            expect(tracker.steps).toHaveLength(2);
+            expect(tracker.steps).toHaveLength(3);
             const tracks = propagation.finish();
             expect(tracks).toHaveLength(1);
-            expect(tracks[0]!.endSec).toBeCloseTo(3 * FRAME_SEC);
-            for (let index = 3; index < 7; index++) expect(masksAt(tracks, (index + 0.5) * FRAME_SEC)).toEqual([]);
+            expect(tracks[0]!.endSec).toBeCloseTo(4 * FRAME_SEC);
+            expect(masksAt(tracks, 3.5 * FRAME_SEC)).toHaveLength(1);
+            for (let index = 4; index < 7; index++) expect(masksAt(tracks, (index + 0.5) * FRAME_SEC)).toEqual([]);
         },
     );
 
@@ -417,20 +419,21 @@ describe("DetectionPropagation", () => {
         const { propagation } = setup([first, second, reverse], 7);
         for (let index = 0; index < 7; index++)
             await propagation.forward(FRAME, index, index === 0 || index === 3 ? [seed()] : undefined);
-        expect(first.steps).toHaveLength(2);
+        expect(first.steps).toHaveLength(3);
         expect(second.steps).toHaveLength(3);
-        expect(propagation.backwardJobs()).toMatchObject([{ seedIndex: 3, startIndex: 1 }]);
+        expect(propagation.backwardJobs()).toMatchObject([{ seedIndex: 3, startIndex: 0 }]);
         propagation.startBackward(FRAME, 3);
         for (let index = 2; index >= 0; index--) await propagation.backward(FRAME, index, 3);
-        expect(reverse.steps).toHaveLength(2);
+        expect(reverse.steps).toHaveLength(3);
         const tracks = propagation.finish();
         expect(tracks).toHaveLength(2);
         expect(tracks.map((track) => track.detHits)).toEqual([1, 1]);
-        // Each checkpoint has only its own detection. Overlapping independent
-        // masks between checkpoints are retained unchanged for export.
-        expect(masksAt(tracks, FRAME_SEC / 2)).toHaveLength(1);
+        // Independent masks overlap through both endpoint frames without
+        // sharing detector evidence or continuing beyond their checkpoints.
+        expect(masksAt(tracks, FRAME_SEC / 2)).toHaveLength(2);
         expect(masksAt(tracks, 1.5 * FRAME_SEC)).toHaveLength(2);
-        expect(masksAt(tracks, 3.5 * FRAME_SEC)).toHaveLength(1);
+        expect(masksAt(tracks, 3.5 * FRAME_SEC)).toHaveLength(2);
+        expect(masksAt(tracks, 4.5 * FRAME_SEC)).toHaveLength(1);
     });
 
     it("bounds lazy reverse initialization at the preceding empty checkpoint", async () => {
@@ -438,13 +441,82 @@ describe("DetectionPropagation", () => {
         const { propagation } = setup([new ScriptedTracker(), reverse], 9);
         propagation.beginForwardWindow(0, 3);
         await propagation.forward(FRAME, 7, [seed()]);
-        expect(propagation.backwardJobs()).toMatchObject([{ seedIndex: 7, startIndex: 4 }]);
+        expect(propagation.backwardJobs()).toMatchObject([{ seedIndex: 7, startIndex: 3 }]);
         propagation.startBackward(FRAME, 7);
         for (let index = 6; index >= 0; index--) await propagation.backward(FRAME, index, 7);
-        expect(reverse.steps).toHaveLength(3);
+        expect(reverse.steps).toHaveLength(4);
         const tracks = propagation.finish();
-        expect(tracks[0]!.startSec).toBeCloseTo(4 * FRAME_SEC);
-        expect(masksAt(tracks, 3.5 * FRAME_SEC)).toEqual([]);
+        expect(tracks[0]!.startSec).toBeCloseTo(3 * FRAME_SEC);
+        expect(masksAt(tracks, 3.5 * FRAME_SEC)).toHaveLength(1);
+        expect(masksAt(tracks, 2.5 * FRAME_SEC)).toEqual([]);
+    });
+
+    it("covers an isolated missed checkpoint from both adjacent trajectories without crossing it", async () => {
+        const first = new ScriptedTracker();
+        const reverse = new ScriptedTracker();
+        const { propagation } = setup([first, new ScriptedTracker(), reverse], 7);
+        for (let index = 0; index < 7; index++) {
+            await propagation.forward(
+                FRAME,
+                index,
+                index === 0 || index === 6 ? [seed()] : index === 3 ? [] : undefined,
+            );
+            if (index >= 3 && index < 6) expect(propagation.forwardTrackCount()).toBe(0);
+        }
+        expect(first.steps).toHaveLength(3);
+        expect(propagation.backwardJobs()).toMatchObject([{ seedIndex: 6, startIndex: 3 }]);
+        propagation.startBackward(FRAME, 6);
+        for (let index = 5; index >= 0; index--) await propagation.backward(FRAME, index, 6);
+        expect(reverse.steps).toHaveLength(3);
+        expect(propagation.hasBackwardWork()).toBe(false);
+        const groups = propagation.finishByCheckpoint();
+        expect([...groups.keys()]).toEqual([0, 6 * FRAME_SEC]);
+        expect(groups.get(0)![0]!.endSec).toBeCloseTo(4 * FRAME_SEC);
+        expect(groups.get(6 * FRAME_SEC)![0]!.startSec).toBeCloseTo(3 * FRAME_SEC);
+        const tracks = [...groups.values()].flat();
+        for (let index = 0; index < 7; index++)
+            expect(masksAt(tracks, (index + 0.5) * FRAME_SEC)).toHaveLength(index === 3 ? 2 : 1);
+        expect(propagation.uncertainFramesByCheckpoint().size).toBe(0);
+    });
+
+    it.each([
+        { backward: false, rejects: false },
+        { backward: false, rejects: true },
+        { backward: true, rejects: false },
+        { backward: true, rejects: true },
+    ])("observes an off-cadence checkpoint after calibration ($backward, $rejects)", async ({ backward, rejects }) => {
+        const frames = Array.from({ length: 7 }, (_, index) => ({ contentSec: index / 60, durationSec: 1 / 60 }));
+        const tracker = new ScriptedTracker([
+            ...Array.from({ length: 4 }, () => accepted()),
+            rejects ? rejected("appearance") : accepted(0.25),
+        ]);
+        const { propagation } = setup(backward ? [new ScriptedTracker(), tracker] : [tracker], 7, frames);
+        const boundary = backward ? 1 : 5;
+        let scans = 0;
+        const redetect = async () => {
+            scans++;
+            return [];
+        };
+        if (backward) {
+            propagation.beginForwardWindow(0, boundary);
+            await propagation.forward(FRAME, 6, [seed()]);
+            propagation.startBackward(FRAME, 6);
+            for (let index = 5; index >= 0; index--) await propagation.backward(FRAME, index, 6, redetect);
+        } else {
+            await propagation.forward(FRAME, 0, [seed()]);
+            for (let index = 1; index < 7; index++)
+                await propagation.forward(FRAME, index, index === boundary ? [] : undefined, redetect);
+        }
+        expect(tracker.steps).toHaveLength(5);
+        expect(tracker.steps[4]).toBeCloseTo(1 / 60);
+        expect(scans).toBe(rejects ? 1 : 0);
+        const tracks = propagation.finish();
+        const masks = masksAt(tracks, (boundary + 0.5) / 60);
+        expect(masks).toHaveLength(rejects ? 0 : 1);
+        if (!rejects) expect(masks[0]!.xPct).toBeCloseTo(0.25);
+        expect(masksAt(tracks, (backward ? 0.5 : 6.5) / 60)).toEqual([]);
+        const uncertain = [...propagation.uncertainFramesByCheckpoint().values()].flat();
+        expect(uncertain).toEqual(rejects ? [frames[boundary]] : []);
     });
 
     it.each(["low-score", "appearance", "geometry", "texture-collapse"] as const)(
@@ -534,7 +606,7 @@ describe("DetectionPropagation", () => {
 });
 
 describe("same-frame detector recovery", () => {
-    it("replaces only the rejected branch and keeps fixed checkpoints authoritative", async () => {
+    it("replaces only the rejected branch and ends survivors after the next checkpoint", async () => {
         const lost = new ScriptedTracker([rejected("appearance")]);
         const survivor = new ScriptedTracker();
         const replacement = new ScriptedTracker();
@@ -555,10 +627,53 @@ describe("same-frame detector recovery", () => {
         await propagation.forward(FRAME, 3, undefined, redetect);
         const tracks = propagation.finish();
         expect(masksAt(tracks, FRAME_SEC).map((mask) => mask.xPct)).toEqual([0.65, 0.22]);
-        expect(masksAt(tracks, FRAME_SEC * 2)).toEqual([]);
+        expect(masksAt(tracks, FRAME_SEC * 2).map((mask) => mask.xPct)).toEqual([0.65, 0.22]);
+        expect(masksAt(tracks, FRAME_SEC * 3)).toEqual([]);
         expect(propagation.uncertainFramesByCheckpoint().size).toBe(0);
         expect(scans).toBe(1);
     });
+
+    it.each([false, true])(
+        "keeps cached detector recovery at a rejected checkpoint within its boundary (backward=%s)",
+        async (backward) => {
+            const tracker = new ScriptedTracker([rejected("appearance")]);
+            const replacement = new ScriptedTracker();
+            const { propagation, stats } = setup(
+                backward ? [new ScriptedTracker(), tracker, replacement] : [tracker, replacement],
+                3,
+            );
+            let scans = 0;
+            const redetect = async () => {
+                scans++;
+                return [seed(0.22)];
+            };
+            if (backward) {
+                propagation.beginForwardWindow(0, 1);
+                await propagation.forward(FRAME, 2, [seed()]);
+                propagation.startBackward(FRAME, 2);
+                await propagation.backward(FRAME, 1, 2, redetect);
+                await propagation.backward(FRAME, 0, 2, redetect);
+                expect(propagation.hasBackwardWork()).toBe(false);
+            } else {
+                await propagation.forward(FRAME, 0, [seed()]);
+                // A retained checkpoint supplies [] to prevent duplicate seeds;
+                // its actual cached detector evidence remains available to recovery.
+                await propagation.forward(FRAME, 1, [], redetect);
+                await propagation.forward(FRAME, 2, undefined, redetect);
+                expect(propagation.forwardTrackCount()).toBe(0);
+            }
+            expect(tracker.steps).toHaveLength(1);
+            expect(replacement.steps).toEqual([]);
+            expect(scans).toBe(1);
+            expect(stats.recoveredTracks).toBe(1);
+            expect(propagation.uncertainFramesByCheckpoint().size).toBe(0);
+            const groups = propagation.finishByCheckpoint();
+            expect([...groups.keys()]).toEqual([backward ? 2 * FRAME_SEC : 0]);
+            const tracks = [...groups.values()].flat();
+            expect(masksAt(tracks, 1.5 * FRAME_SEC).map((mask) => mask.xPct)).toEqual([0.22]);
+            expect(masksAt(tracks, (backward ? 0.5 : 2.5) * FRAME_SEC)).toEqual([]);
+        },
+    );
 
     it("shares one recovery scan across failures without assigning one detection twice", async () => {
         const { propagation, stats } = setup(
@@ -608,11 +723,13 @@ describe("same-frame detector recovery", () => {
         await propagation.backward(FRAME, 2, 3, async () => [seed(0.22)]);
         expect(propagation.hasBackwardHighMotion(3)).toBe(true);
         await propagation.backward(FRAME, 1, 3);
+        expect(propagation.hasBackwardWork(3)).toBe(true);
+        await propagation.backward(FRAME, 0, 3);
         expect(propagation.hasBackwardWork(3)).toBe(false);
         expect(propagation.backwardJobs()).toHaveLength(1);
         const groups = propagation.finishByCheckpoint();
         expect([...groups.keys()]).toEqual([3 * FRAME_SEC]);
-        expect(masksAt(groups.get(3 * FRAME_SEC)!, 0)).toEqual([]);
+        expect(masksAt(groups.get(3 * FRAME_SEC)!, 0).map((mask) => mask.xPct)).toEqual([0.22]);
         expect(masksAt(groups.get(3 * FRAME_SEC)!, FRAME_SEC).map((mask) => mask.xPct)).toEqual([0.22]);
     });
 

@@ -62,10 +62,14 @@ describe("completed detection reuse", () => {
         });
     });
 
-    it("ends the left decode before the next displayed frame when source durations overlap", () => {
+    it("reanalyzes overlapping boundary frames without shortening a verified checkpoint hold", () => {
         const cached = analysis();
         cached.checkpoints[2]!.durationSec = 0.5;
-        expect(planDetectionReuse(cached, { startSec: 0, endSec: 9 }).intervals[0]!.endSec).toBeCloseTo(3.1);
+        cached.sourceFrames.find((frame) => frame.contentSec === 3)!.durationSec = 0.5;
+        expect(planDetectionReuse(cached, { startSec: 0, endSec: 9 })).toEqual({
+            intervals: [{ startSec: 0, endSec: 9 }],
+            retained: [],
+        });
     });
 
     it("requires the complete following checkpoint inside a fractional boundary", () => {

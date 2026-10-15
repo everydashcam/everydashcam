@@ -240,7 +240,8 @@ const cases = [
     {
         ...longPlateCase,
         quality: "fast" as const,
-        label: "rejects a below-threshold small-plate seed",
+        label: "rejects a small-plate seed below the chosen 0.70 threshold",
+        thresholds: { plate: 0.7 },
         motion: {
             ...smallPlateMotion,
             frames: smallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
@@ -275,7 +276,8 @@ const cases = [
     {
         ...longPlateCase,
         quality: "balanced" as const,
-        label: "a small-plate endpoint beside an empty checkpoint without filling its misses",
+        label: "a small-plate endpoint through its preceding empty checkpoint",
+        thresholds: { plate: 0.7 },
         motion: {
             ...slowSmallPlateMotion,
             durationSec: 85 / 30,
@@ -285,10 +287,10 @@ const cases = [
         },
         startSec: 0.3,
         expectedScans: 12,
-        // Only the forced endpoint at 2.8 s is eligible. The preceding
-        // grid scan at 2.767 s excludes all earlier visible frames.
-        expectsTrackUpdates: false,
-        uncoveredVisibleIndices: Array.from({ length: 12 }, (_, index) => 72 + index),
+        // At 0.70 only the forced endpoint at 2.8 s is eligible. Reverse
+        // tracking covers the empty 2.767 s checkpoint, then stops there.
+        hasForwardUpdates: false,
+        uncoveredVisibleIndices: Array.from({ length: 11 }, (_, index) => 72 + index),
         maxMaskArea: 2.5,
         tilesPerScan: 4,
     },
@@ -296,6 +298,7 @@ const cases = [
         ...longPlateCase,
         quality: "thorough" as const,
         label: "only eligible small-plate checkpoint hits without filling detector misses",
+        thresholds: { plate: 0.7 },
         motion: {
             ...slowSmallPlateMotion,
             frames: slowSmallPlateMotion.frames.map((frame) => ({ ...frame, boxes: frame.plates })),
@@ -622,13 +625,11 @@ self.postMessage = function(message, ...args) {
                     ).toHaveLength(0);
                     continue;
                 }
-                // Independent seeds on adjacent checkpoints may both cover an
-                // unchecked frame. Review grouping must not remove either mask.
+                // A checkpoint can retain its own seed and predictions from
+                // both adjacent seeds. Review grouping preserves all three masks.
                 if (frame.boxes.length > 0) {
                     expect(masks.length).toBeGreaterThanOrEqual(frame.boxes.length);
-                    const nextFrameSec = motion.frames[frameIndex + 1]?.contentSec ?? motion.durationSec;
-                    const straddlesSplit = splitSec !== null && frame.contentSec < splitSec && splitSec < nextFrameSec;
-                    expect(masks.length).toBeLessThanOrEqual(frame.boxes.length * (straddlesSplit ? 3 : 2));
+                    expect(masks.length).toBeLessThanOrEqual(frame.boxes.length * 3);
                 }
                 for (const box of frame.boxes) {
                     const coverage = Math.max(0, ...masks.map((mask) => coveredFraction(mask, box)));

@@ -91,7 +91,11 @@ test("a real plate tracker loss triggers same-frame detection through exit", asy
     expect(Math.max(...tracks.map((track) => track.endSec)), "covers the last partially visible plate").toBeCloseTo(
         0.28,
     );
-    expect(result.uncertainFramesByKind?.plate).toEqual([]);
+    // The empty checkpoint verifies the departing branch; a rejected update
+    // with no detector recovery remains available for manual review.
+    expect(result.uncertainFramesByKind?.plate).toHaveLength(1);
+    expect(result.uncertainFramesByKind!.plate![0]!.contentSec).toBeCloseTo(0.28);
+    expect(result.uncertainFramesByKind!.plate![0]!.durationSec).toBeCloseTo(0.04);
     const regions: BlurRegion[] = tracks.map((track, index) => ({
         id: `plate-${index}`,
         channel: "front",

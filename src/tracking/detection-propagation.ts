@@ -124,8 +124,8 @@ function validDetection(detection: SeedDetection): boolean {
     );
 }
 
-/** Each detector hit owns an independent trajectory. A scheduled scan, including
- * an empty one, bounds both adjacent trajectories and owns its displayed frame.
+/** Each detector hit owns an independent trajectory. Tracking includes both
+ * adjacent scheduled scans, including empty ones, but never crosses them.
  * A null session copies boxes between dense checkpoints without model tracking. */
 export class DetectionPropagation {
     private readonly trajectories: Trajectory[] = [];
@@ -443,6 +443,31 @@ export class DetectionPropagation {
         }
         this.windowStartIndex ??= frameIndex;
         this.previousForwardIndex = frameIndex;
+        const next: Branch[] = [];
+        const failed: Branch[] = [];
+        // Verify the boundary frame before ending a model-backed branch. Dense
+        // detection has no tracker evidence to override a checkpoint result.
+        if (detections === undefined || this.session) {
+            for (const branch of this.live) {
+                const prediction = await this.predict(
+                    branch,
+                    source,
+                    frameIndex,
+                    false,
+                    detections !== undefined ||
+                        timing.contentSec + timing.durationSec >= this.options.bounds.endSec - TIME_EPSILON_SEC,
+                );
+                if (!prediction.accepted) {
+                    failed.push(branch);
+                    continue;
+                }
+                this.accept(branch, frameIndex, prediction.rect, prediction.observed);
+                next.push(branch);
+            }
+            // Scheduled scans are already cached by the caller. Recovery can
+            // resolve a rejected boundary update without another detector pass.
+            await this.recover(failed, next, source, frameIndex, false, redetect);
+        }
         if (detections !== undefined) {
             // No matching or reanchoring: even an identical hit starts afresh.
             this.live = [];
@@ -454,7 +479,10 @@ export class DetectionPropagation {
                     rootRect: { ...seed.rect },
                     isRecovery: false,
                     seedIndex: frameIndex,
-                    startIndex: Math.max(this.windowStartIndex, (this.lastCheckpointIndex ?? -1) + 1),
+                    startIndex: Math.max(
+                        this.windowStartIndex,
+                        (this.lastCheckpointIndex ?? -1) + (this.session ? 0 : 1),
+                    ),
                     seedRect: { ...seed.rect },
                     score: seed.score,
                     observations: new Map([[frameIndex, { ...seed.rect }]]),
@@ -474,24 +502,6 @@ export class DetectionPropagation {
             this.lastCheckpointIndex = frameIndex;
             return;
         }
-        const next: Branch[] = [];
-        const failed: Branch[] = [];
-        for (const branch of this.live) {
-            const prediction = await this.predict(
-                branch,
-                source,
-                frameIndex,
-                false,
-                timing.contentSec + timing.durationSec >= this.options.bounds.endSec - TIME_EPSILON_SEC,
-            );
-            if (!prediction.accepted) {
-                failed.push(branch);
-                continue;
-            }
-            this.accept(branch, frameIndex, prediction.rect, prediction.observed);
-            next.push(branch);
-        }
-        await this.recover(failed, next, source, frameIndex, false, redetect);
         this.live = next;
     }
 
