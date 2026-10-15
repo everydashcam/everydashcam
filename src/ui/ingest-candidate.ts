@@ -205,6 +205,32 @@ export function applyIndexedMetadata(
     return { phantomRepaired: applied.phantomRepaired, hvccRepaired: applied.hvccRepaired };
 }
 
+// Decoder support for a codec string cannot change within a session, and the
+// progressive fill asks once per trip. One probe per distinct codec keeps a
+// long card from paying a GPU-process round trip per trip. A rejected probe is
+// dropped so the next trip retries instead of inheriting a transient failure.
+const decodableByCodecKey = new Map<string, Promise<boolean>>();
+
+export function _resetForTests(): void {
+    decodableByCodecKey.clear();
+}
+
+function probeDecodable(key: string, codec: VideoCodec, codecString: string | null): Promise<boolean> {
+    const cached = decodableByCodecKey.get(key);
+    if (cached) return cached;
+    const probe = (async () => {
+        // Keep codec capabilities out of the landing graph. The shared helper's
+        // named Mediabunny imports expose only the exports the application uses.
+        const { canDecodeVideoStream } = await import("../transcode/capabilities.js");
+        return canDecodeVideoStream(codec, codecString);
+    })();
+    decodableByCodecKey.set(key, probe);
+    probe.catch(() => {
+        if (decodableByCodecKey.get(key) === probe) decodableByCodecKey.delete(key);
+    });
+    return probe;
+}
+
 /**
  * Sets each candidate's canPlay by probing codec decodability (mediabunny
  * canDecodeVideo, deduped by codec string). HEVC stays optimistic: Chromium
@@ -226,13 +252,10 @@ export async function checkCanPlay(candidates: VideoCandidate[]): Promise<void> 
     }
     if (checks.size === 0) return;
     const decodableByKey = new Map<string, boolean>();
-    // Keep codec capabilities out of the landing graph. The shared helper's
-    // named Mediabunny imports expose only the exports the application uses.
-    const { canDecodeVideoStream } = await import("../transcode/capabilities.js");
     await Promise.all(
         [...checks].map(async ([key, { codec, codecString }]) => {
             try {
-                decodableByKey.set(key, await canDecodeVideoStream(codec, codecString));
+                decodableByKey.set(key, await probeDecodable(key, codec, codecString));
             } catch (err) {
                 log.warn("codec check threw, optimistically allowing playback", {
                     codec,
