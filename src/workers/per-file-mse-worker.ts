@@ -274,9 +274,11 @@ const server = createWorkerServer(self, {
     },
     onNotification: (type, data) => {
         switch (type) {
-            case MSE_NOTIFY_START_FEED:
-                serialize(() => onStartFeed((data as StartFeedNotificationData).cycleId));
+            case MSE_NOTIFY_START_FEED: {
+                const start = data as StartFeedNotificationData;
+                serialize(() => onStartFeed(start.cycleId, start.startSec));
                 return;
+            }
             case MSE_NOTIFY_DROP_AUDIO:
                 // Pure state write, like TICK: main sends it before start-feed
                 // (which IS serialized), so the flag is set before the Output is
@@ -686,8 +688,10 @@ async function startNewFeedCycle(cycleId: number, armSeekDone: boolean): Promise
     runFeed(cycle).catch((e) => log.warn("runFeed unexpected throw", e));
 }
 
-async function onStartFeed(cycleId: number): Promise<void> {
+async function onStartFeed(cycleId: number, feedStartSec?: number): Promise<void> {
     if (failed) return;
+    // A prewarmed worker learns its real origin only now.
+    if (typeof feedStartSec === "number" && Number.isFinite(feedStartSec)) startSec = Math.max(0, feedStartSec);
     // Initial start: no prior cycle, no seek-done expectation.
     await startNewFeedCycle(cycleId, false);
 }

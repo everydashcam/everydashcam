@@ -56,7 +56,12 @@ afterAll(async () => {
     if (tempDirectory) await rm(tempDirectory, { recursive: true, force: true });
 });
 
-async function openWorker(bytes: Uint8Array<ArrayBuffer>, startSec = 0, fileName = "sample.mp4") {
+async function openWorker(
+    bytes: Uint8Array<ArrayBuffer>,
+    startSec = 0,
+    fileName = "sample.mp4",
+    feedStartSec?: number,
+) {
     const worker = new Worker(pathToFileURL(join(tempDirectory, "endpoint.mjs")), { workerData: { fileName } });
     workers.push(worker);
     const events: WireMessage[] = [];
@@ -108,7 +113,7 @@ async function openWorker(bytes: Uint8Array<ArrayBuffer>, startSec = 0, fileName
     await waitFor(() => events.some((event) => event.__k === "res"));
     const init = events.find((event) => event.__k === "res");
     expect(init, JSON.stringify(init)).toMatchObject({ ok: true });
-    send("start-feed", { cycleId: 0 });
+    send("start-feed", feedStartSec === undefined ? { cycleId: 0 } : { cycleId: 0, startSec: feedStartSec });
     return { events, waitFor, media, send, init };
 }
 
@@ -264,6 +269,14 @@ describe("per-file MSE worker with real encoded packets", () => {
         await harness.waitFor(() => harness.media(0).length > 0);
         harness.send("seek", null);
         await expect(harness.waitFor(() => false)).rejects.toThrow("feed-setup-threw");
+    });
+
+    it("starts the feed at the start-feed origin when it differs from init", async () => {
+        // A prewarmed worker is initialized for position 0 and learns the real
+        // clip position only when the player attaches it.
+        const harness = await openWorker(await createMseFixture({ gopCount: 8 }), 0, "sample.mp4", 5);
+        await harness.waitFor(() => harness.media(0).length > 0);
+        expect((await readCycle(harness.events, 0)).first?.timestamp).toBeCloseTo(5);
     });
 
     it("keeps TS playback and seeks on the same zero-based timeline", async () => {

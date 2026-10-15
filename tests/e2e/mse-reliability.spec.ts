@@ -313,6 +313,43 @@ test("keeps the MPEG-TS buffer inside the ahead window while playing", async ({ 
     ).toEqual([]);
 });
 
+test("warms the next MPEG-TS clip's worker before the clip boundary", async ({ page }) => {
+    // Two consecutive clips of one trip (names 6 s apart, like the first clip's
+    // length); distinct content so ingest does not fold them into one file.
+    const clips = await Promise.all([
+        createMseFixture({ format: "mpegts", gopCount: 6, audioDurationSec: 6 }),
+        createMseFixture({ format: "mpegts", gopCount: 7, audioDurationSec: 7 }),
+    ]);
+    await page.locator("#file-input").setInputFiles([
+        { name: "20260904_202849F.ts", mimeType: "video/mp2t", buffer: Buffer.from(clips[0]) },
+        { name: "20260904_202855F.ts", mimeType: "video/mp2t", buffer: Buffer.from(clips[1]) },
+    ]);
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await expect
+        .poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame), { timeout: 20_000 })
+        .toBe(1);
+    const attaches = await page.evaluate(() =>
+        window.__everydashcam
+            .dumpLog()
+            .filter((entry) => entry.msg === "attach: mse start")
+            .map((entry) => ({ file: entry.ctx?.file, prewarmed: entry.ctx?.prewarmed })),
+    );
+    expect(attaches).toEqual([
+        { file: "20260904_202849F.ts", prewarmed: false },
+        { file: "20260904_202855F.ts", prewarmed: true },
+    ]);
+    await expect
+        .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
+        .toBeGreaterThan(1);
+    expect(
+        await page.evaluate(() =>
+            window.__everydashcam.dumpLog().filter((entry) => entry.msg.startsWith("backend fail")),
+        ),
+    ).toEqual([]);
+});
+
 test("seeks back to the initial position after MSE trims it", async ({ page }) => {
     await loadTrip(page, join(fixtureDirectory, "seek-zero"));
     await expect
@@ -376,9 +413,7 @@ test("frees a complete video GOP after leading audio arrived in its own fragment
     await loadTrip(page, join(fixtureDirectory, "audio-leading"));
     // The third GOP is fed once the playhead is within the ahead window of the
     // second GOP's end, so the fault lands at about 13 s of playback.
-    await expect
-        .poll(async () => (await readQuotaFault(page)).injected, { timeout: 25_000 })
-        .toBe(true);
+    await expect.poll(async () => (await readQuotaFault(page)).injected, { timeout: 25_000 }).toBe(true);
     await expect
         .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
         .toBeGreaterThan(6);

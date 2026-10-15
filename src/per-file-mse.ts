@@ -166,10 +166,13 @@ export class PerFileMseBackend {
     private startSec: number;
     private readonly knownDurationSec: number | null;
     private readonly transcodeAdpcmAudio: boolean;
-    private readonly onErrorCb: ((reason: string, error?: unknown) => void) | undefined;
+    private onErrorCb: ((reason: string, error?: unknown) => void) | undefined;
     private readonly logger = log.child("");
 
     private client: WorkerClient | null = null;
+    // Worker init reply. Set by ensureWorkerReady, whether attach() or an
+    // earlier prewarm() ran it.
+    private initResult: InitResult | null = null;
     private mediaSource: MediaSource | null = null;
     private blobUrl: string | null = null;
     private sourceBuffer: SourceBuffer | null = null;
@@ -238,6 +241,25 @@ export class PerFileMseBackend {
     }
 
     /**
+     * Moves the feed origin of a backend that has not started feeding yet: a
+     * prewarmed backend is taken for whatever position the clip is attached
+     * at. Once the feed runs, seekTo() is the only way to move.
+     */
+    setFeedStart(startSec: number): void {
+        if (this.sourceBuffer) throw new Error("feed already started");
+        this.startSec = Math.max(0, startSec);
+    }
+
+    /**
+     * Replaces the failure callback. A prewarmed backend is created before the
+     * player knows which attach will consume it; the real handler is bound
+     * when it is taken.
+     */
+    setErrorHandler(onError: ((reason: string, error?: unknown) => void) | undefined): void {
+        this.onErrorCb = onError;
+    }
+
+    /**
      * true once the file has been fully fed (mediaSource.endOfStream() called).
      * Caller must do a full dispose + new attach rather than an idempotent
      * skip - e.g. for trip loop mode on a single file.
@@ -279,9 +301,30 @@ export class PerFileMseBackend {
         return this.enqueueOp(() => this.attachImpl(video));
     }
 
-    private async attachImpl(video: HTMLVideoElement): Promise<void> {
-        if (this.disposed) return;
-        this.video = video;
+    /**
+     * Runs the worker phase ahead of attach(): spawns the worker and reads the
+     * file's metadata without touching any <video>. The player warms the next
+     * clip's backend while the current clip plays, so the attach at the clip
+     * boundary only has to open the MediaSource. Resolves either way; a
+     * failure reaches the error handler, and attach() reports it again.
+     */
+    prewarm(): Promise<void> {
+        return this.enqueueOp(async () => {
+            await this.ensureWorkerReady();
+        });
+    }
+
+    /**
+     * Phase 1: spawns the worker and awaits its init reply. The worker opens
+     * the mediabunny Input, reads metadata and replies with the codec mime -
+     * addSourceBuffer needs the mime, so attach waits for this before touching
+     * MediaSource. The timeout is enforced via a local AbortSignal combined
+     * with the dispose() path (initAbort). Null when the backend was disposed
+     * or failed meanwhile; the failure has already been reported.
+     */
+    private async ensureWorkerReady(): Promise<InitResult | null> {
+        if (this.initResult) return this.initResult;
+        if (this.disposed || this.failed) return null;
         try {
             const worker = new Worker(new URL("./workers/per-file-mse-worker.ts", import.meta.url), {
                 type: "module",
@@ -292,12 +335,6 @@ export class PerFileMseBackend {
                 onCrash: () => this.fail("worker-crashed"),
                 onNotification: (msg) => this.onWorkerNotification(msg.type, msg.data),
             });
-
-            // Phase 1: init request. Worker opens mediabunny Input, reads
-            // metadata, replies with codec mime. addSourceBuffer needs the mime
-            // so we await this before touching MediaSource. Timeout is enforced
-            // via a local AbortSignal combined with the caller's dispose()
-            // path (initAbort).
             this.initAbort = new AbortController();
             const timeoutTimer = setTimeout(() => this.initAbort?.abort(), READY_TIMEOUT_MS);
             let initResult: InitResult;
@@ -323,11 +360,28 @@ export class PerFileMseBackend {
                 clearTimeout(timeoutTimer);
                 // dispose() during await is the normal "abandoned attach" path;
                 // not a failure, no onError.
-                if (this.disposed) return;
-                return this.fail("worker-ready-failed", e);
+                if (this.disposed) return null;
+                this.fail("worker-ready-failed", e);
+                return null;
             }
             clearTimeout(timeoutTimer);
             this.initAbort = null;
+            if (this.disposed) return null;
+            this.initResult = initResult;
+            return initResult;
+        } catch (e) {
+            if (this.disposed) return null;
+            this.fail("attach-uncaught", e);
+            return null;
+        }
+    }
+
+    private async attachImpl(video: HTMLVideoElement): Promise<void> {
+        if (this.disposed) return;
+        this.video = video;
+        try {
+            const initResult = await this.ensureWorkerReady();
+            if (!initResult || !this.client) return;
             if (this.disposed) return;
             let hasAudio = initResult.hasAudio;
             // Pick the mime the SourceBuffer will actually use. The combined
@@ -422,7 +476,7 @@ export class PerFileMseBackend {
             this.sourceBuffer.addEventListener("updateend", this.updateEndHandler);
 
             // Phase 3: ask the worker to start feeding.
-            const startNtf: StartFeedNotificationData = { cycleId: this.currentCycleId };
+            const startNtf: StartFeedNotificationData = { cycleId: this.currentCycleId, startSec: this.startSec };
             this.client.notify(MSE_NOTIFY_START_FEED, startNtf);
 
             if (this.disposed) return;

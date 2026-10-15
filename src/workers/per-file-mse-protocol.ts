@@ -82,6 +82,12 @@ export interface InitResult {
  *  fired AFTER this start-feed. */
 export interface StartFeedNotificationData {
     cycleId: number;
+    /**
+     * Feed origin in seconds, overriding the init request's startSec. A worker
+     * initialized ahead of time (the player warms the next clip's backend while
+     * the current clip plays) starts wherever the clip is finally attached.
+     */
+    startSec?: number;
 }
 
 /** "tick" notification: periodic state push from main so the worker can

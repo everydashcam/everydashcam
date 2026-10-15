@@ -266,9 +266,14 @@ let resumeAfterSeekTimer: ReturnType<typeof setTimeout> | null = null;
 // the extra decoders (canPreloadSlaveChannels); promoteSlavePreload swaps them
 // over wherever their next file gets attached.
 //
+// MSE-backed files (hev1 remux, MPEG-TS, Matroska, ADPCM audio) cannot share
+// the slot - there is no second MediaSource per channel - but their worker
+// phase runs ahead instead: the next clip's backend is created and prewarmed
+// (worker spawn + metadata read) while the current clip plays, and the attach
+// at the boundary only opens a MediaSource (prewarmMseBackend). The fragment
+// feed itself still starts at the boundary, so a smaller pause remains.
+//
 // Not covered (micro-pause remains):
-// - MSE-backed files (hev1 remux, MPEG-TS, Matroska, ADPCM audio): a second
-//   parallel MSE backend per channel is not attempted.
 // - Manual seek across a file boundary: explicit user jump - clears preload;
 //   new active loadedmetadata kicks it again.
 
@@ -292,25 +297,92 @@ function setPreloadSrc(ch: Channel, cand: VideoCandidate): boolean {
 }
 
 /**
- * Clears the channel preload slot: removeAttribute("src") + load() + blob URL
- * revoke. Idempotent. Called on invalidation (playFrame, channel swap, last
- * trip frame without loop), and after promote to free ex-active for the next
- * preload.
+ * Clears the channel's warm sources: the preload slot (removeAttribute("src")
+ * + load() + blob URL revoke) and the prewarmed MSE backend. Idempotent.
+ * Called on invalidation (channel swap, last trip frame without loop, export
+ * mode), and after promote to free ex-active for the next preload.
  */
 function clearPreloadSlot(ch: Channel): void {
     clearVideoSrc(preloadPlayer(ch));
+    clearPrewarmedBackend(ch);
 }
 
-/** Every channel's preload slot: a trip change or an explicit seek invalidates
+/** Every channel's warm sources: a trip change or an explicit seek invalidates
  *  the master's and the slaves' warm files alike. */
 function clearAllPreloadSlots(): void {
     for (const ch of ALL_CHANNELS) clearPreloadSlot(ch);
 }
 
+/**
+ * playFrame invalidation. Native slots are always dropped: a natural advance
+ * has already promoted its slot, anything else was warmed for another frame.
+ * A prewarmed MSE backend survives only when it holds the file its channel is
+ * about to attach - the natural-advance case, where attachCandidateToVideo
+ * takes it a few lines later.
+ */
+function invalidateWarmSourcesFor(frame: TripFrame): void {
+    for (const ch of ALL_CHANNELS) {
+        clearVideoSrc(preloadPlayer(ch));
+        if (prewarmedBackends.get(ch)?.file !== frame.channels[ch]?.file) clearPrewarmedBackend(ch);
+    }
+}
+
 /** Native, decodable and not failed at runtime - the only files a warm slot
- *  can take. MSE-backed files keep their own backend lifecycle. */
+ *  can take. MSE-backed files are prewarmed instead (isPrewarmableCandidate). */
 function isPreloadableCandidate(cand: VideoCandidate): boolean {
     return !requiresMseBackend(cand) && cand.canPlay && !runtimePlaybackFailures.has(cand);
+}
+
+/** MSE-backed, decodable and not failed at runtime: its worker phase can run
+ *  ahead of the attach. */
+function isPrewarmableCandidate(cand: VideoCandidate): boolean {
+    return requiresMseBackend(cand) && cand.canPlay && !runtimePlaybackFailures.has(cand);
+}
+
+// Prewarmed MSE backends, one per channel: the next clip's worker is spawned
+// and has read its metadata before the clip boundary. attachCandidateToVideo
+// takes the entry whose file it is about to attach; everything else is
+// disposed on invalidation like a preload slot. Holding one costs an idle
+// worker with an open mediabunny Input, not a decoder, so the slave decoder
+// gate (canPreloadSlaveChannels) does not apply.
+const prewarmedBackends = new Map<Channel, PerFileMseBackend>();
+
+function prewarmMseBackend(ch: Channel, cand: VideoCandidate): void {
+    const existing = prewarmedBackends.get(ch);
+    if (existing) {
+        if (existing.file === cand.file && !existing.isFailed) return;
+        clearPrewarmedBackend(ch);
+    }
+    const backend = new PerFileMseBackend({
+        file: cand.file,
+        durationSec: cand.durationSec,
+        transcodeAdpcmAudio: cand.audioNeedsTranscode,
+        // Until the backend is taken, a failure only means the boundary attach
+        // starts cold and reports the problem itself.
+        onError: (reason) => {
+            if (prewarmedBackends.get(ch) !== backend) return;
+            log.debug("prewarm: backend failed before use, dropping it", { channel: ch, file: cand.file.name, reason });
+            clearPrewarmedBackend(ch);
+        },
+    });
+    prewarmedBackends.set(ch, backend);
+    void backend.prewarm();
+}
+
+/** Hands over the channel's prewarmed backend when it holds `file`; the caller
+ *  owns it from here. */
+function takePrewarmedBackend(ch: Channel, file: File): PerFileMseBackend | null {
+    const backend = prewarmedBackends.get(ch);
+    if (!backend || backend.file !== file || backend.isFailed) return null;
+    prewarmedBackends.delete(ch);
+    return backend;
+}
+
+function clearPrewarmedBackend(ch: Channel): void {
+    const backend = prewarmedBackends.get(ch);
+    if (!backend) return;
+    prewarmedBackends.delete(ch);
+    void backend.dispose();
 }
 
 /**
@@ -377,15 +449,18 @@ function schedulePreloadNext(): void {
         clearPreloadSlot(masterCh);
     } else {
         const cand = picked.candidate;
-        // The master slot must start at 0: a next interval that continues
-        // inside the file the master already plays is served by a seek.
-        if (
-            frameMediaOffset(nextFrame, masterCh) > 0 ||
-            videoAttachedFile.get(activePlayer()) === cand.file ||
-            !isPreloadableCandidate(cand)
-        ) {
+        if (videoAttachedFile.get(activePlayer()) === cand.file) {
+            // A next interval inside the file the master already plays is
+            // served by a seek; nothing to warm.
+            clearPreloadSlot(masterCh);
+        } else if (isPrewarmableCandidate(cand)) {
+            clearVideoSrc(preloadPlayer(masterCh));
+            prewarmMseBackend(masterCh, cand);
+        } else if (frameMediaOffset(nextFrame, masterCh) > 0 || !isPreloadableCandidate(cand)) {
+            // The native slot must start at 0.
             clearPreloadSlot(masterCh);
         } else {
+            clearPrewarmedBackend(masterCh);
             isMasterSlotLoading = setPreloadSrc(masterCh, cand);
         }
     }
@@ -430,11 +505,17 @@ function scheduleSlavePreloads(nextFrame: TripFrame, masterCh: Channel): void {
     const preloadSlaves = canPreloadSlaveChannels(frameChannels(nextFrame).length);
     for (const ch of ALL_CHANNELS) {
         if (ch === masterCh) continue;
-        const cand = preloadSlaves ? nextSlaveCandidate(trip, ch, nextFrame) : undefined;
-        if (!cand || !isPreloadableCandidate(cand)) {
+        const cand = nextSlaveCandidate(trip, ch, nextFrame);
+        if (cand && isPrewarmableCandidate(cand)) {
+            clearVideoSrc(preloadPlayer(ch));
+            prewarmMseBackend(ch, cand);
+            continue;
+        }
+        if (!preloadSlaves || !cand || !isPreloadableCandidate(cand)) {
             clearPreloadSlot(ch);
             continue;
         }
+        clearPrewarmedBackend(ch);
         setPreloadSrc(ch, cand);
     }
 }
@@ -646,8 +727,8 @@ export function playFrame(
     // Any explicit playFrame invalidates the preload slot: a trip change certainly,
     // and a manual seek to another frame too - the preload may have been for the
     // frame after the previous active. New active loadedmetadata will re-kick
-    // schedulePreloadNext.
-    if (state.active) clearAllPreloadSlots();
+    // schedulePreloadNext. A prewarmed MSE backend for this very frame stays.
+    if (state.active) invalidateWarmSourcesFor(frame);
     state.active = { trip: tripIdx, frame: frameIdx };
 
     // Marker rAF loop stops when state is empty. Restart here - first playFrame
@@ -797,6 +878,7 @@ export function playFrame(
         // and keeping them with src set is pointless - recovery goes through playFrame anyway.
         for (const ch of ALL_CHANNELS) disposeChannelBackend(ch);
         forEachVideoSlot((v) => clearVideoSrc(v));
+        for (const ch of ALL_CHANNELS) clearPrewarmedBackend(ch);
         // Lifecycle: trip activation finished without a playable frame
         // (codec rejected by canDecodeVideo at ingest). Distinct from
         // player-first-frame to keep semantics honest - subscribers waiting
@@ -1257,7 +1339,7 @@ function attachCandidateToVideo(
                 return "seek-in-place";
             }
         }
-        log.info("attach: mse start", logMeta);
+        log.info("attach: mse start", { ...logMeta, prewarmed: prewarmedBackends.get(ch)?.file === cand.file });
         // Write the marker BEFORE the IIFE so a concurrent attach can immediately see our claim
         // and abort. If the marker were set inside the IIFE (after the await), there would be a
         // TOCTOU window: another attach between our dispose-await and the check could see an
@@ -1296,22 +1378,28 @@ function attachCandidateToVideo(
                 videoOwnedBlobUrl.delete(v);
                 URL.revokeObjectURL(prevOwn);
             }
-            const backend = new PerFileMseBackend({
-                file: cand.file,
-                startSec,
-                // Provided so the backend can set MediaSource.duration before
-                // the first media segment lands. Otherwise an out-of-buffer
-                // seek silently snaps currentTime to 0 (see PerFileMseBackend
-                // options doc on durationSec).
-                durationSec: cand.durationSec,
-                // IMA-ADPCM files: the worker decodes the audio and re-encodes
-                // it (AAC, else Opus, else drops it) instead of stream-copying
-                // (mediabunny cannot read ADPCM). Video is still a stream-copy.
-                transcodeAdpcmAudio: cand.audioNeedsTranscode,
-                onError: (reason) => {
-                    if (state.channelBackends[ch] !== backend || videoAttachedFile.get(v) !== cand.file) return;
-                    onBackendError(cand, ch, reason);
-                },
+            // A backend prewarmed for this file skips the worker spawn and the
+            // metadata read; it was created for position 0 and is retargeted.
+            const warm = takePrewarmedBackend(ch, cand.file);
+            if (warm) warm.setFeedStart(startSec);
+            const backend =
+                warm ??
+                new PerFileMseBackend({
+                    file: cand.file,
+                    startSec,
+                    // Provided so the backend can set MediaSource.duration before
+                    // the first media segment lands. Otherwise an out-of-buffer
+                    // seek silently snaps currentTime to 0 (see PerFileMseBackend
+                    // options doc on durationSec).
+                    durationSec: cand.durationSec,
+                    // IMA-ADPCM files: the worker decodes the audio and re-encodes
+                    // it (AAC, else Opus, else drops it) instead of stream-copying
+                    // (mediabunny cannot read ADPCM). Video is still a stream-copy.
+                    transcodeAdpcmAudio: cand.audioNeedsTranscode,
+                });
+            backend.setErrorHandler((reason) => {
+                if (state.channelBackends[ch] !== backend || videoAttachedFile.get(v) !== cand.file) return;
+                onBackendError(cand, ch, reason);
             });
             state.channelBackends[ch] = backend;
             await backend.attach(v);
