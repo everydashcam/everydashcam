@@ -20,12 +20,20 @@ export interface WorkerWritableProxy {
     /** Transferable MessagePort - pass to the worker via the postMessage transfer list. */
     port: MessagePort;
     /**
-     * Resolves when the main-side close / abort has finished - realWritable.close() is done, FSA
-     * atomic rename temp->final has completed, handle.getFile() returns the final file. The worker's
-     * close() resolves at the same moment (it waits on the {k:"closed"} ack), but the actual flush to
-     * disk only happens when this promise resolves.
+     * Resolves when the worker's close / abort has been applied on this side. By default that is
+     * after realWritable.close() finished - FSA atomic rename temp->final done, handle.getFile()
+     * returns the final file. With `deferCommit` it means every write has been applied and the
+     * output is still open: the caller may write into it and then runs `commit()`. The worker's
+     * close() resolves at the same moment (it waits on the {k:"closed"} ack).
      */
     finalized: Promise<void>;
+    /**
+     * Deferred-commit mode only: runs the real close - flush + atomic rename - once the caller is
+     * done writing into the still-open output (the GPMF post-process, see gpmd-inject.ts). Resolves
+     * when the file is on disk; a failure aborts the output before rethrowing. No-op in default
+     * mode, after a commit, or after an abort.
+     */
+    commit: () => Promise<void>;
     /**
      * Forced shutdown from the main side. Call when the worker was terminated, crashed, or aborted
      * before it could post close/abort over the port - in those cases the port goes silent and the
@@ -56,10 +64,15 @@ export interface WorkerWritableProxy {
  * `onDiskCommit` (optional) brackets the final close: (true) when the opaque disk-commit flush
  * starts, (false) when it settles - the UI switches the progress bar to indeterminate for the
  * duration, same as the stream-copy path, so a minutes-long flush does not look like a hang.
+ *
+ * `deferCommit` keeps the real writable open when the worker closes its end: the caller writes
+ * its post-process into the output (truncate + positional writes) and then calls `commit()`.
+ * Without it the worker's close commits the file directly.
  */
 export function createWorkerWritableProxy(
     realWritable: FileSystemWritableFileStream,
     onDiskCommit?: (on: boolean) => void,
+    options: { deferCommit?: boolean } = {},
 ): WorkerWritableProxy {
     const channel = new MessageChannel();
 
@@ -74,6 +87,19 @@ export function createWorkerWritableProxy(
     // First raw failure from the real writable - see WorkerWritableProxy.sinkError.
     // First, not last: later throws are usually fallout from this one.
     let firstSinkError: unknown = null;
+    // Deferred mode: the worker closed its end but the real writable is still
+    // open, waiting for commit() (or forceAbort on failure).
+    let isCommitPending = false;
+    // Watchdog + breadcrumb around the real commit (this is where the re-encode export
+    // historically hung at "Finalizing").
+    const commitReal = async (): Promise<void> => {
+        onDiskCommit?.(true);
+        try {
+            await closeWritableWithWatchdog(realWritable, log, "transcode-bridge", bytesWritten);
+        } finally {
+            onDiskCommit?.(false);
+        }
+    };
     const server = servePortWritable(channel.port1, {
         write: (chunk) => {
             // mediabunny StreamTarget({chunked}) posts {type,position,data}; count data bytes.
@@ -81,15 +107,12 @@ export function createWorkerWritableProxy(
             if (typeof data?.byteLength === "number") bytesWritten += data.byteLength;
             return realWritable.write(chunk as FileSystemWriteChunkType);
         },
-        // Watchdog + breadcrumb around the real commit (this is where the re-encode export
-        // historically hung at "Finalizing").
         close: async () => {
-            onDiskCommit?.(true);
-            try {
-                await closeWritableWithWatchdog(realWritable, log, "transcode-bridge", bytesWritten);
-            } finally {
-                onDiskCommit?.(false);
+            if (options.deferCommit) {
+                isCommitPending = true;
+                return;
             }
+            await commitReal();
         },
         abort: (reason) => realWritable.abort(reason),
         onFinalized: resolveFinalized,
@@ -104,7 +127,34 @@ export function createWorkerWritableProxy(
     return {
         port: channel.port2,
         finalized,
-        forceAbort: server.forceAbort,
+        commit: async () => {
+            if (!isCommitPending) return;
+            isCommitPending = false;
+            try {
+                await commitReal();
+            } catch (err) {
+                firstSinkError ??= err;
+                try {
+                    await realWritable.abort(err instanceof Error ? err.message : String(err));
+                } catch {
+                    // Already terminal.
+                }
+                throw err;
+            }
+        },
+        forceAbort: async (reason) => {
+            // The port server already ran its close handler, so its own abort is a
+            // no-op; the still-open real writable is this side's to discard.
+            if (isCommitPending) {
+                isCommitPending = false;
+                try {
+                    await realWritable.abort(reason);
+                } catch {
+                    // Already terminal.
+                }
+            }
+            await server.forceAbort(reason);
+        },
         sinkError: () => firstSinkError,
     };
 }

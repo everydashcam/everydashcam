@@ -141,11 +141,61 @@ export async function exportClip({
     const segments = sliceTripChannelForRange(trip, channel, startTripSec, endTripSec);
     if (segments.length === 0) throw new Error("range covers no files");
 
+    // Timer for the final save phase - ticks once per second, showing elapsed
+    // time and file size. FSA writer.close() can take minutes on large clips
+    // (atomic temp→final commit); without feedback the user thinks the app has
+    // frozen. Started by onMoov (the tail of finalize) and again around the
+    // deferred commit below; idempotent so the two never stack.
+    let totalBytesWritten = 0;
+    let savePhaseTimer: ReturnType<typeof setInterval> | null = null;
+    const startSavePhaseTimer = (): void => {
+        if (savePhaseTimer !== null) return;
+        const startMs = performance.now();
+        const tick = (): void => {
+            const elapsedSec = (performance.now() - startMs) / 1000;
+            onProgress({
+                stage: t("export.progress.savingFile", {
+                    written: formatBytes(totalBytesWritten),
+                    elapsed: formatTime(elapsedSec, true),
+                }),
+                // close() flush is opaque - drive an indeterminate bar so a
+                // minutes-long commit to slow media does not look frozen.
+                indeterminate: true,
+            });
+        };
+        tick();
+        savePhaseTimer = setInterval(tick, 1000);
+    };
+    const stopSavePhaseTimer = (): void => {
+        if (savePhaseTimer !== null) {
+            clearInterval(savePhaseTimer);
+            savePhaseTimer = null;
+        }
+    };
+
+    // Commits the output: watchdog + breadcrumb around the actual disk/stream
+    // commit - the step that historically hung at "Finalizing" with no error.
+    // The total bytes scale the watchdog deadline with output size (a multi-GB
+    // flush to slow media legitimately takes minutes).
+    const commitOutput = async (): Promise<void> => {
+        startSavePhaseTimer();
+        try {
+            await closeWritableWithWatchdog(mp4Writable, log, "stream-copy", totalBytesWritten);
+        } finally {
+            stopSavePhaseTimer();
+        }
+    };
+
+    // With telemetry requested the gpmd track is written into the still-open
+    // output after mediabunny finalizes (see gpmd-inject.ts: a re-open of the
+    // committed file would copy the whole export into a swap file first), so the
+    // commit moves from the muxer's close to this function.
+    const commitAfterInjection = withGpmf && mp4Handle !== undefined;
+
     // mediabunny StreamTarget expects WritableStream<{type, data, position}>;
     // FSA FileSystemWritableFileStream natively supports such chunks via
     // .write({type, position, data}). Wrap it 1-to-1, also tracking total
     // bytes written for the "saving to disk" progress stage.
-    let totalBytesWritten = 0;
     let isDiscardingOutput = false;
     const targetWritable = new WritableStream<{ type: "write"; position: number; data: Uint8Array }>({
         async write(chunk) {
@@ -162,12 +212,8 @@ export async function exportClip({
         },
         async close() {
             // Output.cancel() closes its target even after the file was aborted.
-            if (isDiscardingOutput) return;
-            // Watchdog + breadcrumb around the actual disk/stream commit - the
-            // step that historically hung at "Finalizing" with no error. Pass the
-            // total bytes so the watchdog deadline scales with output size (a
-            // multi-GB flush to slow media legitimately takes minutes).
-            await closeWritableWithWatchdog(mp4Writable, log, "stream-copy", totalBytesWritten);
+            if (isDiscardingOutput || commitAfterInjection) return;
+            await commitOutput();
         },
         async abort(reason) {
             try {
@@ -178,23 +224,12 @@ export async function exportClip({
         },
     });
 
-    // Timer for the final save phase (after onMoov) - ticks once per second,
-    // showing elapsed time and file size. FSA writer.close() can take minutes
-    // on large clips (atomic temp→final commit); without feedback the user
-    // thinks the app has frozen.
-    let savePhaseTimer: ReturnType<typeof setInterval> | null = null;
-    const stopSavePhaseTimer = (): void => {
-        if (savePhaseTimer !== null) {
-            clearInterval(savePhaseTimer);
-            savePhaseTimer = null;
-        }
-    };
-
     // moov bytes + offset captured from mediabunny's onMoov callback below. Handed
     // to the GPMF post-process so it locates moov without re-reading the finished
-    // file - on the in-memory export handle that re-read is a full multi-GB
-    // getFile() copy. Null until onMoov fires (during finalize, before injection).
-    let capturedMoov: CapturedMoov | null = null;
+    // file. Null until onMoov fires (during finalize, before injection). A box
+    // rather than a plain let: assigned from a callback, which TypeScript's
+    // narrowing does not see.
+    const capturedMoovRef: { current: CapturedMoov | null } = { current: null };
 
     const output = new Output({
         // fastStart: false → moov-at-end, mdat streamed without buffering in RAM
@@ -204,30 +239,17 @@ export async function exportClip({
         format: new Mp4OutputFormat({
             fastStart: false,
             // onMoov fires when the moov box is written, still inside finalize().
-            // After this only FSA writer.close() remains (atomic temp→disk commit).
+            // After this only the flush of the last chunks (and, unless deferred,
+            // FSA writer.close()) remains.
             onMoov: (data: Uint8Array, position: number) => {
                 // Capture moov for the GPMF post-process so it skips re-reading
                 // the file. Copy the bytes (~MB) - mediabunny may reuse the buffer
                 // after the callback. position is the absolute moov offset = where
                 // the injection truncates and appends.
-                capturedMoov = { startAbs: position, bytes: data.slice() };
+                capturedMoovRef.current = { startAbs: position, bytes: data.slice() };
                 // Start the ticking timer so the user sees progress during the
-                // final writer.close() wait.
-                const startMs = performance.now();
-                const tick = (): void => {
-                    const elapsedSec = (performance.now() - startMs) / 1000;
-                    onProgress({
-                        stage: t("export.progress.savingFile", {
-                            written: formatBytes(totalBytesWritten),
-                            elapsed: formatTime(elapsedSec, true),
-                        }),
-                        // close() flush is opaque - drive an indeterminate bar so
-                        // a minutes-long commit to slow media does not look frozen.
-                        indeterminate: true,
-                    });
-                };
-                tick();
-                savePhaseTimer = setInterval(tick, 1000);
+                // final flush / writer.close() wait.
+                startSavePhaseTimer();
             },
         }),
         // 4 MiB chunks instead of the 16 MiB default: at 4K HEVC ~6 Mbit/s,
@@ -614,26 +636,29 @@ export async function exportClip({
         //  2. Serializes the moov box (~24 B per sample - several MB for hour-long
         //     clips) and writes it to the END of the file (fastStart: false).
         //     onMoov fires here → savePhaseTimer starts.
-        //  3. Closes targetWritable → mp4Writable.close() → FSA commits the
-        //     temp file to its final path. Slowest part on large clips + slow disks.
+        //  3. Closes targetWritable. Without telemetry that is mp4Writable.close()
+        //     → FSA commits the temp file to its final path (slowest part on large
+        //     clips + slow disks); with telemetry the close is a no-op and the
+        //     commit happens below, after the gpmd track went in.
         try {
             await output.finalize();
         } finally {
             stopSavePhaseTimer();
         }
 
-        // A cancel that lands between finalize and here: the mp4 is already
-        // committed (too late to undo), but the user DID cancel - surface
-        // AbortError so the UI shows "cancelled" instead of a success view for a
-        // cancelled export.
+        // A cancel that lands after finalize: with the commit deferred the output
+        // is still uncommitted and the catch below discards it; without telemetry
+        // the mp4 is already on disk (too late to undo) - either way the user DID
+        // cancel, so surface AbortError instead of a success view.
         if (signal?.aborted) throw new DOMException("aborted", "AbortError");
 
-        // GPMF injection (post-process). Done AFTER finalize - mediabunny has
-        // already closed the writable and FSA committed the mp4 to disk. Re-open
-        // via handle and append the gpmd track in truncate+append mode (see
-        // gpmd-inject.ts). If withGpmf=true but mp4Handle is absent (caller bug),
-        // warn and skip rather than failing the entire export.
+        // GPMF injection (post-process). Preferred: into the still-open output
+        // before the commit (see gpmd-inject.ts). Fallback when onMoov never
+        // fired: commit first, then re-open via the handle and walk the file. If
+        // withGpmf=true but mp4Handle is absent (caller bug), warn and skip rather
+        // than failing the entire export.
         let gpmfInjected = false;
+        let isCommitted = !commitAfterInjection;
         if (withGpmf) {
             if (!mp4Handle) {
                 log.warn("withGpmf=true but mp4Handle not provided - skipping injection");
@@ -641,16 +666,31 @@ export async function exportClip({
                 onProgress({ stage: t("export.progress.embeddingGps") });
                 // GPMF lives on the footage axis, matching the stream-copy video
                 // track. The range is already content-sec, so pass it through.
-                gpmfInjected = await injectClipGpmf({
-                    handle: mp4Handle,
-                    trip,
-                    clipContentStartSec: startTripSec,
-                    clipContentEndSec: endTripSec,
-                    signal,
-                    capturedMoov: capturedMoov ?? undefined,
-                });
+                const capturedMoov = capturedMoovRef.current;
+                if (capturedMoov) {
+                    gpmfInjected = await injectClipGpmf({
+                        handle: mp4Handle,
+                        writable: mp4Writable,
+                        trip,
+                        clipContentStartSec: startTripSec,
+                        clipContentEndSec: endTripSec,
+                        signal,
+                        capturedMoov,
+                    });
+                } else {
+                    await commitOutput();
+                    isCommitted = true;
+                    gpmfInjected = await injectClipGpmf({
+                        handle: mp4Handle,
+                        trip,
+                        clipContentStartSec: startTripSec,
+                        clipContentEndSec: endTripSec,
+                        signal,
+                    });
+                }
             }
         }
+        if (!isCommitted) await commitOutput();
 
         // Final log. durationMs covers the full time from exportClip start to
         // finalize() completion (including FSA writer.close() / save phase).

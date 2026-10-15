@@ -86,7 +86,12 @@ import {
 import { notify } from "./notifications.js";
 import { clipBasename, formatBytes, randomFilenameSuffix } from "./format.js";
 import { activeTrip, activeTripHasGps, state, mainChannel } from "./state.js";
-import { transcodeSplitViaWorker as transcodeSplit, transcodeViaWorker as transcode } from "./transcode-shim.js";
+import {
+    type BeforeCommitHook,
+    transcodeSplitViaWorker as transcodeSplit,
+    transcodeViaWorker as transcode,
+} from "./transcode-shim.js";
+import type { GpmdInjectionWritable } from "../export/gpmd-inject.js";
 
 const log = createLogger("export-flow");
 
@@ -685,6 +690,11 @@ async function postProcessTelemetry(
     onProgressStatus: (s: string) => void,
     signal?: AbortSignal,
     capturedMoov?: CapturedMoovBytes,
+    // The still-open output (re-encode: the real writable the worker streamed
+    // into, handed over by the before-commit hook). With capturedMoov the track
+    // is written in place before the commit; without it the committed file is
+    // re-opened - on native FSA that copies the whole export into a swap file.
+    openWritable?: GpmdInjectionWritable,
 ): Promise<boolean> {
     // GPX is handled up front in runExportFlow (independent download); this
     // post-process only does the in-MP4 GPMF track injection. Returns whether a
@@ -702,6 +712,7 @@ async function postProcessTelemetry(
     const { injectClipGpmf } = await import("../export/gpmd-inject.js");
     return injectClipGpmf({
         handle: mp4Handle as unknown as FileSystemFileHandle,
+        writable: openWritable,
         trip,
         clipContentStartSec: startTripSec,
         clipContentEndSec: endTripSec,
@@ -1287,6 +1298,30 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
             // transcode calls differ only in their args; the delivery/done tail
             // is the shared finishExport below.
             let transcodeResult: TranscodeResult;
+            // GPMF goes into the still-open output between the worker's finalize
+            // and the disk commit, so the committed file is written exactly once.
+            // Null until the hook ran; the hook leaves it null when the worker
+            // relayed no moov, and the post-commit re-open below takes over.
+            let gpmfInjectedBeforeCommit: boolean | null = null;
+            // Narrowed alias: the hook is a closure, where TypeScript forgets that
+            // mp4Handle was assigned above.
+            const outputHandle = mp4Handle;
+            const injectBeforeCommit: BeforeCommitHook | undefined = withGpmf
+                ? async (openWritable, result) => {
+                      if (!result.capturedMoov) return;
+                      gpmfInjectedBeforeCommit = await postProcessTelemetry(
+                          trip,
+                          startTripSec,
+                          endTripSec,
+                          outputHandle,
+                          withGpmf,
+                          hooks.onStatus,
+                          activeExportController?.signal,
+                          result.capturedMoov,
+                          openWritable,
+                      );
+                  }
+                : undefined;
             if (isSplit) {
                 // Device-fit bitrate from the preflight (full request when the
                 // device handles it, a lower rung when it does not). Fallback
@@ -1325,6 +1360,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                     },
                     hooks.onProgressIndeterminate,
                     mapConfig,
+                    injectBeforeCommit,
                 );
             } else {
                 // Device-fit bitrate from the preflight (full request when the
@@ -1355,18 +1391,21 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                     },
                     hooks.onProgressIndeterminate,
                     mapConfig,
+                    injectBeforeCommit,
                 );
             }
-            const gpmfInjected = await postProcessTelemetry(
-                trip,
-                startTripSec,
-                endTripSec,
-                mp4Handle,
-                withGpmf,
-                hooks.onStatus,
-                activeExportController.signal,
-                transcodeResult.capturedMoov,
-            );
+            const gpmfInjected: boolean =
+                gpmfInjectedBeforeCommit ??
+                (await postProcessTelemetry(
+                    trip,
+                    startTripSec,
+                    endTripSec,
+                    mp4Handle,
+                    withGpmf,
+                    hooks.onStatus,
+                    activeExportController.signal,
+                    transcodeResult.capturedMoov,
+                ));
             await finishExport(mp4Handle, {
                 gpmfInjected,
                 mapOverlayDropped: transcodeResult.mapOverlayDropped,
@@ -1401,18 +1440,22 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         //    sink tag: the source-read shapes are name/text matches, and a
         //    write failure carrying one of them would otherwise send the user
         //    to check the card when the destination is the problem.
+        // An OutputDamagedError (the in-place GPMF injection could not restore the
+        // moov) wraps the sink failure that caused it; classify that cause.
+        const failure =
+            err instanceof Error && err.name === "OutputDamagedError" && err.cause !== undefined ? err.cause : err;
         const errorKey: I18nKey =
-            err instanceof Error && err.name === "IncompatibleVideoConfigError"
+            failure instanceof Error && failure.name === "IncompatibleVideoConfigError"
                 ? "export.error.incompatibleVideo"
-                : isQuotaExceededError(err)
+                : isQuotaExceededError(failure)
                   ? "export.error.diskFull"
-                  : isAllocationFailure(err)
+                  : isAllocationFailure(failure)
                     ? __PORTABLE__
                         ? "portable.export.tooLargeForMemory"
                         : "export.error.tooLargeForMemory"
-                    : isDestinationLostError(err)
+                    : isDestinationLostError(failure)
                       ? "export.error.destinationLost"
-                      : !isSinkFailure(err) && isSourceReadError(err)
+                      : !isSinkFailure(failure) && isSourceReadError(failure)
                         ? "export.error.sourceReadFailed"
                         : "export.error.generic";
         hooks.onError(errorKey);

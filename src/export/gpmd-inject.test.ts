@@ -16,7 +16,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { injectClipGpmf, injectGpmdTrack } from "./gpmd-inject.js";
+import { injectClipGpmf, injectGpmdTrack, injectGpmdTrackIntoOpen, OutputDamagedError } from "./gpmd-inject.js";
+import { findMoovInFile } from "../parsers/internal/mp4-walker.js";
+import { createInMemoryFileHandle } from "../ui/in-memory-file.js";
 import { packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
 import { buildMp4Index } from "../parsers/internal/mp4-index.js";
 import { extractFromGpmdTrack, findGpmdTrack } from "../parsers/internal/gpmf-extract.js";
@@ -371,5 +373,121 @@ describe("injectGpmdTrack - end-to-end round-trip on real mp4 fixture", () => {
                 clipContentEndSec: 3,
             }),
         ).rejects.toBe(aborted);
+    });
+});
+
+describe("injectGpmdTrackIntoOpen - in-place injection before the commit", () => {
+    const baseUtc = Date.UTC(2026, 4, 8, 12, 30, 45) / 1000;
+    const records: GpsRecord[] = [
+        makeRecord({ unixSeconds: baseUtc + 0, lat: 55.7558, lon: 37.6173, speedMs: 12.34 }),
+        makeRecord({ unixSeconds: baseUtc + 1, lat: 55.756, lon: 37.6175, speedMs: 12.5 }),
+        makeRecord({ unixSeconds: baseUtc + 2, lat: 55.7562, lon: 37.6177, speedMs: 12.6 }),
+    ];
+
+    async function capturedMoovOf(bytes: Uint8Array<ArrayBuffer>): Promise<{ startAbs: number; bytes: Uint8Array }> {
+        const found = await findMoovInFile(new File([bytes], "f.mp4"));
+        if (!found) throw new Error("fixture has no moov");
+        return { startAbs: found.fileStart, bytes: found.bytes };
+    }
+
+    it("writes the track into the open output and the committed file carries it", async () => {
+        const original = new Uint8Array(readFileSync(FIXTURE_MP4));
+        const handle = createInMemoryFileHandle("open.mp4", original.byteLength);
+        const writable = await handle.createWritable();
+        await writable.write({ type: "write", position: 0, data: original });
+        const samples = packAtUtc(records, baseUtc, 3, { includeAccel: false });
+
+        await injectGpmdTrackIntoOpen(writable, samples, undefined, await capturedMoovOf(original));
+        await writable.close();
+
+        const committed = await handle.getFile();
+        expect(committed.size).toBeGreaterThan(original.byteLength);
+        const index = await buildMp4Index(committed);
+        const gpmdTrack = findGpmdTrack(index);
+        expect(gpmdTrack, "committed file carries the gpmd track").not.toBeNull();
+        const extracted = await extractFromGpmdTrack({ file: committed, relativePath: "open.mp4" }, index, gpmdTrack!);
+        expect(extracted?.records).toHaveLength(3);
+    });
+
+    it("produces the same bytes as the re-open path", async () => {
+        const original = new Uint8Array(readFileSync(FIXTURE_MP4));
+        const samples = packAtUtc(records, baseUtc, 3, { includeAccel: true });
+        const captured = await capturedMoovOf(original);
+
+        const reopened = makeFakeHandle(original);
+        await injectGpmdTrack(reopened, samples, undefined, captured);
+
+        const handle = createInMemoryFileHandle("open.mp4", original.byteLength);
+        const writable = await handle.createWritable();
+        await writable.write({ type: "write", position: 0, data: original });
+        await injectGpmdTrackIntoOpen(writable, samples, undefined, captured);
+        await writable.close();
+
+        const a = Buffer.from(await (await reopened.getFile()).arrayBuffer());
+        const b = Buffer.from(await (await handle.getFile()).arrayBuffer());
+        expect(a.equals(b)).toBe(true);
+    });
+
+    /** Open-writable fake over a plain buffer whose Nth write can be made to fail. */
+    function fakeOpenWritable(initial: Uint8Array, failWrites: number[]) {
+        let buf = new Uint8Array(initial);
+        let writes = 0;
+        const writable = {
+            async write(params: { type: "write"; position: number; data: Uint8Array }): Promise<void> {
+                writes++;
+                if (failWrites.includes(writes)) throw new DOMException("disk full", "QuotaExceededError");
+                const end = params.position + params.data.byteLength;
+                if (end > buf.byteLength) {
+                    const grown = new Uint8Array(end);
+                    grown.set(buf);
+                    buf = grown;
+                }
+                buf.set(params.data, params.position);
+            },
+            async truncate(size: number): Promise<void> {
+                buf = buf.slice(0, size);
+            },
+        };
+        return { writable, bytes: () => buf };
+    }
+
+    it("puts the original moov back when the tail write fails, so the commit stays a valid MP4", async () => {
+        const original = new Uint8Array(readFileSync(FIXTURE_MP4));
+        const { writable, bytes } = fakeOpenWritable(original, [1]);
+        const samples = packAtUtc(records, baseUtc, 3, { includeAccel: false });
+        await expect(
+            injectGpmdTrackIntoOpen(writable, samples, undefined, await capturedMoovOf(original)),
+        ).rejects.toMatchObject({ name: "QuotaExceededError" });
+        expect(Buffer.from(bytes()).equals(Buffer.from(original)), "file restored byte for byte").toBe(true);
+    });
+
+    it("reports a damaged output when the restore fails too", async () => {
+        const original = new Uint8Array(readFileSync(FIXTURE_MP4));
+        const { writable } = fakeOpenWritable(original, [1, 2]);
+        const samples = packAtUtc(records, baseUtc, 3, { includeAccel: false });
+        const failure = await injectGpmdTrackIntoOpen(
+            writable,
+            samples,
+            undefined,
+            await capturedMoovOf(original),
+        ).catch((err: unknown) => err);
+        expect(failure).toBeInstanceOf(OutputDamagedError);
+        expect((failure as OutputDamagedError).cause).toMatchObject({ name: "QuotaExceededError" });
+    });
+
+    it("rolls the moov back on cancellation between truncate and the tail write", async () => {
+        const original = new Uint8Array(readFileSync(FIXTURE_MP4));
+        const controller = new AbortController();
+        const { writable, bytes } = fakeOpenWritable(original, []);
+        const truncate = writable.truncate.bind(writable);
+        writable.truncate = async (size: number) => {
+            await truncate(size);
+            controller.abort();
+        };
+        const samples = packAtUtc(records, baseUtc, 3, { includeAccel: false });
+        await expect(
+            injectGpmdTrackIntoOpen(writable, samples, controller.signal, await capturedMoovOf(original)),
+        ).rejects.toMatchObject({ name: "AbortError" });
+        expect(Buffer.from(bytes()).equals(Buffer.from(original))).toBe(true);
     });
 });

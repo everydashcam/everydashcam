@@ -51,13 +51,24 @@ const log = createLogger("transcode-shim");
 const PREWARM_RANGE_MARGIN_SEC = 30;
 
 /**
+ * Post-process that writes into the finished, still-open output before it is committed to disk
+ * (the GPMF track injection). Receives the real writable the worker streamed into and the
+ * pipeline result (which carries the captured moov). A throw discards the output and fails the
+ * export; cancellation surfaces as AbortError like everywhere else.
+ */
+export type BeforeCommitHook = (writable: FileSystemWritableFileStream, result: TranscodeResult) => Promise<void>;
+
+/**
  * Runs a single-channel transcode in the worker. `onDiskCommit` (optional) brackets the final
  * opaque disk flush so the caller can show an indeterminate bar (see writable-bridge.ts).
+ * `beforeCommit` (optional) runs between the worker's finalize and that flush, with the output
+ * still open - see BeforeCommitHook.
  */
 export function transcodeViaWorker(
     args: TranscodeArgs,
     onDiskCommit?: (on: boolean) => void,
     mapConfig: Readonly<OverlayMapState> | null = null,
+    beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
     const { signal, onProgress, writable, ...rest } = args;
     return runInWorker(
@@ -69,14 +80,16 @@ export function transcodeViaWorker(
         args.output.overlays,
         onDiskCommit,
         mapConfig,
+        beforeCommit,
     );
 }
 
-/** Runs a split-screen transcode in the worker. Same `onDiskCommit` contract as transcodeViaWorker. */
+/** Runs a split-screen transcode in the worker. Same contract as transcodeViaWorker. */
 export function transcodeSplitViaWorker(
     args: TranscodeSplitArgs,
     onDiskCommit?: (on: boolean) => void,
     mapConfig: Readonly<OverlayMapState> | null = null,
+    beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
     const { signal, onProgress, writable, ...rest } = args;
     return runInWorker(
@@ -88,6 +101,7 @@ export function transcodeSplitViaWorker(
         args.output.overlays,
         onDiskCommit,
         mapConfig,
+        beforeCommit,
     );
 }
 
@@ -100,6 +114,7 @@ function runInWorker(
     overlays: OverlayPipelineArgs | null,
     onDiskCommit?: (on: boolean) => void,
     mapConfig: Readonly<OverlayMapState> | null = null,
+    beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
     // name is static - Vite's worker plugin requires static options.
     const worker = new Worker(new URL("../workers/transcode-worker.ts", import.meta.url), {
@@ -113,9 +128,10 @@ function runInWorker(
     const {
         port: writablePort,
         finalized: writableFinalized,
+        commit: writableCommit,
         forceAbort: writableForceAbort,
         sinkError: writableSinkError,
-    } = createWorkerWritableProxy(writable, onDiskCommit);
+    } = createWorkerWritableProxy(writable, onDiskCommit, { deferCommit: beforeCommit !== undefined });
 
     // Initialize once and serialize renders on the map's shared compositor.
     const snapshotSession = new MapSnapshotSession(() => {
@@ -281,10 +297,18 @@ function runInWorker(
         .then(
             async (result) => {
                 // On the success path the worker's writer.close() has already resolved via ack, but
-                // the main-side sink.close() may not have finished the FSA atomic rename yet - wait
-                // explicitly via writableFinalized to avoid post-processing (gpmd inject) opening a
-                // file that isn't on disk yet and failing with "moov not found".
+                // the main side may still be applying the last writes (or, by default, finishing the
+                // FSA atomic rename) - wait explicitly via writableFinalized before touching the
+                // output: the post-process writes into it, and getFile() must see the final file.
                 await writableFinalized.catch(() => undefined);
+                try {
+                    if (beforeCommit) await beforeCommit(writable, result);
+                    await writableCommit();
+                } catch (err) {
+                    // The output is still uncommitted: discard it like any other failure.
+                    cleanup(false);
+                    throw err;
+                }
                 cleanup(true);
                 return result;
             },

@@ -6,17 +6,19 @@
 // To add GPMF telemetry (github.com/gopro/gpmf-parser), we post-process the
 // already-finalized export:
 //
-//   1. Mediabunny streams a normal MP4 to disk via FSA. After output.finalize()
-//      the file is closed and atomically committed.
-//   2. We re-open the handle, read the box tree (moov-at-end in our mediabunny
-//      configuration with fastStart: false), and parse moov.
-//   3. We append at end-of-file: first a new mdat block with the GPMF sample
-//      payloads (densely packed, mdat header [size:u32]['mdat']), then an
-//      augmented moov: original moov + our custom gpmd-trak, with
-//      mvhd.next_track_ID incremented by 1.
-//   4. The old moov stays in place, but players read the tail-moov (last by
-//      file offset wins in most implementations; for correctness we truncate -
-//      see trade-off below).
+//   1. Mediabunny streams a normal MP4 via FSA (moov-at-end: fastStart false)
+//      and hands us the moov bytes + offset from its onMoov callback.
+//   2. We truncate the output at moov.start and write a tail there: a new mdat
+//      block with the GPMF sample payloads (densely packed, mdat header
+//      [size:u32]['mdat']), then an augmented moov: original moov + our custom
+//      gpmd-trak, with mvhd.next_track_ID incremented by 1.
+//   3. Preferred: the tail goes into the STILL-OPEN output writable before it
+//      is committed (injectGpmdTrackIntoOpen). Re-opening the committed file
+//      with createWritable({keepExistingData}) instead makes Chromium copy the
+//      whole file into the swap file first - a full extra read+write of a
+//      multi-GB export, minutes on the removable media exports often target.
+//      The re-open path (injectGpmdTrack) remains for callers that have no
+//      captured moov and must walk the finished file.
 //
 // Trade-off: truncate vs append. Truncating the file at moov.start is cleaner
 // (one moov in the file), but requires two FSA syscalls: writable.truncate() +
@@ -49,19 +51,49 @@ export interface CapturedMoov {
     bytes: Uint8Array;
 }
 
+/** The two operations the in-place injection needs from a still-open output
+ *  writable. A FileSystemWritableFileStream (native or the in-memory mux
+ *  writable) satisfies this as-is. */
+export interface GpmdInjectionWritable {
+    write(params: { type: "write"; position: number; data: Uint8Array<ArrayBuffer> }): Promise<void>;
+    truncate(size: number): Promise<void>;
+}
+
+/**
+ * Raised when the in-place injection failed AND putting the original moov back
+ * failed too, so the still-open output is no longer a valid MP4. Callers must
+ * discard the output (abort the writable) rather than commit it; `cause` is
+ * the sink failure that broke the restore, for the export flow's error mapping.
+ */
+export class OutputDamagedError extends Error {
+    constructor(cause: unknown) {
+        super("gpmd injection left the output without a valid moov", { cause });
+        this.name = "OutputDamagedError";
+    }
+}
+
 /**
  * Packs the trip's GPS records for [startTripSec, endTripSec) into GPMF samples
- * and injects a gpmd track into the already-finalized mp4 at `handle`. Single
- * entry point shared by the stream-copy (export.ts) and transcode
- * (export-flow.ts) paths so the pack args and error policy live in one place.
+ * and injects a gpmd track into the finished mp4. Single entry point shared by
+ * the stream-copy (export.ts) and transcode (export-flow.ts) paths so the pack
+ * args and error policy live in one place.
  *
- * Injection is purely additive on a valid mp4: on failure the clip on disk stays
- * intact (just without telemetry), so non-abort errors are logged and swallowed
- * and the function returns false. AbortError is re-thrown - the caller's outer
- * handler owns cancellation. Returns true when the gpmd track was written.
+ * With `writable` + `capturedMoov` the tail is written into the still-open
+ * output before the caller commits it (no re-open, no swap-file copy of the
+ * whole export); otherwise the committed file at `handle` is re-opened.
+ *
+ * Injection is purely additive on a valid mp4: on failure the clip stays intact
+ * (just without telemetry), so non-abort errors are logged and swallowed and
+ * the function returns false. Two failures propagate: AbortError (the caller's
+ * outer handler owns cancellation) and OutputDamagedError (the in-place path
+ * could not restore the moov; the output must be discarded). Returns true when
+ * the gpmd track was written.
  */
 export async function injectClipGpmf(args: {
     handle: FileSystemFileHandle;
+    /** The output writable, still open: inject in place and let the caller
+     *  commit. Requires capturedMoov; ignored without it. */
+    writable?: GpmdInjectionWritable;
     trip: Pick<Trip, "records" | "timeline">;
     // Clip range on the trip's FOOTAGE (content) axis - the same axis the
     // stream-copy video track is built on (pauses removed). Keeping gpmd and
@@ -70,13 +102,12 @@ export async function injectClipGpmf(args: {
     clipContentEndSec: number;
     signal?: AbortSignal;
     // moov bytes + absolute offset captured from mediabunny's onMoov callback
-    // during muxing. When present, injection skips re-reading the finished file
-    // to locate moov - which on the in-memory export handle means avoiding a full
-    // multi-GB getFile() snapshot. Absent on the re-encode path (muxed in a
-    // worker), which falls back to a file walk.
+    // during muxing (relayed from the worker on the re-encode path). Without it
+    // the committed file is walked to locate moov - on the in-memory export
+    // handle that is a full multi-GB getFile() snapshot.
     capturedMoov?: CapturedMoov;
 }): Promise<boolean> {
-    const { handle, trip, clipContentStartSec, clipContentEndSec, signal, capturedMoov } = args;
+    const { handle, writable, trip, clipContentStartSec, clipContentEndSec, signal, capturedMoov } = args;
     // Video's edit list hides its decoder preroll, so the requested footage
     // start is also the metadata track's zero. Preserve that edit list when
     // appending gpmd; GPSU carries the absolute UTC for external readers.
@@ -91,10 +122,11 @@ export async function injectClipGpmf(args: {
             { includeAccel: true },
         );
         sampleCount = samples.length;
-        await injectGpmdTrack(handle, samples, signal, capturedMoov);
+        if (writable && capturedMoov) await injectGpmdTrackIntoOpen(writable, samples, signal, capturedMoov);
+        else await injectGpmdTrack(handle, samples, signal, capturedMoov);
         return true;
     } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") throw err;
+        if (err instanceof Error && (err.name === "AbortError" || err.name === "OutputDamagedError")) throw err;
         log.error("gpmd injection failed", err);
         // Swallowed (the clip is saved WITHOUT telemetry, user gets only a warn
         // toast) - so this never reaches the export funnel. But GPMF is a hard
@@ -115,8 +147,25 @@ export async function injectClipGpmf(args: {
  */
 const GPMD_TIMESCALE = 1000;
 
+/** The replacement tail for an output: truncate at `moovStartAbs` and write
+ *  `tail` (new mdat + augmented moov) there. `originalMoov` is what stood at
+ *  that offset, kept so a failed write can put the file back together. */
+interface GpmdTail {
+    moovStartAbs: number;
+    originalMoov: Uint8Array;
+    tail: Uint8Array;
+    mdatBytes: number;
+    moovBytes: number;
+}
+
+function throwIfAbortedSignal(signal: AbortSignal | undefined): void {
+    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+}
+
 /**
- * Injects a gpmd track into an existing MP4 file (truncate + append).
+ * Injects a gpmd track into an existing, committed MP4 file by re-opening it
+ * (truncate + append). Prefer injectGpmdTrackIntoOpen while the output is
+ * still open: this path makes Chromium copy the whole file into the swap file.
  *
  * @param handle  file handle (FSA or ponyfill). Must support getFile() and
  *                createWritable({keepExistingData: true}).
@@ -133,10 +182,126 @@ export async function injectGpmdTrack(
         log.warn("no GPMF samples - skipping injection");
         return;
     }
-    const throwIfAborted = (): void => {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
-    };
+    const throwIfAborted = (): void => throwIfAbortedSignal(signal);
     throwIfAborted();
+    const built = await buildGpmdTail(handle, samples, signal, capturedMoov);
+
+    // Write. Open writable for read+write (keepExistingData), truncate to
+    // moovStartAbs (discarding the old moov), then write the new mdat and
+    // augmented moov. Truncate first so the file cannot have a dangling old
+    // moov after our new one.
+    // FSA contract: createWritable returns a buffered stream. Truncate/write
+    // are staged in a swap file (Chrome) or staging area; the original file is
+    // mutated atomically at close(). abort() drops all staged ops, so a throw
+    // anywhere between createWritable and close leaves the original MP4 intact.
+    // We keep close() inside try so that if it throws (e.g. disk full at flush
+    // time), abort() still gets a chance to drop the swap.
+    const writable = await handle.createWritable({ keepExistingData: true });
+    let closed = false;
+    try {
+        throwIfAborted();
+        await writable.truncate(built.moovStartAbs);
+        // Last cancel-before-commit checkpoint. The truncate above already ran,
+        // but the committed file is only mutated at writable.close(), so an abort
+        // here still leaves the original mp4 intact.
+        throwIfAborted();
+        await writable.write({
+            type: "write",
+            position: built.moovStartAbs,
+            data: built.tail as Uint8Array<ArrayBuffer>,
+        });
+        throwIfAborted();
+        logInjected(built, "reopen");
+        await writable.close();
+        closed = true;
+        throwIfAborted();
+    } catch (err) {
+        // Drop the swap. Without abort, FSA may still flush the buffered
+        // truncate on GC and corrupt the file. Skip if close already ran.
+        if (!closed) {
+            try {
+                await writable.abort(err instanceof Error ? err.message : String(err));
+            } catch {
+                /* ignore: writable may already be in a broken state */
+            }
+        }
+        throw err;
+    }
+}
+
+/**
+ * Injects a gpmd track into the output while its writable is still open, so
+ * the caller's commit (close) is the only disk flush: no re-open, no swap-file
+ * copy of the whole export. The truncate and the tail write land in the same
+ * swap file mediabunny streamed into.
+ *
+ * Unlike the re-open path there is no "abort drops the staged ops" safety net
+ * - a truncate that is not followed by a tail would commit a moov-less file.
+ * So a failed (or cancelled) tail write puts the original moov back before
+ * rethrowing: the caller then commits a valid MP4 without telemetry. If even
+ * that restore fails the output is damaged and OutputDamagedError tells the
+ * caller to discard it.
+ */
+export async function injectGpmdTrackIntoOpen(
+    writable: GpmdInjectionWritable,
+    samples: GpmfSample[],
+    signal: AbortSignal | undefined,
+    capturedMoov: CapturedMoov,
+): Promise<void> {
+    if (samples.length === 0) {
+        log.warn("no GPMF samples - skipping injection");
+        return;
+    }
+    throwIfAbortedSignal(signal);
+    const built = await buildGpmdTail(null, samples, signal, capturedMoov);
+    throwIfAbortedSignal(signal);
+    await writable.truncate(built.moovStartAbs);
+    try {
+        throwIfAbortedSignal(signal);
+        await writable.write({
+            type: "write",
+            position: built.moovStartAbs,
+            data: built.tail as Uint8Array<ArrayBuffer>,
+        });
+    } catch (err) {
+        try {
+            await writable.write({
+                type: "write",
+                position: built.moovStartAbs,
+                data: built.originalMoov as Uint8Array<ArrayBuffer>,
+            });
+        } catch (restoreErr) {
+            log.error("gpmd injection could not restore the original moov", restoreErr);
+            throw new OutputDamagedError(restoreErr);
+        }
+        throw err;
+    }
+    logInjected(built, "open");
+}
+
+function logInjected(built: GpmdTail, mode: "open" | "reopen"): void {
+    log.info("gpmd track injected", {
+        mode,
+        mdatBytes: built.mdatBytes,
+        moovBytes: built.moovBytes,
+        newFileSize: built.moovStartAbs + built.tail.byteLength,
+        originalMoovEnd: built.moovStartAbs + built.originalMoov.byteLength,
+    });
+}
+
+/**
+ * Builds the replacement tail (new mdat + augmented moov) for the output.
+ * `handle` is only consulted when `capturedMoov` is absent: the committed file
+ * is then walked to locate moov, so the in-place path (no committed file yet)
+ * must always supply the captured moov.
+ */
+async function buildGpmdTail(
+    handle: FileSystemFileHandle | null,
+    samples: GpmfSample[],
+    signal: AbortSignal | undefined,
+    capturedMoov: CapturedMoov | undefined,
+): Promise<GpmdTail> {
+    const throwIfAborted = (): void => throwIfAbortedSignal(signal);
 
     // Step 1. Locate the moov box. Prefer the bytes + offset captured from
     // mediabunny's onMoov callback during muxing - that avoids re-reading the
@@ -151,6 +316,7 @@ export async function injectGpmdTrack(
         moovStartAbs = capturedMoov.startAbs;
         moovBytes = capturedMoov.bytes;
     } else {
+        if (!handle) throw new Error("in-place gpmd injection requires the captured moov");
         const file = await handle.getFile();
         const found = await findMoovInFile(file);
         if (!found) {
@@ -160,7 +326,6 @@ export async function injectGpmdTrack(
         moovBytes = found.bytes;
     }
     throwIfAborted();
-    const moovEndAbs = moovStartAbs + moovBytes.byteLength;
 
     log.info("found moov", {
         moovStart: moovStartAbs,
@@ -223,75 +388,28 @@ export async function injectGpmdTrack(
     // header + old payload (with patched mvhd) + our trak.
     const augmentedMoov = buildAugmentedMoov(moovBytes, mvhd, gpmdTrak);
 
-    // Step 7. Write. Open writable for read+write (keepExistingData), truncate
-    // to moovStartAbs (discarding the old moov), then write the new mdat and
-    // augmented moov. Truncate first so the file cannot have a dangling old
-    // moov after our new one.
-    // FSA contract: createWritable returns a buffered stream. Truncate/write
-    // are staged in a swap file (Chrome) or staging area; the original file is
-    // mutated atomically at close(). abort() drops all staged ops, so a throw
-    // anywhere between createWritable and close leaves the original MP4 intact.
-    // We keep close() inside try so that if it throws (e.g. disk full at flush
-    // time), abort() still gets a chance to drop the swap.
-    const writable = await handle.createWritable({ keepExistingData: true });
-    let closed = false;
-    try {
-        throwIfAborted();
-        await writable.truncate(moovStartAbs);
-        // Mdat header: size + 'mdat'.
-        const mdatHeader = new Uint8Array(8);
-        new DataView(mdatHeader.buffer).setUint32(0, mdatTotalSize, false);
-        mdatHeader.set(fourCC("mdat"), 4);
+    // Step 7. Mdat header: size + 'mdat'.
+    const mdatHeader = new Uint8Array(8);
+    new DataView(mdatHeader.buffer).setUint32(0, mdatTotalSize, false);
+    mdatHeader.set(fourCC("mdat"), 4);
 
-        // Build the whole tail - mdat header + all sample payloads + augmented
-        // moov - as ONE contiguous buffer and commit it in a SINGLE positional
-        // write at newMdatAbsStart. The payloads are densely packed at sequential
-        // offsets, so the concat is byte-identical to the old per-sample write
-        // loop. The tail is only a few MB even for a multi-hour clip (one small
-        // GPS sample per second; see the file-header note), so holding it in RAM
-        // is cheap - and it replaces thousands of awaited write() calls (one per
-        // GPS second) with one, cutting the JS<->FSA + Promise overhead the loop
-        // paid per sample. On native FSA the small writes were coalesced into the
-        // swap file anyway, so the saving is call overhead, not disk I/O.
-        // Cast Uint8Array<ArrayBufferLike> → <ArrayBuffer> same as in export.ts:
-        // TS5 distinguishes these types; FSA write expects the former; our buffers
-        // are created with plain new Uint8Array() from a plain ArrayBuffer.
-        const tail = concat([mdatHeader, ...samples.map((s) => s.payload), augmentedMoov]);
-        // Last cancel-before-commit checkpoint. The truncate above already ran,
-        // but the committed file is only mutated at writable.close(), so an abort
-        // here still leaves the original mp4 intact. The per-sample mid-write
-        // checkpoints are gone, but the single write of a few-MB tail completes in
-        // well under a second, so cancel latency stays bounded.
-        throwIfAborted();
-        await writable.write({
-            type: "write",
-            position: newMdatAbsStart,
-            data: tail as Uint8Array<ArrayBuffer>,
-        });
-        throwIfAborted();
-        const newFileSize = newMdatAbsStart + tail.byteLength;
-
-        log.info("gpmd track injected", {
-            mdatBytes: mdatTotalSize,
-            moovBytes: augmentedMoov.byteLength,
-            newFileSize,
-            originalMoovEnd: moovEndAbs,
-        });
-        await writable.close();
-        closed = true;
-        throwIfAborted();
-    } catch (err) {
-        // Drop the swap. Without abort, FSA may still flush the buffered
-        // truncate on GC and corrupt the file. Skip if close already ran.
-        if (!closed) {
-            try {
-                await writable.abort(err instanceof Error ? err.message : String(err));
-            } catch {
-                /* ignore: writable may already be in a broken state */
-            }
-        }
-        throw err;
-    }
+    // The whole tail - mdat header + all sample payloads + augmented moov - as
+    // ONE contiguous buffer for a SINGLE positional write at newMdatAbsStart.
+    // The payloads are densely packed at sequential offsets, so the concat is
+    // byte-identical to a per-sample write loop. The tail is only a few MB even
+    // for a multi-hour clip (one small GPS sample per second; see the
+    // file-header note), so holding it in RAM is cheap - and one write replaces
+    // thousands of awaited write() calls (one per GPS second). On native FSA
+    // the small writes were coalesced into the swap file anyway, so the saving
+    // is call overhead, not disk I/O.
+    const tail = concat([mdatHeader, ...samples.map((s) => s.payload), augmentedMoov]);
+    return {
+        moovStartAbs,
+        originalMoov: moovBytes,
+        tail,
+        mdatBytes: mdatTotalSize,
+        moovBytes: augmentedMoov.byteLength,
+    };
 }
 
 // ===== Reading mvhd fields =====
