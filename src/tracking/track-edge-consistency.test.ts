@@ -43,6 +43,70 @@ describe("TrackEdgeConsistency", () => {
         expect(history.needsVerification(box(-12, 87), FRAME_W, FRAME_H, 2.133)).toBe(false);
     });
 
+    it("verifies cumulative inward drift after clipping even when each step is small", () => {
+        const history = new TrackEdgeConsistency();
+        observe(history, [10, 2, -6]);
+        for (const [time, x] of [
+            [0.2, -4],
+            [0.267, -3],
+        ]) {
+            expect(history.needsVerification(box(x!), FRAME_W, FRAME_H, time!)).toBe(false);
+            history.observeAccepted(box(x!), FRAME_W, FRAME_H, time!);
+        }
+        expect(history.needsVerification(box(3), FRAME_W, FRAME_H, 0.333)).toBe(true);
+        // Queries do not consume the clipped anchor before an accepted update.
+        expect(history.needsVerification(box(3), FRAME_W, FRAME_H, 0.333)).toBe(true);
+        expect(history.needsVerification(box(-8), FRAME_W, FRAME_H, 0.333)).toBe(false);
+    });
+
+    it("keeps outward evidence for a recently clipped anchor across a gradual reversal", () => {
+        const history = new TrackEdgeConsistency();
+        const observations = [
+            [1.667, 14, 87],
+            [1.733, 8, 94],
+            [1.8, 1, 94],
+            [1.867, 1, 95],
+            [1.933, -4, 89],
+            [2, -3, 89],
+            [2.067, -2, 89],
+            [2.133, -1, 89],
+        ];
+        for (const [time, x, w] of observations) history.observeAccepted(box(x!, w), FRAME_W, FRAME_H, time!);
+        expect(history.needsVerification(box(2, 97), FRAME_W, FRAME_H, 2.2)).toBe(true);
+    });
+
+    it("verifies small inward travel before a clipped target drifts onto its neighbor", () => {
+        const history = new TrackEdgeConsistency();
+        for (const [time, x, w] of [
+            [1.667, 14, 87],
+            [1.733, 8, 94],
+            [1.8, 1, 94],
+            [1.867, 1, 95],
+            [1.933, -4, 89],
+        ])
+            history.observeAccepted(box(x!, w), FRAME_W, FRAME_H, time!);
+        expect(history.needsVerification(box(-3, 100), FRAME_W, FRAME_H, 2)).toBe(true);
+    });
+
+    it("starts a new history after an accepted reversal", () => {
+        const history = new TrackEdgeConsistency();
+        observe(history, [10, 2, -6]);
+        expect(history.needsVerification(box(4), FRAME_W, FRAME_H, 0.2)).toBe(true);
+        history.observeAccepted(box(4), FRAME_W, FRAME_H, 0.2);
+        expect(history.needsVerification(box(20), FRAME_W, FRAME_H, 0.267)).toBe(false);
+        expect(history.observeRejected(0.25)).toBe(false);
+        history.observeAccepted(box(-4), FRAME_W, FRAME_H, 0.267);
+        history.observeAccepted(box(-12), FRAME_W, FRAME_H, 0.333);
+        expect(history.needsVerification(box(0), FRAME_W, FRAME_H, 0.4)).toBe(true);
+    });
+
+    it("does not mistake centered size changes for inward travel after clipping", () => {
+        const history = new TrackEdgeConsistency();
+        observe(history, [10, 2, -6]);
+        expect(history.needsVerification(box(-16, 100), FRAME_W, FRAME_H, 0.2)).toBe(false);
+        expect(history.needsVerification(box(4, 60), FRAME_W, FRAME_H, 0.2)).toBe(false);
+    });
+
     it.each([
         ["stationary", [-6, -6, -6]],
         ["entering", [-18, -12, -6]],
@@ -75,8 +139,8 @@ describe("TrackEdgeConsistency", () => {
     it("uses target-relative inward movement with a two-pixel floor", () => {
         const history = new TrackEdgeConsistency();
         observe(history, [10, 2, -6]);
-        expect(history.needsVerification(box(1.99), FRAME_W, FRAME_H, 0.2)).toBe(false);
-        expect(history.needsVerification(box(2.01), FRAME_W, FRAME_H, 0.2)).toBe(true);
+        expect(history.needsVerification(box(-2.01), FRAME_W, FRAME_H, 0.2)).toBe(false);
+        expect(history.needsVerification(box(-1.99), FRAME_W, FRAME_H, 0.2)).toBe(true);
         history.reset();
         for (const [i, x] of [2, 0, -2].entries()) history.observeAccepted(box(x, 10), FRAME_W, FRAME_H, i / 15);
         expect(history.needsVerification(box(-0.01, 10), FRAME_W, FRAME_H, 0.2)).toBe(false);
@@ -93,13 +157,20 @@ describe("TrackEdgeConsistency", () => {
         expect(history.needsVerification(doubled(box(-14)), FRAME_W * 2, FRAME_H * 2, 0.2)).toBe(false);
     });
 
-    it("expires outward history after half a second instead of preserving a stale alarm", () => {
+    it("expires a clipped anchor after half a second instead of preserving a stale alarm", () => {
         const history = new TrackEdgeConsistency();
         observe(history, [10, 2, -6], 3600);
         expect(history.needsVerification(box(4), FRAME_W, FRAME_H, 3600.4)).toBe(true);
-        expect(history.needsVerification(box(4), FRAME_W, FRAME_H, 3600.501)).toBe(false);
+        expect(history.needsVerification(box(4), FRAME_W, FRAME_H, 3600.634)).toBe(false);
         history.observeAccepted(box(-6), FRAME_W, FRAME_H, 3600.8);
         expect(history.needsVerification(box(4), FRAME_W, FRAME_H, 3600.9)).toBe(false);
+    });
+
+    it("expires the clipped anchor while newer accepted observations keep arriving", () => {
+        const history = new TrackEdgeConsistency();
+        observe(history, [13, 5, -3]);
+        for (const time of [0.2, 0.4, 0.6]) history.observeAccepted(box(0), FRAME_W, FRAME_H, time);
+        expect(history.needsVerification(box(3), FRAME_W, FRAME_H, 0.7)).toBe(false);
     });
 
     it("does not turn duplicate timestamps into extra motion evidence", () => {

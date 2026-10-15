@@ -7,7 +7,7 @@ interface Observation {
 
 const MAX_HISTORY_SEC = 0.5;
 const MIN_INWARD_PX = 2;
-const MIN_INWARD_TARGET_FRACTION = 0.1;
+const MIN_INWARD_TARGET_FRACTION = 0.05;
 
 function normalize(box: TrackBox, frameW: number, frameH: number, timeSec: number): TrackBox | null {
     if (
@@ -51,11 +51,16 @@ export class TrackEdgeConsistency {
             this.recent.length = 0;
             return;
         }
+        // An accepted reversal starts a new motion history instead of
+        // questioning the same turn again.
+        if (this.needsVerification(box, frameW, frameH, timeSec)) this.recent.length = 0;
         const last = this.recent[this.recent.length - 1];
         if (last && timeSec === last.timeSec) return;
         if (last && timeSec < last.timeSec) this.reset();
         this.lossStartedSec = null;
-        while (this.recent.length && timeSec - this.recent[0]!.timeSec > MAX_HISTORY_SEC) this.recent.shift();
+        // A clipped anchor stays relevant for half a second. Keep its preceding
+        // motion as well so several small inward steps cannot erase the alarm.
+        while (this.recent.length && timeSec - this.recent[0]!.timeSec > 2 * MAX_HISTORY_SEC) this.recent.shift();
         this.recent.push({ box: normalized, timeSec });
     }
 
@@ -77,26 +82,30 @@ export class TrackEdgeConsistency {
         if (!normalized || !last || timeSec <= last.timeSec || timeSec - last.timeSec > MAX_HISTORY_SEC) return false;
 
         const reverses = (axis: "x" | "y", size: "w" | "h", direction: -1 | 1, frameSize: number): boolean => {
-            const b = last.box;
-            const clipped = direction < 0 ? b[axis] < 0 : b[axis] + b[size] > 1;
-            if (!clipped) return false;
             const center = (box: TrackBox): number => box[axis] + box[size] / 2;
-            const inward = (center(b) - center(normalized)) * direction;
-            if (inward <= Math.max(MIN_INWARD_PX / frameSize, b[size] * MIN_INWARD_TARGET_FRACTION)) return false;
+            for (let anchorIndex = this.recent.length - 1; anchorIndex >= 2; anchorIndex--) {
+                const anchor = this.recent[anchorIndex]!;
+                if (timeSec - anchor.timeSec > MAX_HISTORY_SEC) break;
+                const b = anchor.box;
+                const clipped = direction < 0 ? b[axis] < 0 : b[axis] + b[size] > 1;
+                if (!clipped) continue;
+                const inward = (center(b) - center(normalized)) * direction;
+                if (inward <= Math.max(MIN_INWARD_PX / frameSize, b[size] * MIN_INWARD_TARGET_FRACTION)) continue;
 
-            // A noisy localization can interrupt the most recent pair of moves.
-            // Retain the preceding outward evidence, but only within this short
-            // window; querying a rejected candidate must not change that history.
-            for (let i = 2; i < this.recent.length; i++) {
-                const first = this.recent[i - 2]!;
-                if (timeSec - first.timeSec > MAX_HISTORY_SEC) continue;
-                const middle = this.recent[i - 1]!;
-                const end = this.recent[i]!;
-                if (
-                    (center(middle.box) - center(first.box)) * direction > 0 &&
-                    (center(end.box) - center(middle.box)) * direction > 0
-                ) {
-                    return true;
+                // A noisy localization can interrupt the most recent pair of
+                // moves. Require outward evidence preceding the clipped anchor,
+                // then compare cumulative inward travel against that position.
+                for (let i = 2; i <= anchorIndex; i++) {
+                    const first = this.recent[i - 2]!;
+                    if (anchor.timeSec - first.timeSec > MAX_HISTORY_SEC) continue;
+                    const middle = this.recent[i - 1]!;
+                    const end = this.recent[i]!;
+                    if (
+                        (center(middle.box) - center(first.box)) * direction > 0 &&
+                        (center(end.box) - center(middle.box)) * direction > 0
+                    ) {
+                        return true;
+                    }
                 }
             }
             return false;
