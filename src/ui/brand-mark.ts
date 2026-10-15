@@ -47,34 +47,45 @@ export function initBrandMark(): void {
     let availableWidth = 0;
     let drumWidth = 0;
     let drumGap = 0;
+    let isPrepared = false;
+    const drums: HTMLElement[] = [];
+    const columns: HTMLElement[] = [];
+    const positions: number[] = [];
     const nextBrand = createBrandCycle();
 
-    // Keep the original five-drum layout width; the extra drums are clipped
-    // over DASHCAM, so revealing a long name cannot move toolbar controls.
-    const drums = Array.from(deck.querySelectorAll<HTMLElement>(".edc-mark__drum"));
-    while (drums.length < maxDrums) {
-        const drum = document.createElement("span");
-        drum.className = "edc-mark__drum";
-        const column = document.createElement("span");
-        column.className = "edc-mark__column";
-        drum.appendChild(column);
-        deck.appendChild(drum);
-        drums.push(drum);
-    }
-    const columns = drums.map((drum) => drum.querySelector<HTMLElement>(".edc-mark__column")!);
-    const positions = columns.map(() => 0);
-    root.classList.add("edc-mark--interactive");
-    columns.forEach((column) => {
-        // A second alphabet makes the final character -> blank -> A wrap seamless.
-        column.replaceChildren(
-            ...Array.from(BRAND_ALPHABET.repeat(2), (letter) => {
-                const span = document.createElement("span");
-                span.className = "edc-mark__letter";
-                span.textContent = letter;
-                return span;
-            }),
-        );
-    });
+    const prepareDrums = (): void => {
+        if (isPrepared) return;
+        isPrepared = true;
+        // Keep the original five-drum layout width; the extra drums are clipped
+        // over DASHCAM, so revealing a long name cannot move toolbar controls.
+        drums.push(...deck.querySelectorAll<HTMLElement>(".edc-mark__drum"));
+        while (drums.length < maxDrums) {
+            const drum = document.createElement("span");
+            drum.className = "edc-mark__drum";
+            const column = document.createElement("span");
+            column.className = "edc-mark__column";
+            drum.appendChild(column);
+            deck.appendChild(drum);
+            drums.push(drum);
+        }
+        columns.push(...drums.map((drum) => drum.querySelector<HTMLElement>(".edc-mark__column")!));
+        positions.push(...columns.map(() => 0));
+        root.classList.add("edc-mark--interactive");
+        columns.forEach((column) => {
+            // A second alphabet makes the final character -> blank -> A wrap seamless.
+            column.replaceChildren(
+                ...Array.from(BRAND_ALPHABET.repeat(2), (letter) => {
+                    const span = document.createElement("span");
+                    span.className = "edc-mark__letter";
+                    span.textContent = letter;
+                    return span;
+                }),
+            );
+        });
+        measureDeck();
+        setWord(BRAND_WORD);
+        setDrumCount(BRAND_WORD.length);
+    };
     const measureDeck = (): void => {
         const style = getComputedStyle(root);
         drumWidth = Number.parseFloat(style.getPropertyValue("--edc-drum-width"));
@@ -173,15 +184,24 @@ export function initBrandMark(): void {
     const reset = (): void => {
         cancelPending();
         isHovered = false;
+        if (!isPrepared) return;
         measureDeck();
         setWord(BRAND_WORD);
         setDrumCount(BRAND_WORD.length);
         setWordVisibility(1);
     };
 
-    reset();
     if (!reducedMotion.matches && !compact.matches) {
-        rollTo(BRAND_WORD, () => {});
+        // Let the static logo and usable toolbar paint before preparing the
+        // animation. Compact and reduced-motion visits keep the original DOM.
+        frame = requestAnimationFrame(() => {
+            frame = requestAnimationFrame(() => {
+                frame = undefined;
+                if (reducedMotion.matches || compact.matches) return;
+                prepareDrums();
+                rollTo(BRAND_WORD, () => {});
+            });
+        });
     }
     const showBrand = (word: string): void => {
         rollTo(word, () => {
@@ -195,6 +215,7 @@ export function initBrandMark(): void {
         if (reducedMotion.matches || compact.matches || !hover.matches || isHovered) return;
         isHovered = true;
         cancelPending();
+        prepareDrums();
         const word = nextBrand();
         const fromOpacity = wordOpacity;
         // Let DASHCAM leave before the deck expands into its space. Its box

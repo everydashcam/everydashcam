@@ -25,6 +25,7 @@ async function prepare(page: Page): Promise<void> {
     await presetLocalStorage(page);
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await gotoApp(page);
+    await expect(page.locator(".topbar .edc-mark")).toHaveClass(/edc-mark--interactive/);
     await expect(page.locator(".topbar .edc-mark")).not.toHaveClass(/edc-mark--animated/);
 }
 
@@ -40,6 +41,39 @@ async function hoverBrand(mark: Locator, random: number): Promise<void> {
             Math.random = original;
         }
     }, random);
+}
+
+for (const initialMode of ["compact", "reduced-motion"]) {
+    test(`the ${initialMode} logo keeps its static letters until animation becomes available`, async ({ page }) => {
+        await presetLocalStorage(page);
+        await page.setViewportSize({ width: initialMode === "compact" ? 375 : 1280, height: 900 });
+        await page.emulateMedia({ reducedMotion: initialMode === "reduced-motion" ? "reduce" : "no-preference" });
+        await gotoApp(page);
+        const mark = page.locator(".topbar .edc-mark");
+        const columns = mark.locator(".edc-mark__column");
+        await expect(mark).toHaveAccessibleName("everydashcam");
+        await expect(columns).toHaveCount(5);
+        await expect(mark.locator(".edc-mark__letter")).toHaveCount(5);
+        await hoverBrand(mark, 0);
+        await expect(mark).not.toHaveClass(/edc-mark--interactive/);
+        await expect(mark).not.toHaveClass(/edc-mark--animated/);
+
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        await expect.poll(() => visibleWord(columns)).toBe("EVERY");
+        await page.clock.install();
+        await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+        await hoverBrand(mark, 0);
+        await expect(mark).toHaveClass(/edc-mark--interactive/);
+        await page.clock.runFor(1400);
+        expect(await visibleWord(columns)).toBe("70MAI");
+        await mark.dispatchEvent("mouseleave");
+        await page.clock.runFor(1400);
+        expect(await visibleWord(columns)).toBe("EVERY");
+        await expect(mark.locator(".edc-mark__word")).toHaveCSS("opacity", "1");
+        await expect(mark).not.toHaveClass(/edc-mark--animated/);
+        await page.clock.resume();
+    });
 }
 
 test("brand odometer rolls forward, starts and stops on the right, and respects reduced motion", async ({ page }) => {
@@ -145,7 +179,14 @@ test("brand odometer rolls forward, starts and stops on the right, and respects 
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(mark.locator(".edc-mark__word")).toBeVisible();
     expect(await visibleWord(columns)).toBe("EVERY");
-    await expect(mark.locator(".edc-mark__drums")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    await expect
+        .poll(() =>
+            mark.locator(".edc-mark__drums").evaluate((deck) => {
+                const transform = getComputedStyle(deck).transform;
+                return new DOMMatrixReadOnly(transform === "none" ? undefined : transform).isIdentity;
+            }),
+        )
+        .toBe(true);
 });
 
 test("brand odometer displays the hyphen in E-ACE", async ({ page }) => {
