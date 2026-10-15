@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-10-15.1",
+        category: "improvement",
+        text: {
+            en: "Improved face and license plate detection.",
+            ru: "Улучшено обнаружение лиц и автомобильных номеров.",
+            de: "Verbesserte Erkennung von Gesichtern und Kennzeichen.",
+            es: "Detección mejorada de rostros y matrículas.",
+            fr: "Détection améliorée des visages et des plaques d’immatriculation.",
+            pl: "Ulepszone wykrywanie twarzy i tablic rejestracyjnych.",
+            pt: "Detecção aprimorada de rostos e placas de veículos.",
+            zh: "改进了人脸和车牌检测。",
+            ja: "顔とナンバープレートの検出を改善しました。",
+            ko: "얼굴과 차량 번호판 감지가 개선되었습니다.",
+        },
+    },
+    {
         id: "2026-10-11.1",
         category: "improvement",
         text: {

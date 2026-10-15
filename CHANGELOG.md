@@ -7,6 +7,10 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-10-15
+
+- **Improved:** Improved face and license plate detection.
+
 ## 2026-10-11
 
 - **Improved:** Improved support for TS recordings.
