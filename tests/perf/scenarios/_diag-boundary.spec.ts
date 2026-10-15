@@ -39,6 +39,25 @@ interface VideoEvt {
     extra?: unknown;
 }
 
+/** A currentTime write: who moved which element where, and in what element state. */
+interface CtWrite {
+    t: number;
+    id: string;
+    value: number;
+    rs: number;
+    hasSrc: boolean;
+    stack: string;
+}
+
+/** 10 Hz buffer sample per attached element. */
+interface BufferSample {
+    t: number;
+    id: string;
+    ct: number;
+    rs: number;
+    buffered: string;
+}
+
 function fmtFrame(f: CpuProfileFrame): string {
     const file = f.url.split("/").pop() ?? "";
     return `${f.selfMs.toFixed(1)}ms self / ${f.inclusiveMs.toFixed(1)}ms incl  ${f.functionName}  ${file}:${f.line ?? ""}`;
@@ -55,9 +74,51 @@ test(`_diag-boundary: ${vendor?.name}`, async ({ browser }) => {
 
     // Instrument every <video> before any trip opens.
     await page.evaluate(() => {
-        const w = window as unknown as { __diag: { events: VideoEvt[]; clickT: number } };
-        w.__diag = { events: [], clickT: 0 };
+        const w = window as unknown as {
+            __diag: { events: VideoEvt[]; clickT: number; ctWrites: CtWrite[]; samples: BufferSample[] };
+        };
+        w.__diag = { events: [], clickT: 0, ctWrites: [], samples: [] };
         const videos = Array.from(document.querySelectorAll<HTMLVideoElement>("video"));
+        // Every currentTime write with its caller. The element state matters: a
+        // write on an element without metadata becomes its default playback start
+        // position (HTML spec) and the getter reports it until the next metadata
+        // load, so such writes can poison anything that reads currentTime.
+        const ctDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
+        if (ctDesc?.set && ctDesc.get) {
+            const origSet = ctDesc.set;
+            Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
+                configurable: true,
+                get: ctDesc.get,
+                set(this: HTMLMediaElement, value: number) {
+                    w.__diag.ctWrites.push({
+                        t: performance.now(),
+                        id: this.id,
+                        value,
+                        rs: this.readyState,
+                        hasSrc: !!this.getAttribute("src"),
+                        stack: (new Error().stack ?? "").split("\n").slice(2, 8).join(" | "),
+                    });
+                    if (w.__diag.ctWrites.length > 4000) w.__diag.ctWrites.splice(0, 1000);
+                    origSet.call(this, value);
+                },
+            });
+        }
+        setInterval(() => {
+            for (const v of videos) {
+                if (!v.getAttribute("src")) continue;
+                const ranges: string[] = [];
+                for (let i = 0; i < v.buffered.length; i++)
+                    ranges.push(`${v.buffered.start(i).toFixed(1)}-${v.buffered.end(i).toFixed(1)}`);
+                w.__diag.samples.push({
+                    t: performance.now(),
+                    id: v.id,
+                    ct: v.currentTime,
+                    rs: v.readyState,
+                    buffered: ranges.join(","),
+                });
+            }
+            if (w.__diag.samples.length > 6000) w.__diag.samples.splice(0, w.__diag.samples.length - 6000);
+        }, 100);
         const rec = (v: HTMLVideoElement, ev: string, extra?: unknown) => {
             w.__diag.events.push({
                 t: performance.now(),
@@ -475,6 +536,53 @@ test(`_diag-boundary: ${vendor?.name}`, async ({ browser }) => {
     for (const l of report.logs) {
         console.log(JSON.stringify({ ...l, dtMs: prevTs ? l.ts - prevTs : 0 }));
         prevTs = l.ts;
+    }
+    const extra = await page.evaluate(() => {
+        const w = window as unknown as { __diag: { ctWrites: CtWrite[]; samples: BufferSample[] } };
+        return { ctWrites: w.__diag.ctWrites, samples: w.__diag.samples };
+    });
+    const notable = extra.ctWrites.filter((x) => x.rs < 2 || x.value > 10);
+    console.log(`>>> currentTime writes: ${extra.ctWrites.length} total, ${notable.length} notable (rs<2 or >10 s)`);
+    for (const x of notable.slice(0, 60)) {
+        console.log(
+            `    t=${x.t.toFixed(0)} ${x.id} <- ${x.value.toFixed(3)} rs=${x.rs} src=${x.hasSrc} :: ${x.stack}`,
+        );
+    }
+    // Worker-side records (forwarded into the main ring buffer) and the element
+    // events around the first moment a buffer runs away from its playhead.
+    const workerLogs = await page.evaluate(() =>
+        (
+            window as unknown as {
+                __everydashcam: { dumpLog: () => Array<{ ns: string; msg: string; ts: number; ctx?: unknown }> };
+            }
+        ).__everydashcam
+            .dumpLog()
+            .filter((l) => l.ns.startsWith("worker:"))
+            .map((l) => `${l.ts % 100000} ${l.ns}: ${l.msg} ${l.ctx ? JSON.stringify(l.ctx).slice(0, 400) : ""}`),
+    );
+    console.log(`>>> worker logs: ${workerLogs.length}`);
+    for (const line of workerLogs.slice(0, 60)) console.log("   ", line);
+    const runaway = extra.samples.find((x) => {
+        const last = x.buffered.split(",").pop();
+        const end = last ? Number(last.split("-")[1]) : 0;
+        return end - x.ct > 30;
+    });
+    if (runaway) {
+        const evs = await page.evaluate(
+            (t0) =>
+                (window as unknown as { __diag: { events: VideoEvt[] } }).__diag.events.filter(
+                    (e) => e.t >= t0 - 2500 && e.t <= t0 + 800,
+                ),
+            runaway.t,
+        );
+        console.log(`>>> runaway buffer first seen at t=${runaway.t.toFixed(0)} on ${runaway.id}; events around it:`);
+        for (const e of evs) console.log(`    t=${e.t.toFixed(0)} ${e.id} ${e.ev} rs=${e.rs} ct=${e.ct.toFixed(2)}`);
+    }
+    if (process.env.DIAG_SAMPLES === "1") {
+        console.log(">>> buffer samples (10 Hz):");
+        for (const x of extra.samples) {
+            console.log(`    t=${x.t.toFixed(0)} ${x.id} ct=${x.ct.toFixed(2)} rs=${x.rs} [${x.buffered}]`);
+        }
     }
     await ctx.close();
 });
