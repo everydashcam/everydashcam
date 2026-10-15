@@ -27,9 +27,9 @@ test.describe("export controls", () => {
             ["Overlays", "overlays"],
         ] as const) {
             const section = page.locator(".export-panel__disclosure").filter({
-                has: page.locator("summary", { hasText: title }),
+                has: page.locator(":scope > summary", { hasText: title }),
             });
-            const summary = section.locator("summary");
+            const summary = section.locator(":scope > summary");
             const controls = section.locator(":scope > fieldset");
             await expect(section).toHaveAttribute("open", "");
             await expect(controls).toBeVisible();
@@ -117,10 +117,10 @@ test.describe("export controls", () => {
         test("privacy and overlays start collapsed", async ({ page }) => {
             for (const title of ["Hide plates & faces", "Overlays"]) {
                 const section = page.locator(".export-panel__disclosure").filter({
-                    has: page.locator("summary", { hasText: title }),
+                    has: page.locator(":scope > summary", { hasText: title }),
                 });
                 await expect(section).not.toHaveAttribute("open");
-                await expect(section.locator("summary")).toBeVisible();
+                await expect(section.locator(":scope > summary")).toBeVisible();
                 await expect(section.locator(":scope > fieldset")).toBeHidden();
             }
         });
