@@ -58,8 +58,11 @@ Coarse strokes are the point: merge related commits into ONE entry ("Improved tr
      or former failure: "restarts", "no longer stalls", "перезапускается",
      "больше не зависает".
   3. Delete every modifier whose removal leaves the same fact.
-  4. Read the English line with its generated category prefix (`Fixed:`,
-     `Improved:`, `New camera support:`); the entry must not repeat the prefix.
+  4. Read each locale's text on its own: it must make clear what was added,
+     improved, or fixed without a category prefix or icon. The app shows
+     categories as icons. Keep words such as "Added", "Improved", or "Fixed"
+     when needed to preserve that meaning, even if generated Markdown repeats
+     the category label.
 - Use the terse version as the translation source. Example: prefer "Playback no
   longer stalls between clips at higher speeds" over "Playback now stays smooth
   when moving between clips, including at higher speeds."
