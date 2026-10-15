@@ -294,22 +294,53 @@ describe("gpmfPrimitive.marker", () => {
 });
 
 describe("freegpsPrimitive.marker", () => {
-    it("fires on novatekGpsAtom (structural path)", async () => {
-        const index = makeIndex({
-            novatekGpsAtom: {} as unknown as NonNullable<Mp4Index["novatekGpsAtom"]>,
+    // A moov holding only a `gps ` atom whose canonical payload is
+    // version(4) + count(4) + count x [offset u32 BE, size u32 BE].
+    function gpsTableIndex(entries: Array<[offset: number, size: number]>, declaredCount = entries.length): Mp4Index {
+        const payloadLen = 8 + entries.length * 8;
+        const moov = new Uint8Array(8 + 8 + payloadLen);
+        const view = new DataView(moov.buffer);
+        view.setUint32(0, moov.length);
+        moov.set(new TextEncoder().encode("moov"), 4);
+        view.setUint32(8, 8 + payloadLen);
+        moov.set(new TextEncoder().encode("gps "), 12);
+        view.setUint32(16, 0x00000101);
+        view.setUint32(20, declaredCount);
+        entries.forEach(([offset, size], i) => {
+            view.setUint32(24 + i * 8, offset);
+            view.setUint32(28 + i * 8, size);
         });
-        expect(await freegpsPrimitive.marker(vf(), index)).toBe(true);
+        return makeIndex({
+            fileSize: 1 << 30,
+            moovView: view,
+            novatekGpsAtom: { type: "gps ", start: 8, end: moov.length, payloadStart: 16 },
+        });
+    }
+
+    it("fires on a usable `gps ` table (structural path)", async () => {
+        expect(await freegpsPrimitive.marker(vf(), gpsTableIndex([[4096, 0x8000]]))).toBe(true);
+    });
+
+    it("does not fire on a placeholder table with a zero count (70mai rear channel)", async () => {
+        expect(await freegpsPrimitive.marker(vf(), gpsTableIndex([], 0))).toBe(false);
+    });
+
+    it("does not fire on a junk table whose entries are all zero or out of range (VIOFO A329)", async () => {
+        const junk = gpsTableIndex([
+            [0x801e3200, 0],
+            [0, 0],
+            [0x76484200, 0],
+        ]);
+        expect(await freegpsPrimitive.marker(vf(), junk)).toBe(false);
     });
 
     it("fires on hasFreeGpsMarker (streaming fallback)", async () => {
         expect(await freegpsPrimitive.marker(vf(), makeIndex({ hasFreeGpsMarker: true }))).toBe(true);
     });
 
-    it("fires on either flag - novatekGpsAtom OR hasFreeGpsMarker", async () => {
-        const both = makeIndex({
-            novatekGpsAtom: {} as unknown as NonNullable<Mp4Index["novatekGpsAtom"]>,
-            hasFreeGpsMarker: true,
-        });
+    it("fires on either signal - a usable table OR hasFreeGpsMarker", async () => {
+        const both = gpsTableIndex([[4096, 0x8000]]);
+        both.hasFreeGpsMarker = true;
         expect(await freegpsPrimitive.marker(vf(), both)).toBe(true);
     });
 

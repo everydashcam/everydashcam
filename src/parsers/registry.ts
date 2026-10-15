@@ -44,6 +44,7 @@ import {
     buildMp4Index,
     probeMarkers,
 } from "./internal/mp4-index.js";
+import { hasUsableNovatekGpsTable, novatekGpsTableDeclaresEntries } from "./internal/freegps.js";
 import { hasAutoVoxTrailerSignature } from "./internal/autovox-riff.js";
 import { findGarminUuidBox } from "./internal/garmin-uuid.js";
 import { findKenwoodMoovUdta, hasKenwoodUdtaMarker, KENWOOD_TRAILER_PROBE_BYTES } from "./internal/kenwood.js";
@@ -273,7 +274,9 @@ const EMBEDDED_GPS_LIGHT_SIGNALS: readonly EmbeddedGpsLightSignal[] = [
     { exclusive: true, matches: (index) => index.freeGpsBoxInsideFree !== null },
     // The generic and 70mai freeGPS primitives compete for this table and use
     // probe seeds/signatures, so the atom is light but not probe-exclusive.
-    { exclusive: false, matches: (index) => index.novatekGpsAtom !== null },
+    // A placeholder or junk-filled table is no structural signal: the file then
+    // depends on the marker probe like any table-less Novatek clip.
+    { exclusive: false, matches: (index) => hasUsableNovatekGpsTable(index) },
     { exclusive: false, matches: (index) => index.hasLigoGpsMarker === true },
     { exclusive: true, matches: (index) => index.navitelGps0Atom !== null },
     { exclusive: false, matches: (index) => !!index.headerBytes && findNovatekTsGpsPid(index.headerBytes) !== null },
@@ -466,21 +469,22 @@ export async function dispatchParseVideoEmbeddedGps(
         evidence: ParseEvidence,
     ): Promise<ParseResult | "heavy-deferred" | null> => {
         let kind = classifyEmbeddedGpsKind(index);
-        if (kind === "none" && needsGpsProbeEscalation(vf.file.name)) {
+        if (kind === "none" && (needsGpsProbeEscalation(vf.file.name) || novatekGpsTableDeclaresEntries(index))) {
             // Probe escalation: the default 4 MB probe can miss the first
             // freeGPS block on a high-bitrate clip (1 Hz blocks in mdat; a 4K
             // HEVC stream at ~50 Mbps puts the first one past 6 MB). The
             // predicate also covers the TS twin of the same problem (first
             // GPS PES observed at ~3-4 MB); its format list lives next to the
             // regexes in filename/_patterns.ts. Both
-            // conjuncts matter: normal VIOFO/Vantrue firmware writes the moov
-            // `gps ` table, which classifies "light" regardless of the probe
-            // window - escalation only serves table-less old-firmware/clone
-            // files. The premise is bitrate arithmetic, not an observed
-            // failing sample; ExifTool's equivalent scan cap is 20e6 bytes
+            // conjuncts matter: normal VIOFO/Vantrue firmware writes a usable
+            // moov `gps ` table, which classifies "light" regardless of the
+            // probe window - escalation serves table-less old-firmware/clone
+            // files and firmware whose table is junk yet counts its blocks
+            // (VIOFO A329 4K: 63 Mbps puts the first block past 8 MB). The
+            // bitrate premise matches ExifTool's scan cap of 20e6 bytes
             // (QuickTimeStream.pl ScanMediaData, sub at :3681, cap at :3715).
             // A deferred full scan may repeat this bounded 16 MB probe when it
-            // rebuilds the index; that cost is small next to its 500 MB-1 GB scan.
+            // rebuilds the index; that cost is small next to its streaming scan.
             await probeMarkers(vf.file, index, MAX_PROBE_BYTES);
             kind = classifyEmbeddedGpsKind(index);
         }

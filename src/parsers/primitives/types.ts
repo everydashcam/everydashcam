@@ -42,7 +42,7 @@ export interface Primitive {
     kind: "video-embedded" | "log-sidecar";
 
     // Cheap "is this file ours at all?" check. Must run without a full parse:
-    // an Mp4Index marker (`index.novatekGpsAtom !== null`), an async probe of
+    // an Mp4Index marker (`index.maiGpsBox !== null`), an async probe of
     // a short track's first sample, or reading the first ~256 bytes.
     // For video-embedded the orchestrator builds Mp4Index once and passes it
     // in. For log-sidecar the index is not passed (undefined).

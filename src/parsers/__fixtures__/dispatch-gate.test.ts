@@ -517,3 +517,51 @@ describe("embedded GPS dispatch gate: TS trailer ahead of the PES scanners", () 
         }
     });
 });
+
+describe("embedded GPS dispatch gate: probe escalation from a junk `gps ` table", () => {
+    // A moov whose `gps ` atom declares `count` blocks but holds no usable
+    // entry - VIOFO A329 firmware writes exactly this. The literal sits past
+    // the default probe window (a 63 Mbps 4K stream puts the first block near
+    // 8 MB), so only the escalated probe can see it.
+    class ReadTrackingFile extends File {
+        public furthestReadEnd = 0;
+        override slice(start?: number, end?: number, contentType?: string): Blob {
+            this.furthestReadEnd = Math.max(this.furthestReadEnd, end ?? this.size);
+            return super.slice(start, end, contentType);
+        }
+    }
+
+    function junkTableFile(declaredCount: number, name: string): { classified: ClassifiedFile; file: ReadTrackingFile } {
+        const table = new Uint8Array(8 + 2 * 8);
+        const view = new DataView(table.buffer);
+        view.setUint32(0, 0x00000101);
+        view.setUint32(4, declaredCount);
+        view.setUint32(8, 0x801e3200);
+        const moov = mp4Box("moov", mp4Box("gps ", table));
+        const mdat = new Uint8Array(10 * 1024 ** 2);
+        mdat.set(ascii("freeGPS "), 6 * 1024 ** 2);
+        const file = new ReadTrackingFile([concatBytes([FTYP, moov, mp4Box("mdat", mdat)])], name);
+        return {
+            classified: { file: { file, relativePath: name }, role: "video", sidecarId: null, sidecarMp4: null, logExtractorId: null },
+            file,
+        };
+    }
+
+    it("a declared count escalates the probe, so a block beyond the default window defers the file as heavy", async () => {
+        const { classified, file } = junkTableFile(180, "junk-table.mp4");
+        const result = await dispatchParseVideoEmbeddedGps([classified], undefined, 1, undefined, "light-only");
+        expect(result.heavyFiles.map((cf) => cf.file.file.name)).toEqual(["junk-table.mp4"]);
+        expect(result.errors).toEqual([]);
+        expect(file.furthestReadEnd).toBe(file.size);
+    });
+
+    it("a placeholder table with a zero count stays at the default window and yields nothing", async () => {
+        const { classified, file } = junkTableFile(0, "placeholder-table.mp4");
+        const result = await dispatchParseVideoEmbeddedGps([classified], undefined, 1, undefined, "light-only");
+        expect(result.heavyFiles).toEqual([]);
+        expect(result.records).toEqual([]);
+        expect(result.errors).toEqual([]);
+        // The moov sits before mdat, so every read stays inside the default probe.
+        expect(file.furthestReadEnd).toBeLessThanOrEqual(DEFAULT_PROBE_BYTES);
+    });
+});

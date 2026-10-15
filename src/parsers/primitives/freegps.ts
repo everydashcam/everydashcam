@@ -13,8 +13,9 @@
 //      Azdome XOR Type-1, anonymous clones.
 //
 // Markers (see Mp4Index in internal/mp4-index.ts):
-//   - novatekGpsAtom !== null -> structural path. Cheap (light in
-//     kind-classification).
+//   - a usable `gps ` table (hasUsableNovatekGpsTable) -> structural path.
+//     Cheap (light in kind-classification). A placeholder or junk table is
+//     not a marker: such a file is claimed only through the probe below.
 //   - hasFreeGpsMarker -> streaming. Heavy (may require user prompt).
 
 import { type GpsRecord, type ParsedRecords, type VendorFile, WrongFormatError } from "../types.js";
@@ -23,6 +24,7 @@ import {
     createFreeGpsBlockParser,
     type FreeGpsFileBlockParser,
     GRAVITY_INCLUDED_VARIANT_NAMES,
+    hasUsableNovatekGpsTable,
     REXING_KODAK_VERSION,
     streamScanFreeGps,
     tryStructuralPath,
@@ -41,7 +43,7 @@ export const freegpsPrimitive: Primitive = {
         // Either marker is a valid signal. Final confirmation is in parse();
         // the streaming probe self-limits to the first chunks if no blocks
         // are found.
-        return index.novatekGpsAtom !== null || index.hasFreeGpsMarker === true;
+        return hasUsableNovatekGpsTable(index) || index.hasFreeGpsMarker === true;
     },
 
     async parse(file: VendorFile, index?: Mp4Index, signal?: AbortSignal): Promise<ParsedRecords> {
@@ -67,8 +69,8 @@ export const freegpsPrimitive: Primitive = {
         }
         // Streaming fallback. Can eat up to 4 GB IO on a long clip - the
         // orchestrator should have decided heavy/light via kind-classification.
-        // Pass freeGpsSeedOffsets so streamScanFreeGps can use the predicted-
-        // offset jump scan (heuristic 1) instead of a full linear walk. The
+        // freeGpsSeedOffsets let streamScanFreeGps start in its predicted-
+        // offset jump mode instead of bootstrapping it from a linear walk. The
         // signal is threaded through so a cancelled ingest stops the multi-GB
         // scan promptly instead of running it to completion.
         const streamed = await streamScanFreeGps(file.file, signal, index.freeGpsSeedOffsets, parseBlock);

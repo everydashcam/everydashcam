@@ -2885,6 +2885,36 @@ interface GpsAtomEntry {
  * the parsed records, or null when there is no usable atom / no candidate table
  * yields a valid first block (caller falls back to the streaming scan).
  */
+/**
+ * Whether the moov `gps ` atom carries at least one entry the structural path
+ * could read. Some firmware writes the atom as a placeholder (70mai rear
+ * channels: count 0, no entries) or fills it with junk (VIOFO A329: the count
+ * matches the block count while every entry is zero or out of range). Both
+ * used to pass as a light structural signal and sent the file into the
+ * streaming scan without seeds; this gate keeps them out of the structural
+ * path and, through the dispatcher, out of the "light" cost class.
+ */
+export function hasUsableNovatekGpsTable(index: Mp4Index): boolean {
+    const atom = index.novatekGpsAtom;
+    if (!atom || !index.moovView) return false;
+    return readGpsAtomEntryCandidates(index.moovView, atom.payloadStart, atom.end, index.fileSize).length > 0;
+}
+
+/**
+ * Whether the `gps ` atom announces blocks even though its entries are
+ * unusable: the canonical count field is non-zero. A firmware that counted
+ * its freeGPS blocks did write them into mdat, so the dispatcher escalates
+ * the marker probe for such a file the way it does for Novatek-named files
+ * instead of giving up at the default window. A zero count is a placeholder
+ * atom and promises nothing.
+ */
+export function novatekGpsTableDeclaresEntries(index: Mp4Index): boolean {
+    const atom = index.novatekGpsAtom;
+    if (!atom || !index.moovView) return false;
+    if (atom.end - atom.payloadStart < 8) return false;
+    return index.moovView.getUint32(atom.payloadStart + 4, false) > 0;
+}
+
 export async function tryStructuralPath(
     file: File,
     index: Mp4Index,
