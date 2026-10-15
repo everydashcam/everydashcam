@@ -40,7 +40,7 @@ import {
     tripCandidatesByChannel,
     contentToFrame,
 } from "../trips.js";
-import type { TripFrame, VideoCandidate } from "../trips.js";
+import type { Trip, TripFrame, VideoCandidate } from "../trips.js";
 import { playbackTimeForContent } from "../video-frame-time.js";
 import { resolveRegroupPlaybackTarget } from "./player-regroup-target.js";
 
@@ -262,12 +262,13 @@ let resumeAfterSeekTimer: ReturnType<typeof setTimeout> | null = null;
 // slot swap: ex-preload becomes active and plays immediately (decoder already
 // warm), ex-active becomes the preload for the file after next.
 //
-// Not covered (micro-pause remains, see plan):
-// - HEVC remux path (cand.needsHevcRemux): a second parallel MSE backend is
-//   too expensive; rare case (BlackVue ELITE 9, Vantrue N2X).
-// - Slave channels in multichannel split: 2x memory per channel; preload is
-//   not needed on single-channel trips. Slaves catch up to master via
-//   attachCandidateToVideo on frame change.
+// Slave channels warm their next file the same way when the device can afford
+// the extra decoders (canPreloadSlaveChannels); promoteSlavePreload swaps them
+// over wherever their next file gets attached.
+//
+// Not covered (micro-pause remains):
+// - MSE-backed files (hev1 remux, MPEG-TS, Matroska, ADPCM audio): a second
+//   parallel MSE backend per channel is not attempted.
 // - Manual seek across a file boundary: explicit user jump - clears preload;
 //   new active loadedmetadata kicks it again.
 
@@ -348,7 +349,7 @@ function canPreloadSlaveChannels(channelCount: number): boolean {
  *    preload) advances to frame+2.
  */
 function schedulePreloadNext(): void {
-    if (!state.active) return;
+    if (!state.active || state.exportModeOpen) return;
     const trip = state.trips[state.active.trip];
     if (!trip) return;
     const masterCh = effectiveMasterChannel();
@@ -424,21 +425,38 @@ function schedulePreloadNext(): void {
  * that keeps its file across the boundary needs no slot.
  */
 function scheduleSlavePreloads(nextFrame: TripFrame, masterCh: Channel): void {
+    const trip = activeTrip();
+    if (!trip) return;
     const preloadSlaves = canPreloadSlaveChannels(frameChannels(nextFrame).length);
     for (const ch of ALL_CHANNELS) {
         if (ch === masterCh) continue;
-        const cand = nextFrame.channels[ch];
-        if (
-            !preloadSlaves ||
-            !cand ||
-            videoAttachedFile.get(channelPlayers[ch]) === cand.file ||
-            !isPreloadableCandidate(cand)
-        ) {
+        const cand = preloadSlaves ? nextSlaveCandidate(trip, ch, nextFrame) : undefined;
+        if (!cand || !isPreloadableCandidate(cand)) {
             clearPreloadSlot(ch);
             continue;
         }
         setPreloadSrc(ch, cand);
     }
+}
+
+/**
+ * The file a slave channel will need next. Relative to the file the slave
+ * currently plays, not to the master's next frame: a drifting camera can still
+ * be finishing the previous clip when the master crosses its boundary, and a
+ * slot warmed with the file after next would miss the swap that is actually
+ * coming. Falls back to the next frame's file when the slave holds nothing.
+ * Undefined when the slave keeps its file (nothing to warm) or has no next.
+ */
+function nextSlaveCandidate(trip: Trip, ch: Channel, nextFrame: TripFrame): VideoCandidate | undefined {
+    const current = videoAttachedFile.get(channelPlayers[ch]);
+    const sequence = tripCandidatesByChannel(trip, ch);
+    const currentIdx = current ? sequence.findIndex((candidate) => candidate.file === current) : -1;
+    if (currentIdx < 0) {
+        const cand = nextFrame.channels[ch];
+        return cand && cand.file !== current ? cand : undefined;
+    }
+    if (currentIdx + 1 < sequence.length) return sequence[currentIdx + 1];
+    return state.tripEndBehavior === "loop" && sequence.length > 1 ? sequence[0] : undefined;
 }
 
 /**
@@ -468,7 +486,13 @@ function promoteSlavePreload(ch: Channel, cand: VideoCandidate, positionSec: num
     if (Math.abs(preload.currentTime - target) > 0.01) preload.currentTime = target;
     swapActiveSlot(ch);
     clearVideoSrc(previous);
-    if (isPlaybackIntended) preload.play().catch(() => {});
+    // Follow the master's live state, not the intent: a master held paused by
+    // the MSE backend's reseek must not have a slave running ahead of it. A
+    // master that starts right after this swap brings the slave along through
+    // the play proxy.
+    if (!activePlayer().paused) preload.play().catch(() => {});
+    // The export crop preview is written onto the physical element.
+    syncCropPreviews();
     log.info("slave preload promoted", { channel: ch, file: cand.file.name, positionSec: target });
     return true;
 }
@@ -2422,12 +2446,21 @@ export function initPlayer(): void {
     // Export-mode toggles -> recompute --dc-output-aspect so the letterbox
     // snaps to the right shape on open/close. Same subscriber catches
     // outputPresetId changes (top-panel writes them and notifies).
+    let wasExportModeOpen = state.exportModeOpen;
     subscribeExportState(() => {
         syncOutputAspect();
         // Keep the digital-zoom badge in sync with export mode: it must hide while
         // the crop editor owns the transform. applyVideoZoom updates the badge then
         // bails early in export mode (cheap), and re-applies zoom on close.
         applyVideoZoom();
+        // Warm slots hold decoder sessions the export pipeline needs for
+        // itself; release them while export mode is open and warm up again
+        // when playback is back in charge.
+        if (state.exportModeOpen !== wasExportModeOpen) {
+            wasExportModeOpen = state.exportModeOpen;
+            if (state.exportModeOpen) clearAllPreloadSlots();
+            else schedulePreloadNext();
+        }
     });
 
     initPlayerVolume({ applyAudioRouting: syncAudioRouting });
