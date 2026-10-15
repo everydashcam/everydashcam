@@ -69,10 +69,7 @@ export default defineConfig({
             use: { channel: process.env.PW_CHANNEL || "chromium" },
         },
         {
-            // Real detector coverage is required here, even on GPU-less CI.
-            // Linux CI selects Mesa lavapipe through VK_DRIVER_FILES. Chrome's
-            // bundled SwiftShader lacks shader-f16, which our models require.
-            // Vulkan flags: https://developer.chrome.com/blog/supercharge-web-ai-testing
+            // Real detector coverage requires shader-f16 and runs on Metal in CI.
             name: "detectors-webgpu",
             default: false,
             metadata: { requireWebGpu: true },
@@ -83,12 +80,7 @@ export default defineConfig({
                 channel: "chromium",
                 trace: "retain-on-failure",
                 launchOptions: {
-                    args: [
-                        "--enable-unsafe-webgpu",
-                        ...(process.platform === "linux"
-                            ? ["--use-angle=vulkan", "--enable-features=Vulkan", "--disable-vulkan-surface"]
-                            : []),
-                    ],
+                    args: ["--enable-unsafe-webgpu"],
                 },
             },
         },

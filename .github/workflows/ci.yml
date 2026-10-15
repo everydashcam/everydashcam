@@ -107,10 +107,11 @@ jobs:
           if-no-files-found: ignore
 
   # The default headless project may skip detection when no adapter exists.
-  # Lavapipe runs the packaged FP16 models on the CPU through Vulkan/WebGPU;
-  # the dedicated project fails if either WebGPU or shader-f16 is unavailable.
+  # Metal supports the packaged FP16 models. Linux Chromium rejects Lavapipe's
+  # external-image interop and falls back to SwiftShader without shader-f16.
+  # The dedicated project fails if either WebGPU or shader-f16 is unavailable.
   detectors:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -124,14 +125,6 @@ jobs:
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps --no-shell chromium
-
-      - name: Select software Vulkan driver
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
-          driver_path="$(dpkg -L mesa-vulkan-drivers | awk '/\/lvp_icd[^/]*\.json$/ { print; exit }')"
-          test -n "$driver_path" && test -f "$driver_path"
-          echo "VK_DRIVER_FILES=$driver_path" >> "$GITHUB_ENV"
 
       - name: Required detector coverage
         run: npm run test:e2e -- --project=detectors-webgpu --workers=1 --retries=0 --reporter=list,github,blob

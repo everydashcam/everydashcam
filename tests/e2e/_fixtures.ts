@@ -737,20 +737,38 @@ export async function hasWebGpuAdapter(page: Page): Promise<boolean> {
     const capability = await page.evaluate(async () => {
         const gpu = (
             navigator as unknown as {
-                gpu?: { requestAdapter(): Promise<{ features: { has(name: string): boolean } } | null> };
+                gpu?: {
+                    requestAdapter(): Promise<{
+                        features: { has(name: string): boolean };
+                        info: { vendor: string; architecture: string; device: string; description: string };
+                    } | null>;
+                };
             }
         ).gpu;
         if (!gpu) return { adapter: false, fp16: false };
         try {
             const adapter = await gpu.requestAdapter();
-            return { adapter: !!adapter, fp16: adapter?.features.has("shader-f16") ?? false };
+            return {
+                adapter: !!adapter,
+                fp16: adapter?.features.has("shader-f16") ?? false,
+                info: adapter && {
+                    vendor: adapter.info.vendor,
+                    architecture: adapter.info.architecture,
+                    device: adapter.info.device,
+                    description: adapter.info.description,
+                },
+            };
         } catch {
             return { adapter: false, fp16: false };
         }
     });
     if (test.info().project.metadata.requireWebGpu) {
-        expect(capability.adapter, "required detector project must acquire a WebGPU adapter").toBe(true);
-        expect(capability.fp16, "required detector project must support shader-f16 for packaged models").toBe(true);
+        const detail = JSON.stringify(capability);
+        expect(capability.adapter, `required detector project must acquire a WebGPU adapter: ${detail}`).toBe(true);
+        expect(
+            capability.fp16,
+            `required detector project must support shader-f16 for packaged models: ${detail}`,
+        ).toBe(true);
     }
     return capability.adapter;
 }
