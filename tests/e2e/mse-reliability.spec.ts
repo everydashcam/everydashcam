@@ -59,7 +59,9 @@ test.beforeAll(async () => {
         ["long-gop", { gopDurationSec: 10, gopCount: 3 }],
         ["short-audio", { audioDurationSec: 0.4 }],
         ["seek-zero", { gopCount: 120, preserveFrameTiming: true }],
-        ["audio-leading", { gopDurationSec: 10, gopCount: 3, audioDurationSec: 30, audioLeadSec: 1024 / 48000 }],
+        // Audio starts a full second before video: the muxer emits that lead as
+        // fragments without video samples before the first keyframe lands.
+        ["audio-leading", { gopDurationSec: 10, gopCount: 3, audioDurationSec: 31, audioLeadSec: 1 }],
         ["matched-audio", { gopCount: 2, audioDurationSec: 2 }],
         ["plain", { gopCount: 2 }],
         ["mirrored", { gopCount: 2, videoMetadata: { flip: true } }],
@@ -291,6 +293,26 @@ test("plays MPEG-TS video with AAC sound before and after a seek", async ({ page
     ).toEqual([]);
 });
 
+test("keeps the MPEG-TS buffer inside the ahead window while playing", async ({ page }) => {
+    await loadTrip(page, join(fixtureDirectory, "ts-audio"));
+    await expect
+        .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
+        .toBeGreaterThan(3);
+    // The worker feeds a bounded window ahead of the playhead (BASE_BUFFER_AHEAD_SEC
+    // plus the fragment that closes it). A buffer far beyond that means the feed
+    // gate opened wide, which is how a clip ends up thrashing the SourceBuffer quota.
+    const lead = await page.locator("#player").evaluate((video: HTMLVideoElement) => {
+        const end = video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0;
+        return end - video.currentTime;
+    });
+    expect(lead).toBeLessThan(14);
+    expect(
+        await page.evaluate(() =>
+            window.__everydashcam.dumpLog().filter((entry) => /quota exceeded|backend fail/.test(entry.msg)),
+        ),
+    ).toEqual([]);
+});
+
 test("seeks back to the initial position after MSE trims it", async ({ page }) => {
     await loadTrip(page, join(fixtureDirectory, "seek-zero"));
     await expect
@@ -349,10 +371,14 @@ test("discards a quota-blocked append when seeking to a new feed cycle", async (
     expect((await readQuotaFault(page)).retries).toBe(0);
 });
 
-test("frees a complete video GOP when leading audio follows it in a separate fragment", async ({ page }) => {
+test("frees a complete video GOP after leading audio arrived in its own fragments", async ({ page }) => {
     await installQuotaFault(page, 20);
     await loadTrip(page, join(fixtureDirectory, "audio-leading"));
-    await expect.poll(async () => (await readQuotaFault(page)).injected).toBe(true);
+    // The third GOP is fed once the playhead is within the ahead window of the
+    // second GOP's end, so the fault lands at about 13 s of playback.
+    await expect
+        .poll(async () => (await readQuotaFault(page)).injected, { timeout: 25_000 })
+        .toBe(true);
     await expect
         .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
         .toBeGreaterThan(6);

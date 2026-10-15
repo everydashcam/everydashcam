@@ -91,11 +91,12 @@ const MIN_ADAPTIVE_AHEAD_SEC = 2.5;
 // Normal frame/codec padding differences fit inside the playback cushion.
 const AUDIO_TAIL_TOLERANCE_SEC = 0.25;
 
-// Backpressure is event-driven via tickWaiters: when MSE_NOTIFY_TICK lands
+// Backpressure is event-driven via feedWaiters: when MSE_NOTIFY_TICK lands
 // (periodic 200 ms from main + out-of-band on every SourceBuffer updateend)
-// waitForBufferRoom re-evaluates instead of polling on a setTimeout. Saves
-// the up-to-200-ms latency on updateend - on 8x playback that is ~1.6 sec
-// of video the feed used to sit idle waiting for the next poll.
+// or the audio feed advances, waitForBufferRoom re-evaluates instead of
+// polling on a setTimeout. Saves the up-to-200-ms latency on updateend - on
+// 8x playback that is ~1.6 sec of video the feed used to sit idle waiting
+// for the next poll.
 
 // Baseline appendQueue ceiling at 1x. Scaled by playbackRate for the same
 // reason as the buffer target: at 8x, mediabunny output emits fragments
@@ -182,6 +183,20 @@ interface FeedCycle {
      */
     bytesEmitted: number;
     mediaSecondsCovered: number;
+    /**
+     * Highest audio timestamp the stream-copy audio feed has handed to the
+     * muxer, and whether that feed has finished. feedVideo never adds a
+     * packet past this mark (waitForBufferRoom): the fragmented muxer
+     * finalizes a fragment only when every open track has a sample queued
+     * past the keyframe that closes it, so video that outruns the audio
+     * reader leaves fragments unflushed while feedEmittedUpToSec - the only
+     * thing the ahead-window sees - stands still, and the feed reads the
+     * whole file into the muxer (seen on 2-channel MPEG-TS: a 135 s burst
+     * into the SourceBuffer and QuotaExceededError). Infinity when audio is
+     * absent or transcoded, since those paths cannot starve the muxer.
+     */
+    audioFedUpToSec: number;
+    audioFeedDone: boolean;
 }
 
 let currentCycle: FeedCycle | null = null;
@@ -190,29 +205,29 @@ let currentCycle: FeedCycle | null = null;
 let lastTick = { currentTime: 0, appendQueueLen: 0, playbackRate: 1, appendPaused: false };
 let failed = false;
 
-// One-shot resolvers waiting for the next MSE_NOTIFY_TICK. Filled by
-// waitForNextTick, drained by the TICK handler. Abort also resolves them
-// (the consumer then sees signal.aborted and exits). Using a Set so a
-// waiter that's already been resolved by tick cannot be double-resolved
-// by a subsequent abort.
-const tickWaiters = new Set<() => void>();
+// One-shot resolvers waiting for the next feed signal: an MSE_NOTIFY_TICK
+// or audio-feed progress. Filled by waitForFeedSignal, drained by
+// wakeFeedWaiters. Abort also resolves them (the consumer then sees
+// signal.aborted and exits). Using a Set so a waiter that's already been
+// resolved by a signal cannot be double-resolved by a subsequent abort.
+const feedWaiters = new Set<() => void>();
 
-function wakeTickWaiters(): void {
-    if (tickWaiters.size === 0) return;
-    const fired = Array.from(tickWaiters);
-    tickWaiters.clear();
+function wakeFeedWaiters(): void {
+    if (feedWaiters.size === 0) return;
+    const fired = Array.from(feedWaiters);
+    feedWaiters.clear();
     for (const w of fired) w();
 }
 
-function waitForNextTick(signal: AbortSignal): Promise<void> {
+function waitForFeedSignal(signal: AbortSignal): Promise<void> {
     if (signal.aborted) return Promise.resolve();
     return new Promise<void>((resolve) => {
         const fire = () => {
-            tickWaiters.delete(fire);
+            feedWaiters.delete(fire);
             signal.removeEventListener("abort", fire);
             resolve();
         };
-        tickWaiters.add(fire);
+        feedWaiters.add(fire);
         signal.addEventListener("abort", fire, { once: true });
     });
 }
@@ -282,7 +297,7 @@ const server = createWorkerServer(self, {
                 };
                 // Wake anyone parked in waitForBufferRoom so they re-evaluate
                 // against the fresh currentTime / appendQueueLen / rate.
-                wakeTickWaiters();
+                wakeFeedWaiters();
                 return;
             }
             case MSE_NOTIFY_SEEK: {
@@ -520,6 +535,10 @@ async function startNewFeedCycle(cycleId: number, armSeekDone: boolean): Promise
         // legitimately have a different bitrate, so the estimate rebases.
         bytesEmitted: 0,
         mediaSecondsCovered: 0,
+        // runFeed lowers this to the primer's timestamp when it starts a
+        // stream-copy audio feed; every other audio path leaves video ungated.
+        audioFedUpToSec: Number.POSITIVE_INFINITY,
+        audioFeedDone: true,
     };
 
     cycle.videoSource = new EncodedVideoPacketSource(videoCodec);
@@ -834,6 +853,8 @@ async function runFeed(cycle: FeedCycle): Promise<void> {
             }
             if (signal.aborted) return;
             if (primedAudioFirstPacket) {
+                cycle.audioFedUpToSec = adjusted.timestamp;
+                cycle.audioFeedDone = false;
                 promises.push(feedAudio(cycle, audioTrack, framePtsOffset, primedAudioFirstPacket));
             }
         } else if (cycle.audioSource) {
@@ -871,13 +892,13 @@ async function feedVideo(
     let pkt: EncodedPacket | null = startKey;
     while (pkt) {
         if (signal.aborted) return;
-        await waitForBufferRoom(cycle);
-        if (signal.aborted) return;
         if (!hasVideoContent(pkt)) {
             pkt = await sink.getNextPacket(pkt, { verifyKeyPackets: true });
             continue;
         }
         const adjustedTs = pkt.timestamp + framePtsOffset;
+        await waitForBufferRoom(cycle, adjustedTs);
+        if (signal.aborted) return;
         const adjusted = framePtsOffset !== 0 ? pkt.clone({ timestamp: adjustedTs }) : pkt;
         const meta = configPushed ? undefined : { decoderConfig: vdc };
         try {
@@ -925,7 +946,10 @@ async function feedAudio(
     // Letting audio race ahead is safe: audio is small (typical AAC ~32 kbps
     // = 1.2 MB for a 5 min clip) and audioSource.add accepts packets without
     // blocking on video. Output emits fragments paced by video keyframes;
-    // audio sits in its internal queue until then.
+    // audio sits in its internal queue until then. The dependency runs the
+    // other way: video must not outrun THIS loop (cycle.audioFedUpToSec), or
+    // the same flush rule leaves the muxer holding every video packet it is
+    // given while the ahead-window never closes.
     try {
         let pkt: EncodedPacket | null = await sink.getNextPacket(primedFirstPacket);
         while (pkt) {
@@ -938,9 +962,18 @@ async function feedAudio(
                 fail("audio-add-threw", e);
                 return;
             }
+            if (adjusted.timestamp > cycle.audioFedUpToSec) {
+                cycle.audioFedUpToSec = adjusted.timestamp;
+                wakeFeedWaiters();
+            }
             pkt = await sink.getNextPacket(pkt);
         }
     } finally {
+        // Release video packets waiting past the last audio sample (the tail
+        // tolerance in hasPlaybackAudioTail) before the muxer learns the
+        // track is closed; a closed track no longer blocks fragment flushes.
+        cycle.audioFeedDone = true;
+        wakeFeedWaiters();
         // A live fragmented muxer waits for every open track before flushing.
         if (!signal.aborted) audioSource.close();
     }
@@ -950,10 +983,18 @@ async function feedAudio(
  * Gate on completed fragments, not packets still buffered inside the muxer.
  * A GOP must reach its next keyframe before MSE can receive any of its data;
  * stopping inside that GOP would wait for playback that cannot start yet.
+ *
+ * The one packet-level rule is the audio lead: a video packet is handed over
+ * only once the audio feed has passed its timestamp (or finished), so every
+ * keyframe can close the fragment before it - see FeedCycle.audioFedUpToSec.
  */
-async function waitForBufferRoom(cycle: FeedCycle): Promise<void> {
+async function waitForBufferRoom(cycle: FeedCycle, packetTimestampSec: number): Promise<void> {
     const signal = cycle.abort.signal;
     while (!signal.aborted) {
+        if (!cycle.audioFeedDone && cycle.audioFedUpToSec <= packetTimestampSec) {
+            await waitForFeedSignal(signal);
+            continue;
+        }
         // Floor currentTime at cycle.startTimestamp. Between worker's
         // onSeek and main's video.currentTime = target write, a tick
         // can arrive carrying the pre-seek currentTime; without the
@@ -977,6 +1018,6 @@ async function waitForBufferRoom(cycle: FeedCycle): Promise<void> {
         const bufferedEnough = ahead >= targetAhead;
         const queueFull = lastTick.appendPaused || lastTick.appendQueueLen >= targetQueueLen;
         if (!bufferedEnough && !queueFull) return;
-        await waitForNextTick(signal);
+        await waitForFeedSignal(signal);
     }
 }

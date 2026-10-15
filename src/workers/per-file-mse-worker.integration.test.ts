@@ -183,6 +183,18 @@ describe("per-file MSE worker with real encoded packets", () => {
         expect((await readCycle(harness.events, 0)).duration).toBeCloseTo(2);
     });
 
+    it("feeds the video tail past the last audio packet of a kept audio track", async () => {
+        // Audio within the tail tolerance is kept, so the final video packets
+        // carry timestamps no audio packet ever reaches: the audio-lead gate
+        // must release them when the audio feed ends, not wait forever.
+        const harness = await openWorker(await createMseFixture({ gopCount: 2, audioDurationSec: 1.85 }));
+        expect(harness.init).toMatchObject({ result: { hasAudio: true } });
+        await harness.waitFor(() => harness.events.some((event) => event.__k === "ntf" && event.type === "feed-done"));
+        const output = await readCycle(harness.events, 0);
+        expect(output.duration).toBeCloseTo(2);
+        expect(output.audioPackets.length).toBeGreaterThan(0);
+    });
+
     it("keeps the video when audio chunk offsets point past the file", async () => {
         const bytes = await createMseFixture({ gopCount: 2, audioDurationSec: 2 });
         const view = new DataView(bytes.buffer);
