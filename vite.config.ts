@@ -15,6 +15,7 @@ import { editionMarkupPlugin } from "./vite-plugins/edition-markup.js";
 import { indexnowKeyPlugin } from "./vite-plugins/indexnow-key.js";
 import { llmsTxtPlugin } from "./vite-plugins/llms-txt.js";
 import { lazyBoundariesPlugin } from "./vite-plugins/lazy-boundaries.js";
+import { mapStylesPlugin } from "./vite-plugins/map-styles.js";
 import { migrationPagePlugin } from "./vite-plugins/migration-page.js";
 import { redirectsPlugin } from "./vite-plugins/redirects.js";
 import { rootStubPlugin } from "./vite-plugins/root-stub.js";
@@ -217,6 +218,7 @@ export default defineConfig(({ command }) => {
         minifyHtmlPlugin(),
         lazyBoundariesPlugin(),
         standaloneFontsPlugin(),
+        mapStylesPlugin(),
         // SEO build pipeline. All three plugins run in closeBundle, AFTER vite
         // has written dist/index.html and html-minifier has minified it. See
         // vite-plugins/seo-prerender.ts for the rationale (hreflang, two

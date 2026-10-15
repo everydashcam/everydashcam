@@ -113,6 +113,18 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
         }
     });
 
+    itIf("hosted map styles preserve the readable source data without its formatting", () => {
+        const sourceDir = resolve(DIST_DIR, "..", "public", "styles");
+        const styles = readdirSync(sourceDir).filter((file) => file.endsWith(".json"));
+        expect(styles.length, "readable map styles exist").toBeGreaterThan(0);
+        for (const file of styles) {
+            const original: unknown = JSON.parse(readFileSync(resolve(sourceDir, file), "utf8"));
+            const emitted = readFileSync(resolve(DIST_DIR, "styles", file), "utf8");
+            expect(JSON.parse(emitted), `${file} retains its layers, expressions and URLs`).toEqual(original);
+            expect(emitted, `${file} ships as compact JSON`).toBe(JSON.stringify(original));
+        }
+    });
+
     itIf("self-hosted fonts stay out of the precache manifest", () => {
         const fonts = readdirSync(resolve(DIST_DIR, "fonts"));
         expect(fonts.length, "dist/fonts has self-hosted fonts").toBeGreaterThan(0);
