@@ -76,7 +76,7 @@
     "idb": "^8.0.4",
     "intl-messageformat": "^12.1.3",
     "maplibre-gl": "6.14.0",
-    "mediabunny": "1.61.4",
+    "mediabunny": "1.61.6",
     "native-file-system-adapter": "3.0.1",
     "onnxruntime-web": "1.30.0"
   },
