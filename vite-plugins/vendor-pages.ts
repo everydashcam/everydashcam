@@ -88,7 +88,7 @@ export interface VendorContent {
     // Search-relevant model families covered by this vendor page.
     models: string[];
     // Every published language carries reviewed camera-specific copy.
-    locales: Record<"en" | "ru", VendorLocaleContent> & Partial<Record<Lang, VendorLocaleContent>>;
+    locales: Record<"en", VendorLocaleContent> & Partial<Record<Lang, VendorLocaleContent>>;
     features?: readonly FeatureSlug[];
 }
 
@@ -824,8 +824,8 @@ function assertVendorListsAligned(): void {
         if (uniqueLocales.size !== brand.locales.length) {
             throw new Error(`vendor-pages: duplicate locale configured for ${brand.slug}`);
         }
-        if (!uniqueLocales.has("en") || !uniqueLocales.has("ru")) {
-            throw new Error(`vendor-pages: ${brand.slug} must ship in English and Russian`);
+        if (!uniqueLocales.has("en")) {
+            throw new Error(`vendor-pages: ${brand.slug} must ship in English`);
         }
         for (const lang of uniqueLocales) {
             if (!indexableLangs.has(lang)) {

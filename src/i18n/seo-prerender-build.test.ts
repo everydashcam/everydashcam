@@ -690,7 +690,7 @@ describe("matchVendorRoute", () => {
         expect(matchVendorRoute("/pl/cameras/navitel/")?.kind).toBe("vendor");
         expect(matchVendorRoute("/de/cameras/mio/")?.kind).toBe("vendor");
         expect(matchVendorRoute("/ru/cameras/navman/")?.kind).toBe("vendor");
-        expect(matchVendorRoute("/es/cameras/nextbase/")).toBeNull();
+        expect(matchVendorRoute("/es/cameras/nextbase/")?.kind).toBe("vendor");
         expect(matchVendorRoute("/de/cameras/navitel/")).toBeNull();
         expect(matchVendorRoute("/de/cameras/navman/")).toBeNull();
         expect(matchVendorRoute("/en/cameras/mivue/")).toBeNull();
@@ -774,10 +774,9 @@ describe("SUPPORTED_BRANDS landing brands match VENDORS", () => {
         }
     });
 
-    it("publishes every dedicated brand page in English and Russian", () => {
+    it("publishes every dedicated brand page in English as the common fallback", () => {
         for (const brand of getLandingBrands()) {
             expect(brand.locales, `${brand.slug} English baseline`).toContain("en");
-            expect(brand.locales, `${brand.slug} Russian baseline`).toContain("ru");
         }
     });
 });

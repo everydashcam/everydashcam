@@ -89,7 +89,9 @@ export type VendorSlug =
 
 // A new product locale must not silently multiply every vendor page. The
 // rollout list is explicit per brand so only useful, reviewed translations
-// enter the sitemap and hreflang graph.
+// enter the sitemap and hreflang graph. English is the common fallback;
+// every other language, including Russian, follows the brand's audience.
+// Owners and recording discussions matter alongside current local sales.
 const ALL_VENDOR_LOCALES = [
     "en",
     "ru",
@@ -153,14 +155,14 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         displayName: "Nextbase",
         slug: "nextbase",
         hasLandingPage: true,
-        locales: ["en", "ru", "de", "fr", "pl"],
+        locales: ["en", "ru", "de", "es", "fr", "pl"],
         gpsSamples: ["322GW"],
     },
     {
         displayName: "REDTIGER",
         slug: "redtiger",
         hasLandingPage: true,
-        locales: ["en", "ru", "de", "es"],
+        locales: ["en", "ru", "de", "es", "fr", "ja"],
         gpsSamples: ["F7NP-4K", "F17"],
     },
     {
@@ -174,7 +176,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         displayName: "Mio MiVue",
         slug: "mio",
         hasLandingPage: true,
-        locales: ["en", "ru", "de", "fr", "pl"],
+        locales: ["en", "ru", "de", "fr", "pl", "zh"],
         gpsSamples: ["955WD Pro"],
     },
     {
@@ -188,17 +190,23 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         displayName: "FITCAMX",
         slug: "fitcamx",
         hasLandingPage: true,
-        locales: ["en", "ru", "de", "pl"],
+        locales: ["en", "ru", "de", "pl", "zh"],
     },
     {
         displayName: "Avylet",
         slug: "avylet",
         hasLandingPage: true,
-        locales: ["en", "ru"],
+        locales: ["en", "ru", "ja"],
         gpsSamples: ["A1"],
         recordingCaveat: "optionalGps",
     },
-    { displayName: "iZEEKER", slug: "izeeker", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["iD300"] },
+    {
+        displayName: "iZEEKER",
+        slug: "izeeker",
+        hasLandingPage: true,
+        locales: ["en", "ru", "ja"],
+        gpsSamples: ["iD300"],
+    },
     { displayName: "COMTEC", slug: "comtec", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["EG-1"] },
     { displayName: "Compartir", slug: "compartir", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: [] },
     {
@@ -208,7 +216,13 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         locales: ["en", "ru"],
         gpsSamples: ["S1 4K Infinite"],
     },
-    { displayName: "Botslab", slug: "botslab", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["G300H Pro"] },
+    {
+        displayName: "Botslab",
+        slug: "botslab",
+        hasLandingPage: true,
+        locales: ["en", "ru", "de"],
+        gpsSamples: ["G300H Pro"],
+    },
     { displayName: "Neoline", slug: "neoline", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["Spectrum"] },
     { displayName: "Juscar", hasLandingPage: false, gpsSamples: [] },
     { displayName: "Escort", slug: "escort", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["M2"] },
@@ -242,7 +256,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         locales: ["en", "ru"],
         gpsSamples: ["Expert 9"],
     },
-    { displayName: "Sony", slug: "sony", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["HDR-AS30V"] },
+    { displayName: "Sony", slug: "sony", hasLandingPage: true, locales: ALL_VENDOR_LOCALES, gpsSamples: ["HDR-AS30V"] },
     {
         displayName: "JOOYFACT",
         slug: "jooyfact",
@@ -250,7 +264,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         locales: ["en", "ru"],
         videoSamples: ["A1"],
     },
-    { displayName: "HP", slug: "hp", hasLandingPage: true, locales: ["en", "ru"], videoSamples: ["f969x"] },
+    { displayName: "HP", slug: "hp", hasLandingPage: true, locales: ["en", "ru", "zh"], videoSamples: ["f969x"] },
     {
         displayName: "SilverStone F1",
         slug: "silverstone-f1",
@@ -270,7 +284,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         displayName: "DDPAI",
         slug: "ddpai",
         hasLandingPage: true,
-        locales: ["en", "ru"],
+        locales: ["en", "ru", "pl", "zh"],
         videoSamples: ["MOLA N3", "Z50"],
         gpsSamples: ["Z60 Pro"],
     },
@@ -285,7 +299,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         displayName: "INNOVV",
         slug: "innovv",
         hasLandingPage: true,
-        locales: ["en", "ru"],
+        locales: ["en", "ru", "de", "es", "fr"],
         gpsSamples: ["N2", "K3"],
     },
     {

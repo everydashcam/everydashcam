@@ -114,7 +114,7 @@ describe("supported camera catalog", () => {
         }
         expect(page("fitcamx")).not.toContain('href="/en/add-data-overlay-to-dashcam-video/"');
         expect(page("fitcamx")).toContain('href="/en/combine-dashcam-cameras-into-one-video/"');
-        for (const slug of ["avylet", "sony", "hp"]) {
+        for (const slug of ["avylet", "hp"]) {
             expect(matchVendorRoute(`/de/cameras/${slug}/`)).toBeNull();
             const route = matchVendorRoute(`/en/cameras/${slug}/`);
             if (route?.kind !== "vendor") throw new Error(`missing camera page: ${slug}`);

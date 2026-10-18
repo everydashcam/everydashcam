@@ -125,8 +125,12 @@ For browser tests, install Playwright's pinned full browser with
 ## Localization
 
 - UI copy goes through `src/i18n/`, never literals. English owns meaning; Russian
-  and English ship together, and all shipped dictionaries keep key parity with
+  and English UI copy ship together, and all shipped dictionaries keep key parity with
   `src/i18n/keys.ts`. Follow the voice guide in the task table below.
+- Camera landing pages require English as the common fallback. Other languages,
+  including Russian, follow each brand's audience and the explicit locale list in
+  `vite-plugins/supported-brands.ts`. Every published locale needs reviewed
+  camera-specific copy.
 - Pass the UI locale explicitly to `Intl.*`; use `getDateLocale()` from
   `src/i18n/index.ts`, not the browser default or a hard-coded two-language choice.
 - Locale routing lives in `src/i18n/seo-config.ts`; an explicit locale URL wins

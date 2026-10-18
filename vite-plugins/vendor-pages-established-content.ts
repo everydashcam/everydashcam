@@ -13,7 +13,7 @@ interface EstablishedCamera {
     displayName: string;
     models: string[];
     features: readonly FeatureSlug[];
-    locales: Record<"en" | "ru", RecordingCopy> & Partial<Record<Lang, RecordingCopy>>;
+    locales: Record<"en", RecordingCopy> & Partial<Record<Lang, RecordingCopy>>;
 }
 
 const LABELS: Record<Lang, { title: string; cta: string }> = {
@@ -582,6 +582,13 @@ const PAGES: EstablishedCamera[] = [
                 openTip:
                     "Nutze die Originalclips hoher Qualität mit H am Namensende, etwa _FH.MP4. L-Versionen sind kleinere Kopien derselben Ansicht. Behalte die ursprünglichen Namen und Datumsangaben.",
             },
+            es: {
+                lead: "Abre las grabaciones originales de Nextbase 322GW con ruta GPS y gráfico de velocidad. Revisa el viaje y guarda un fragmento localmente en el navegador.",
+                compatibility:
+                    "El vídeo y el GPS se han comprobado en una grabación del 322GW terminada en _FH. Esto no confirma la compatibilidad de otros modelos Nextbase ni de todas las combinaciones de grabaciones delanteras y traseras.",
+                openTip:
+                    "Usa los vídeos originales de alta calidad, con H al final del nombre, como _FH.MP4. Las versiones L son copias más pequeñas de la misma vista; conserva los nombres y las fechas originales.",
+            },
             fr: {
                 lead: "Ouvre les vidéos originales Nextbase 322GW avec trajet GPS et graphique de vitesse. Regarde le trajet et garde un extrait localement.",
                 compatibility:
@@ -631,6 +638,20 @@ const PAGES: EstablishedCamera[] = [
                     "Vídeo, cámaras emparejadas y GPS se han comprobado en grabaciones F7NP-4K y F17. El antiguo GPS cifrado del F7N no se puede leer; la velocidad dibujada no basta para mostrar una ruta.",
                 openTip:
                     "Abre la carpeta común de Movie_F y Movie_R en F7NP-4K, o Video_Front, Video_Inside y Video_Rear en F17. Conserva las carpetas Event o Parking disponibles y los nombres originales para mantener juntas las vistas.",
+            },
+            fr: {
+                lead: "Regarde les enregistrements REDTIGER F7NP-4K et F17 avec les vues des caméras, la carte GPS et la vitesse. Enregistre le passage utile sans envoyer le trajet en ligne.",
+                compatibility:
+                    "La vidéo, les vues appariées et le GPS ont été vérifiés sur des enregistrements F7NP-4K et F17. L’ancien format GPS chiffré du F7N n’est pas lisible ; la vitesse affichée sur l’image ne suffit pas à tracer le trajet sur une carte.",
+                openTip:
+                    "Ouvre le dossier parent commun à Movie_F et Movie_R sur le F7NP-4K, ou à Video_Front, Video_Inside et Video_Rear sur le F17. Garde les dossiers Event ou Parking s’ils sont présents et les noms d’origine pour conserver les vues ensemble.",
+            },
+            ja: {
+                lead: "REDTIGER F7NP-4K と F17 の各カメラの録画を、GPS 地図や速度と一緒に確認。走行動画をアップロードせずに必要な部分を保存できます。",
+                compatibility:
+                    "F7NP-4K と F17 の録画で、動画再生、カメラ映像の組み合わせ、GPS を確認済みです。F7N の旧式の暗号化 GPS 形式は読み取れず、映像に表示された速度だけでは地図にルートを表示できません。",
+                openTip:
+                    "F7NP-4K では Movie_F と Movie_R、F17 では Video_Front、Video_Inside、Video_Rear に共通する親フォルダーを開いてください。Event や Parking フォルダーがあればそれも残し、各カメラの映像をまとめられるよう元のファイル名を保ってください。",
             },
         },
     },
@@ -704,6 +725,13 @@ const PAGES: EstablishedCamera[] = [
                 openTip:
                     "Otwórz wspólny folder nadrzędny dla F i R. Zachowaj nazwy FILE…F.mp4 i FILE…R.mp4 oraz pasujące .NMEA obok przednich nagrań.",
             },
+            zh: {
+                lead: "打开 Mio MiVue 955WD Pro 的前后录像，一起查看路线和速度。保留配套的 NMEA 文件，才能显示地图。",
+                compatibility:
+                    "已在 955WD Pro 录像中验证视频播放、前后画面配对和 GPS。路线来自前置视频配套的 .NMEA 文件；只复制后置视频会漏掉这些数据。",
+                openTip:
+                    "打开 F 和 R 文件夹共同的上级文件夹。保留 FILE…F.mp4 和 FILE…R.mp4 的原始名称，并将配套的 .NMEA 文件与前置录像放在一起。",
+            },
         },
     },
     {
@@ -762,6 +790,13 @@ const PAGES: EstablishedCamera[] = [
                 openTip:
                     "Otwórz cały folder z Movie, Movie_E, EMR i EMR_E, jeśli są dostępne. Foldery _E oznaczają tył, a EMR zapisane zdarzenia. Zachowaj te foldery i oryginalne nazwy plików.",
             },
+            zh: {
+                lead: "一起查看 FITCAMX 的前后录像。普通片段和已保存片段保持有序，按需截取并保存所需部分。",
+                compatibility:
+                    "支持范围以已验证的 FITCAMX TS 和 MP4 录像格式为准，不涵盖所有车型专用套件。已确认视频可正常播放，但尚未确认这些格式能显示 GPS 地图。",
+                openTip:
+                    "打开整个录像文件夹，包括其中的 Movie、Movie_E、EMR 和 EMR_E 文件夹（如有）。_E 文件夹表示后置画面，EMR 表示已保存的事件；请保留这些文件夹和原始文件名。",
+            },
         },
     },
 ];
@@ -784,5 +819,5 @@ export const establishedCameraPages: VendorContent[] = PAGES.map(({ locales, ...
             formatIntro: copy.openTip,
         };
     }
-    return { ...page, locales: { ...translated, en: translated.en!, ru: translated.ru! } };
+    return { ...page, locales: { ...translated, en: translated.en! } };
 });
