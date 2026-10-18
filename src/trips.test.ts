@@ -2708,6 +2708,82 @@ describe("finalizeTrip: cross-channel accel transplant (per-channel IMU)", () =>
     });
 });
 
+describe("finalizeTrip: unsynced GPS copies on sibling channels (novatek-ts F+R)", () => {
+    // A camera that muxes one GPS stream into every channel hands the trip a
+    // copy per channel, each with a placeholder clock anchored on its own file
+    // start. Sibling filenames routinely differ by one second, so the copies
+    // land a second apart and the interleaved track zigzags: a 31 km ride read
+    // as 90 km. The frame plays the sibling video from the canonical start, so
+    // its GPS copy must move onto the same axis and collapse in the dedup.
+    const SAME_CAM = "cam-dual-gps";
+
+    // Records as reanchorUnsyncedTimes leaves them: startUtc + relStartSeconds.
+    // steps[i] is the position along a straight northbound line, 0.0001 deg each.
+    function unsyncedCopy(name: string, startUtc: number, steps: number[]): GpsRecord[] {
+        return steps.map((step, i) => ({
+            ...makeRecord(startUtc + i, 50 + step * 0.0001, 30),
+            mp4Filename: name,
+            speedMs: 11,
+            timeUnsynced: true,
+            relStartSeconds: i,
+        }));
+    }
+
+    function channelCandidate(
+        name: string,
+        channel: Channel,
+        startUtc: number,
+        records: GpsRecord[],
+        sequence = 1,
+    ): VideoCandidate {
+        return makeCandidate({ name, channel, startUtc, durationSec: 60, sequence, fingerprint: SAME_CAM, records });
+    }
+
+    it("collapses a sibling copy anchored one second later onto the frame axis", () => {
+        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 1, 2, 3]));
+        const rear = channelCandidate("r.ts", "rear", 1001, unsyncedCopy("r.ts", 1001, [0, 1, 2, 3]));
+        const trips = groupTrips([front, rear]);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expect(trip.frames).toHaveLength(1);
+        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003]);
+        expect(trip.distanceKm, "one straight pass, no zigzag").toBeCloseTo(haversineKm(50, 30, 50.0003, 30), 8);
+        // Clone, not in-place: the rear's parser-owned records keep their own anchor.
+        expect(rear.records.map((r) => r.unixSeconds)).toEqual([1001, 1002, 1003, 1004]);
+    });
+
+    it("fills a frame whose canonical channel lacks GPS from the sibling copy, on the frame axis", () => {
+        const front1 = channelCandidate("f1.ts", "front", 1000, unsyncedCopy("f1.ts", 1000, [0, 1]));
+        const rear1 = channelCandidate("r1.ts", "rear", 1001, unsyncedCopy("r1.ts", 1001, [0, 1]));
+        const front2 = channelCandidate("f2.ts", "front", 1060, [], 2);
+        const rear2 = channelCandidate("r2.ts", "rear", 1061, unsyncedCopy("r2.ts", 1061, [2, 3]), 2);
+        const trips = groupTrips([front1, rear1, front2, rear2]);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expect(trip.frames).toHaveLength(2);
+        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1060, 1061]);
+        expect(trip.distanceKm).toBeCloseTo(haversineKm(50, 30, 50.0003, 30), 8);
+    });
+
+    it("leaves satellite-synced sibling records on their own clock", () => {
+        const synced = (name: string, startUtc: number): GpsRecord[] =>
+            [0, 1].map((i) => ({ ...makeRecord(startUtc + i, 50 + i * 0.0001, 30), mp4Filename: name, speedMs: 11 }));
+        const front = channelCandidate("f.ts", "front", 1000, synced("f.ts", 1000));
+        const rear = channelCandidate("r.ts", "rear", 1001, synced("r.ts", 1001));
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1001, 1002]);
+    });
+
+    it("does not shift a copy whose clock synced mid-file", () => {
+        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 1]));
+        const rearRecords = unsyncedCopy("r.ts", 1001, [0, 1]);
+        rearRecords.push({ ...makeRecord(1003, 50.0002, 30), mp4Filename: "r.ts", speedMs: 11 });
+        const rear = channelCandidate("r.ts", "rear", 1001, rearRecords);
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1001, 1002, 1003]);
+    });
+});
+
 describe("estimateProvisionalDurationByFingerprint", () => {
     const fp = (fingerprint: string, startUtc: number) => ({ fingerprint, startUtc });
 

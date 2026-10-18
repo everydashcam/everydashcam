@@ -20,7 +20,7 @@ import type { Mp4Rotation } from "./indexer.js";
 import { createLogger } from "./log.js";
 import { classifyFilenameRecordingKey, classifyFilenameTime } from "./parsers/filename/index.js";
 import { findStaleGpsCandidates, usableCandidateRecords } from "./stale-gps.js";
-import { normalizeTripTrackSegments } from "./trip-track-segments.js";
+import { normalizeTripTrackSegments, type TripGpsSource } from "./trip-track-segments.js";
 
 const log = createLogger("trips");
 
@@ -1465,9 +1465,10 @@ function finalizeTrip(frames: TripFrame[]): Trip {
  *  Every GPS calibration starts here, so repeated edits never accumulate
  *  floating-point drift or lose points trimmed by the previous value. */
 function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsRecord[]; mergedCount: number } {
-    // Records from all channels in all frames. Dedup by (unixSeconds, lat, lon)
-    // guards against duplicates if a vendor writes GPS on multiple channels
-    // simultaneously (on 70mai GPS is only on front, so no duplicates by design).
+    // Records from all channels in all frames, each channel's file placed on
+    // its frame's wall axis (frameGpsSource). Dedup by (unixSeconds, lat, lon)
+    // collapses the copies a vendor writes when it muxes one GPS stream into
+    // every channel (novatek-ts F+R; 70mai carries GPS on front only).
     // frameChannels iterates in CHANNEL_PRIORITY order (front first), so front's
     // record wins its identity on a collision - but a camera with per-channel IMU
     // can carry the impact spike on the lower-priority channel, so transplant the
@@ -1476,12 +1477,16 @@ function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsReco
     // across regroups. indexByKey holds the survivor's slot in the pre-sort array.
     const indexByKey = new Map<string, number>();
     const merged: GpsRecord[] = [];
-    const sources = uniqueFrameCandidates(frames).map((candidate) => ({
-        records: usableCandidateRecords(candidate),
-        startUtc: candidate.startUtc,
-        endUtc: candidate.startUtc + (candidate.wallDurationSec ?? candidate.durationSec),
-        channel: candidate.channel,
-    }));
+    const sources: TripGpsSource[] = [];
+    const seen = new Set<VideoCandidate>();
+    for (const frame of frames) {
+        for (const channel of frameChannels(frame)) {
+            const candidate = frame.channels[channel];
+            if (!candidate || seen.has(candidate)) continue;
+            seen.add(candidate);
+            sources.push(frameGpsSource(frame, candidate));
+        }
+    }
     for (const records of normalizeTripTrackSegments(sources)) {
         for (const r of records) {
             const key = `${r.unixSeconds}|${r.lat}|${r.lon}|${r.trackSegment ?? ""}`;
@@ -1510,6 +1515,48 @@ function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsReco
     // chart, distance, events, export), and it recomputes on every regroup -
     // candidate records and state.gpsLog keep the raw parser output.
     return { records: dropTeleportOutliers(merged), mergedCount: merged.length };
+}
+
+/**
+ * GPS source of one channel's file, placed on the wall axis its frame plays
+ * it on. A camera that muxes its single GPS stream into every channel hands
+ * the trip one copy per channel, each with a placeholder clock
+ * (`timeUnsynced`) that reanchorUnsyncedTimes tied to that file's own start.
+ * Sibling files of one frame open within the same second, yet their filename
+ * clocks routinely differ by one tick, so the copies land a second apart and
+ * interleave into a zigzag (p(t), p(t-1), p(t+1), ...) that triples the
+ * measured distance. The frame already plays the sibling video from the
+ * canonical channel's start (finalizeFrameTiming), so its placeholder clock
+ * moves by the same delta and identical fixes collapse in the cross-channel
+ * dedup. Satellite-synced records keep their clock; so does a file whose
+ * clock synced mid-way, because its cold-start rows are pinned below the
+ * first synced row and must not cross it. Interval frames place every file by
+ * its own start through mediaOffsetSec, so their copies already share an axis.
+ * Returns clones when shifting; parser-owned records are never mutated.
+ */
+function frameGpsSource(frame: TripFrame, candidate: VideoCandidate): TripGpsSource {
+    const records = usableCandidateRecords(candidate);
+    const wallDurationSec = candidate.wallDurationSec ?? candidate.durationSec;
+    const shiftSec = frame.mediaOffsetSec ? 0 : frame.startUtc - candidate.startUtc;
+    if (
+        !Number.isFinite(shiftSec) ||
+        shiftSec === 0 ||
+        records.length === 0 ||
+        !records.every((record) => record.timeUnsynced)
+    ) {
+        return {
+            records,
+            startUtc: candidate.startUtc,
+            endUtc: candidate.startUtc + wallDurationSec,
+            channel: candidate.channel,
+        };
+    }
+    return {
+        records: records.map((record) => ({ ...record, unixSeconds: record.unixSeconds + shiftSec })),
+        startUtc: frame.startUtc,
+        endUtc: frame.startUtc + wallDurationSec,
+        channel: candidate.channel,
+    };
 }
 
 /** Original, unshifted GPS records for a derived trip. Returns a fresh array;
