@@ -1,7 +1,8 @@
 import type { FeatureSlug } from "./feature-pages.js";
 import type { VendorContent, VendorLocaleContent } from "./vendor-pages.js";
 
-// Recording evidence: docs/gps-format-coverage.md and docs/format-ddpai-gpx.md.
+// SEO copy focuses on the camera and player benefits. Format details and
+// recording evidence belong in docs/gps-format-coverage.md and its linked docs.
 // These pages describe the named models, not every device sold under a brand.
 interface CameraCopy {
     title: string;
@@ -39,6 +40,32 @@ function localize(copy: CameraCopy, name: string, lang: "en" | "ru"): VendorLoca
 }
 
 const PAGES: CameraPage[] = [
+    {
+        slug: "comtec",
+        displayName: "COMTEC",
+        models: ["EG-1"],
+        features: MULTI_CAMERA_FEATURES,
+        en: {
+            title: "COMTEC EG-1 helmet dashcam player",
+            description:
+                "Watch COMTEC EG-1 front and rear recordings with a GPS route and speed chart. Free browser player, with your recordings staying on your device.",
+            lead: "Review a motorcycle ride from your COMTEC EG-1 helmet camera. Watch the front and rear views alongside the route and speed, with your recordings staying on your device.",
+            compatibility:
+                "Supports video, route and speed from the COMTEC EG-1 helmet camera.",
+            openTip:
+                "Open the Movie folder with its Front and Rear subfolders to bring both cameras together in one trip. Keep the original filenames.",
+        },
+        ru: {
+            title: "Плеер для шлемного регистратора COMTEC EG-1",
+            description:
+                "Смотри записи передней и задней камер COMTEC EG-1 с GPS-маршрутом и графиком скорости. Бесплатный плеер в браузере, записи остаются на твоём устройстве.",
+            lead: "Посмотри поездку на мотоцикле, снятую шлемным регистратором COMTEC EG-1. Передняя и задняя камеры, маршрут и скорость — на одном экране. Записи остаются на твоём устройстве.",
+            compatibility:
+                "Поддерживаются видео, маршрут и скорость со шлемного регистратора COMTEC EG-1.",
+            openTip:
+                "Открой папку Movie вместе с подпапками Front и Rear, чтобы собрать обе камеры в одну поездку. Сохрани исходные имена файлов.",
+        },
+    },
     {
         slug: "avylet",
         displayName: "Avylet",

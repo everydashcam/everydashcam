@@ -1,6 +1,24 @@
 import { expect, shot, test } from "./_fixtures.js";
 
 for (const locale of ["en", "ru"] as const) {
+    test(`COMTEC EG-1 page explains the checked recordings in ${locale}`, async ({ page }) => {
+        await page.goto(`/${locale}/cameras/comtec/`);
+        await expect(page.locator("h1")).toContainText("COMTEC EG-1");
+        await expect(page.locator(".vp-models")).toContainText("EG-1");
+        for (const name of ["Movie", "Front", "Rear"]) {
+            await expect(page.locator("article")).toContainText(name);
+        }
+        await expect(page.locator("a.vp-cta").first()).toHaveAttribute("href", `/${locale}/?vendor=comtec`);
+        for (const width of [390, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.evaluate(() => document.fonts.ready);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+            await shot(page, `camera-comtec-${locale}-${width}`);
+        }
+    });
+}
+
+for (const locale of ["en", "ru"] as const) {
     for (const width of [390, 1440]) {
         test(`camera page opens local recordings in ${locale} at ${width}px`, async ({ page }) => {
             await page.setViewportSize({ width, height: 900 });

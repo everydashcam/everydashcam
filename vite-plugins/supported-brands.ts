@@ -63,6 +63,7 @@ export type VendorSlug =
     | "navman"
     | "fitcamx"
     | "avylet"
+    | "comtec"
     | "izeeker"
     | "compartir"
     | "vueroid"
@@ -198,6 +199,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         recordingCaveat: "optionalGps",
     },
     { displayName: "iZEEKER", slug: "izeeker", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["iD300"] },
+    { displayName: "COMTEC", slug: "comtec", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: ["EG-1"] },
     { displayName: "Compartir", slug: "compartir", hasLandingPage: true, locales: ["en", "ru"], gpsSamples: [] },
     {
         displayName: "Vueroid",

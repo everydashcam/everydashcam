@@ -140,6 +140,7 @@ describe("supported camera catalog", () => {
 
     it("retains essential companion-file guidance in all published translations", () => {
         const requiredFiles: Record<string, string[]> = {
+            comtec: ["EG-1", ".TS", "Movie", "Front", "Rear"],
             "70mai": ["GPSData*.txt", "A510"],
             blackvue: [".gps", ".3gf", "DR550GW-2CH", "DR900X Plus"],
             gopro: ["HERO5", "HERO6", "HERO7", "HERO8", "MAX"],
