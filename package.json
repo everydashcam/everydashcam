@@ -38,6 +38,7 @@
     "build:encoder-test": "tsc -p scripts/encoder-test/tsconfig.json && node scripts/build-encoder-test.mjs",
     "test:encoder-test": "npm run build:encoder-test && playwright test --config=tests/playwright.encoder-test.config.ts",
     "check:seo": "node scripts/check-seo.mjs",
+    "test:seo-regional": "node --experimental-strip-types scripts/test-seo-regional.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/validate-map-styles.mjs && node scripts/parser-cache-revisions.mjs --check",

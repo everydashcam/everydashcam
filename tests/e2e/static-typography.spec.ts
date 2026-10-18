@@ -19,9 +19,9 @@ test.describe("standalone page typography", () => {
                 `/${lang}/alternatives/`,
                 `/${lang}/alternatives/dashcam-viewer/`,
                 `/${lang}/combine-dashcam-cameras-into-one-video/`,
-                `/privacy?lang=${lang}`,
-                `/terms?lang=${lang}`,
-                `/add-my-camera?lang=${lang}`,
+                `/${lang}/privacy/`,
+                `/${lang}/terms/`,
+                `/${lang}/add-my-camera/`,
                 `/404.html?lang=${lang}`,
                 `/migrate/?lang=${lang}`,
             ];
@@ -46,7 +46,7 @@ test.describe("standalone page typography", () => {
 
     test("camera submission commands fit a narrow viewport in every language", async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 640 });
-        await page.goto("/add-my-camera?lang=en");
+        await page.goto("/en/add-my-camera/");
         const languages = await page
             .locator("[data-set-lang]")
             .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("data-set-lang")!));

@@ -12,7 +12,7 @@ function openPage(pathname: string, search: string, stored: Record<string, strin
         getAttribute: () => lang,
     }));
     const document = {
-        documentElement: { lang: "en" },
+        documentElement: { lang: "en", getAttribute: () => null },
         querySelectorAll: (selector: string) => (selector === "article[data-lang]" ? articles : []),
     };
     runInNewContext(script, {
@@ -36,6 +36,10 @@ describe("standalone page language", () => {
         for (const lang of languages) {
             expect(openPage(`/${lang}/missing`, "", { "everydashcam:doc-lang": "en" })).toEqual({ lang, visible: [lang] });
         }
+    });
+
+    it("keeps an explicit locale path ahead of a conflicting language query", () => {
+        expect(openPage("/ru/missing", "?lang=en", { "everydashcam:doc-lang": "fr" })).toEqual({ lang: "ru", visible: ["ru"] });
     });
 
     it("lets explicit language links override a saved preference", () => {

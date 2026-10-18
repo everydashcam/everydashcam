@@ -31,10 +31,9 @@ import type { Plugin } from "vite";
 import {
     SEO_LOCALES,
     getDefaultSeoLocale,
-    getHreflangCodes,
     getIndexableSeoLocales,
 } from "../src/i18n/seo-config.js";
-import { canonicalLocaleUrl } from "./deployment-profile.js";
+import { renderSeoAlternates } from "./seo-alternates.js";
 
 // Build the full hreflang link block - one <link> per hreflang code of each
 // indexable locale (generic aliases like "pt" emit an extra link to the
@@ -42,16 +41,7 @@ import { canonicalLocaleUrl } from "./deployment-profile.js";
 // "English variant" policy across the whole graph; the root stub does not
 // appear in hreflang at all (it's a redirect-only page).
 function buildHreflangHtml(): string {
-    const indexable = getIndexableSeoLocales();
-    const defaultUrl = canonicalLocaleUrl(getDefaultSeoLocale());
-    const lines = indexable.flatMap((loc) => {
-        const url = canonicalLocaleUrl(loc);
-        return getHreflangCodes(loc).map(
-            (code) => `    <link rel="alternate" hreflang="${code}" href="${url}">`,
-        );
-    });
-    lines.push(`    <link rel="alternate" hreflang="x-default" href="${defaultUrl}">`);
-    return lines.join("\n");
+    return renderSeoAlternates();
 }
 
 // Build the og:locale:alternate cluster for the default-locale baseline.

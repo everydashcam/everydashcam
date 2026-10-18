@@ -245,22 +245,6 @@ export function getHreflangCodes(locale: SeoLocale): ReadonlyArray<string> {
     return [locale.hreflang, ...(locale.extraHreflangs ?? [])];
 }
 
-// Build the sitemap alternates map for one page: hreflang code → that
-// locale's URL of THIS page, generic aliases included (an alias maps to the
-// same URL as its primary code). makeUrl is called once per indexable
-// locale. Shared by the homepage / vendor / alternatives sitemap emitters
-// so they cannot drift on how aliases are handled.
-export function buildHreflangAlternatesMap(makeUrl: (locale: SeoLocale) => string): Record<string, string> {
-    const map: Record<string, string> = {};
-    for (const locale of getIndexableSeoLocales()) {
-        const url = makeUrl(locale);
-        for (const code of getHreflangCodes(locale)) {
-            map[code] = url;
-        }
-    }
-    return map;
-}
-
 // Pulls the lang out of a URL pathname when the first segment is a known
 // locale prefix. Returns null when there is no locale segment to read from -
 // the caller (detectInitialLang) then falls back to localStorage / navigator.

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { minify as minifyHtml } from "html-minifier-terser";
 import { defineConfig, minify as minifyOxc } from "vite";
+import { documentPagesPlugin } from "./vite-plugins/document-pages.js";
 import { cspHashPlugin } from "./vite-plugins/csp-hash.js";
 import {
     profileRequiresGlobalNoIndex,
@@ -179,6 +180,8 @@ export default defineConfig(({ command }) => {
     plugins: [
         migrationPagePlugin(),
         editionMarkupPlugin(),
+        // Legal/support source templates emit localized documents and legacy stubs.
+        documentPagesPlugin({ noIndex: NO_INDEX }),
         // Dev-only: serve public/<slug>.html for its extension-less clean URL
         // (/add-my-camera, /privacy, ...). Cloudflare Pages (prod) and `vite
         // preview` resolve clean URLs to the .html automatically; `vite dev`

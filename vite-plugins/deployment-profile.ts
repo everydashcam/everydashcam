@@ -1,14 +1,15 @@
-// Generic build-time deployment profile and SEO ownership policy.
-//
-// The public repository knows only that an optional mirror may own a subset
-// of locale URL segments. Its hostname, locale set and root fallback arrive in
-// SEO_MIRROR_CONFIG at build time. Runtime language selection deliberately
-// does not import this module and always stays on the current hostname.
+// Build-time SEO policy. A regional map opts both hosts into indexable locale
+// pairs after cutover; without it the legacy single-owner policy remains.
+// Runtime language selection stays on the current hostname.
 
-import { getIndexableSeoLocales, type SeoLocale } from "../src/i18n/seo-config.js";
+import { getHreflangCodes, getIndexableSeoLocales, type SeoLocale } from "../src/i18n/seo-config.js";
 
 export const PRIMARY_SITE_ORIGIN = "https://everydashcam.app";
 export const LARGE_IMAGE_PREVIEW_META = '<meta name="robots" content="max-image-preview:large">';
+
+// Intl's CLDR region names include reserved, macro and test regions that are
+// not ISO 3166-1 country codes accepted by the search graph.
+const NON_COUNTRY_REGIONS = new Set(["AC", "CP", "DG", "EA", "EU", "EZ", "IC", "QO", "TA", "UN", "XA", "XB", "XK", "ZZ"]);
 
 export type DeploymentProfile = "primary" | "mirror";
 
@@ -16,6 +17,7 @@ export interface SeoMirrorConfig {
     origin: string;
     localeSegments: ReadonlyArray<string>;
     rootLocaleSegment: string;
+    regionalHreflangs?: Readonly<Record<string, string>>;
 }
 
 export interface SeoDeploymentContext {
@@ -89,7 +91,67 @@ function parseMirrorConfig(raw: string | undefined): SeoMirrorConfig | null {
             `SEO_MIRROR_CONFIG.localeSegments contains unknown URL segments: ${unknownLocaleSegments.join(", ")}`,
         );
     }
-    return { origin, localeSegments: uniqueLocaleSegments, rootLocaleSegment };
+    const regionalHreflangs = parseRegionalHreflangs(candidate.regionalHreflangs, uniqueLocaleSegments);
+    if (regionalHreflangs && uniqueLocaleSegments.length !== localeSegments.length) {
+        throw new Error("SEO_MIRROR_CONFIG.localeSegments must not contain duplicates in regional mode");
+    }
+    return {
+        origin,
+        localeSegments: uniqueLocaleSegments,
+        rootLocaleSegment,
+        ...(regionalHreflangs ? { regionalHreflangs } : {}),
+    };
+}
+
+function parseRegionalHreflangs(
+    value: unknown,
+    localeSegments: readonly string[],
+): Readonly<Record<string, string>> | undefined {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("SEO_MIRROR_CONFIG.regionalHreflangs must be an object");
+    }
+    const map = value as Record<string, unknown>;
+    const locales = getIndexableSeoLocales();
+    const segments = locales.map((locale) => locale.urlSegment);
+    if (
+        localeSegments.length !== segments.length ||
+        Object.keys(map).length !== segments.length ||
+        segments.some((segment) => !localeSegments.includes(segment) || !Object.hasOwn(map, segment))
+    ) {
+        throw new Error("SEO_MIRROR_CONFIG.regionalHreflangs and localeSegments must cover every indexable locale");
+    }
+
+    const claimedCodes = new Set<string>();
+    const claim = (code: string) => {
+        const normalized = code.toLowerCase();
+        if (claimedCodes.has(normalized)) {
+            throw new Error(`SEO_MIRROR_CONFIG.regionalHreflangs contains a duplicate hreflang code: ${code}`);
+        }
+        claimedCodes.add(normalized);
+    };
+    for (const locale of locales) {
+        for (const code of getHreflangCodes(locale)) claim(code);
+    }
+    const regions = new Intl.DisplayNames("en", { type: "region", fallback: "none" });
+    const result: Record<string, string> = {};
+    for (const locale of locales) {
+        const code = map[locale.urlSegment];
+        if (typeof code !== "string" || !/^[a-z]{2,3}(?:-[A-Z][a-z]{3})?-[A-Z]{2}$/.test(code)) {
+            throw new Error(`SEO_MIRROR_CONFIG.regionalHreflangs.${locale.urlSegment} must be a language, optional script and region code`);
+        }
+        const parsed = new Intl.Locale(code);
+        const base = new Intl.Locale(locale.hreflang);
+        if (parsed.language !== base.language || parsed.script !== base.script) {
+            throw new Error(`SEO_MIRROR_CONFIG.regionalHreflangs.${locale.urlSegment} must preserve its language and script`);
+        }
+        if (parsed.toString() !== code || !parsed.region || !regions.of(parsed.region) || NON_COUNTRY_REGIONS.has(parsed.region)) {
+            throw new Error(`SEO_MIRROR_CONFIG.regionalHreflangs.${locale.urlSegment} must use a country region code`);
+        }
+        claim(code);
+        result[locale.urlSegment] = code;
+    }
+    return result;
 }
 
 export function resolveSeoDeploymentContext(env: BuildEnv = process.env): SeoDeploymentContext {
@@ -112,8 +174,14 @@ export function canonicalProfileForLocale(
     locale: Pick<SeoLocale, "urlSegment">,
     context: SeoDeploymentContext = resolveSeoDeploymentContext(),
 ): DeploymentProfile {
+    if (usesRegionalSeo(context)) return context.profile;
     const mirrorOwns = context.seoCutover && context.mirror?.localeSegments.includes(locale.urlSegment);
     return mirrorOwns ? "mirror" : "primary";
+}
+
+/** Both hosts become indexable only when regional configuration and cutover agree. */
+export function usesRegionalSeo(context: SeoDeploymentContext = resolveSeoDeploymentContext()): boolean {
+    return context.seoCutover && context.mirror?.regionalHreflangs !== undefined;
 }
 
 export function canonicalOriginForLocale(
@@ -152,7 +220,7 @@ export function localeNeedsYandexNoIndex(
     locale: Pick<SeoLocale, "urlSegment">,
     context: SeoDeploymentContext = resolveSeoDeploymentContext(),
 ): boolean {
-    return context.seoCutover && !profileOwnsLocale(locale, context);
+    return !usesRegionalSeo(context) && context.seoCutover && !profileOwnsLocale(locale, context);
 }
 
 export function searchIndexingMeta(
@@ -160,7 +228,7 @@ export function searchIndexingMeta(
     globalNoIndex: boolean,
     context: SeoDeploymentContext = resolveSeoDeploymentContext(),
 ): string {
-    if (globalNoIndex) return '<meta name="robots" content="noindex, nofollow">';
+    if (globalNoIndex || profileRequiresGlobalNoIndex(context)) return '<meta name="robots" content="noindex, nofollow">';
     return (
         LARGE_IMAGE_PREVIEW_META +
         (localeNeedsYandexNoIndex(locale, context) ? '<meta name="yandex" content="noindex">' : "")

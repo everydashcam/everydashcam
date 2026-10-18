@@ -213,8 +213,9 @@ repository. A source archive without Git history also builds successfully, but
 omits version and page-modification metadata.
 
 `npx serve` is recommended because it handles everydashcam's extension-less URLs.
-`npm run preview` and `python3 -m http.server -d dist` can serve the app itself,
-but links such as `/privacy` return 404 without an additional rewrite rule.
+`npm run preview` and `python3 -m http.server -d dist` can serve directory-index
+pages such as `/en/privacy/`. Older links such as `/privacy` also need clean
+HTML URL resolution; a basic file server needs an additional rewrite rule.
 
 ## Enable Yandex Maps
 
@@ -265,7 +266,8 @@ Subpath deployments such as `https://example.com/everydashcam/` are not supporte
 Your server needs these rules:
 
 - Serve a directory index for locale paths such as `/en/` and `/ru/`. The root
-  path redirects to the appropriate locale.
+  path redirects to the appropriate locale. This also applies to localized
+  documents such as `/en/privacy/`, `/en/terms/`, and `/en/add-my-camera/`.
 - Resolve extension-less pages to their HTML files. For nginx, use
   `try_files $uri $uri.html $uri/ =404`.
 - Send `/sw.js` with `Cache-Control: max-age=0, must-revalidate` so returning

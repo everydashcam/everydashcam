@@ -16,6 +16,10 @@ for (const locale of Object.keys(manifest.files)) {
             "href",
             `https://everydashcam.app/${locale}/`,
         );
+        await expect(page.locator("#no-recordings-how")).toHaveAttribute(
+            "href",
+            `https://everydashcam.app/${locale}/add-my-camera/`,
+        );
         await expect(page.locator("#portable-github")).toBeVisible();
         await expect(
             page.locator(

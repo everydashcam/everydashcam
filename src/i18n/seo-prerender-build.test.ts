@@ -6,10 +6,12 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { dynamicBaselinePlugin } from "../../vite-plugins/dynamic-baseline.js";
+import { getAlternativeSitemapEntries, matchAlternativeRoute, renderAlternativePage, renderAlternativesIndexPage } from "../../vite-plugins/alternative-pages.js";
+import { getFeatureSitemapEntries, matchFeatureRoute, renderFeaturePage } from "../../vite-plugins/feature-pages.js";
 import { stringifyJsonLd } from "../../vite-plugins/html-utils.js";
 import { addNoIndexHeader, applyLocale, getPrerenderLocales, getSeoLocales } from "../../vite-plugins/seo-prerender.js";
 import { SUPPORTED_BRANDS, getAllBrandsCommaSeparated, getLandingBrands } from "../../vite-plugins/supported-brands.js";
-import { getVendorSitemapEntries, matchVendorRoute } from "../../vite-plugins/vendor-pages.js";
+import { getVendorSitemapEntries, matchVendorRoute, renderCamerasIndexPage, renderVendorPage } from "../../vite-plugins/vendor-pages.js";
 import { SEO_LOCALES, getHreflangCodes, getIndexableSeoLocales } from "./seo-config.js";
 
 afterEach(() => {
@@ -338,9 +340,15 @@ describe("applyLocale", () => {
         expect(localized).toContain(`content="${ru.ogDescription}" property="og:description"`);
     });
 
-    it("does NOT inject a general robots noindex when options.noIndex is false/undefined", () => {
-        expect(out).not.toContain('name="robots" content="noindex');
-        expect(out).toContain('name="robots" content="max-image-preview:large"');
+    it.each(["primary", "mirror"] as const)("respects the %s profile when options.noIndex is false or omitted", (profile) => {
+        vi.stubEnv("DEPLOYMENT_PROFILE", profile);
+        vi.stubEnv("SEO_CUTOVER", "0");
+        vi.stubEnv("SEO_MIRROR_CONFIG", JSON.stringify({ origin: "https://mirror.example.test", localeSegments: ["de"], rootLocaleSegment: "de" }));
+        for (const options of [{}, { noIndex: false }]) {
+            const localized = applyLocale(buildMinimalBaseline(), ru, options);
+            expect(localized.includes('name="robots" content="noindex, nofollow"')).toBe(profile === "mirror");
+            expect(localized.includes('name="robots" content="max-image-preview:large"')).toBe(profile === "primary");
+        }
     });
 
     it("injects noindex meta-robots when options.noIndex is true", () => {
@@ -428,6 +436,97 @@ describe("mirror JSON-LD ownership", () => {
         expect(webapp.isPartOf).toEqual({ "@id": "https://mirror.example.test/#website" });
         expect(website["@id"]).toBe("https://mirror.example.test/#website");
         expect(website.url).toBe("https://mirror.example.test/");
+    });
+});
+
+describe("regional page emitters", () => {
+    const regionalOrigin = "https://regional.example.test";
+    const primaryOrigin = "https://everydashcam.app";
+    const locales = getIndexableSeoLocales();
+
+    function configure(profile: "primary" | "mirror"): void {
+        vi.stubEnv("DEPLOYMENT_PROFILE", profile);
+        vi.stubEnv("SEO_CUTOVER", "1");
+        vi.stubEnv(
+            "SEO_MIRROR_CONFIG",
+            JSON.stringify({
+                origin: regionalOrigin,
+                rootLocaleSegment: "de",
+                localeSegments: locales.map((locale) => locale.urlSegment),
+                regionalHreflangs: Object.fromEntries(locales.map((locale) => [locale.urlSegment, `${locale.lang === "zh" ? "zh-Hans" : locale.lang}-CA`])),
+            }),
+        );
+    }
+
+    function graph(html: string): Record<string, string> {
+        return Object.fromEntries([...html.matchAll(/<link\b[^>]*hreflang="([^"]+)"[^>]*href="([^"]+)"[^>]*>/g)].map((match) => [match[1]!, match[2]!]));
+    }
+
+    function render(path: string): string {
+        const home = getPrerenderLocales().find((locale) => path === `/${locale.seo.urlSegment}/`);
+        if (home) return applyLocale(buildMinimalBaseline(), home, {});
+        const vendor = matchVendorRoute(path);
+        if (vendor) return vendor.kind === "index" ? renderCamerasIndexPage(vendor.lang, {}) : renderVendorPage(vendor.vendor, vendor.lang, {});
+        const alternative = matchAlternativeRoute(path);
+        if (alternative) return alternative.kind === "index" ? renderAlternativesIndexPage(alternative.lang, {}) : renderAlternativePage(alternative.competitor, alternative.lang, {});
+        const feature = matchFeatureRoute(path);
+        if (feature) return renderFeaturePage(feature.page, feature.lang, {});
+        throw new Error(`unrecognized test route ${path}`);
+    }
+
+    it.each(["/de/", "/de/cameras/", "/ru/cameras/garmin/", "/en/cameras/navitel/", "/fr/alternatives/", "/en/alternatives/dashcam-viewer/", "/pt/combine-dashcam-cameras-into-one-video/"])("emits reciprocal regional search signals for %s", (path) => {
+        configure("primary");
+        const primary = render(path);
+        const primaryGraph = graph(primary);
+        const sitemap = [...getVendorSitemapEntries(), ...getAlternativeSitemapEntries(), ...getFeatureSitemapEntries()];
+        const entry = sitemap.find((candidate) => candidate.loc === `${primaryOrigin}${path}`);
+        if (entry) expect(primaryGraph).toEqual({ ...entry.alternates, "x-default": entry.xDefaultUrl });
+        configure("mirror");
+        const mirror = render(path);
+        expect(graph(mirror)).toEqual(primaryGraph);
+        expect(primaryGraph["x-default"]).toBe(`${primaryOrigin}${path.replace(/^\/[^/]+\//, "/en/")}`);
+        const mirrorEntry = [...getVendorSitemapEntries(), ...getAlternativeSitemapEntries(), ...getFeatureSitemapEntries()].find((candidate) => candidate.loc === `${regionalOrigin}${path}`);
+        if (entry) expect(mirrorEntry).toMatchObject({ alternates: entry.alternates, xDefaultUrl: entry.xDefaultUrl });
+        for (const [html, origin] of [
+            [primary, primaryOrigin],
+            [mirror, regionalOrigin],
+        ]) {
+            const canonicalTag = html!.match(/<link\b[^>]*rel="canonical"[^>]*>/)?.[0];
+            expect(canonicalTag).toContain(`href="${origin}${path}"`);
+            const ogTag = html!.match(/<meta\b[^>]*property="og:url"[^>]*>/)?.[0];
+            expect(ogTag).toContain(`content="${origin}${path}"`);
+            expect(html).not.toMatch(/name="(?:robots|googlebot|yandex)"[^>]*content="[^"]*noindex/);
+            for (const script of html!.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
+                const payload = JSON.parse(script[1]!);
+                if (payload["@type"] === "BreadcrumbList") {
+                    for (const item of payload.itemListElement) expect(item.item).toMatch(new RegExp(`^${origin}/`));
+                }
+                if (payload["@type"] === "WebApplication") expect(payload.url).toBe(`${origin}${path}`);
+            }
+        }
+    });
+
+    it("keeps missing vendor translations absent on both hosts", () => {
+        configure("mirror");
+        const html = render("/en/cameras/navitel/");
+        const links = graph(html);
+        expect(Object.keys(links).sort()).toEqual(["en", "en-CA", "pl", "pl-CA", "ru", "ru-CA", "x-default"]);
+        expect(links.de).toBeUndefined();
+        expect(links["de-CA"]).toBeUndefined();
+        expect(matchVendorRoute("/de/cameras/navitel/")).toBeNull();
+    });
+
+    it("emits only the current host's canonical URLs from every sitemap family", () => {
+        for (const profile of ["primary", "mirror"] as const) {
+            configure(profile);
+            const origin = profile === "primary" ? primaryOrigin : regionalOrigin;
+            const entries = [...getVendorSitemapEntries(), ...getAlternativeSitemapEntries(), ...getFeatureSitemapEntries()];
+            for (const entry of entries) {
+                expect(entry.loc.startsWith(`${origin}/`)).toBe(true);
+                expect(Object.values(entry.alternates)).toContain(entry.loc);
+                expect(entry.xDefaultUrl.startsWith(`${primaryOrigin}/en/`)).toBe(true);
+            }
+        }
     });
 });
 

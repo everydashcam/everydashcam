@@ -1,20 +1,21 @@
-// Minimal lang-switcher shared by the standalone doc pages (privacy.html,
-// add-my-camera.html, terms.html, 404.html), no framework. External file (not inline)
-// to keep CSP script-src clean.
-//
-// Initial pick: ?lang= > URL path > saved doc/app language > browser language > en.
-// Supported languages match the app (see src/i18n/index.ts LANGS). EN+RU are
-// first-class; the other 8 are community translations with an EN-prevails
-// disclaimer at the top of each article.
+// Standalone document routes select one published language. Legacy document
+// URLs redirect on the current host; 404 keeps its in-page language switcher.
 (function () {
     var STORE_KEY = "everydashcam:doc-lang";
-    var SUPPORTED = ["de", "en", "es", "fr", "ja", "ko", "pl", "pt", "ru", "zh"];
+    var root = document.documentElement;
+    var slug = root.getAttribute("data-doc-slug");
+    var published = root.getAttribute("data-doc-locales");
+    var SUPPORTED = published ? published.split(",") : ["de", "en", "es", "fr", "ja", "ko", "pl", "pt", "ru", "zh"];
 
     function isSupported(code) {
         for (var i = 0; i < SUPPORTED.length; i++) {
             if (SUPPORTED[i] === code) return true;
         }
         return false;
+    }
+
+    function saveLang(code) {
+        try { localStorage.setItem(STORE_KEY, code); } catch (e) { /* private mode */ }
     }
 
     function setLang(code) {
@@ -29,25 +30,23 @@
             btns[j].classList.toggle("active", active);
             btns[j].setAttribute("aria-selected", active ? "true" : "false");
         }
-        document.documentElement.lang = code;
+        root.lang = code;
         var homeLinks = document.querySelectorAll("[data-locale-home]");
         for (var k = 0; k < homeLinks.length; k++) {
             homeLinks[k].setAttribute("href", "/" + code + "/");
         }
-        try { localStorage.setItem(STORE_KEY, code); } catch (e) { /* private mode */ }
+        saveLang(code);
     }
 
     function pickInitial() {
-        // URL ?lang= wins: the EN-prevails links inside non-EN articles point to
-        // ?lang=en so the user can jump to the master version regardless of a
-        // persisted choice.
+        // An explicit path is share-safe, even with a conflicting old query.
+        var fromPath = window.location.pathname.split("/")[1];
+        if (fromPath && isSupported(fromPath)) return fromPath;
         try {
             var params = new URLSearchParams(window.location.search);
             var fromUrl = params.get("lang");
             if (fromUrl && isSupported(fromUrl)) return fromUrl;
         } catch (e) { /* malformed URL */ }
-        var fromPath = window.location.pathname.split("/")[1];
-        if (fromPath && isSupported(fromPath)) return fromPath;
         try {
             var stored = localStorage.getItem(STORE_KEY);
             if (stored && isSupported(stored)) return stored;
@@ -59,8 +58,26 @@
         return "en";
     }
 
-    setLang(pickInitial());
+    var initial = pickInitial();
+    if (slug) {
+        saveLang(initial);
+        if (root.getAttribute("data-doc-redirect") === "true") {
+            var params = new URLSearchParams(window.location.search);
+            params.delete("lang");
+            var query = params.toString();
+            window.location.replace("/" + initial + "/" + slug + "/" + (query ? "?" + query : "") + window.location.hash);
+            return;
+        }
+        var links = document.querySelectorAll(".lang-switcher a[data-set-lang]");
+        for (var j = 0; j < links.length; j++) {
+            links[j].addEventListener("click", function (ev) {
+                saveLang(ev.currentTarget.getAttribute("data-set-lang"));
+            });
+        }
+        return;
+    }
 
+    setLang(initial);
     var btns = document.querySelectorAll(".lang-switcher button");
     for (var i = 0; i < btns.length; i++) {
         btns[i].addEventListener("click", function (ev) {

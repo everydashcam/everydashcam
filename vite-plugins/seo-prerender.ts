@@ -60,14 +60,11 @@ import { plDict } from "../src/i18n/pl.js";
 import { ptDict } from "../src/i18n/pt.js";
 import { ruDict } from "../src/i18n/ru.js";
 import {
-    buildHreflangAlternatesMap,
     getDefaultSeoLocale,
-    getHreflangCodes,
     getIndexableSeoLocales,
     type SeoLocale,
 } from "../src/i18n/seo-config.js";
 import {
-    PRIMARY_SITE_ORIGIN,
     canonicalLocaleUrl,
     canonicalOriginForLocale,
     currentSiteOrigin,
@@ -75,7 +72,10 @@ import {
     profileOwnsCanonicalUrl,
 } from "./deployment-profile.js";
 import { zhDict } from "../src/i18n/zh.js";
-import { getGitMtimeIso, maxGitMtimeIso } from "./git-mtime.js";
+import { maxGitMtimeIso } from "./git-mtime.js";
+import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
+import { getDocumentSitemapEntries } from "./document-pages.js";
+import { localizeDocumentLinks } from "./document-links.js";
 import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
 import { renderSeoLanguageLinks } from "./seo-navigation.js";
 import { getHomepageCameras } from "./camera-promotion.js";
@@ -97,6 +97,8 @@ const HOMEPAGE_SHARED_SOURCES = [
     "src/i18n/languages.ts",
     "vite-plugins/seo-prerender.ts",
     "vite-plugins/dynamic-baseline.ts",
+    "vite-plugins/deployment-profile.ts",
+    "vite-plugins/seo-alternates.ts",
     "vite-plugins/seo-navigation.ts",
     "vite-plugins/supported-brands.ts",
     "vite-plugins/camera-promotion.ts",
@@ -341,12 +343,11 @@ export function sitemapPlugin(options: SeoBuildOptions = {}): Plugin {
             // signals priority 1.0, others 0.9 - convention, search engines
             // do not strictly require this but it signals the editorial
             // structure. The root "/" stub is intentionally NOT in the
-            // sitemap (it's a noindex redirect page); only the /<lang>/
+            // sitemap (it's a redirect page); only the /<lang>/
             // homepages are listed.
-            const homepageAlternates = buildHreflangAlternatesMap(localeHomeUrl);
+            const homepageGraph = buildSeoAlternates();
             const defaultLocale = getDefaultSeoLocale();
             const defaultLang = defaultLocale.lang;
-            const defaultHomeUrl = localeHomeUrl(defaultLocale);
             const entries: SitemapEntry[] = [];
             for (const loc of indexable) {
                 const url = localeHomeUrl(loc);
@@ -362,12 +363,7 @@ export function sitemapPlugin(options: SeoBuildOptions = {}): Plugin {
                     loc: url,
                     changefreq: "weekly",
                     priority: loc.lang === defaultLang ? "1.0" : "0.9",
-                    alternates: homepageAlternates,
-                    // For homepage entries x-default points at the default
-                    // locale's home (/en/), matching the policy used for
-                    // sub-pages (vendor pages target their English variant).
-                    // Uniform "English variant" across the whole graph.
-                    xDefaultUrl: defaultHomeUrl,
+                    ...homepageGraph,
                     lastmod: lastmod ?? undefined,
                 });
             }
@@ -387,42 +383,7 @@ export function sitemapPlugin(options: SeoBuildOptions = {}): Plugin {
             // policy as the vendor / alternative pages.
             entries.push(...getFeatureSitemapEntries());
 
-            // Privacy is a standalone page with internal lang switcher
-            // (see public/privacy.html). One URL, no alternates needed - hence
-            // no xDefaultUrl either. lastmod = mtime of the HTML itself.
-            //
-            // Canonical URL is /privacy (no .html): CF Pages normalizes any
-            // request to /privacy.html with a 308 to /privacy. Putting the
-            // 308-redirecting URL in the sitemap was the previous form and
-            // caused "Discovered - currently not indexed" in GSC because Google
-            // dislikes redirecting URLs in sitemaps - it expects canonical /
-            // 200-responding URLs there.
-            entries.push({
-                loc: `${PRIMARY_SITE_ORIGIN}/privacy`,
-                changefreq: "monthly",
-                priority: "0.3",
-                lastmod: getGitMtimeIso("public/privacy.html") ?? undefined,
-            });
-
-            // Terms of use - same standalone / internal lang-switcher shape
-            // as privacy (public/terms.html), same canonical rules.
-            entries.push({
-                loc: `${PRIMARY_SITE_ORIGIN}/terms`,
-                changefreq: "monthly",
-                priority: "0.3",
-                lastmod: getGitMtimeIso("public/terms.html") ?? undefined,
-            });
-
-            // "Help us add your dashcam" page - same standalone / internal
-            // lang-switcher shape as privacy (public/add-my-camera.html). One
-            // extension-less URL, no alternates. It is a support / onboarding
-            // funnel, so keep priority low.
-            entries.push({
-                loc: `${PRIMARY_SITE_ORIGIN}/add-my-camera`,
-                changefreq: "monthly",
-                priority: "0.3",
-                lastmod: getGitMtimeIso("public/add-my-camera.html") ?? undefined,
-            });
+            entries.push(...getDocumentSitemapEntries());
 
             // Each origin advertises only URLs it canonically owns. Alternates
             // inside those entries still form the complete cross-origin graph.
@@ -556,17 +517,6 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     const indexable = getIndexableSeoLocales();
     const selfUrl = localeHomeUrl(locale.seo);
     const canonicalOrigin = canonicalOriginForLocale(locale.seo);
-    // hreflang x-default points at the default locale's home (/en/), not at
-    // the root stub. Rationale: x-default is the content-fallback URL for
-    // unmatched languages; our root "/" is a redirect-only stub with no
-    // content, so it can't serve that role meaningfully. /en/ has the
-    // English content that an unmatched-language visitor falls back to.
-    // This matches the policy applied to sub-pages (vendor pages, /cameras/
-    // index) where x-default targets the English variant of that page.
-    // Mixed policy (root vs /en/ depending on the page type) is replaced
-    // by uniform "English variant" everywhere.
-    const xDefaultUrl = localeHomeUrl(getDefaultSeoLocale());
-
     // <html lang="...">: replace whatever value is there with the locale code.
     // The source HTML ships with "en"; for /ru/ we flip to "ru" so screen
     // readers and CSS :lang() see the right language for the document.
@@ -608,9 +558,9 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     // hreflang cluster - rebuild the full graph. Every locale (including
     // English) emits a self-referencing /<lang>/ link plus 11 alternates
     // plus x-default → the default locale's home (/en/), per the uniform
-    // "English variant" policy (see xDefaultUrl above). Google requires
+    // "English variant" policy. Google requires
     // symmetric / bidirectional links.
-    out = rewriteHreflangBlock(out, indexable, xDefaultUrl);
+    out = rewriteHreflangBlock(out);
 
     // og:title / twitter:title - locale-tuned short strings, used by Slack /
     // Telegram / Twitter previews. Not in the dict because dict["page.title"]
@@ -727,6 +677,8 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
         `href="/${locale.seo.urlSegment}/cameras/"`,
     );
 
+    out = localizeDocumentLinks(out, locale.seo.urlSegment);
+
     // Keep comparison links in the visitor's locale.
     out = out.replace(/href="\/alternatives\//g, `href="/${locale.seo.urlSegment}/alternatives/`);
 
@@ -770,9 +722,7 @@ function rewriteOgLocaleAlternates(
 ): string {
     const tagRe = /<meta\b[^>]*\bproperty="og:locale:alternate"[^>]*>/gi;
     const matches: Array<{ start: number; end: number }> = [];
-    let m: RegExpExecArray | null;
-    tagRe.lastIndex = 0;
-    while ((m = tagRe.exec(html)) !== null) {
+    for (const m of html.matchAll(tagRe)) {
         matches.push({ start: m.index, end: m.index + m[0].length });
     }
     if (matches.length === 0) {
@@ -801,16 +751,14 @@ function rewriteOgLocaleAlternates(
 // every prerendered locale would emit a page with zero hreflang signals -
 // catastrophic for SEO but silent (no test would notice). Better to fail
 // loudly at build time.
-function rewriteHreflangBlock(html: string, indexable: ReadonlyArray<SeoLocale>, xDefaultUrl: string): string {
+function rewriteHreflangBlock(html: string): string {
     // The `\b` after the closing quote of `rel="alternate"` would NOT match -
     // \b requires a transition between a word char and a non-word char, and
     // both `"` and the following space are non-word. So we anchor on the
     // opening of the attribute value, not the closing.
     const linkRe = /<link\b[^>]*\brel="alternate"[^>]*\bhreflang="[^"]+"[^>]*>/gi;
     const matches: Array<{ start: number; end: number }> = [];
-    let m: RegExpExecArray | null;
-    linkRe.lastIndex = 0;
-    while ((m = linkRe.exec(html)) !== null) {
+    for (const m of html.matchAll(linkRe)) {
         matches.push({ start: m.index, end: m.index + m[0].length });
     }
     if (matches.length === 0) {
@@ -822,13 +770,7 @@ function rewriteHreflangBlock(html: string, indexable: ReadonlyArray<SeoLocale>,
 
     const first = matches[0]!;
     const last = matches[matches.length - 1]!;
-    const linesArr = indexable.flatMap((loc) =>
-        getHreflangCodes(loc).map(
-            (code) => `<link rel="alternate" hreflang="${code}" href="${localeHomeUrl(loc)}">`,
-        ),
-    );
-    linesArr.push(`<link rel="alternate" hreflang="x-default" href="${xDefaultUrl}">`);
-    const replacement = linesArr.join("");
+    const replacement = renderSeoAlternates();
     return `${html.slice(0, first.start)}${replacement}${html.slice(last.end)}`;
 }
 

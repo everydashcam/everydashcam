@@ -73,6 +73,11 @@ it("produces identical public bytes with unrelated hosted configuration present"
     const outer = artifacts[0]!.toString();
     const html = decodePortableHtml(outer);
     expect(html).toContain('href="https://everydashcam.app/ru/"');
+    expect(
+        html.includes('href="https://everydashcam.app/ru/add-my-camera/"'),
+        "camera help uses the portable language",
+    ).toBe(true);
+    expect(html.includes('href="/ru/add-my-camera/"'), "camera help resolves outside the file origin").toBe(false);
     for (const content of [outer, html]) {
         expect(content).not.toContain("example.invalid");
         expect(content).not.toContain("synthetic-private-key");

@@ -24,10 +24,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
+import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import type { Lang } from "../src/i18n/index.js";
 import {
     REPO_URL,
-    buildHreflangAlternatesMap,
     getDefaultSeoLocale,
     getIndexableSeoLocales,
     getSeoLocaleByLang,
@@ -45,7 +45,6 @@ import { renderBreadcrumbs, renderSeoLanguageLinks } from "./seo-navigation.js";
 // (CLAUDE.md: abstractions against duplicates), exactly like alternative-pages.
 import {
     BRAND_MARK_HTML,
-    buildHreflangLinksHtml,
     buildOgLocaleAlternatesHtml,
     pathPrefixFor,
 } from "./vendor-pages.js";
@@ -635,7 +634,7 @@ export function renderFeaturePage(page: FeaturePage, lang: Lang, options: SeoBui
         name: resolveFeatureContent(p, lang).breadcrumbName,
     }));
 
-    const hreflangBlock = buildHreflangLinksHtml((loc) => canonicalLocaleUrl(loc, `${page.slug}/`));
+    const hreflangBlock = renderSeoAlternates(`${page.slug}/`);
     const ogLocaleAlternatesBlock = buildOgLocaleAlternatesHtml(lang);
     const languageLinks = renderSeoLanguageLinks(lang, (locale) => `/${locale.urlSegment}/${page.slug}/`);
 
@@ -788,11 +787,11 @@ ${otherPages
 ${languageLinks}
 <p class="vp-disclaimer">${escapeText(FEATURE_DISCLAIMER[lang])}</p>
 <div class="vp-footer-links">
-<a href="/privacy">${escapeText(labels.footerPrivacy)}</a>
+<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
 <span>·</span>
-<a href="/terms">${escapeText(labels.footerTerms)}</a>
+<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
 <span>·</span>
-<a href="${homeUrl}">${escapeText(labels.footerHome)}</a>
+<a href="${localHome}">${escapeText(labels.footerHome)}</a>
 <span>·</span>
 <a href="${REPO_URL}">GitHub</a>
 </div>
@@ -887,21 +886,18 @@ export function getFeatureSitemapEntries(): FeatureSitemapEntry[] {
     const entries: FeatureSitemapEntry[] = [];
     const indexable = getIndexableSeoLocales();
     const defaultLang = getDefaultSeoLocale().lang;
-    const defaultLocale = getDefaultSeoLocale();
     // Locale and feature content shares monolithic source files. Their mtimes
     // cannot identify which URL changed, so omit lastmod rather than publish
     // a site-wide false freshness signal.
 
     for (const page of FEATURE_PAGES) {
-        const alternates = buildHreflangAlternatesMap((loc) => canonicalLocaleUrl(loc, `${page.slug}/`));
-        const xDefault = canonicalLocaleUrl(defaultLocale, `${page.slug}/`);
+        const graph = buildSeoAlternates(`${page.slug}/`);
         for (const loc of indexable) {
             entries.push({
                 loc: canonicalLocaleUrl(loc, `${page.slug}/`),
                 changefreq: "monthly",
                 priority: loc.lang === defaultLang ? "0.7" : "0.6",
-                alternates,
-                xDefaultUrl: xDefault,
+                ...graph,
             });
         }
     }

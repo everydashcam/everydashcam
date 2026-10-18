@@ -31,14 +31,13 @@ import { BRAND_DISCLAIMER } from "../src/i18n/brand-disclaimer.js";
 import type { Lang } from "../src/i18n/index.js";
 import {
     REPO_URL,
-    buildHreflangAlternatesMap,
     getDefaultSeoLocale,
-    getHreflangCodes,
     getIndexableSeoLocales,
     getSeoLocaleByLang,
     type SeoLocale,
 } from "../src/i18n/seo-config.js";
 import { canonicalLocaleUrl, canonicalOriginForLocale, searchIndexingMeta } from "./deployment-profile.js";
+import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
 import { renderHubCta } from "./hub-cta.js";
 import { cameraCatalogAnchor, renderCameraBrandCard } from "./camera-catalog.js";
@@ -488,26 +487,6 @@ export function pathPrefixFor(lang: Lang): string {
     return `/${loc.urlSegment}`;
 }
 
-// Build the full hreflang link block for a given page (homepage of the
-// /cameras/ section or a specific vendor page). makeUrl is called once per
-// indexable locale to produce that locale's URL for THIS page. x-default
-// for sub-pages (not the site root) targets the English variant of the same
-// page - there is no page-specific neutral landing.
-export function buildHreflangLinksHtml(
-    makeUrl: (loc: SeoLocale) => string,
-    locales: readonly SeoLocale[] = getIndexableSeoLocales(),
-): string {
-    const defaultLocale = getDefaultSeoLocale();
-    if (!locales.some((locale) => locale.lang === defaultLocale.lang)) {
-        throw new Error("vendor-pages: hreflang set must include the default locale");
-    }
-    const lines = locales.flatMap((loc) =>
-        getHreflangCodes(loc).map((code) => `<link rel="alternate" hreflang="${code}" href="${makeUrl(loc)}">`),
-    );
-    lines.push(`<link rel="alternate" hreflang="x-default" href="${makeUrl(defaultLocale)}">`);
-    return lines.join("\n");
-}
-
 // og:locale:alternate meta tags for every locale OTHER than the page's own
 // (Facebook / OG spec says og:locale lists self, og:locale:alternate lists
 // the others).
@@ -543,10 +522,7 @@ export function renderVendorPage(vendor: VendorContent, lang: Lang, options: Seo
     const vendorLocales = getVendorSeoLocales(vendor);
     const ogImageUrl = `${canonicalOriginForLocale(seoLocale)}/${seoLocale.ogImage}`;
 
-    const hreflangBlock = buildHreflangLinksHtml(
-        (loc) => canonicalLocaleUrl(loc, `cameras/${vendor.slug}/`),
-        vendorLocales,
-    );
+    const hreflangBlock = renderSeoAlternates(`cameras/${vendor.slug}/`, vendorLocales);
     const ogLocaleAlternatesBlock = buildOgLocaleAlternatesHtml(lang, vendorLocales);
     const languageLinks = renderSeoLanguageLinks(
         lang,
@@ -634,18 +610,18 @@ ${renderFeatureLinksHtml(lang, pathPrefix, vendor.features)}
 
 <aside class="vp-other-vendors">
 <a href="${pathPrefix}/cameras/">${escapeText(INDEX_LOCALES[lang].h1)} →</a>
-<p class="vp-not-listed">${escapeText(labels.notListedText)} <a href="/add-my-camera">${escapeText(labels.notListedCta)}</a></p>
-<p class="vp-note">${escapeText(BRAND_DISCLAIMER[lang])} <a href="/terms">${escapeText(labels.footerTerms)}</a></p>
+<p class="vp-not-listed">${escapeText(labels.notListedText)} <a href="/${seoLocale.urlSegment}/add-my-camera/">${escapeText(labels.notListedCta)}</a></p>
+<p class="vp-note">${escapeText(BRAND_DISCLAIMER[lang])} <a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a></p>
 </aside>
 </main>
 
 <footer class="vp-footer">
 ${languageLinks}
-<a href="/privacy">${escapeText(labels.footerPrivacy)}</a>
+<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
 <span>·</span>
-<a href="/terms">${escapeText(labels.footerTerms)}</a>
+<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
 <span>·</span>
-<a href="${homeUrl}">${escapeText(labels.footerHome)}</a>
+<a href="${localHome}">${escapeText(labels.footerHome)}</a>
 <span>·</span>
 <a href="${REPO_URL}">GitHub</a>
 </footer>
@@ -671,9 +647,7 @@ export function renderCamerasIndexPage(lang: Lang, options: SeoBuildOptions): st
     const ogImageUrl = `${canonicalOriginForLocale(seoLocale)}/${seoLocale.ogImage}`;
     const vendorsByName = new Map(VENDORS.map((vendor) => [vendor.displayName, vendor]));
 
-    const hreflangBlock = buildHreflangLinksHtml((loc) => {
-        return canonicalLocaleUrl(loc, "cameras/");
-    });
+    const hreflangBlock = renderSeoAlternates("cameras/");
     const ogLocaleAlternatesBlock = buildOgLocaleAlternatesHtml(lang);
     const languageLinks = renderSeoLanguageLinks(lang, (locale) => `/${locale.urlSegment}/cameras/`);
 
@@ -768,18 +742,18 @@ ${SUPPORTED_BRANDS.map((brand) => {
     return renderCameraBrandCard(brand, lang, { local: `${pathPrefix}/cameras/${vendor.slug}/` });
 }).join("\n")}
 </ul>
-<p class="vp-not-listed">${escapeText(labels.notListedText)} <a href="/add-my-camera">${escapeText(labels.notListedCta)}</a></p>
-<p class="vp-note">${escapeText(BRAND_DISCLAIMER[lang])} <a href="/terms">${escapeText(labels.footerTerms)}</a></p>
+<p class="vp-not-listed">${escapeText(labels.notListedText)} <a href="/${seoLocale.urlSegment}/add-my-camera/">${escapeText(labels.notListedCta)}</a></p>
+<p class="vp-note">${escapeText(BRAND_DISCLAIMER[lang])} <a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a></p>
 ${renderHubCta(lang, pathPrefix)}
 </article>
 </main>
 <footer class="vp-footer">
 ${languageLinks}
-<a href="/privacy">${escapeText(labels.footerPrivacy)}</a>
+<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
 <span>·</span>
-<a href="/terms">${escapeText(labels.footerTerms)}</a>
+<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
 <span>·</span>
-<a href="${homeUrl}">${escapeText(labels.footerHome)}</a>
+<a href="${localHome}">${escapeText(labels.footerHome)}</a>
 <span>·</span>
 <a href="${REPO_URL}">GitHub</a>
 </footer>
@@ -985,22 +959,19 @@ export function getVendorSitemapEntries(): VendorSitemapEntry[] {
     const entries: VendorSitemapEntry[] = [];
     const indexable = getIndexableSeoLocales();
     const defaultLang = getDefaultSeoLocale().lang;
-    const defaultLocale = getDefaultSeoLocale();
 
     // Locale and vendor content shares monolithic source files. Their mtimes
     // cannot identify which URL changed, so omit lastmod rather than publish
     // a site-wide false freshness signal.
 
     // /cameras/ section index alternates: every locale's /cameras/ page.
-    const indexAlternates = buildHreflangAlternatesMap((loc) => canonicalLocaleUrl(loc, "cameras/"));
-    const indexXDefault = canonicalLocaleUrl(defaultLocale, "cameras/");
+    const indexGraph = buildSeoAlternates("cameras/");
     for (const loc of indexable) {
         entries.push({
             loc: canonicalLocaleUrl(loc, "cameras/"),
             changefreq: "monthly",
             priority: loc.lang === defaultLang ? "0.8" : "0.7",
-            alternates: indexAlternates,
-            xDefaultUrl: indexXDefault,
+            ...indexGraph,
         });
     }
 
@@ -1009,19 +980,13 @@ export function getVendorSitemapEntries(): VendorSitemapEntry[] {
     // that actually exist for that brand.
     for (const vendor of VENDORS) {
         const vendorLocales = getVendorSeoLocales(vendor);
-        const vendorAlternates = Object.fromEntries(
-            vendorLocales.flatMap((loc) =>
-                getHreflangCodes(loc).map((code) => [code, canonicalLocaleUrl(loc, `cameras/${vendor.slug}/`)]),
-            ),
-        );
-        const vendorXDefault = canonicalLocaleUrl(defaultLocale, `cameras/${vendor.slug}/`);
+        const vendorGraph = buildSeoAlternates(`cameras/${vendor.slug}/`, vendorLocales);
         for (const loc of vendorLocales) {
             entries.push({
                 loc: canonicalLocaleUrl(loc, `cameras/${vendor.slug}/`),
                 changefreq: "monthly",
                 priority: loc.lang === defaultLang ? "0.7" : "0.6",
-                alternates: vendorAlternates,
-                xDefaultUrl: vendorXDefault,
+                ...vendorGraph,
             });
         }
     }

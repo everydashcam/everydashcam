@@ -5,22 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>everydashcam - Privacy Policy</title>
-    <!-- Self-referencing canonical: privacy is one physical URL with a
-         12-language switcher inside (article[data-lang] blocks). We do not
-         emit hreflang because there is no separate localized URL per locale -
-         the switcher swaps content in place via JS, the URL stays /privacy.
-         Adding hreflang here would point at this same URL for every locale,
-         which Google warns about as "reciprocal self-pointing without
-         distinct variants" - useless signal.
-         Canonical points at /privacy (no .html): CF Pages serves this file at
-         both /privacy.html and /privacy, but it 308-redirects /privacy.html to
-         /privacy. Pointing canonical at the redirecting form created a loop
-         signal for Google ("URL redirects but canonical claims it is the
-         original"). -->
+    <!-- Source template: document-pages.ts emits one article per locale URL. -->
     <link rel="canonical" href="https://everydashcam.app/privacy">
-    <!-- English-baseline description for SERP / unfurl. Localized variants
-         exist in the article[data-lang] body but the meta description stays
-         English since the URL is language-neutral. -->
     <meta name="description" content="everydashcam privacy policy: how recordings are handled, analytics and crash reporting, data retention and your rights under GDPR / CCPA.">
     <link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
     <link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
@@ -265,7 +251,7 @@
         <article data-lang="de" hidden>
             <p class="muted prevails">
                 Bei Abweichungen zwischen dieser Übersetzung und der englischen Version hat die
-                <a href="?lang=en">englische Version</a> Vorrang.
+                <a href="/en/privacy/">englische Version</a> Vorrang.
             </p>
             <h1>Datenschutzerklärung</h1>
             <p class="muted">Gültig ab: 18.09.2026</p>
@@ -377,7 +363,7 @@
         <article data-lang="es" hidden>
             <p class="muted prevails">
                 En caso de discrepancia entre esta traducción y la versión en inglés, prevalece la
-                <a href="?lang=en">versión en inglés</a>.
+                <a href="/en/privacy/">versión en inglés</a>.
             </p>
             <h1>Política de privacidad</h1>
             <p class="muted">Fecha de entrada en vigor: 18/09/2026</p>
@@ -487,7 +473,7 @@
         <article data-lang="fr" hidden>
             <p class="muted prevails">
                 En cas de divergence entre cette traduction et la version anglaise, la
-                <a href="?lang=en">version anglaise</a> prévaut.
+                <a href="/en/privacy/">version anglaise</a> prévaut.
             </p>
             <h1>Politique de confidentialité</h1>
             <p class="muted">Date d'entrée en vigueur : 18/09/2026</p>
@@ -601,7 +587,7 @@
         <article data-lang="pt" hidden>
             <p class="muted prevails">
                 Em caso de divergência entre esta tradução e a versão em inglês, prevalece a
-                <a href="?lang=en">versão em inglês</a>.
+                <a href="/en/privacy/">versão em inglês</a>.
             </p>
             <h1>Política de privacidade</h1>
             <p class="muted">Data de entrada em vigor: 18/09/2026</p>
@@ -715,7 +701,7 @@
         <article data-lang="pl" hidden>
             <p class="muted prevails">
                 W przypadku rozbieżności między niniejszym tłumaczeniem a wersją angielską,
-                decydująca jest <a href="?lang=en">wersja angielska</a>.
+                decydująca jest <a href="/en/privacy/">wersja angielska</a>.
             </p>
             <h1>Polityka prywatności</h1>
             <p class="muted">Data wejścia w życie: 18.09.2026</p>
@@ -815,7 +801,7 @@
 
         <article data-lang="zh" hidden>
             <p class="muted prevails">
-                如本翻译与英文版本存在差异，以<a href="?lang=en">英文版本</a>为准。
+                如本翻译与英文版本存在差异，以<a href="/en/privacy/">英文版本</a>为准。
             </p>
             <h1>隐私政策</h1>
             <p class="muted">生效日期：2026-09-18</p>
@@ -906,7 +892,7 @@
 
         <article data-lang="ja" hidden>
             <p class="muted prevails">
-                本翻訳と英語版に齟齬がある場合、<a href="?lang=en">英語版</a>が優先されます。
+                本翻訳と英語版に齟齬がある場合、<a href="/en/privacy/">英語版</a>が優先されます。
             </p>
             <h1>プライバシーポリシー</h1>
             <p class="muted">発効日：2026年9月18日</p>
@@ -1005,7 +991,7 @@
 
         <article data-lang="ko" hidden>
             <p class="muted prevails">
-                본 번역과 영문 버전이 다를 경우 <a href="?lang=en">영문 버전</a>이 우선합니다.
+                본 번역과 영문 버전이 다를 경우 <a href="/en/privacy/">영문 버전</a>이 우선합니다.
             </p>
             <h1>개인정보 처리방침</h1>
             <p class="muted">시행일: 2026-09-18</p>

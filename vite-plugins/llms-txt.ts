@@ -20,7 +20,6 @@ import type { Plugin } from "vite";
 import { REPO_URL, getDefaultSeoLocale, getIndexableSeoLocales } from "../src/i18n/seo-config.js";
 import { getAlternativeListings } from "./alternative-pages.js";
 import {
-    PRIMARY_SITE_ORIGIN,
     canonicalLocaleUrl,
     currentSiteOrigin,
 } from "./deployment-profile.js";
@@ -78,8 +77,8 @@ export function llmsTxtPlugin(): Plugin {
             lines.push(`- [Main app (English)](${defaultLocaleHome}): drop the SD-card folder into the browser to watch recordings as continuous trips with a GPS map and speed chart`);
             lines.push(`- [Supported cameras](${canonicalLocaleUrl(defaultLocale, "cameras/")}): list of supported dashcam brands with per-vendor format details`);
             lines.push(`- [Alternatives](${canonicalLocaleUrl(defaultLocale, "alternatives/")}): how everydashcam compares to Dashcam Viewer, CamGeoPlayer and Telemetry Overlay`);
-            lines.push(`- [Privacy policy](${PRIMARY_SITE_ORIGIN}/privacy): data handling, analytics opt-out, GDPR / CCPA stance`);
-            lines.push(`- [Terms of use](${PRIMARY_SITE_ORIGIN}/terms): hosted-service terms - free, as-is / no warranty, recordings stay the user's`);
+            lines.push(`- [Privacy policy](${canonicalLocaleUrl(defaultLocale, "privacy/")}): data handling, analytics opt-out, GDPR / CCPA stance`);
+            lines.push(`- [Terms of use](${canonicalLocaleUrl(defaultLocale, "terms/")}): hosted-service terms - free, as-is / no warranty, recordings stay the user's`);
             lines.push(
                 `- [Sitemap](${currentOrigin}/sitemap.xml): canonical URLs owned by this origin`,
             );
@@ -159,7 +158,7 @@ export function llmsTxtPlugin(): Plugin {
             lines.push("- Export pipeline uses mediabunny for stream-copy MP4 muxing when re-encoding is not needed");
             lines.push("- Export overlays burn current speed, coordinates and a mini-map directly onto each frame (re-encode path)");
             lines.push("- Embedded GPS formats supported include GPMF, freeGPS, PNDM, LigoGPS, NMEA-in-MP4 and several others");
-            lines.push("- The root URL " + currentOrigin + "/ is a language-neutral redirect; every locale (including English) lives under /<lang>/.");
+            lines.push(`- The root URL ${currentOrigin}/ is a language-neutral redirect; every locale (including English) lives under /<lang>/.`);
             lines.push("");
 
             const defaultLang = defaultLocale.hreflang;

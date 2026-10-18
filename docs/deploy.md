@@ -34,6 +34,11 @@ blocks and `.env.example` define the current contract:
   [package.json](../package.json), independently of the bundler plugin's internal CLI.
 - `INDEXNOW_KEY` enables the production ownership file and post-deploy ping.
   Its storage and rotation rules live in [the SEO guide](seo.md#indexnow).
+- `DEPLOYMENT_PROFILE`, `SEO_CUTOVER`, and `SEO_MIRROR_CONFIG` control the
+  build-time search policy. Regional pairs require the same `regionalHreflangs`
+  map and source revision in both builds. Validate both artifacts before a
+  coordinated cutover; see [regional deployment profiles](seo.md#regional-deployment-profiles).
+  Keep the actual mirror configuration in private deployment settings.
 
 The production Pages alias is `https://everydashcam.pages.dev`. Publishing
 uses the workflows below; dashboard build settings do not build this project.

@@ -229,16 +229,14 @@ test.describe("navigation & shell", () => {
         await expect(page.locator("#feedback-step-recordings")).toBeVisible();
     });
 
-    // Standalone "help add my camera" page (public/add-my-camera.html). Tested at
-    // the .html path: the extension-less /add-my-camera is a CF Pages redirect,
-    // which the local vite preview does not emulate. Switcher is in-page JS.
     test("/add-my-camera help page renders and switches language", async ({ page }) => {
         const resp = await page.goto("/add-my-camera.html");
         expect(resp?.status(), "help page must be 200").toBe(200);
         await expect(page.locator('article[data-lang="en"] h1')).toContainText(/add your dashcam/i);
-        await page.locator('.lang-switcher button[data-set-lang="de"]').click();
+        await page.locator('.lang-switcher a[data-set-lang="de"]').click();
         await expect(page.locator('article[data-lang="de"]')).toBeVisible();
-        await expect(page.locator('article[data-lang="en"]')).toBeHidden();
+        await expect(page).toHaveURL(/\/de\/add-my-camera\/$/);
+        await expect(page.locator('article[data-lang="en"]')).toHaveCount(0);
         await expect(page.locator('article[data-lang="de"] h1')).toContainText(/Dashcam/);
         await shot(page, "nav-08-add-camera-page");
     });

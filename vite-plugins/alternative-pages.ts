@@ -26,10 +26,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
+import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import type { Lang } from "../src/i18n/index.js";
 import {
     REPO_URL,
-    buildHreflangAlternatesMap,
     getDefaultSeoLocale,
     getIndexableSeoLocales,
     getSeoLocaleByLang,
@@ -53,7 +53,6 @@ import { renderBreadcrumbs, renderSeoLanguageLinks } from "./seo-navigation.js";
 // duplicated (CLAUDE.md: abstractions against duplicates).
 import {
     BRAND_MARK_HTML,
-    buildHreflangLinksHtml,
     buildOgLocaleAlternatesHtml,
     pathPrefixFor,
 } from "./vendor-pages.js";
@@ -657,9 +656,7 @@ export function renderAlternativePage(competitor: Competitor, lang: Lang, option
     const otherTools = ALTERNATIVES.filter((c) => c.slug !== competitor.slug);
     const ogImageUrl = `${canonicalOriginForLocale(seoLocale)}/${seoLocale.ogImage}`;
 
-    const hreflangBlock = buildHreflangLinksHtml(
-        (loc) => canonicalLocaleUrl(loc, `alternatives/${competitor.slug}/`),
-    );
+    const hreflangBlock = renderSeoAlternates(`alternatives/${competitor.slug}/`);
     const ogLocaleAlternatesBlock = buildOgLocaleAlternatesHtml(lang);
     const languageLinks = renderSeoLanguageLinks(lang, (locale) => `/${locale.urlSegment}/alternatives/${competitor.slug}/`);
 
@@ -765,11 +762,11 @@ ${otherTools
 ${languageLinks}
 <p class="vp-disclaimer">${escapeText(ALT_DISCLAIMER[lang])}</p>
 <div class="vp-footer-links">
-<a href="/privacy">${escapeText(labels.footerPrivacy)}</a>
+<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
 <span>·</span>
-<a href="/terms">${escapeText(labels.footerTerms)}</a>
+<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
 <span>·</span>
-<a href="${homeUrl}">${escapeText(labels.footerHome)}</a>
+<a href="${localHome}">${escapeText(labels.footerHome)}</a>
 <span>·</span>
 <a href="${REPO_URL}">GitHub</a>
 </div>
@@ -791,7 +788,7 @@ export function renderAlternativesIndexPage(lang: Lang, options: SeoBuildOptions
     const homeUrl = canonicalLocaleUrl(seoLocale);
     const ogImageUrl = `${canonicalOriginForLocale(seoLocale)}/${seoLocale.ogImage}`;
 
-    const hreflangBlock = buildHreflangLinksHtml((loc) => canonicalLocaleUrl(loc, "alternatives/"));
+    const hreflangBlock = renderSeoAlternates("alternatives/");
     const ogLocaleAlternatesBlock = buildOgLocaleAlternatesHtml(lang);
     const languageLinks = renderSeoLanguageLinks(lang, (locale) => `/${locale.urlSegment}/alternatives/`);
 
@@ -887,11 +884,11 @@ ${renderHubCta(lang, pathPrefix)}
 ${languageLinks}
 <p class="vp-disclaimer">${escapeText(ALT_DISCLAIMER[lang])}</p>
 <div class="vp-footer-links">
-<a href="/privacy">${escapeText(labels.footerPrivacy)}</a>
+<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
 <span>·</span>
-<a href="/terms">${escapeText(labels.footerTerms)}</a>
+<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
 <span>·</span>
-<a href="${homeUrl}">${escapeText(labels.footerHome)}</a>
+<a href="${localHome}">${escapeText(labels.footerHome)}</a>
 <span>·</span>
 <a href="${REPO_URL}">GitHub</a>
 </div>
@@ -1055,36 +1052,29 @@ export function getAlternativeSitemapEntries(): AltSitemapEntry[] {
     const entries: AltSitemapEntry[] = [];
     const indexable = getIndexableSeoLocales();
     const defaultLang = getDefaultSeoLocale().lang;
-    const defaultLocale = getDefaultSeoLocale();
 
     // Locale and competitor content shares monolithic source files. Their
     // mtimes cannot identify which URL changed, so omit lastmod rather than
     // publish a site-wide false freshness signal.
 
-    const indexAlternates = buildHreflangAlternatesMap((loc) => canonicalLocaleUrl(loc, "alternatives/"));
-    const indexXDefault = canonicalLocaleUrl(defaultLocale, "alternatives/");
+    const indexGraph = buildSeoAlternates("alternatives/");
     for (const loc of indexable) {
         entries.push({
             loc: canonicalLocaleUrl(loc, "alternatives/"),
             changefreq: "monthly",
             priority: loc.lang === defaultLang ? "0.8" : "0.7",
-            alternates: indexAlternates,
-            xDefaultUrl: indexXDefault,
+            ...indexGraph,
         });
     }
 
     for (const competitor of ALTERNATIVES) {
-        const compAlternates = buildHreflangAlternatesMap((loc) =>
-            canonicalLocaleUrl(loc, `alternatives/${competitor.slug}/`),
-        );
-        const compXDefault = canonicalLocaleUrl(defaultLocale, `alternatives/${competitor.slug}/`);
+        const compGraph = buildSeoAlternates(`alternatives/${competitor.slug}/`);
         for (const loc of indexable) {
             entries.push({
                 loc: canonicalLocaleUrl(loc, `alternatives/${competitor.slug}/`),
                 changefreq: "monthly",
                 priority: loc.lang === defaultLang ? "0.7" : "0.6",
-                alternates: compAlternates,
-                xDefaultUrl: compXDefault,
+                ...compGraph,
             });
         }
     }

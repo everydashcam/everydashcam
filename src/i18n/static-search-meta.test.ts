@@ -45,13 +45,13 @@ describe("static document search metadata", () => {
         expect(readFileSync(resolve(dir, "privacy.html"), "utf-8")).toContain('<meta name="robots" content="noindex, nofollow">');
     });
 
-    it("suppresses mirror duplicates only for Yandex after cutover", () => {
+    it("does not add a Yandex exclusion to legacy document fallbacks", () => {
         const dir = fixture();
         applyStaticSearchMeta(dir, {
             noIndex: false,
             deployment: { profile: "mirror", seoCutover: true, mirror },
         });
-        expect(readFileSync(resolve(dir, "privacy.html"), "utf-8")).toContain('<meta name="yandex" content="noindex">');
+        expect(readFileSync(resolve(dir, "privacy.html"), "utf-8")).not.toContain('name="yandex"');
         expect(readFileSync(resolve(dir, "privacy.html"), "utf-8")).toContain('<meta name="robots" content="max-image-preview:large">');
     });
 });

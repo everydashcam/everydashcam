@@ -45,7 +45,7 @@ test.describe("landing layout", () => {
             const help = items.nth(5);
             await help.locator("summary").click();
             await expect(help.locator("a")).toBeVisible();
-            await expect(help.locator("a")).toHaveAttribute("href", "/add-my-camera");
+            await expect(help.locator("a")).toHaveAttribute("href", `/${locale}/add-my-camera/`);
             await expect(help.locator("a")).toHaveAttribute("target", "_blank");
             await shot(page, `landing-faq-help-${locale}`);
         });

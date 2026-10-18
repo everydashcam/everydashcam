@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getAlternativeSitemapEntries, matchAlternativeRoute, renderAlternativePage, renderAlternativesIndexPage } from "../../vite-plugins/alternative-pages.js";
 import { getFeatureSitemapEntries, matchFeatureRoute, renderFeaturePage } from "../../vite-plugins/feature-pages.js";
 import { renderBreadcrumbs } from "../../vite-plugins/seo-navigation.js";
@@ -119,5 +119,40 @@ describe("SEO surface navigation", () => {
         expect(html).toContain('Home &amp; "player"');
         expect(html).toContain("&lt;Camera&gt;");
         expect(JSON.parse(jsonLd).itemListElement[1].item).toBe("https://mirror.example/en/cameras/");
+    });
+
+    it.each(["primary", "mirror"])("keeps visible %s navigation local while search alternates span both hosts", (profile) => {
+        const locales = getIndexableSeoLocales();
+        const mirrorOrigin = "https://mirror.example.test";
+        vi.stubEnv("DEPLOYMENT_PROFILE", profile);
+        vi.stubEnv("SEO_CUTOVER", "1");
+        vi.stubEnv(
+            "SEO_MIRROR_CONFIG",
+            JSON.stringify({
+                origin: mirrorOrigin,
+                localeSegments: locales.map((locale) => locale.urlSegment),
+                rootLocaleSegment: "de",
+                regionalHreflangs: Object.fromEntries(locales.map((locale) => [locale.urlSegment, `${locale.lang === "zh" ? "zh-Hans" : locale.lang}-CH`])),
+            }),
+        );
+        try {
+            const regionalEntries = [...getVendorSitemapEntries(), ...getAlternativeSitemapEntries(), ...getFeatureSitemapEntries()];
+            for (const entry of regionalEntries) {
+                const path = new URL(entry.loc).pathname;
+                const html = renderSurface(path);
+                expect(new Set(Object.values(entry.alternates).map((url) => new URL(url).origin)), path).toEqual(new Set(["https://everydashcam.app", mirrorOrigin]));
+                const navigation = /<nav class="vp-languages"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1];
+                const languageLinks = [...(navigation ?? "").matchAll(/<a href="([^"]+)"/g)].map((match) => match[1]);
+                const publishedPaths = new Set(Object.values(entry.alternates).map((url) => new URL(url).pathname));
+                expect(new Set(languageLinks), path).toEqual(publishedPaths);
+                expect(languageLinks.length, path).toBe(publishedPaths.size);
+                for (const [, href] of html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)) {
+                    expect(href, path).not.toMatch(/^https:\/\/(everydashcam\.app|mirror\.example\.test)(?:\/|$)/);
+                    if (href?.startsWith("/")) expect(href, path).not.toMatch(/^\/\//);
+                }
+            }
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 });

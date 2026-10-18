@@ -100,7 +100,10 @@ function realisticDist(): string {
         // Noise - must NOT be precached:
         "og-cover.png": "PNG",
         "pwa-install-card-wide.png": "PNG",
-        "privacy.html": "<html>privacy</html>",
+        "privacy.html": "<html>privacy redirect</html>",
+        "en/privacy/index.html": "<html>privacy</html>",
+        "ru/terms/index.html": "<html>terms</html>",
+        "en/add-my-camera/index.html": "<html>camera help</html>",
         "robots.txt": "noindex",
         "sitemap.xml": "<urlset/>",
         "styles/README.md": "style attribution",

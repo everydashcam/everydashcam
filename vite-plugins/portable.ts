@@ -8,6 +8,7 @@ import { LANGS } from "../src/i18n/languages.js";
 import { PORTABLE_MAX_BYTES } from "../src/portable/manifest.mjs";
 import { generateThirdPartyNotices } from "../scripts/generate-third-party-notices.mjs";
 import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
+import { localizeDocumentLinks } from "./document-links.js";
 import { compressPortableHtml } from "./portable-compression.js";
 
 interface PortableOptions {
@@ -161,6 +162,7 @@ export function portablePlugin(options: PortableOptions): Plugin {
                         () => `<script type="module">${js.replace(/<\/script/gi, "<\\/script")}</script>`,
                     )
                     .replaceAll("__PORTABLE_FULL_VERSION_URL__", () => escapeAttr(options.fullVersionUrl));
+                html = localizeDocumentLinks(html, locale);
                 // Resolve website links against the explicit edition destination; file: has no site root.
                 html = html.replace(
                     /(<a\b[^>]*\bhref=")(\/[^"#]*)"/g,

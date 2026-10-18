@@ -191,7 +191,7 @@ jobs:
   # Keep one stable check name, including when an upstream job fails or skips.
   test:
     if: ${{ !cancelled() }}
-    needs: [checks, e2e, detectors, portable, staging-build, deployment-profile, reports]
+    needs: [checks, e2e, detectors, portable, staging-build, deployment-profile, regional-seo, reports]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -281,3 +281,20 @@ jobs:
         run: npm run build
       - name: Test synthetic mirror artifact
         run: npm run test:deployment-profile
+
+  # Each regional URL needs a real self-canonical counterpart. Checking just the
+  # mirror canary above cannot prove reciprocal links across production hosts.
+  regional-seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build and validate synthetic regional production pair
+        run: npm run test:seo-regional
