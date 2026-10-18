@@ -7,6 +7,13 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-10-18
+
+- **Fixed:** Fixed incorrect speed readings in some TS recordings.
+- **Fixed:** Fixed route jumps and inflated distances in trips with multiple cameras.
+- **Fixed:** Fixed a bug that could leave saved clip boundaries unblurred.
+- **Fixed:** Fixed a bug that could split front and rear recordings into separate trips.
+
 ## 2026-10-15
 
 - **Improved:** Improved face and license plate detection.
