@@ -1,11 +1,9 @@
-// Novatek-TS extractor: MPEG-TS dashcam recordings (VIOFO A119 V3 in its TS
-// recording mode; filename family `YYYYMMDDHHMMSS_NNNNNN.TS`)
-// that carry the classic Novatek GPS record struct in a private-data PES
-// stream.
+// Novatek-TS extractor: the classic Novatek GPS record struct in a private-data
+// MPEG-TS PES stream. Verified models: docs/gps-format-coverage.md.
 //
-// Stream layout (verified on two real 180 s clips in private):
-//   - PAT/PMT advertise ONLY video (HEVC, stream_type 0x24) and audio (AAC,
-//     0x0f). The GPS PES (PID 0x300 in both samples) is absent from the PMT,
+// Stream layout:
+//   - PAT/PMT advertise video (AVC/HEVC) and audio (AAC). The GPS PES
+//     (PID 0x300 on the verified recordings) is absent from the PMT,
 //     so PSI parsing cannot find it - detection is content-based, and the
 //     PID is auto-detected the same way (a different firmware may use any
 //     PID; see the juscar-ts precedent in juscar-ts-extract.ts).
@@ -14,9 +12,9 @@
 //     PES; the 1014 PES bytes span 6 TS packets (1 PUSI + 5 continuations,
 //     the last one padded with adaptation-field stuffing).
 //   - The 44-byte record sits at PES body offset 0 and always fits inside
-//     the first (PUSI) TS packet; bytes [44..1008) of the body are zero
-//     padding on every real PES observed, so this dialect is parsed from PUSI
-//     packets alone, like juscar-ts-extract.ts.
+//     the first (PUSI) TS packet. A119 V3 pads the remainder with zeros;
+//     COMTEC EG-1 has additional sensor fields after the GPS record. This
+//     dialect's GPS is parsed from PUSI packets alone, like juscar-ts-extract.ts.
 //
 // A second dialect shares the same PES: Blueskysea B4K (Novatek NT96670) puts
 // the identical record behind a fixed 164-byte prefix (ExifTool's regex
@@ -32,8 +30,8 @@
 //   [25]      'N'/'S'    [26] 'E'/'W'    [27] 0x00
 //   [28..32)  f32 latitude,  DDmm.mmmm
 //   [32..36)  f32 longitude, DDDmm.mmmm
-//   [36..40)  f32 speed in KNOTS (haversine-vs-speed median ratio 0.52-0.54
-//             on both real samples ~= KNOTS_TO_MS; km/h would be 0.28)
+//   [36..40)  f32 speed: knots on A119 V3, km/h on COMTEC EG-1. There is no
+//             unit tag; speed quantization identifies converted km/h below.
 //   [40..44)  f32 course, degrees
 //
 // The shared utcSecondsFromYmdhms accepts either year spelling and range-gates
@@ -50,7 +48,7 @@
 // first PES remains unrecoverable.
 
 import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types.js";
-import { KNOTS_TO_MS, WrongFormatError } from "../types.js";
+import { KMH_TO_MS, KNOTS_TO_MS, WrongFormatError } from "../types.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 import { utcSecondsFromYmdhms } from "./freegps.js";
 import type { Mp4Index } from "./mp4-index.js";
@@ -212,9 +210,9 @@ function decodeRecord(bytes: Uint8Array, off: number, mp4Filename: string): Deco
     const ew = bytes[off + 26] === 0x45 ? 1 : -1;
     const latRaw = f32le(bytes, off + 28);
     const lonRaw = f32le(bytes, off + 32);
-    const speedKnots = f32le(bytes, off + 36);
+    const speedRaw = f32le(bytes, off + 36);
     const course = f32le(bytes, off + 40);
-    if (![latRaw, lonRaw, speedKnots, course].every(Number.isFinite)) {
+    if (![latRaw, lonRaw, speedRaw, course].every(Number.isFinite)) {
         return { skipReason: "non-finite float field" };
     }
     const lat = ddmmToDegrees(latRaw) * ns;
@@ -222,7 +220,7 @@ function decodeRecord(bytes: Uint8Array, off: number, mp4Filename: string): Deco
     if (!isCoordinateInRange(lat, "lat") || !isCoordinateInRange(lon, "lon")) {
         return { skipReason: "coordinate out of range" };
     }
-    if (speedKnots < 0) return { skipReason: "negative speed" };
+    if (speedRaw < 0) return { skipReason: "negative speed" };
 
     return {
         record: {
@@ -231,15 +229,52 @@ function decodeRecord(bytes: Uint8Array, off: number, mp4Filename: string): Deco
             lat,
             lon,
             bearingDeg: ((course % 360) + 360) % 360,
-            speedMs: speedKnots * KNOTS_TO_MS,
-            // No accelerometer data anywhere in the 1008-byte payload
-            // (verified all-zero past the record on both real samples).
+            // Provisional knots; resolve the firmware's unit after extraction.
+            speedMs: speedRaw * KNOTS_TO_MS,
+            // The original dialect has zero padding; EG-1 has an unverified
+            // sensor triple after the record. Its axes/scale are not decoded.
             accelXg: 0,
             accelYg: 0,
             accelZg: 0,
             mp4Filename,
         },
     };
+}
+
+// EG-1 stores hundredths of a knot after multiplying by 1.852. Use the
+// exact wire step, not KNOTS_TO_MS * 3.6 (that constant is rounded).
+const CONVERTED_SPEED_STEP = 0.01852;
+const KNOTS_SPEED_STEP = 0.001; // includes VIOFO's 0.01 and Avylet's 0.001
+const FLOAT32_RELATIVE_EPSILON = 2 ** -23;
+
+function matchesSpeedStep(value: number, step: number): boolean {
+    const ticks = Math.round(value / step);
+    if (ticks === 0) return false;
+    const expected = Math.fround(ticks * step);
+    // Allow float32 parsing/multiplication roundoff, including firmware that
+    // multiplies in float32 rather than rounding only the final result.
+    return Math.abs(value - expected) <= Math.abs(expected) * FLOAT32_RELATIVE_EPSILON;
+}
+
+/**
+ * Recognize already-converted km/h without requiring displacement or a
+ * minimum driving speed. Every nonzero field must fit the converted grid,
+ * with three distinct values that cannot also be milliknots. Repeated values
+ * and grid intersections are not independent evidence. Undecidable or mixed
+ * encodings retain knots; no state carries between files.
+ */
+function resolveSpeedUnit(records: GpsRecord[]): void {
+    const distinctConvertedTicks = new Set<number>();
+    for (const record of records) {
+        const raw = record.speedMs / KNOTS_TO_MS;
+        if (raw === 0) continue;
+        if (!matchesSpeedStep(raw, CONVERTED_SPEED_STEP)) return;
+        if (!matchesSpeedStep(raw, KNOTS_SPEED_STEP)) {
+            distinctConvertedTicks.add(Math.round(raw / CONVERTED_SPEED_STEP));
+        }
+    }
+    if (distinctConvertedTicks.size < 3) return;
+    for (const record of records) record.speedMs *= KMH_TO_MS / KNOTS_TO_MS;
 }
 
 /**
@@ -378,6 +413,8 @@ export async function extractNovatekTsGps(
     if (records.length === 0) {
         throw new WrongFormatError("novatek-ts: no gps records found in ts stream");
     }
+
+    resolveSpeedUnit(records);
 
     // Local-clock quarantine (see header): flag every record and hand the
     // time layer trustworthy per-record offsets so reanchorUnsyncedTimes

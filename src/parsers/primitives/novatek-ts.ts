@@ -1,8 +1,8 @@
 // Novatek-TS extractor - MPEG-TS container with the classic Novatek GPS
 // record struct in a private-data PES (stream_id 0xbf, PID auto-detected;
-// 0x300 on the known samples). Unknown brand; the filename family is
-// `YYYYMMDDHHMMSS_NNNNNN.TS`. Parsing lives in internal/novatek-ts-extract.ts;
-// format breakdown in docs/format-novatek-ts.md.
+// 0x300 on the known samples). Shared by VIOFO, Avylet and COMTEC; filenames
+// follow `YYYYMMDDHHMMSS_NNNNNN.TS`.
+// Parsing: internal/novatek-ts-extract.ts; format: docs/format-novatek-ts.md.
 //
 // Marker strategy, two gates in order:
 //   1. Content probe over Mp4Index.headerBytes (probeMarkers populates them

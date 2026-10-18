@@ -1,22 +1,16 @@
 # Novatek GPS in MPEG-TS private PES ("novatek-ts")
 
-Source: reverse-engineered from two real 180 s clips of a VIOFO A119 V3 in its
-MPEG-TS recording mode (model known from the recording's source, not inferred
-from the container; filename family `YYYYMMDDHHMMSS_NNNNNN.TS`, 4K HEVC at
-~25 Mbps). No vendor string anywhere in
-the container; the GPS record struct is byte-identical to the record geometry
-of a Novatek freeGPS block - the same chipset muxing into MPEG-TS instead of
-MP4.
+Novatek freeGPS record geometry carried in MPEG-TS private PES instead of MP4.
+Verified models are listed in [GPS format coverage](gps-format-coverage.md).
 
 Parser: `src/parsers/primitives/novatek-ts.ts` +
 `src/parsers/internal/novatek-ts-extract.ts`.
 
 ## Container layout
 
-- MPEG-TS, 188-byte packets. PMT advertises only two streams: HEVC
-  (stream_type 0x24) and AAC (0x0f).
+- MPEG-TS, 188-byte packets. PMT advertises video (AVC/HEVC) and audio (AAC).
 - **The GPS PES is NOT in the PMT.** It rides an unadvertised PID (0x300 on
-  both samples; `ffprobe` shows it as a codec-less "unknown" stream). PSI
+  the verified recordings; `ffprobe` shows it as a codec-less "unknown" stream). PSI
   parsing therefore cannot find it - both the marker and the extractor detect
   the stream by content and auto-lock the PID, so a firmware with a different
   PMT/PID layout parses without code changes.
@@ -24,14 +18,15 @@ Parser: `src/parsers/primitives/novatek-ts.ts` +
   PTS**), `PES_packet_length` = 1008. The 1014 PES bytes span 6 TS packets:
   1 PUSI + 5 continuations, the last one padded with adaptation-field
   stuffing.
-- Cadence: exactly one PES per second, one record per PES (180 PES on each
-  180 s sample; one 2 s gap in one sample - a skipped second, not a reorder).
+- Cadence: one PES per second, one record per PES; clock deltas preserve gaps.
 - Before the optional receiver gets its first fix, some firmware writes
   `V00\0`, zero coordinates/speed/course, and an unset or invalid clock. These
   rows still lock the GPS PID and preserve the delay before the first fixed
   point; they do not emit positions.
-- Bytes `[44..1008)` of the PES body are zero padding (verified all-zero on
-  all 360 real PES). The whole record fits in the PUSI packet on this dialect.
+- Bytes `[44..1008)` of the PES body are zero padding on the A119 V3 samples.
+  EG-1 has three varying float32 values at `[44..56)` and zeros after them;
+  the extra fields' sensor axes and scale are unverified and are not decoded.
+  The GPS record fits in the PUSI packet on both variants.
 
 ## The B4K prefix dialect (foreign source, no sample)
 
@@ -55,7 +50,7 @@ consequences worth knowing before touching this code:
   whole dialect goes silently undetectable on any mux that stuffs the packet.
 
 `RX_NOVATEK_VIOFO` stays `.mp4`-only. Viofo in TS mode writes the 14-digit
-`<timestamp>_<counter>.TS` shape (both real samples), which already has its own
+`<timestamp>_<counter>.TS` shape, which already has its own
 filename techniques - extending the Viofo regex to `.ts` would claim names no
 observed camera writes.
 
@@ -78,7 +73,7 @@ record geometry (`src/parsers/internal/freegps.ts`) rebased to 0:
 | 27 | u8 | pad | always 0 |
 | 28 | f32 | latitude | `DDmm.mmmm` (NMEA degrees*100+minutes) |
 | 32 | f32 | longitude | `DDDmm.mmmm` |
-| 36 | f32 | speed | **knots** (verified: haversine-distance/speed median ratio 0.52-0.54 on both samples = the knots factor; km/h would give 0.28) |
+| 36 | f32 | speed | **knots** on A119 V3 / Avylet A1; **km/h** on COMTEC EG-1; no unit flag, see quantization below |
 | 40 | f32 | course | degrees |
 
 The datetime field order (H M S Y Mo D) and the `'A' N/S E/W \0 lat lon speed
@@ -86,6 +81,17 @@ course` tail are exactly freeGPS `LAYOUT_DEFAULT`/`LEGACY`/`ALT` geometry -
 only the `freeGPS ` magic and the vendor preamble are absent. Decoding reuses
 the shared helpers (`utcSecondsFromYmdhms`, `ddmmToDegrees`, `KNOTS_TO_MS`),
 so calendar gates and unit conversions cannot drift from the MP4 freeGPS path.
+
+## Speed units
+
+The speed field has no unit flag. EG-1 values retain the conversion step
+`0.01 × 1.852 = 0.01852`; VIOFO and Avylet store decimal knots. `resolveSpeedUnit`
+recognizes the converted grid with float32 tolerance and requires distinct
+values outside the knots grid. Coordinates, movement and zero values are not
+needed. Filenames and the sensor tail do not identify the unit.
+
+Mixed encodings or insufficient distinct evidence retain knots. Values shared
+by both grids cannot distinguish units; all-zero recordings remain zero.
 
 ## Clock is camera-local, not UTC
 
@@ -130,3 +136,6 @@ HEVC sticks). Negative tests pin both directions.
   count, sentinel coordinates and the base-clip recipe are the script's own
   parameters. Timestamps and speed/course are original; no original video/audio
   bytes reach either fixture.
+- `real-kmh-anonymized.TS` covers the EG-1 km/h variant, including a stopped
+  interval. The same anonymizer preserves raw speeds and replaces coordinates,
+  video and audio; speed recognition is independent of the synthetic route.

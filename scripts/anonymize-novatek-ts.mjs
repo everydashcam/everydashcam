@@ -13,7 +13,7 @@
 //      (50 N / 30 E + i*0.0001 deg, the repo-wide convention). Timestamps
 //      are kept (not sensitive without coordinates); speed/course are kept
 //      too - a few seconds of motion data with no origin is not identifying,
-//      and real values keep the knots-conversion assertion meaningful.
+//      and real values keep the unit-conversion assertions meaningful.
 //   3. Generate a fresh synthetic HEVC+AAC MPEG-TS base via ffmpeg (testsrc2
 //      + sine, mirroring anonymize-ts-generic.mjs) - no original video/audio
 //      bytes reach the fixture at all.

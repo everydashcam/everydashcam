@@ -30,7 +30,7 @@ export const VIDEO_EMBEDDED_PRIMITIVE_CACHE_REVISIONS = [
     { id: "gpslog-atom-nbmt", revision: "7719d7d18e283f40" },
     { id: "ligogps-trailer-ts", revision: "e13a9b8f42334c1a" },
     { id: "juscar-ts", revision: "7f09f5012c086e02" },
-    { id: "novatek-ts", revision: "97c0c1c28b283cf2" },
+    { id: "novatek-ts", revision: "a6bf9941038f507f" },
     { id: "ts-pes-gps", revision: "c30520232bce6129" },
     { id: "freegps-70mai", revision: "e16a78eb610e0355" },
     { id: "freegps", revision: "7ebac0546c3acd8c" },
