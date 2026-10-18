@@ -139,3 +139,5 @@ HEVC sticks). Negative tests pin both directions.
 - `real-kmh-anonymized.TS` covers the EG-1 km/h variant, including a stopped
   interval. The same anonymizer preserves raw speeds and replaces coordinates,
   video and audio; speed recognition is independent of the synthetic route.
+  Its `h264` option keeps browser speed checks independent of OS-specific HEVC
+  decoding; the other fixtures retain HEVC coverage.

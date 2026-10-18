@@ -14,7 +14,7 @@
 //      are kept (not sensitive without coordinates); speed/course are kept
 //      too - a few seconds of motion data with no origin is not identifying,
 //      and real values keep the unit-conversion assertions meaningful.
-//   3. Generate a fresh synthetic HEVC+AAC MPEG-TS base via ffmpeg (testsrc2
+//   3. Generate a fresh synthetic HEVC/H.264+AAC MPEG-TS base via ffmpeg (testsrc2
 //      + sine, mirroring anonymize-ts-generic.mjs) - no original video/audio
 //      bytes reach the fixture at all.
 //   4. Interleave the patched GPS groups into the base at ~1 s spacing.
@@ -22,14 +22,15 @@
 // Dependencies: ffmpeg in PATH.
 //
 // Usage:
-//   node scripts/anonymize-novatek-ts.mjs <input.ts> <output.ts> [records=10]
+//   node scripts/anonymize-novatek-ts.mjs <input.ts> <output.ts> [records=10] [hevc|h264]
+// Use H.264 for browser GPS checks that must run without OS-specific HEVC support.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 
-const [, , inputPath, outputPath, recordsArg] = process.argv;
+const [, , inputPath, outputPath, recordsArg, codecArg] = process.argv;
 if (!inputPath || !outputPath) {
-    console.error("usage: anonymize-novatek-ts.mjs <input.ts> <output.ts> [records=10]");
+    console.error("usage: anonymize-novatek-ts.mjs <input.ts> <output.ts> [records=10] [hevc|h264]");
     process.exit(1);
 }
 if (!existsSync(inputPath)) {
@@ -37,6 +38,11 @@ if (!existsSync(inputPath)) {
     process.exit(1);
 }
 const maxRecords = Number(recordsArg ?? 10);
+const codec = codecArg ?? "hevc";
+if (!["hevc", "h264"].includes(codec)) {
+    console.error(`invalid video codec: ${codec}`);
+    process.exit(1);
+}
 if (!Number.isSafeInteger(maxRecords) || maxRecords <= 0) {
     console.error(`invalid records count: ${recordsArg}`);
     process.exit(1);
@@ -130,15 +136,13 @@ const ffArgs = [
     "-i",
     `sine=frequency=1000:sample_rate=16000:duration=${durationSec}`,
     "-c:v",
-    "libx265",
+    codec === "hevc" ? "libx265" : "libx264",
     "-preset",
     "ultrafast",
-    "-x265-params",
-    "log-level=error:crf=35",
+    ...(codec === "hevc" ? ["-x265-params", "log-level=error:crf=35"] : ["-crf", "35"]),
     "-pix_fmt",
     "yuv420p",
-    "-tag:v",
-    "hvc1",
+    ...(codec === "hevc" ? ["-tag:v", "hvc1"] : []),
     "-c:a",
     "aac",
     "-ac",
