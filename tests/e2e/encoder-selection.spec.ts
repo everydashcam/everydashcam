@@ -164,9 +164,9 @@ test("a medium-quality probe detects a default encoder that ignores bitrate incr
     await restrictDefaultEncoder(page, { softwareBitrate: 13_000_000 });
     await presetLocalStorage(page);
     await gotoApp(page, "en");
-    // Native rate control varies by platform; keep the quality gain below the 2 dB
-    // direct-selection threshold while both trials stay clear of the bitrate gates.
-    const bitrate = 26_000_000;
+    // Keep the target above the Linux encoder's bitrate floor while the simulated
+    // software quality stays below the 2 dB direct-selection threshold.
+    const bitrate = 29_000_000;
     const result = await runProbe(page, { width: 3840, height: 2160, frameRate: 25, bitrate });
     await info.attach("measurement", { body: JSON.stringify(result), contentType: "application/json" });
     expect(result.standard?.frames).toBe(50);
@@ -203,7 +203,7 @@ test("a probe retains a default encoder that responds to a higher bitrate", asyn
     await restrictDefaultEncoder(page, { higherTarget: "responsive", softwareBitrate: 13_000_000 });
     await presetLocalStorage(page);
     await gotoApp(page, "en");
-    const bitrate = 26_000_000;
+    const bitrate = 29_000_000;
     const result = await runProbe(page, { width: 3840, height: 2160, frameRate: 25, bitrate });
     await info.attach("measurement", { body: JSON.stringify(result), contentType: "application/json" });
     expect(result.response?.bitrate).toBe(bitrate * 2);
@@ -217,7 +217,7 @@ test("an unsupported higher bitrate preserves the original probe measurements", 
     await restrictDefaultEncoder(page, { higherTarget: "unsupported", softwareBitrate: 13_000_000 });
     await presetLocalStorage(page);
     await gotoApp(page, "en");
-    const bitrate = 26_000_000;
+    const bitrate = 29_000_000;
     const result = await runProbe(page, { width: 3840, height: 2160, frameRate: 25, bitrate });
     await info.attach("measurement", { body: JSON.stringify(result), contentType: "application/json" });
     expect(result.standard?.frames).toBe(50);
@@ -250,7 +250,7 @@ test("automatic selection reaches the export encoder and the standard notificati
     await dimensions.nth(1).fill("2160");
     await dimensions.nth(1).blur();
     await page.locator(".export-panel__manual-bitrate > summary").click();
-    await page.locator("#export-panel-bitrate").fill("26");
+    await page.locator("#export-panel-bitrate").fill("29");
     await page.locator("#export-panel-bitrate").blur();
     await saveExport(page);
     const config = await page.evaluate(
@@ -266,12 +266,12 @@ test("automatic selection reaches the export encoder and the standard notificati
     await info.attach("selection", { body: JSON.stringify(diagnostics), contentType: "application/json" });
     expect(config, JSON.stringify(diagnostics)).toMatchObject({
         hardwareAcceleration: "prefer-software",
-        bitrate: 26_000_000,
+        bitrate: 29_000_000,
     });
     expect(diagnostics.find((entry) => entry.msg === "encoder trial measured")?.ctx).toMatchObject({
         frameRate: 25,
         reason: "unresponsive",
-        response: { bitrate: 52_000_000 },
+        response: { bitrate: 58_000_000 },
     });
     await page.locator("#notif-bell").click();
     await expect(page.locator("#notif-drawer-list")).toContainText("Automatically switched to software encoding");
