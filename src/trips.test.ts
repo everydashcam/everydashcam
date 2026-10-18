@@ -268,6 +268,43 @@ describe("groupTrips: 70mai T800 cabin files", () => {
 });
 
 describe("groupTrips: dual-channel pairs", () => {
+    it("pairs TS folder channels with independent counters and clock skew, keeping cards separate", () => {
+        const candidates = ["Front", "Rear"].flatMap((root) =>
+            ["120014", "120114", "120214"].flatMap((time, index) =>
+                ["Front", "Rear"].map((folder) => {
+                    const seconds = Number(time) + (folder === "Rear" ? 1 + (index % 2) : 0);
+                    const sequence = index * 2 + (folder === "Front" ? 1 : 2);
+                    const name = `20260101${seconds}_${String(sequence).padStart(6, "0")}.TS`;
+                    const relativePath = `${root}/MOVIE/${folder}/${name}`;
+                    const source = { file: new File([], name), relativePath };
+                    const channel = classifyFilenameChannel(source);
+                    const start = classifyFilenameTime(source);
+                    if (!channel || !start) throw new Error(`unclassified filename: ${name}`);
+                    return makeCandidate({
+                        name,
+                        relativePath,
+                        startUtc: start.getTime() / 1000,
+                        channel: channel.channel,
+                        fingerprint: cameraFingerprint(source),
+                        sequence: classifyFilenameSequence(source),
+                    });
+                }),
+            ),
+        );
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(2);
+        for (const trip of trips) {
+            expect(tripChannels(trip)).toEqual(["front", "rear"]);
+            expect(tripAllCandidates(trip)).toHaveLength(6);
+            expect(trip.frames).toHaveLength(3);
+            const roots = new Set(tripAllCandidates(trip).map((candidate) => candidate.relativePath.split("/")[0]));
+            expect(roots.size).toBe(1);
+            for (const frame of trip.frames) {
+                expect(Object.keys(frame.channels).sort()).toEqual(["front", "rear"]);
+            }
+        }
+    });
+
     // F/B pairs of one physical camera share a cameraFingerprint (the
     // camera-key library strips channel letter / folder). Tests inject the
     // same `fingerprint` to mirror real-world behavior; without it the
@@ -636,6 +673,29 @@ describe("groupTrips: dual-channel pairs", () => {
 });
 
 describe("groupTrips: fingerprint partition + overlap-split", () => {
+    it("keeps normal and protected Novatek clips in one trip under a channel folder", () => {
+        const candidates = ["120000", "120100", "120200"].map((time, index) => {
+            const name = `2026_0101_${time}_00${index + 1}.MP4`;
+            const relativePath = `card/Front/${index === 1 ? "RO/" : ""}${name}`;
+            const source = { file: new File([], name), relativePath };
+            const start = classifyFilenameTime(source);
+            if (!start) throw new Error(`unclassified filename: ${name}`);
+            return makeCandidate({
+                name,
+                relativePath,
+                startUtc: start.getTime() / 1000,
+                channel: classifyFilenameChannel(source)?.channel,
+                sequence: classifyFilenameSequence(source),
+                recordingMode: classifyFilenameMode(source),
+                fingerprint: cameraFingerprint(source),
+            });
+        });
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(1);
+        expect(trips[0]!.frames).toHaveLength(3);
+        expect(tripAllCandidates(trips[0]!)).toHaveLength(3);
+    });
+
     it("two recorders interleaved in time → one trip per camera", () => {
         // The same bug at full scale: a big folder mixes two dumps. Each
         // camera's clips are back-to-back; the two cameras run concurrently so

@@ -71,6 +71,16 @@ describe("cameraFingerprint - cross-channel identity", () => {
         expect(cam1).not.toBe(cam2);
     });
 
+    it.each([
+        ["70mai", "Normal", "NO20260101-120000F.MP4"],
+        ["Navitel", "Normal", "FILE260101-120000-000001F.ts"],
+        ["Vueroid", "INF", "20260101_120000_INF_F_N.mp4"],
+    ])("%s: a mode folder preserves enclosing Front and Rear device roots", (_family, mode, name) => {
+        const roots = ["", "Front", "Rear"];
+        const fingerprints = roots.map((root) => cameraFingerprint(vf(name, `${root}/${mode}/${name}`)));
+        expect(new Set(fingerprints).size).toBe(roots.length);
+    });
+
     it("BlackVue: front, rear, interior share a fingerprint", () => {
         const front = cameraFingerprint(vf("20211011_141314_NF.mp4", "BlackVue/Record/20211011_141314_NF.mp4"));
         const rear = cameraFingerprint(vf("20211011_141314_NR.mp4", "BlackVue/Record/20211011_141314_NR.mp4"));
@@ -307,12 +317,16 @@ describe("cameraFingerprint - cross-channel identity", () => {
         expect(locked).toBe(normal);
     });
 
-    it("Novatek single-channel: RO locked clip shares a fingerprint with its Movie/ sibling", () => {
-        // Real A119 name from the a119_join.py:22 comment.
-        const locked = cameraFingerprint(vf("2016_1224_094105_116.MP4", "DCIM/Movie/RO/2016_1224_094105_116.MP4"));
-        const normal = cameraFingerprint(vf("2016_1224_094105_116.MP4", "DCIM/Movie/2016_1224_094105_116.MP4"));
-        expect(locked).toBe(normal);
-    });
+    it.each(["DCIM/Movie", "card/Front", "card/Rear"])(
+        "Novatek single-channel: RO locked clips share the %s normal fingerprint",
+        (folder) => {
+            // Real A119 name from the a119_join.py:22 comment.
+            const name = "2016_1224_094105_116.MP4";
+            const locked = cameraFingerprint(vf(name, `${folder}/RO/${name}`));
+            const normal = cameraFingerprint(vf(name, `${folder}/${name}`));
+            expect(locked).toBe(normal);
+        },
+    );
 
     it("Vantrue: A/B/C channels share a fingerprint", () => {
         const front = cameraFingerprint(vf("20211011_141314_0001_N_A.MP4", "DCIM/20211011_141314_0001_N_A.MP4"));
@@ -395,16 +409,16 @@ describe("parentDir helper", () => {
         expect(_internal.parentDir("Movie/file.mp4")).toBe("Movie");
     });
 
-    it("several levels -> only the last one", () => {
-        expect(_internal.parentDir("A/B/C/file.mp4")).toBe("C");
+    it("several levels -> the entire enclosing path", () => {
+        expect(_internal.parentDir("A/B/C/file.mp4")).toBe("A/B/C");
     });
 
     it("empty segments are ignored", () => {
-        expect(_internal.parentDir("A//B/file.mp4")).toBe("B");
-        expect(_internal.parentDir("/A/B/file.mp4")).toBe("B");
+        expect(_internal.parentDir("A//B/file.mp4")).toBe("A/B");
+        expect(_internal.parentDir("/A/B/file.mp4")).toBe("A/B");
     });
 
     it("trailing slash does not confuse", () => {
-        expect(_internal.parentDir("A/B/file.mp4/")).toBe("B");
+        expect(_internal.parentDir("A/B/file.mp4/")).toBe("A/B");
     });
 });

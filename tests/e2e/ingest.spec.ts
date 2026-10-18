@@ -16,12 +16,17 @@ import {
     shot,
     test,
 } from "./_fixtures.js";
+import { checkFolderMulticam } from "./_channel-folders.js";
 
 test.describe("ingest", () => {
     test.beforeEach(async ({ page }) => {
         await presetLocalStorage(page);
         await page.setViewportSize(DESKTOP);
         await gotoApp(page, "en");
+    });
+
+    test("folder channels form a multicamera trip per card", async ({ page }, info) => {
+        await checkFolderMulticam(page, info.outputPath("cards"));
     });
 
     test("70mai multichannel: indexes, activates, renders every panel", { tag: "@golden-ingest" }, async ({ page }) => {

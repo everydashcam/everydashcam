@@ -17,7 +17,6 @@ import type { Channel, VendorFile } from "../types.js";
 import {
     RX_DATETIME_CHANNEL_TS,
     RX_70MAI,
-    RX_70MAI_PATH_CHANNEL,
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
@@ -58,7 +57,6 @@ import {
     RX_TESLA_PATH,
     RX_TESLA_RECENT,
     RX_THINKWARE,
-    RX_TIMESTAMP_PATH_CHANNEL,
     RX_VUEROID,
     RX_WOLFBOX,
     RX_WOLFBOX_PATH_FRONT,
@@ -67,6 +65,7 @@ import {
     matchNovatekSingleFilename,
     matchEaceChannelFolder,
 } from "./_patterns.js";
+import { channelFromFolder, matchChannelFolder } from "./channel-folder.js";
 import type { ChannelMatch, FilenameChannelTechnique } from "./types.js";
 
 // Trustworthy mount: vendor-specific mnemonic letter, spelled-out path, or
@@ -96,45 +95,29 @@ function mnemonicChannel(letter: string): ChannelMatch {
 }
 
 function folderChannel(word: string | undefined): ChannelMatch | null {
-    switch (word?.toLowerCase()) {
-        case "front":
-            return sure("front");
-        case "rear":
-            return sure("rear");
-        case "inside":
-            return sure("interior");
-        default:
-            return null;
-    }
+    const channel = channelFromFolder(word);
+    return channel === null ? null : sure(channel);
 }
 
 const mai70Channel: FilenameChannelTechnique = {
     id: "70mai-channel",
-    evidence: (file) => (RX_70MAI.test(file.file.name) ? "specific" : "heuristic"),
     extract(file: VendorFile): ChannelMatch | null {
         const m = file.file.name.match(RX_70MAI);
+        if (!m) return null;
         let unknownSuffix: string | null = null;
-        if (m) {
-            // The letter sits either before the trailing 14-digit stamp (m[8],
-            // app-export shape) or at the very end (m[9]); one file carries at
-            // most one of the two.
-            const suffix = m[8] ?? m[9];
-            if (suffix !== undefined) {
-                const ch = suffix.toUpperCase();
-                if (ch === "F") return sure("front");
-                if (ch === "B" || ch === "R") return sure("rear");
-                if (ch === "I" || ch === "C") return sure("interior");
-                unknownSuffix = ch;
-            }
+        // The letter sits either before the trailing 14-digit stamp (m[8],
+        // app-export shape) or at the very end (m[9]); one file carries at
+        // most one of the two.
+        const suffix = m[8] ?? m[9];
+        if (suffix !== undefined) {
+            const ch = suffix.toUpperCase();
+            if (ch === "F") return sure("front");
+            if (ch === "B" || ch === "R") return sure("rear");
+            if (ch === "I" || ch === "C") return sure("interior");
+            unknownSuffix = ch;
         }
-        // Multi-channel S500/A810/T800 use Normal/Front, Normal/Back, Normal/Interior.
-        const pm = file.relativePath.match(RX_70MAI_PATH_CHANNEL);
-        if (pm) {
-            const folder = pm[1]!.toLowerCase();
-            if (folder === "front") return sure("front");
-            if (folder === "back") return sure("rear");
-            if (folder === "interior") return sure("interior");
-        }
+        const folder = matchChannelFolder(file.relativePath);
+        if (folder) return sure(folder.channel);
         return unknownSuffix ? mnemonicChannel(unknownSuffix) : null;
     },
 };
@@ -274,12 +257,6 @@ const sstarChnChannel: FilenameChannelTechnique = {
 
 const ddpaiChannel: FilenameChannelTechnique = {
     id: "ddpai-channel",
-    evidence: (file) =>
-        RX_DDPAI_NORMAL.test(file.file.name) ||
-        RX_DDPAI_TIMELAPSE.test(file.file.name) ||
-        RX_DDPAI_EVENT.test(file.file.name)
-            ? "specific"
-            : "heuristic",
     extract(file: VendorFile): ChannelMatch | null {
         // A=rear is a DDPai convention (not a mnemonic), and RX_DDPAI_NORMAL is
         // a generic timestamp pattern, so the mount is a guess. Same for the
@@ -289,7 +266,8 @@ const ddpaiChannel: FilenameChannelTechnique = {
             const suffix = normal[3]?.toUpperCase();
             // A missing suffix is weaker evidence than a spelled-out channel folder.
             if (!suffix) {
-                return folderChannel(file.relativePath.match(RX_TIMESTAMP_PATH_CHANNEL)?.[1]) ?? guess("front");
+                const folder = matchChannelFolder(file.relativePath);
+                return folder ? sure(folder.channel) : guess("front");
             }
             if (suffix === "A") return guess("rear");
             if (suffix === "F") return guess("front");
@@ -299,11 +277,6 @@ const ddpaiChannel: FilenameChannelTechnique = {
         if (tl) return tl[1]!.toUpperCase() === "Q" ? guess("rear") : guess("front");
         const ev = file.file.name.match(RX_DDPAI_EVENT);
         if (ev) return guess("front");
-        // Path-based fallback for 3-channel models (Z90 Master 3CH) - spelled-out folders.
-        const lower = file.relativePath.toLowerCase();
-        if (lower.includes("/front/")) return sure("front");
-        if (lower.includes("/rear/")) return sure("rear");
-        if (lower.includes("/inside/")) return sure("interior");
         return null;
     },
 };
@@ -315,9 +288,8 @@ const eaceChannel: FilenameChannelTechnique = {
         if (!m) return null;
         const ch = m[3];
         if (ch) return mnemonicChannel(ch);
-        return folderChannel(
-            matchEaceChannelFolder(file.relativePath)?.[2] ?? file.relativePath.match(RX_TIMESTAMP_PATH_CHANNEL)?.[1],
-        );
+        const folder = matchChannelFolder(file.relativePath);
+        return folderChannel(matchEaceChannelFolder(file.relativePath)?.[2]) ?? (folder ? sure(folder.channel) : null);
     },
 };
 
@@ -607,11 +579,20 @@ const datetimeChannelTsChannel: FilenameChannelTechnique = {
     },
 };
 
+const spelledFolderChannel: FilenameChannelTechnique = {
+    id: "spelled-folder-channel",
+    evidence: () => "heuristic",
+    extract(file: VendorFile): ChannelMatch | null {
+        const folder = matchChannelFolder(file.relativePath);
+        return folder ? sure(folder.channel) : null;
+    },
+};
+
 export const FILENAME_CHANNEL: readonly FilenameChannelTechnique[] = [
+    // Prefer the adjacent spelled-out folder over unscoped ancestor heuristics.
+    // The dispatcher still gives every format-specific match priority over it.
+    spelledFolderChannel,
     datetimeChannelTsChannel,
-    // Exact name-gated families stay first for stable diagnostics. The
-    // unscoped path fallbacks are marked heuristic, so a user-created folder
-    // cannot override a later camera-specific channel suffix.
     neolineChannel,
     vueroidChannel,
     mai70Channel,

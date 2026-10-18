@@ -89,12 +89,16 @@ describe("date-sequence-cam filenames", () => {
     });
 
     it("keeps channels and modes in one camera key while preserving enclosing camera roots", () => {
-        const front = vf("20260923_0134_CAM1.MP4", "card/Normal_Front/Normal_Front/20260923_0134_CAM1.MP4");
-        const rear = vf("20260923_0135_CAM2.MP4", "card/Normal_Front/Event_Rear/20260923_0135_CAM2.MP4");
-        expect(cameraFingerprint(front)).toBe(cameraFingerprint(rear));
-        expect(cameraFingerprint(front)).not.toBe(cameraFingerprint(vf(front.file.name, `card/${front.file.name}`)));
-        expect(classifyFilenameMode(rear)).toBe("event");
-        expect(classifyFilenameChannel(rear)).toEqual({ channel: "rear", confident: true });
+        const roots = ["card", "card/Front", "card/Rear", "card/Normal_Front"];
+        const fingerprints = roots.map((root) => {
+            const front = vf("20260923_0134_CAM1.MP4", `${root}/Normal_Front/20260923_0134_CAM1.MP4`);
+            const rear = vf("20260923_0135_CAM2.MP4", `${root}/Event_Rear/20260923_0135_CAM2.MP4`);
+            expect(cameraFingerprint(front)).toBe(cameraFingerprint(rear));
+            expect(classifyFilenameMode(rear)).toBe("event");
+            expect(classifyFilenameChannel(rear)).toEqual({ channel: "rear", confident: true });
+            return cameraFingerprint(front);
+        });
+        expect(new Set(fingerprints).size).toBe(roots.length);
     });
 
     it("recognizes a flat CAM1 file without guessing a recording mode", () => {
@@ -747,10 +751,7 @@ describe("70mai A810 lite rear (R) + event (EV) variants", () => {
         expect(r.value).toBe("parking");
     });
 
-    it("rear resolves via the R letter even when the folder is /Rear/ (path regex omits Rear by design)", () => {
-        // RX_70MAI_PATH_CHANNEL is deliberately NOT widened to Rear/ - the A810
-        // name already carries the letter, and widening it would let 70mai claim
-        // other vendors' /Rear/ files before their own techniques run.
+    it("rear resolves via the R letter with a matching channel folder", () => {
         const r = matchFilenameChannel(
             vf("NO20260101-120000-000042R.MP4", "Movie/Normal/Rear/NO20260101-120000-000042R.MP4"),
         );

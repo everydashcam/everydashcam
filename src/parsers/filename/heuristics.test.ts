@@ -16,6 +16,65 @@ function vf(name: string, folder = "card"): VendorFile {
     return { file: new File([], name), relativePath: `${folder}/${name}` };
 }
 
+describe("shared channel folders", () => {
+    it.each([
+        "20260101120000_000001.TS",
+        "REC20260101-120000-1.mp4",
+        "20260101120000_001.mp4",
+        "20260101_120000.mp4",
+        "clip001.mkv",
+    ])("pairs spelled-out channels for %s without consuming the device path", (name) => {
+        const folders = ["Front", "Rear", "Back", "Interior", "Inside", "Cabin"];
+        const channels = ["front", "rear", "rear", "interior", "interior", "interior"];
+        const fingerprints = new Set<string>();
+        for (const root of ["card", "Front", "Rear"]) {
+            const files = folders.map((folder) => vf(name, `${root}/MOVIE/${folder}`));
+            expect(files.map((file) => classifyFilenameChannel(file)?.channel)).toEqual(channels);
+            const keys = files.map(cameraFingerprint);
+            expect(new Set(keys).size).toBe(1);
+            fingerprints.add(keys[0]!);
+            for (const folder of folders) {
+                expect(cameraFingerprint(vf(name, `${root}/${folder}`))).not.toBe(cameraFingerprint(vf(name, folder)));
+                expect(cameraFingerprint(vf(name, `${root}/${folder.toLowerCase()}`))).toBe(
+                    cameraFingerprint(vf(name, `${root}/${folder}`)),
+                );
+            }
+        }
+        expect(fingerprints.size).toBe(3);
+    });
+
+    it.each(["20260101120000_000001.TS", "clip001.mkv"])(
+        "uses only the immediate spelled-out parent for %s",
+        (name) => {
+            expect(matchFilenameChannel(vf(name, "Front/archive/Rear"))).toEqual({
+                matchedId: "spelled-folder-channel",
+                value: { channel: "rear", confident: true },
+            });
+            for (const folder of ["Front/archive", "Rear/archive", "F", "R", "A", "B", "front-camera"]) {
+                expect(classifyFilenameChannel(vf(name, folder))).toBeNull();
+            }
+            expect(cameraFingerprint(vf(name, "card-a/archive"))).not.toBe(
+                cameraFingerprint(vf(name, "card-b/archive")),
+            );
+            expect(cameraFingerprint(vf(name, "card/Normal/Front"))).not.toBe(
+                cameraFingerprint(vf(name, "card/Event/Rear")),
+            );
+        },
+    );
+
+    it("normalizes Nextbase folders while retaining quality streams and explicit channels", () => {
+        const front = vf("260101_120000_001_FH.mp4", "card/Front");
+        const rear = vf("260101_120000_001_RH.mp4", "card/Rear");
+        const low = vf("260101_120000_001_RL.mp4", "card/Rear");
+        expect(cameraFingerprint(front)).toBe(cameraFingerprint(rear));
+        expect(cameraFingerprint(low)).not.toBe(cameraFingerprint(rear));
+        expect(matchFilenameChannel(vf(rear.file.name, "card/Front"))).toEqual({
+            matchedId: "nextbase-channel",
+            value: { channel: "rear", confident: true },
+        });
+    });
+});
+
 describe("timestamp filename variations", () => {
     it.each(["R.MP4", "_R.mp4", "-r.Mp4"])("normalizes the %s channel token and extension case", (suffix) => {
         const front = vf("20260101_120000.MP4");
@@ -70,16 +129,26 @@ describe("timestamp filename variations", () => {
         "uses adjacent mode folders without claiming an archive's mode for %s",
         (name) => {
             for (const [folder, mode] of [
+                ["Normal", "normal"],
+                ["Video", "normal"],
                 ["Event", "event"],
                 ["Parking", "parking"],
+                ["Manual", "manual"],
                 ["Favorites", "manual"],
             ]) {
                 expect(classifyFilenameMode(vf(name, `card/${folder}`))).toBe(mode);
-                expect(classifyFilenameMode(vf(name, `card/${folder}/Rear`))).toBe(mode);
+                for (const channel of ["Front", "Rear", "Back", "Interior", "Inside", "Cabin", "bAcK", "cAbIn"]) {
+                    expect(classifyFilenameMode(vf(name, `card/${folder}/${channel}`)), `${folder}/${channel}`).toBe(
+                        mode,
+                    );
+                }
                 expect(classifyFilenameTimelapse(vf(name, `card/${folder}`))).toBe(false);
             }
             expect(classifyFilenameMode(vf(name, "Event/archive"))).toBe("normal");
             expect(classifyFilenameMode(vf(name, "Event/card/Normal/Rear"))).toBe("normal");
+            for (const folder of ["Event/archive/Back", "Parking/archive/Cabin", "Manual/Back/Cabin", "Event/F"]) {
+                expect(classifyFilenameMode(vf(name, folder))).toBe("normal");
+            }
         },
     );
 

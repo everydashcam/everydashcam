@@ -49,7 +49,6 @@ import {
     RX_TESLA_PATH_SAVED,
     RX_TESLA_PATH_SENTRY,
     RX_THINKWARE,
-    RX_TIMESTAMP_PATH_MODE,
     RX_VUEROID,
     RX_VUEROID_PATH_MODE,
     RX_WOLFBOX,
@@ -57,6 +56,7 @@ import {
     RX_WOLFBOX_PATH_NORMAL,
     matchNovatekSingleFilename,
 } from "./_patterns.js";
+import { channelFromFolder } from "./channel-folder.js";
 import type { FilenameModeTechnique } from "./types.js";
 
 const mai70Mode: FilenameModeTechnique = {
@@ -166,7 +166,10 @@ const recSingleMode: FilenameModeTechnique = {
 };
 
 function timestampFolderMode(file: VendorFile): RecordingMode | null {
-    const folder = file.relativePath.match(RX_TIMESTAMP_PATH_MODE)?.[1]?.toLowerCase();
+    const segments = file.relativePath.split("/").filter((segment) => segment.length > 0);
+    const parent = segments.at(-2);
+    // Only a channel leaf can separate the mode folder from its recording.
+    const folder = (channelFromFolder(parent) === null ? parent : segments.at(-3))?.toLowerCase();
     switch (folder) {
         case "normal":
         case "video":

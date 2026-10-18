@@ -13,20 +13,20 @@
 //   1. Walk the FILENAME_CAMERA_KEY library (filename/camera-key.ts). Each
 //      technique recognises a specific format and returns a key with the
 //      channel marker stripped from both filename and parent path.
-//   2. On miss (truly anonymous filenames), fall back to the plain mask +
-//      parentDir. Such files are NOT cross-channel aware - if a user drops
-//      anonymous front and rear of one camera, they will land in separate
-//      frames. Acceptable: the alternative is collapsing distinct cameras.
+//   2. On miss, use a plain mask + full parent path, removing only a recognized
+//      spelled-out channel leaf. Keep the enclosing path to isolate devices
+//      whose channel folders and filenames happen to be identical.
 
 import { maskName } from "./filename/camera-key.js";
 import { classifyFilenameCameraKey } from "./filename/index.js";
+import { matchChannelFolder } from "./filename/channel-folder.js";
 import type { VendorFile } from "./types.js";
 
 export function cameraFingerprint(file: VendorFile): string {
     const fromTechnique = classifyFilenameCameraKey(file);
     if (fromTechnique !== null) return fromTechnique;
-    // Fallback for unrecognised formats: digit-masked name + parent dir as-is.
-    return `${maskName(file.file.name)}|${parentDir(file.relativePath)}`;
+    const dir = matchChannelFolder(file.relativePath)?.parentDir ?? parentDir(file.relativePath);
+    return `${maskName(file.file.name)}|${dir}`;
 }
 
 function parentDir(relativePath: string): string {
@@ -34,7 +34,7 @@ function parentDir(relativePath: string): string {
     // Drop the file itself (last segment) - we want the parent only.
     const segs = relativePath.split("/").filter((s) => s.length > 0);
     if (segs.length < 2) return ""; // flat drop - filename without folders
-    return segs[segs.length - 2]!;
+    return segs.slice(0, -1).join("/");
 }
 
 // Export for tests.

@@ -20,7 +20,6 @@
 // this one regex): m[1..6] datetime, m[7] counter, m[8]/m[9] channel.
 export const RX_70MAI =
     /^(?:NO|EV|VL|LA|PA)(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d+))?(?:([A-Z])(?:-\d{14})?|(?:-\d{14})?([A-Z])?)\.mp4$/i;
-export const RX_70MAI_PATH_CHANNEL = /(?:^|\/)(Front|Back|Interior)\//i;
 // Recording-mode folders on a 70mai card. Single source for both the path-mode
 // regex and camera-key's parent-dir strip list - a mode folder added here
 // reaches both, so a new name cannot silently re-fragment trips.
@@ -121,10 +120,6 @@ export const RX_DDPAI_TIMESTAMP_TOKEN = /(\d{14})/;
 
 // A separator belongs to the channel token; a bare trailing separator is invalid.
 export const RX_E_ACE = /^(\d{8})_(\d{6})(?:[_-]?([A-Z]))?\.mp4$/i;
-// Leaf folders can supply metadata missing from otherwise generic timestamp names.
-export const RX_TIMESTAMP_PATH_CHANNEL = /(?:^|\/)(front|rear|inside)\/[^/]+$/i;
-export const RX_TIMESTAMP_PATH_MODE =
-    /(?:^|\/)(normal|video|event|parking|manual|favorites)\/(?:(?:front|rear|inside|interior)\/)?[^/]+$/i;
 // Leaf folder of an E-Ace-shaped 3-channel card that splits streams into
 // `<Mode>_<channel word>/` siblings (RedTiger F17: Video_Front/, Video_Inside/,
 // Video_Rear/, with Event_* next to them). Groups: mode stem, channel word.
@@ -325,6 +320,12 @@ export const RX_NOVATEK_VIOFO = /^(\d{4})_(\d{4})_(\d{6})_(\d+)?([PE]?)([A-Z])\.
 // segment is too short to claim files on its own - consumers must gate on a
 // Novatek name regex first.
 export const RX_NOVATEK_PATH_RO = /(?:^|\/)ro\//i;
+
+/** Removes only the locked-clip leaf; callers gate on a Novatek filename. */
+export function stripNovatekLockedFolder(relativePath: string): string {
+    return relativePath.replace(/(^|\/)ro\/(?=[^/]+$)/i, "$1");
+}
+
 // Single-channel Novatek OEM (2E Drive, SilverStone F1, ...).
 export const RX_NOVATEK_SINGLE = /^(\d{4})_(\d{4})_(\d{6})_(\d+)\.(mp4|mov)$/i;
 // Novatek NVT-IM single-camera MOV variant: same split datetime + 3-digit

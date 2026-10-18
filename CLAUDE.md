@@ -87,6 +87,8 @@ For browser tests, install Playwright's pinned full browser with
   and `src/ui/annotations-sidecar.ts`. After parser/indexer semantic changes, run
   `npm run generate:parser-cache-revisions` and review the generated diff. Bump
   `INDEX_CACHE_FORMAT` in `src/persist/types.ts` only for persisted shape changes.
+  Expected cache invalidation from parser, dependency, or bundler updates is
+  routine; it needs no special release warning or workaround to preserve a hash.
 - Hosted offline behavior: `public/sw.js`, `src/ui/sw-registration.ts`, and
   `vite-plugins/sw-precache.ts`. Build/SEO: `vite.config.ts`, `vite-plugins/`.
   Portable shares application code through the `__PORTABLE__` boundary and
