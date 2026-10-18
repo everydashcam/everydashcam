@@ -58,7 +58,7 @@ import { getUnits } from "../units-pref.js";
 import { encoderAcceleration, getEncoderPreference, subscribeEncoderPreference } from "../encoder-pref.js";
 import { selectAutoEncoder } from "./encoder-selection.js";
 
-import { anyRegionIntersectsRange, cloneBlurRegions, type BlurRegion } from "../blur-regions.js";
+import { anyRegionOnChannels, cloneBlurRegions, type BlurRegion } from "../blur-regions.js";
 
 import { isAllocationFailure } from "./allocation-failure.js";
 import { isDestinationLostError, isSinkFailure, tagSinkFailures } from "./destination-error.js";
@@ -219,9 +219,7 @@ function streamCopyEligibleConfig(): boolean {
     );
 }
 
-/** True when a privacy blur region intersects the export range on a visible
- *  channel. Such an export MUST re-encode - stream-copy would silently ship the
- *  unblurred original, which for a privacy feature is the worst failure mode. */
+/** True when privacy regions require re-encoding on a visible channel. */
 function anyBlurRegionInExport(): boolean {
     // A detect checkbox gates too, pessimistically: while its pass is stale or
     // still running we do not yet know whether regions will exist, and the
@@ -230,15 +228,7 @@ function anyBlurRegionInExport(): boolean {
     if (anyDetectEnabled() && (detectStale() || detectPassState() !== null || detectRegions().length > 0)) {
         return true;
     }
-    // No range yet (panel not opened this session) = the full trip would be
-    // exported - treat it as an unbounded range so regions still gate.
-    const range = exportPanelState.range;
-    return anyRegionIntersectsRange(
-        activeBlurRegions(),
-        state.composition.channelOrder,
-        range ? range.startTripSec : 0,
-        range ? range.endTripSec : Number.POSITIVE_INFINITY,
-    );
+    return anyRegionOnChannels(activeBlurRegions(), state.composition.channelOrder);
 }
 
 /** Active trip's regions for the worker args - manual zones plus the detection
@@ -908,7 +898,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         letterboxFill === "black" &&
         speedFactor === 1 &&
         overlays === null &&
-        !anyRegionIntersectsRange(manualBlurRegions, channelOrder, startTripSec, endTripSec);
+        !anyRegionOnChannels(manualBlurRegions, channelOrder);
 
     if (dom.player && !dom.player.paused) dom.player.pause();
 

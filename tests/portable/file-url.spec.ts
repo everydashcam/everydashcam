@@ -2,9 +2,10 @@ import { chmod, cp, readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Page, expect } from "@playwright/test";
-import { BufferSource, Input, MP4 } from "mediabunny";
+import { BufferSource, EncodedPacketSink, Input, MP4 } from "mediabunny";
 
 import { PORTABLE_UPDATE_URL } from "../../src/portable/manifest.mjs";
+import { expectExportedPixelsCovered } from "../e2e/_export-pixels.js";
 import {
     loadTrip,
     masterVideoTime,
@@ -138,6 +139,92 @@ test("falls back from a denied native picker and downloads MP4 and GPS without a
     await download.saveAs(target);
     expect(await readFile(target, "utf8")).toContain("<trkpt");
     expect(requests.some((url) => url.startsWith("https://tiles.openfreemap.org/"))).toBe(true);
+});
+
+test("whole-clip fill covers the first and last exported frames at fractional trim bounds", async ({ page }, info) => {
+    const start = 0.5005;
+    const end = 1.5005;
+    await presetLocalStorage(page);
+    await page.addInitScript(() => {
+        Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: undefined });
+        window.addEventListener("dc:ready", () => window.__everydashcam.setMapProvider("route-only"), {
+            once: true,
+        });
+    });
+    await openPortable(page, info.outputPath("fractional-trim"));
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    await openExport(page);
+    const includes = page.locator(".top-panel__channel-include");
+    await includes.nth(2).click();
+    await includes.nth(1).click();
+    await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+
+    for (const [edge, seconds] of [
+        ["end", end],
+        ["start", start],
+    ] as const) {
+        await page.locator("#player").evaluate(async (element, seconds) => {
+            const video = element as HTMLVideoElement;
+            const sought = new Promise<void>((resolve) =>
+                video.addEventListener("seeked", () => resolve(), { once: true }),
+            );
+            video.currentTime = seconds;
+            await sought;
+        }, seconds);
+        await page.locator(`.export-trim-bar__set[data-set-edge="${edge}"]`).click();
+        await expect
+            .poll(async () => Number(await page.locator(`.timeline-range__tab--${edge}`).getAttribute("aria-valuenow")))
+            .toBeCloseTo(seconds, 5);
+    }
+
+    await page.locator(".export-panel__blur-add-btn").click();
+    const drawLayer = page.locator('.video-tile[data-channel="front"] .blur-draw-layer');
+    await expect(drawLayer).toBeVisible();
+    const box = (await drawLayer.boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.65, { steps: 6 });
+    await page.mouse.up();
+    await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toBeVisible();
+    await page.locator("#export-panel-blur-style").selectOption("fill");
+    await page.getByRole("button", { name: "Keep this zone active for the whole clip" }).click();
+
+    await page.locator("#export-panel-save-btn").click();
+    await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 75_000 });
+    const downloadPromise = page.waitForEvent("download");
+    await page.locator("#export-panel-done-summary button").click();
+    const download = await downloadPromise;
+    const target = info.outputPath("fractional-trim.mp4");
+    await download.saveAs(target);
+    const bytes = await readFile(target);
+    const input = new Input({ source: new BufferSource(bytes), formats: [MP4] });
+    const frames: { timestamp: number; duration: number }[] = [];
+    try {
+        const track = await input.getPrimaryVideoTrack();
+        expect(track).not.toBeNull();
+        for await (const packet of new EncodedPacketSink(track!).packets()) {
+            frames.push({ timestamp: packet.timestamp, duration: packet.duration });
+        }
+    } finally {
+        input.dispose();
+    }
+    frames.sort((a, b) => a.timestamp - b.timestamp);
+    expect(frames.length).toBeGreaterThan(2);
+    expect(frames[0]!.timestamp).toBeCloseTo(0, 5);
+    // Sample inside the first and last presentation intervals, independent of
+    // frame rate and encoder packet order. A middle-frame check misses this leak.
+    const checkpoints = [frames[0]!, frames.at(-1)!].map((frame, index) => ({
+        name: index === 0 ? "first frame" : "last frame",
+        time: frame.timestamp + frame.duration / 2,
+    }));
+    await expectExportedPixelsCovered(
+        page,
+        { inside: { x: 0.475, y: 0.475, w: 0.05, h: 0.05 }, outside: [{ x: 0.4, y: 0.15, w: 0.2, h: 0.1 }] },
+        checkpoints,
+        Math.ceil(end * 30) / 30 - start,
+        bytes.toString("base64"),
+    );
 });
 
 test("opens the default internet map with embedded styles and sprites", async ({ page }, info) => {

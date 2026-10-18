@@ -316,7 +316,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         // Privacy-region scratch canvas, allocated once per run (see compose.ts).
         const regionBlurHelper: RegionBlurHelper | null = output.blurRegions?.length ? createRegionBlurHelper() : null;
         const regionBlurResolvers = source.slotChannels.map((channel) =>
-            createRegionBlurResolver(output.blurRegions ?? [], channel),
+            createRegionBlurResolver(output.blurRegions ?? [], channel, source.startTripSec),
         );
         const renderOpts = { fill: output.letterboxFill, blurHelper, regionBlurHelper };
 

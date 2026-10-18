@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     activeEffectiveBlurRegions: vi.fn(),
+    previewExportStartSec: vi.fn(),
     resolveRegionBlursAt: vi.fn(),
     paintRegionBlursForView: vi.fn(),
     downloadBlob: vi.fn(),
@@ -29,7 +30,10 @@ vi.mock("../transcode/compose.js", () => ({
     paintRegionBlursForView: mocks.paintRegionBlursForView,
 }));
 vi.mock("../trips.js", () => ({ displayClockDate: (sec: number) => new Date(sec * 1000) }));
-vi.mock("./blur-effective.js", () => ({ activeEffectiveBlurRegions: mocks.activeEffectiveBlurRegions }));
+vi.mock("./blur-effective.js", () => ({
+    activeEffectiveBlurRegions: mocks.activeEffectiveBlurRegions,
+    previewExportStartSec: mocks.previewExportStartSec,
+}));
 
 vi.mock("./dom.js", () => ({
     activePlayer: () => mocks.video,
@@ -82,6 +86,8 @@ function acknowledgeFrame(before?: () => void): void {
 describe("captureCurrentFrame privacy blur", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.previewExportStartSec.mockReturnValue(-Infinity);
+        mocks.video.currentTime = 1;
         mocks.video.seeking = false;
         mocks.video.src = "blob:current";
         mocks.video.requestVideoFrameCallback = undefined;
@@ -106,7 +112,7 @@ describe("captureCurrentFrame privacy blur", () => {
             () => 3,
         );
 
-        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 3);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 3, -Infinity);
         expect(mocks.paintRegionBlursForView).toHaveBeenCalledWith(
             ctx,
             resolved,
@@ -128,6 +134,26 @@ describe("captureCurrentFrame privacy blur", () => {
             expect.any(Blob),
             expect.stringMatching(/^everydashcam_\d{8}_\d{6}_frame\.jpg$/),
         );
+    });
+
+    it("forwards fractional export coverage while keeping the captured source frame's timestamp", async () => {
+        const effective = [{ id: "manual" }];
+        mocks.activeEffectiveBlurRegions.mockReturnValue(effective);
+        mocks.resolveRegionBlursAt.mockReturnValue([{ style: "fill" }]);
+        mocks.previewExportStartSec.mockReturnValue(1.0005);
+        mocks.video.currentTime = 1.0005;
+        stubCaptureCanvas();
+
+        await captureCurrentFrame(
+            () => 0,
+            () => 1.0005,
+            () => 1,
+        );
+
+        expect(mocks.previewExportStartSec).toHaveBeenCalledWith("front", 1);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 1, 1.0005);
+        expect(mocks.paintRegionBlursForView).toHaveBeenCalledOnce();
+        expect(mocks.downloadBlob).toHaveBeenCalledOnce();
     });
 
     it("refuses a JPG while the requested seek still displays older pixels", async () => {
@@ -163,7 +189,7 @@ describe("captureCurrentFrame privacy blur", () => {
             contentTime,
         );
         expect(contentTime).toHaveBeenCalledWith("front", 1.25);
-        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 3.25);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 3.25, -Infinity);
         expect(mocks.downloadBlob).toHaveBeenCalledOnce();
     });
 
@@ -203,7 +229,7 @@ describe("captureCurrentFrame privacy blur", () => {
         await pending;
 
         expect(contentTime).toHaveBeenCalledWith("front", undefined);
-        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 3.25);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 3.25, -Infinity);
         expect(mocks.paintRegionBlursForView).toHaveBeenCalledOnce();
         expect(mocks.downloadBlob).toHaveBeenCalledOnce();
         expect(vi.getTimerCount()).toBe(0);
@@ -233,7 +259,7 @@ describe("captureCurrentFrame privacy blur", () => {
         await pending;
 
         expect(ctx.drawImage).toHaveBeenCalledOnce();
-        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 4.5);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 4.5, -Infinity);
         expect(mocks.downloadBlob).toHaveBeenCalledOnce();
     });
 

@@ -7,6 +7,73 @@ import type { Channel } from "./parsers/types.js";
 const channels: Channel[] = ["front", "rear", "interior", "side"];
 
 describe("createRegionBlurResolver", () => {
+    it.each([
+        { start: 0, firstFrame: -0.000001 },
+        { start: 1, firstFrame: 1 },
+        { start: 1.0005, firstFrame: 1 },
+        { start: 1.01, firstFrame: 1 },
+        { start: 1.4, firstFrame: 1 },
+        { start: 2.0005, firstFrame: 2 },
+    ])("covers retained frames and preserves the end for an export starting at $start", ({ start, firstFrame }) => {
+        const rect = { xPct: 0.2, yPct: 0.3, wPct: 0.2, hPct: 0.2 };
+        const region = createBlurRegion("front", "fill", start, start + 1, start + 0.5, rect);
+        const original = structuredClone(region);
+        const resolve = createRegionBlurResolver([region], "front", start);
+        for (const sec of [firstFrame, start, start + 0.5, start + 1]) {
+            expect(resolve(sec), `covered at ${sec}`).toEqual([{ rect, style: "fill" }]);
+            expect(resolve(sec), `preview and export agree at ${sec}`).toEqual(
+                resolveRegionBlursAt([region], "front", sec, start),
+            );
+        }
+        expect(resolve(start + 1.000001), "the zone still ends at its original boundary").toEqual([]);
+        expect(resolve(firstFrame), "a backward timestamp jump retains boundary coverage").toEqual([
+            { rect, style: "fill" },
+        ]);
+        expect(region, "export does not change the editor's span or geometry").toEqual(original);
+    });
+
+    it("uses the retained frame's moving geometry instead of the fractional trim time", () => {
+        const region = createBlurRegion("front", "fill", 1.01, 2, 0.9, {
+            xPct: 0.2,
+            yPct: 0.3,
+            wPct: 0.2,
+            hPct: 0.2,
+        });
+        upsertKeyframe(region, 1.1, { xPct: 0.6, yPct: 0.3, wPct: 0.2, hPct: 0.2 }, false);
+        const resolve = createRegionBlurResolver([region], "front", 1.01);
+        expect(resolve(1)[0]?.rect.xPct).toBeCloseTo(0.4);
+        for (const sec of [1.01, 1.1, 2, 2.000001]) {
+            expect(resolve(sec), `unchanged after the trim at ${sec}`).toEqual(
+                resolveRegionBlursAt([region], "front", sec),
+            );
+        }
+    });
+
+    it("keeps existing frame masks and paint order without pulling future or detector masks backward", () => {
+        const rect = { xPct: 0.2, yPct: 0.3, wPct: 0.2, hPct: 0.2 };
+        const whole = createBlurRegion("front", "fill", 1.01, 2, 1.5, rect);
+        const ended = createBlurRegion("front", "pixelate", 0, 1.005, 0, rect);
+        const future = createBlurRegion("front", "blur", 1.02, 2, 1.02, rect);
+        const observed = createBlurRegion("front", "blur", 1, 1 + 1 / 30, 1, rect);
+        observed.interpolation = "hold";
+        const boundaryObserved = { ...observed, startSec: 1.005 };
+        const nextObserved = { ...observed, startSec: 1 + 1 / 30, endSec: 2 };
+        const regions = [whole, ended, future, observed, boundaryObserved, nextObserved];
+        const resolve = createRegionBlurResolver(regions, "front", 1.01);
+        expect(resolve(1)).toEqual([
+            { rect, style: "blur" },
+            { rect, style: "pixelate" },
+            { rect, style: "fill" },
+        ]);
+        expect(resolve(1), "preview and indexed export use the same boundary policy").toEqual(
+            resolveRegionBlursAt(regions, "front", 1, 1.01),
+        );
+        for (const sec of [1.01, 1.02, 1 + 1 / 30, 2, 2.000001]) {
+            expect(resolve(sec), `unchanged at ${sec}`).toEqual(resolveRegionBlursAt(regions, "front", sec));
+        }
+        expect(createRegionBlurResolver(regions, "rear", 1.01)(1)).toEqual([]);
+    });
+
     it("activates held masks on rounded browser timestamps without changing manual boundaries", () => {
         const held = createBlurRegion("front", "fill", 7 / 30, 10 / 30, 7 / 30, {
             xPct: 0.1,

@@ -11,7 +11,7 @@ import { t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
 import type { Channel } from "../parsers/types.js";
 import { createRegionBlurHelper, paintRegionBlursForView } from "../transcode/compose.js";
-import { activeEffectiveBlurRegions } from "./blur-effective.js";
+import { activeEffectiveBlurRegions, previewExportStartSec } from "./blur-effective.js";
 import { displayClockDate } from "../trips.js";
 import { activePlayer, effectiveMasterChannel, dom } from "./dom.js";
 import { activeCandidate, activeTrip, state } from "./state.js";
@@ -201,7 +201,12 @@ export async function captureCurrentFrame(
     // captured JPG must match - otherwise S quietly saves the very plate the
     // user just covered. Identity view: raw source frame -> same-size canvas.
     if (state.exportModeOpen && frameContentSec !== null) {
-        const regionBlurs = resolveRegionBlursAt(activeEffectiveBlurRegions(), ch, frameContentSec);
+        const regionBlurs = resolveRegionBlursAt(
+            activeEffectiveBlurRegions(),
+            ch,
+            frameContentSec,
+            previewExportStartSec(ch, frameContentSec),
+        );
         if (regionBlurs.length > 0) {
             paintRegionBlursForView(
                 ctx,

@@ -1,9 +1,8 @@
 // Privacy blur zones: draw-on-tile editor, panel rows, the stream-copy gate
 // (a zone MUST force re-encode - silently shipping the unblurred original is
-// the feature's worst failure mode), and the actual burn-in. The burn-in test
-// decodes the produced MP4 back in-page and compares pixel luma inside vs
-// outside the zone - the only spec that re-decodes output pixels, because for
-// a privacy feature box markers prove nothing about the pixels.
+// the feature's worst failure mode), and the actual burn-in. Decode exported
+// pixels at clip edges and file seams: for a privacy feature, box markers
+// prove nothing about the saved pixels.
 
 import {
     DESKTOP,
@@ -22,6 +21,7 @@ import {
     shot,
     test,
 } from "./_fixtures.js";
+import { expectExportedPixelsCovered, type PixelCheckpoint } from "./_export-pixels.js";
 import type { Page } from "@playwright/test";
 
 test.use({ viewerMap: "route-only", reducedMotion: "reduce" });
@@ -74,6 +74,76 @@ async function zoneSourceRect(page: Page): Promise<{ x: number; y: number; w: nu
             h: br.height / dh,
         };
     });
+}
+
+async function expectExportedZoneCovered(
+    page: Page,
+    zone: Awaited<ReturnType<typeof zoneSourceRect>>,
+    checkpoints: PixelCheckpoint[],
+    expectedDuration: number,
+): Promise<void> {
+    const stripH = Math.min(zone.h * 0.5, zone.y, 1 - zone.y - zone.h);
+    await expectExportedPixelsCovered(
+        page,
+        {
+            inside: { x: zone.x + zone.w * 0.25, y: zone.y + zone.h * 0.25, w: zone.w * 0.5, h: zone.h * 0.5 },
+            outside: [
+                { x: zone.x, y: zone.y - stripH, w: zone.w, h: stripH * 0.9 },
+                { x: zone.x, y: zone.y + zone.h + stripH * 0.1, w: zone.w, h: stripH * 0.9 },
+            ],
+        },
+        checkpoints,
+        expectedDuration,
+    );
+}
+
+async function expectPreviewZoneCovered(page: Page): Promise<void> {
+    // A visible box may belong to the previous paint. Wait until the changed
+    // timing and style have reached the preview canvas before checking pixels.
+    await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    const canvas = page.locator('.video-tile[data-channel="front"] .blur-preview-canvas');
+    await expect
+        .poll(() =>
+            canvas.evaluate((el: HTMLCanvasElement) => {
+                const ctx = el.getContext("2d");
+                if (!ctx || el.width === 0 || el.height === 0) return null;
+                return Array.from(ctx.getImageData(Math.floor(el.width / 2), Math.floor(el.height / 2), 1, 1).data);
+            }),
+        )
+        .toEqual([0, 0, 0, 255]);
+}
+
+/** This fixture has two two-second files. Use the real seek and edge controls
+ *  because the text timecode fields intentionally display whole seconds. */
+async function setFixtureTrimEdge(page: Page, edge: "start" | "end", time: number): Promise<void> {
+    const frame = Math.floor(time / 2);
+    await page.locator("#player-play").focus();
+    await page.keyboard.press(frame === 0 ? "0" : "9");
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(frame);
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const video = window.__everydashcam.dom.player;
+                return video.readyState >= 2 && !video.seeking;
+            }),
+        )
+        .toBe(true);
+    await page.evaluate(
+        async (localTime) => {
+            const video = window.__everydashcam.dom.player;
+            video.pause();
+            await new Promise<void>((resolve) => {
+                video.addEventListener("seeked", () => resolve(), { once: true });
+                video.currentTime = localTime;
+            });
+        },
+        time - frame * 2,
+    );
+    await page.locator(`[data-set-edge="${edge}"]`).click();
+    const tab = page.locator(`.timeline-range__tab--${edge}`);
+    await expect.poll(async () => Number(await tab.getAttribute("aria-valuenow"))).toBeCloseTo(time, 5);
 }
 
 test.describe("blur regions", () => {
@@ -778,6 +848,95 @@ test.describe("blur regions", () => {
             ]);
     });
 
+    for (const { name, start, end, split } of [
+        { name: "full range", start: 0, end: 4, split: false },
+        { name: "integer trim", start: 1, end: 3, split: false },
+        { name: "fractional trim", start: 1.0005, end: 3.5005, split: false },
+        { name: "fractional split-screen trim", start: 1.01, end: 3.01, split: true },
+    ]) {
+        test(`whole-clip cover includes the first, last and file-seam frames with ${name}`, {
+            tag: name === "fractional trim" ? ["@golden-blur", "@golden-export"] : [],
+        }, async ({ page, browserName }) => {
+            test.skip(browserName === "firefox", "Firefox WebCodecs H.264 encode is broken (Bugzilla 1918769)");
+            test.skip(
+                !(await canEncodeHighProfileH264(page)),
+                "WebCodecs High-profile H.264 encode not available on this platform",
+            );
+            test.setTimeout(120_000);
+            if (split) {
+                await page.locator('.top-panel__channel-chip[data-channel="rear"] input').check();
+                await page.locator('.top-panel__layout-btn[data-layout="pip2"]').click();
+                await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(2);
+            }
+            await page.locator("#export-panel-output").selectOption("720_16x9");
+            await page.locator("#export-panel-audio").uncheck();
+            if (end < 4) await setFixtureTrimEdge(page, "end", end);
+            if (start > 0) await setFixtureTrimEdge(page, "start", start);
+            // The main PiP slot fills the output; its central mask stays away
+            // from the rear-camera inset, so source coordinates still apply.
+            await drawZone(page, 0.35, 0.35, 0.65, 0.65);
+            await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toBeVisible();
+            const zone = await zoneSourceRect(page);
+            await page.locator("#export-panel-blur-style").selectOption("fill");
+            await page.getByRole("button", { name: "Keep this zone active for the whole clip" }).click();
+            await expectPreviewZoneCovered(page);
+            await page.locator("#export-panel-save-btn").click();
+            await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 60_000 });
+
+            await expectExportedZoneCovered(
+                page,
+                zone,
+                [
+                    { name: "first frame", time: "first" },
+                    { name: "before file seam", time: 2 - start - 1 / 60 },
+                    { name: "after file seam", time: 2 - start + 1 / 60 },
+                    { name: "last frame", time: "last" },
+                ],
+                // Single-channel export retains source timestamps and the last
+                // sample's full duration; split output uses its own 30fps grid.
+                split ? Math.ceil((end - start) * 30 - 1e-6) / 30 : Math.ceil(end * 30 - 1e-6) / 30 - start,
+            );
+        });
+    }
+
+    test("a mask ending on the frame before a fractional trim still prevents stream copy", async ({
+        page,
+        browserName,
+    }) => {
+        test.skip(browserName === "firefox", "Firefox WebCodecs H.264 encode is broken (Bugzilla 1918769)");
+        test.skip(
+            !(await canEncodeHighProfileH264(page)),
+            "WebCodecs High-profile H.264 encode not available on this platform",
+        );
+        test.setTimeout(120_000);
+        const topTier = page.locator('.export-panel__radio:has(input[value="original"]) strong');
+        await expect(topTier).toHaveText("Original");
+        await drawZone(page, 0.35, 0.35, 0.65, 0.65);
+        await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toBeVisible();
+        const zone = await zoneSourceRect(page);
+        await page.locator("#export-panel-blur-style").selectOption("fill");
+        await page.evaluate(async () => {
+            const video = window.__everydashcam.dom.player;
+            const shown = new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
+            video.currentTime = 1.0005;
+            await shown;
+        });
+        // The displayed source frame is at 1s; its zone ends before the trim's
+        // nominal 1.0005s start but must cover that first retained frame.
+        await page.locator('.export-panel__blur-row-btn[data-action="end"]').click();
+        await expect(page.locator(".export-panel__blur-row-range")).toHaveText("0:00-0:01");
+        await page.locator('[data-set-edge="start"]').click();
+        expect(Number(await page.locator(".timeline-range__tab--start").getAttribute("aria-valuenow"))).toBeCloseTo(
+            1.0005,
+            5,
+        );
+        await expect(topTier).toHaveText("High");
+        await page.locator("#export-panel-audio").uncheck();
+        await page.locator("#export-panel-save-btn").click();
+        await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 60_000 });
+        await expectExportedZoneCovered(page, zone, [{ name: "first frame", time: "first" }], 4 - 1.0005);
+    });
+
     test("solid-cover zone is actually burned into the exported pixels", {
         tag: ["@golden-blur", "@golden-export"],
     }, async ({ page, browserName }) => {
@@ -798,6 +957,7 @@ test.describe("blur regions", () => {
         // "fill" burns pure black - the strongest, and the only style with a
         // deterministic pixel assertion.
         await page.locator("#export-panel-blur-style").selectOption("fill");
+        await page.locator("#export-panel-audio").uncheck();
 
         await page.locator("#export-panel-save-btn").click();
         await expect
@@ -827,64 +987,6 @@ test.describe("blur regions", () => {
         await expect(page.locator(".blur-box-layer")).toBeHidden();
         await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 60_000 });
 
-        // Decode the produced MP4 in-page (bytes never leave the browser) and
-        // compare mean luma: deep inside the zone vs a ring around it.
-        const luma = await page.evaluate(async (z) => {
-            const h = (window as unknown as { __lastExportHandle?: { _buf: Uint8Array } }).__lastExportHandle;
-            if (!h || h._buf.length === 0) throw new Error("no export bytes captured");
-            // Copy into a fresh ArrayBuffer-backed view for the Blob ctor.
-            const bytes = new Uint8Array(h._buf);
-            const url = URL.createObjectURL(new Blob([bytes], { type: "video/mp4" }));
-            const video = document.createElement("video");
-            video.muted = true;
-            video.src = url;
-            await new Promise<void>((res, rej) => {
-                video.onloadeddata = () => res();
-                video.onerror = () => rej(new Error("decode failed"));
-            });
-            for (let i = 0; i < 40 && video.videoWidth === 0; i++) {
-                await new Promise((res) => setTimeout(res, 50));
-            }
-            if (video.videoWidth === 0) throw new Error("exported video has no dimensions");
-            // Mid-zone moment: the zone spans playhead(0)..+5s and the sample
-            // clip is ~5s, so 1s is safely inside.
-            video.currentTime = Math.min(1, video.duration / 2);
-            await new Promise<void>((res) => {
-                video.onseeked = () => res();
-            });
-            const canvas = document.createElement("canvas");
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) throw new Error("no 2d ctx");
-            ctx.drawImage(video, 0, 0);
-            const mean = (fx: number, fy: number, fw: number, fh: number): number => {
-                const x = Math.max(0, Math.round(fx * canvas.width));
-                const y = Math.max(0, Math.round(fy * canvas.height));
-                const w = Math.max(1, Math.min(canvas.width - x, Math.round(fw * canvas.width)));
-                const hgt = Math.max(1, Math.min(canvas.height - y, Math.round(fh * canvas.height)));
-                const d = ctx.getImageData(x, y, w, hgt).data;
-                let sum = 0;
-                for (let i = 0; i < d.length; i += 4) {
-                    sum += 0.2126 * d[i]! + 0.7152 * d[i + 1]! + 0.0722 * d[i + 2]!;
-                }
-                return sum / (d.length / 4);
-            };
-            // Inside: shrink 25% inward to dodge boundary rounding/bleed.
-            const inx = z.x + z.w * 0.25;
-            const iny = z.y + z.h * 0.25;
-            const inside = mean(inx, iny, z.w * 0.5, z.h * 0.5);
-            // Outside: two horizontal strips above and below the zone.
-            const stripH = Math.min(z.h * 0.5, z.y, 1 - z.y - z.h);
-            const above = mean(z.x, z.y - stripH, z.w, stripH * 0.9);
-            const below = mean(z.x, z.y + z.h + stripH * 0.1, z.w, stripH * 0.9);
-            URL.revokeObjectURL(url);
-            return { inside, outside: (above + below) / 2 };
-        }, zone);
-
-        // Solid black + encoder noise stays near zero; the surrounding video
-        // content must be meaningfully brighter or the patch missed its spot.
-        expect(luma.inside, `inside=${luma.inside} outside=${luma.outside}`).toBeLessThan(16);
-        expect(luma.outside - luma.inside, "zone must be darker than its surroundings").toBeGreaterThan(24);
+        await expectExportedZoneCovered(page, zone, [{ name: "default zone span", time: 1 }], 4);
     });
 });

@@ -4,17 +4,20 @@
 import {
     DETECTOR_FRAME_TIME_EPS_SEC,
     regionRectAt,
+    regionStartForExport,
     sortBlurRegionsForPaint,
     type BlurRegion,
     type ResolvedRegionBlur,
 } from "./blur-regions.js";
 import type { Channel } from "./parsers/types.js";
 
-/** Indexed resolver for one channel of an immutable export snapshot. Recreate
- *  after editing regions. Held frames and backward timestamp jumps are supported. */
+/** Indexed resolver for one channel of an immutable export snapshot. Supplying
+ * exportStartSec applies regionStartForExport; omitting it leaves spans exact.
+ * Recreate after editing regions. Held frames and backward jumps are supported. */
 export function createRegionBlurResolver(
     regions: readonly BlurRegion[],
     channel: Channel,
+    exportStartSec = -Infinity,
 ): (contentSec: number) => ResolvedRegionBlur[] {
     // Paint order belongs to the original snapshot, including ties between
     // equal styles. Chronological insertion must not change overlapping pixels.
@@ -24,7 +27,9 @@ export function createRegionBlurResolver(
         .map((region, order) => ({
             region,
             order,
-            startSec: region.startSec - (region.interpolation === "hold" ? DETECTOR_FRAME_TIME_EPS_SEC : 0),
+            startSec:
+                regionStartForExport(region, exportStartSec) -
+                (region.interpolation === "hold" ? DETECTOR_FRAME_TIME_EPS_SEC : 0),
         }))
         .sort((a, b) => a.startSec - b.startSec);
     let next = 0;
@@ -50,7 +55,7 @@ export function createRegionBlurResolver(
         if (added) active.sort((a, b) => a.order - b.order);
         const out: ResolvedRegionBlur[] = [];
         for (const { region } of active) {
-            const rect = regionRectAt(region, contentSec);
+            const rect = regionRectAt(region, contentSec, exportStartSec);
             if (rect) out.push({ rect, style: region.style });
         }
         return out;

@@ -56,7 +56,7 @@ import {
     notifyBlurRegionsChanged,
     subscribeBlurRegions,
 } from "./blur-regions-state.js";
-import { activeEffectiveBlurRegions } from "./blur-effective.js";
+import { activeEffectiveBlurRegions, previewExportStartSec } from "./blur-effective.js";
 import { detectRegions, subscribeBlurDetect } from "./blur-detect.js";
 import { ALL_CHANNELS, channelPlayers, channelTileFor, dom, forEachVideoSlot } from "./dom.js";
 import { exportPanelState, notifyExportStateChanged, subscribeExportState } from "./export-state.js";
@@ -94,6 +94,7 @@ interface TileUi {
     lastWidth: number;
     lastHeight: number;
     lastDpr: number;
+    lastExportStartSec: number;
 }
 
 const tileUis = new Map<Channel, TileUi>();
@@ -266,6 +267,7 @@ function ensureTileUi(ch: Channel): TileUi {
         lastWidth: 0,
         lastHeight: 0,
         lastDpr: 0,
+        lastExportStartSec: -Infinity,
     };
     tileUis.set(ch, ui);
     return ui;
@@ -373,6 +375,7 @@ function paintTile(ch: Channel, ui: TileUi, regions: readonly BlurRegion[]): voi
         return;
     }
     const contentSec = shownFrame.contentSec;
+    const exportStartSec = previewExportStartSec(ch, contentSec);
     // The media clock advances between decoded frames. Repaint for the frame
     // actually shown, or an edit/resize; repeated pixels need no new patch.
     const tileWidth = tile.clientWidth;
@@ -381,6 +384,7 @@ function paintTile(ch: Channel, ui: TileUi, regions: readonly BlurRegion[]): voi
     if (
         samePresentedFrame(shownFrame, ui.lastFrame) &&
         geometryEpoch === ui.lastEpoch &&
+        exportStartSec === ui.lastExportStartSec &&
         tileWidth === ui.lastWidth &&
         tileHeight === ui.lastHeight &&
         dpr === ui.lastDpr
@@ -388,6 +392,7 @@ function paintTile(ch: Channel, ui: TileUi, regions: readonly BlurRegion[]): voi
         return;
     ui.lastFrame = shownFrame;
     ui.lastEpoch = geometryEpoch;
+    ui.lastExportStartSec = exportStartSec;
     ui.lastWidth = tileWidth;
     ui.lastHeight = tileHeight;
     ui.lastDpr = dpr;
@@ -424,14 +429,14 @@ function paintTile(ch: Channel, ui: TileUi, regions: readonly BlurRegion[]): voi
             tileWidth,
             tileHeight,
             previewBackdropHelper,
-            resolveRegionBlursAt(regions, ch, contentSec),
+            resolveRegionBlursAt(regions, ch, contentSec, exportStartSec),
         );
         ctx.restore();
     }
     previewHelper ??= createRegionBlurHelper();
     for (const region of regions) {
         if (region.channel !== ch) continue;
-        const rect = regionRectAt(region, contentSec);
+        const rect = regionRectAt(region, contentSec, exportStartSec);
         const box = ui.boxes.get(region.id);
         if (!rect) {
             if (box) box.hidden = true;
@@ -571,7 +576,7 @@ function editBoxWithKeyboard(region: BlurRegion, event: KeyboardEvent): void {
     pauseBlurVideos();
     const frame = channelPresentedFrame(region.channel, true);
     if (!frame) return;
-    const current = regionRectAt(region, frame.contentSec);
+    const current = regionRectAt(region, frame.contentSec, previewExportStartSec(region.channel, frame.contentSec));
     if (!current) return;
     const step = 0.005;
     const flip = cameraFlipForChannel(region.channel);
@@ -625,7 +630,7 @@ function attachBoxMoveDrag(region: BlurRegion, el: HTMLDivElement): void {
             pauseBlurVideos();
             frame = channelPresentedFrame(region.channel, true);
             if (!frame) return false;
-            base = regionRectAt(region, frame.contentSec);
+            base = regionRectAt(region, frame.contentSec, previewExportStartSec(region.channel, frame.contentSec));
             if (!base) return false;
             base = flipCropRect(base, cameraFlipForChannel(region.channel));
             startX = e.clientX;
@@ -662,7 +667,7 @@ function attachBoxHandleDrag(region: BlurRegion, handle: HTMLElement, corner: "t
             pauseBlurVideos();
             frame = channelPresentedFrame(region.channel, true);
             if (!frame) return false;
-            base = regionRectAt(region, frame.contentSec);
+            base = regionRectAt(region, frame.contentSec, previewExportStartSec(region.channel, frame.contentSec));
             if (!base) return false;
             base = flipCropRect(base, cameraFlipForChannel(region.channel));
             startX = e.clientX;

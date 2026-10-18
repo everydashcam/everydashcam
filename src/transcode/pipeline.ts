@@ -267,7 +267,11 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
         const blurHelper: BlurHelper | null = output.letterboxFill === "blur" ? createBlurHelper() : null;
         // Privacy-region scratch canvas, same allocate-once rationale.
         const regionBlurHelper: RegionBlurHelper | null = output.blurRegions?.length ? createRegionBlurHelper() : null;
-        const resolveRegionBlurs = createRegionBlurResolver(output.blurRegions ?? [], source.channel);
+        const resolveRegionBlurs = createRegionBlurResolver(
+            output.blurRegions ?? [],
+            source.channel,
+            source.startTripSec,
+        );
         const renderOpts = { fill: output.letterboxFill, blurHelper, regionBlurHelper };
 
         const resolveOverlayFrame =

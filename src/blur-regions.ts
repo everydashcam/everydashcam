@@ -148,13 +148,22 @@ function lowerKeyframeIndex(keyframes: readonly BlurKeyframe[], sec: number): nu
     return ans;
 }
 
-/** True when the region's blur should be drawn at `contentSec`. */
-export function regionActiveAt(region: BlurRegion, contentSec: number): boolean {
+/** Manual zones active at an export boundary also cover its retained preceding
+ * frame, regardless of frame rate. Omit the boundary for ordinary playback.
+ * Detector masks stay attached to observed frames; geometry and ends are exact. */
+export function regionStartForExport(region: BlurRegion, exportStartSec = -Infinity): number {
+    return region.interpolation !== "hold" && region.startSec <= exportStartSec && region.endSec >= exportStartSec
+        ? -Infinity
+        : region.startSec;
+}
+
+/** True when the region covers the source frame, including an optional export boundary. */
+export function regionActiveAt(region: BlurRegion, contentSec: number, exportStartSec = -Infinity): boolean {
     if (region.interpolation === "hold") {
         const sec = contentSec + DETECTOR_FRAME_TIME_EPS_SEC;
         return sec >= region.startSec && sec < region.endSec;
     }
-    return contentSec >= region.startSec && contentSec <= region.endSec;
+    return contentSec >= regionStartForExport(region, exportStartSec) && contentSec <= region.endSec;
 }
 
 /** True when the region carries auto-tracker output (any unpinned keyframe).
@@ -189,8 +198,8 @@ export function inflateRect(rect: CropRect, pct: number): CropRect {
  * Clamp-and-lerp: first rect before the first keyframe, last rect after the
  * last one, linear interpolation of x/y/w/h between neighbors.
  */
-export function regionRectAt(region: BlurRegion, contentSec: number): CropRect | null {
-    if (!regionActiveAt(region, contentSec)) return null;
+export function regionRectAt(region: BlurRegion, contentSec: number, exportStartSec = -Infinity): CropRect | null {
+    if (!regionActiveAt(region, contentSec, exportStartSec)) return null;
     const kfs = region.keyframes;
     if (kfs.length === 0) return null;
     const i = lowerKeyframeIndex(kfs, contentSec + (region.interpolation === "hold" ? DETECTOR_FRAME_TIME_EPS_SEC : 0));
@@ -291,27 +300,21 @@ export function resolveRegionBlursAt(
     regions: readonly BlurRegion[],
     channel: Channel,
     contentSec: number,
+    exportStartSec = -Infinity,
 ): ResolvedRegionBlur[] {
     const out: ResolvedRegionBlur[] = [];
     for (const region of regions) {
         if (region.channel !== channel) continue;
-        const rect = regionRectAt(region, contentSec);
+        const rect = regionRectAt(region, contentSec, exportStartSec);
         if (rect) out.push({ rect, style: region.style });
     }
     return sortBlurRegionsForPaint(out);
 }
 
-/** True when any region intersects [startSec, endSec] on one of `channels` -
- *  the stream-copy gate: such an export MUST re-encode or the blur is silently
- *  dropped. Inclusive on both ends to match regionActiveAt: a region touching
- *  the range boundary still paints one frame, so it must gate. */
-export function anyRegionIntersectsRange(
-    regions: readonly BlurRegion[],
-    channels: readonly Channel[],
-    startSec: number,
-    endSec: number,
-): boolean {
-    return regions.some(
-        (region) => channels.includes(region.channel) && region.startSec <= endSec && region.endSec >= startSec,
-    );
+/** True when an exported channel has any privacy region. Stream-copy can
+ *  include the preceding GOP and end-reference frames outside the nominal
+ *  trim, so time-range intersection cannot prove that no masked frame is
+ *  copied. Conservatively require re-encoding for every region on a channel. */
+export function anyRegionOnChannels(regions: readonly BlurRegion[], channels: readonly Channel[]): boolean {
+    return regions.some((region) => channels.includes(region.channel));
 }

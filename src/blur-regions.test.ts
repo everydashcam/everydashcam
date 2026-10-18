@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     cloneBlurRegions,
-    anyRegionIntersectsRange,
+    anyRegionOnChannels,
     createBlurRegion,
     inflateRect,
     regionHasTrackedKeyframes,
@@ -232,18 +232,25 @@ describe("resolveRegionBlursAt", () => {
     });
 });
 
-describe("anyRegionIntersectsRange", () => {
-    it("detects overlap only for visible channels", () => {
-        const r = makeRegion(5, 10);
-        expect(anyRegionIntersectsRange([r], ["front"], 0, 6)).toBe(true);
-        expect(anyRegionIntersectsRange([r], ["rear"], 0, 6)).toBe(false);
+describe("anyRegionOnChannels", () => {
+    it("allows stream-copy without regions or exported channels", () => {
+        expect(anyRegionOnChannels([], ["front"])).toBe(false);
+        expect(anyRegionOnChannels([makeRegion()], [])).toBe(false);
     });
 
-    it("treats boundary-touching ranges as intersecting (one frame still paints)", () => {
+    it("requires re-encoding only for regions on exported channels", () => {
         const r = makeRegion(5, 10);
-        expect(anyRegionIntersectsRange([r], ["front"], 10, 20)).toBe(true);
-        expect(anyRegionIntersectsRange([r], ["front"], 0, 5)).toBe(true);
-        expect(anyRegionIntersectsRange([r], ["front"], 10.01, 20)).toBe(false);
+        expect(anyRegionOnChannels([r], ["front"])).toBe(true);
+        expect(anyRegionOnChannels([r], ["rear", "front"])).toBe(true);
+        expect(anyRegionOnChannels([r], ["rear"])).toBe(false);
+    });
+
+    it("keeps regions before and after the nominal trim in the stream-copy gate", () => {
+        // For a nominal [1.0005, 3.5] export, the frame at 1 can remain
+        // presented, and copied decode dependencies can extend past 3.5.
+        // The gate deliberately has no trim bounds or assumed frame rate.
+        expect(anyRegionOnChannels([makeRegion(0, 1)], ["front"])).toBe(true);
+        expect(anyRegionOnChannels([makeRegion(3.6, 4)], ["front"])).toBe(true);
     });
 });
 
