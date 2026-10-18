@@ -17,7 +17,7 @@ import { SLICE_COST_STREAM_ABOVE } from "../parsers/internal/mp4-walker.js";
 import { cameraFingerprint } from "../parsers/camera-fingerprint.js";
 import { classifyFilenameClockTimelapse, classifyFilenameTime } from "../parsers/filename/index.js";
 import type { ClassifiedFile } from "../parsers/registry-light.js";
-import type { AccelSample, VendorFile } from "../parsers/types.js";
+import type { AccelSample, VendorFile, VideoWithRecordingCopies } from "../parsers/types.js";
 import { emitLifecycle } from "../perf.js";
 import { looksLikeRecordings } from "../report-structure.js";
 import { pendingRecordingAnalysisProgress } from "../recording-analysis-progress.js";
@@ -37,6 +37,7 @@ import {
     tripAllCandidates,
 } from "../trips.js";
 import type { Trip, VideoCandidate } from "../trips.js";
+import { applyRecordingCopies } from "../recording-copies.js";
 
 import { restampProvisionalMarkers } from "./annotations.js";
 import {
@@ -202,6 +203,10 @@ export interface ProgressiveIngestContext {
     cacheWriteBlockLeaseByFileKey: Map<string, symbol>;
     /** All loaded + current videos, indexed once for O(1) basename lookup. */
     videoAssociation: VideoAssociationIndex;
+    /** Confirmed copy evidence staged until the candidate list commits. */
+    recordingFiles: readonly VideoWithRecordingCopies[];
+    duplicateFileCount: number;
+    combinedCopyCount: number;
     errorCounts: {
         classify: number;
         logs: number;
@@ -440,8 +445,13 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     applyTimelapseCadenceWallSpans(ctx.allCandidates, classifyFilenameTime);
 
     if (ctx.resolveLooseGpx) {
+        // Show the destinations that will commit without changing live modes
+        // while the user can still cancel. Grouping also writes driftLeadSec,
+        // so every preview candidate needs its own object.
+        const previewCandidates = ctx.allCandidates.map((candidate) => ({ ...candidate }));
+        applyRecordingCopies(previewCandidates, ctx.recordingFiles);
         try {
-            await ctx.resolveLooseGpx(groupTrips(ctx.allCandidates));
+            await ctx.resolveLooseGpx(groupTrips(previewCandidates));
         } catch (err) {
             releaseIndexCacheWriteBlocks(newlyBuiltCandidates);
             if (activeRun === run) activeRun = null;
@@ -458,6 +468,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
         if (state.gpsLog) attachRecordsToCandidates(state.gpsLog, ctx.allCandidates, ctx.videoAssociation);
     }
 
+    applyRecordingCopies(ctx.allCandidates, ctx.recordingFiles);
     candidatePool = ctx.allCandidates;
     candidateAssociation = ctx.videoAssociation;
     recordingAccel.register(ctx.allCandidates, "sidecar", ctx.accelByFileKey);
@@ -472,6 +483,22 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     // discovered in this session; metadata readiness is tracked independently.
     for (const c of ctx.allCandidates) {
         state.addedKeys.add(vendorFileKey(c));
+    }
+
+    if (ctx.combinedCopyCount > 0) {
+        notify({
+            severity: "info",
+            messageKey: "status.recordingCopiesCombined",
+            messageParams: { n: ctx.combinedCopyCount },
+        });
+    }
+    const skippedDuplicateCount = ctx.duplicateFileCount - ctx.combinedCopyCount;
+    if (skippedDuplicateCount > 0) {
+        notify({
+            severity: "info",
+            messageKey: "status.duplicatesSkipped",
+            messageParams: { n: skippedDuplicateCount },
+        });
     }
 
     renderTrips();

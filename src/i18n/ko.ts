@@ -214,6 +214,7 @@ export const koDict = {
 
     "status.filesNotSelected": "파일 선택 안 됨",
     "status.duplicatesSkipped": "중복 파일 {n} 개를 건너뛰었어요",
+    "status.recordingCopiesCombined": "녹화 사본 {n}개를 합쳤어요. 이벤트 표시는 유지돼요",
     "status.hvccRepaired": "손상된 파일 {n, plural, other {# 개}}를 고쳤어요",
     "status.audioDamaged": "오디오가 손상된 파일 {n, plural, other {# 개}}, 영상만 재생해요",
     "status.dropReadFailed": "일부 파일을 읽지 못했어요. 메모리 카드나 드라이브가 연결되어 있는지 확인한 뒤 폴더를 다시 열어 주세요.",
@@ -667,6 +668,7 @@ export const koDict = {
     "ingestOverlay.queued": "{n} 개 폴더 더 대기 중",
     "ingestOverlay.stage.preparing": "폴더 여는 중…",
     "ingestOverlay.stage.classifying": "파일 정리 중…",
+    "ingestOverlay.stage.checkingCopies": "중복 녹화 확인 중…",
     "ingestOverlay.stage.parsingLogs": "GPS 파일 읽는 중…",
     "ingestOverlay.stage.parsingSidecars": "GPS 파일 읽는 중…",
     "ingestOverlay.stage.canceling": "중지 중…",

@@ -6,8 +6,15 @@
 // and started after the current ingest's finally{}.
 
 import { t } from "../i18n/index.js";
-import { bindRecordsByRecordingStart, buildVideoAssociationIndex, recordsForVideo } from "../gps-association.js";
+import {
+    attachRecordsToCandidates,
+    bindRecordsByRecordingStart,
+    buildVideoAssociationIndex,
+    rebindRecordingCopyRecords,
+    recordsForVideo,
+} from "../gps-association.js";
 import { dropDuplicateFiles } from "../ingest-dedup.js";
+import { mergeRecordingCopies } from "../recording-copies.js";
 import { ignoredRootSegments, isIgnoredPath } from "../ingest-filter.js";
 import { partitionByIndexCache } from "./ingest-cache.js";
 import { createLogger } from "../log.js";
@@ -20,7 +27,7 @@ import {
     dispatchParseLogsViaPool as dispatchParseLogs,
     dispatchParseSidecarsViaPool as dispatchParseSidecars,
 } from "./ingest-shim.js";
-import type { VendorFile } from "../parsers/types.js";
+import type { VendorFile, VideoWithRecordingCopies } from "../parsers/types.js";
 import { cameraFingerprint } from "../parsers/camera-fingerprint.js";
 import { classifyFilenameTime } from "../parsers/filename/index.js";
 import { estimatePreciseClockOffsetByFingerprint, estimateTzByFingerprint, tripAllCandidates } from "../trips.js";
@@ -236,31 +243,29 @@ async function ingestFilesInternal(
 
     // Files already loaded into trips - the comparison base both for duplicate
     // exclusion below and for sidecar classification (existingVideoNames).
-    const alreadyLoaded: VendorFile[] = [];
+    const alreadyLoaded: VideoWithRecordingCopies[] = [];
     for (const trip of state.trips) {
         for (const c of tripAllCandidates(trip)) {
-            alreadyLoaded.push({ file: c.file, relativePath: c.relativePath, sourceKey: c.sourceKey });
+            alreadyLoaded.push({
+                file: c.file,
+                relativePath: c.relativePath,
+                sourceKey: c.sourceKey,
+                recordingCopies: c.recordingCopies,
+            });
         }
     }
 
-    // Drop byte-identical copies (same basename+size, confirmed by a head/tail
-    // content probe) before classify/indexing, so a duplicated subfolder in the
-    // drop - or a re-dropped Backup copy of an already-loaded card - does not
-    // double trip footage and never costs an SD seek. See src/ingest-dedup.ts.
+    // Match copies before indexing, including protected recordings renamed
+    // across mode prefixes. Keep their names and event evidence for the survivor.
+    setIngestStage(t("ingestOverlay.stage.checkingCopies"));
     const dedup = await mark("dedup", () => dropDuplicateFiles(vfiles, alreadyLoaded, signal));
     if (dedup.dropped.length > 0) {
-        // Toast so the user knows why the loaded count is below the drop count;
-        // sample pairs in the log so a "my files did not load" report can be
-        // traced to the surviving path.
+        // Retain paths for diagnostics. User confirmation follows the trip
+        // commit so cancellation never claims that event markers were kept.
         log.info("skipped duplicate files", {
             skipped: dedup.dropped.length,
             total: vfiles.length,
             sample: dedup.dropped.slice(0, 5),
-        });
-        notify({
-            severity: "info",
-            messageKey: "status.duplicatesSkipped",
-            messageParams: { n: dedup.dropped.length },
         });
         vfiles = dedup.kept;
     }
@@ -281,7 +286,11 @@ async function ingestFilesInternal(
     await notesMerge;
 
     // Sidecar classification looks at already-known videos (state.trips + newly classified) so the user can drop a GPX later for a previously loaded MP4.
-    const existingVideoNames = new Set<string>(alreadyLoaded.map((vf) => vf.file.name));
+    const existingVideoNames = new Set<string>(
+        alreadyLoaded.flatMap((vf) => [vf.file.name, ...(vf.recordingCopies ?? []).map((copy) => copy.file.name)]),
+    );
+    for (const copy of dedup.copies) existingVideoNames.add(copy.duplicate.file.name);
+    setIngestStage(t("ingestOverlay.stage.classifying"));
     const { classified, errors: classificationErrors } = await mark("classify", () =>
         dispatchClassifyFiles(vfiles, existingVideoNames, signal),
     );
@@ -291,8 +300,17 @@ async function ingestFilesInternal(
 
     // Extract video candidates with their role/relativePath - used from here on instead of the raw File[].
     const videos = classifiedVideos;
-    const knownVideoFiles = [...alreadyLoaded, ...videos.map((candidate) => candidate.file)];
+    const knownVideoFiles = mergeRecordingCopies(
+        [...alreadyLoaded, ...videos.map((candidate) => candidate.file)],
+        dedup.copies,
+    );
     const videoAssociation = buildVideoAssociationIndex(knownVideoFiles);
+    const retainedCopyKeys = new Set(
+        knownVideoFiles.flatMap((video) => (video.recordingCopies ?? []).map(vendorFileKey)),
+    );
+    const combinedCopyCount = new Set(
+        dedup.copies.map((copy) => vendorFileKey(copy.duplicate)).filter((key) => retainedCopyKeys.has(key)),
+    ).size;
     const totalGpsLogs = classified.filter((c) => c.role === "gps-log").length;
 
     // If the drop contains unplayable containers (.avi/.mts/.wmv/.flv/.3gp/.jdr/.mdt/.insv/.360/...),
@@ -343,8 +361,10 @@ async function ingestFilesInternal(
         // records onto the loaded video sharing the same name core, then
         // rebuild the byFilename buckets. Runs here, before any candidate
         // pulls its records, so every downstream exact-name lookup just works.
-        const videoNames = new Set<string>(existingVideoNames);
-        for (const c of videos) videoNames.add(c.file.file.name);
+        // Exact aliases were already resolved by videoAssociation. Recovery
+        // from a malformed name must see only survivors: NO/EV aliases of one
+        // recording would otherwise make its name core appear ambiguous.
+        const videoNames = new Set(knownVideoFiles.map((video) => video.file.name));
         const rebound = rebindOrphanLogRecords(state.gpsLog, videoNames);
         if (rebound > 0) {
             state.gpsLog = mergeIntoGpsLog(null, {
@@ -545,6 +565,13 @@ async function ingestFilesInternal(
     // list commit treat them exactly like carried-over ready candidates.
     allCandidates.push(...cachedCandidates);
 
+    if (state.gpsLog) {
+        // Copy-only drops can introduce a new log name without reading a new
+        // log. Rebind existing records too, before clock estimation and grouping.
+        state.gpsLog = rebindRecordingCopyRecords(state.gpsLog, videoAssociation).log;
+        attachRecordsToCandidates(state.gpsLog, allCandidates, videoAssociation);
+    }
+
     // Estimate camera TZ before indexing - needed for files without GPS where the filename is the only time source.
     // Collect (name, first GPS record) pairs from ALL files (old + new) with a log.
     // Computed before MP4 indexing because it only depends on the already-parsed GPS log and filenames.
@@ -604,6 +631,9 @@ async function ingestFilesInternal(
         cachedRecordingMetadataByFileKey: cachedMetadataByFileKey,
         cacheWriteBlockLeaseByFileKey: writeBlockLeaseByFileKey,
         videoAssociation,
+        recordingFiles: knownVideoFiles,
+        duplicateFileCount: dedup.dropped.length,
+        combinedCopyCount,
         errorCounts: {
             classify: classificationErrors.length,
             logs: logsResult.errors.length,

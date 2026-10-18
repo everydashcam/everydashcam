@@ -203,6 +203,7 @@ export const deDict = {
 
     "status.filesNotSelected": "keine Dateien ausgewählt",
     "status.duplicatesSkipped": "{n, plural, one {# doppelte Datei übersprungen} other {# doppelte Dateien übersprungen}}",
+    "status.recordingCopiesCombined": "{n, plural, one {# Aufnahmekopie zusammengeführt} other {# Aufnahmekopien zusammengeführt}}; Ereignismarkierungen bleiben erhalten",
     "status.hvccRepaired": "{n, plural, one {# beschädigte Datei repariert} other {# beschädigte Dateien repariert}}",
     "status.audioDamaged": "{n, plural, one {# Datei mit defektem Ton — nur Video} other {# Dateien mit defektem Ton — nur Video}}",
     "status.dropReadFailed": "Einige Dateien konnten nicht gelesen werden. Prüfe, ob die Speicherkarte oder das Laufwerk angeschlossen ist, und öffne den Ordner erneut.",
@@ -657,6 +658,7 @@ export const deDict = {
     "ingestOverlay.queued": "{n, plural, one {# weiterer Ordner in der Warteschlange} other {# weitere Ordner in der Warteschlange}}",
     "ingestOverlay.stage.preparing": "Öffne deinen Ordner...",
     "ingestOverlay.stage.classifying": "Dateien werden sortiert...",
+    "ingestOverlay.stage.checkingCopies": "Aufnahmen werden auf Kopien geprüft...",
     "ingestOverlay.stage.parsingLogs": "GPS-Dateien werden gelesen…",
     "ingestOverlay.stage.parsingSidecars": "Lese GPS-Dateien...",
     "ingestOverlay.stage.canceling": "Stoppe...",

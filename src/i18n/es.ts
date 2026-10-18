@@ -205,6 +205,7 @@ export const esDict = {
 
     "status.filesNotSelected": "no hay archivos seleccionados",
     "status.duplicatesSkipped": "{n, plural, one {# archivo duplicado omitido} other {# archivos duplicados omitidos}}",
+    "status.recordingCopiesCombined": "{n, plural, one {# copia de grabación combinada} other {# copias de grabaciones combinadas}}; se conservan las marcas de eventos",
     "status.hvccRepaired": "{n, plural, one {# archivo dañado reparado} other {# archivos dañados reparados}}",
     "status.audioDamaged": "{n, plural, one {# archivo con audio dañado — solo vídeo} other {# archivos con audio dañado — solo vídeo}}",
     "status.dropReadFailed": "No se pudieron leer algunos archivos. Comprueba que la tarjeta de memoria o la unidad estén conectadas y vuelve a abrir la carpeta.",
@@ -659,6 +660,7 @@ export const esDict = {
     "ingestOverlay.queued": "{n, plural, one {# carpeta más en cola} other {# carpetas más en cola}}",
     "ingestOverlay.stage.preparing": "Abriendo tu carpeta...",
     "ingestOverlay.stage.classifying": "Organizando archivos...",
+    "ingestOverlay.stage.checkingCopies": "Buscando grabaciones duplicadas...",
     "ingestOverlay.stage.parsingLogs": "Leyendo archivos GPS…",
     "ingestOverlay.stage.parsingSidecars": "Leyendo archivos GPS...",
     "ingestOverlay.stage.canceling": "Parando...",

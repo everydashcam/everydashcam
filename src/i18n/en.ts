@@ -206,6 +206,7 @@ export const enDict = {
 
     "status.filesNotSelected": "no files selected",
     "status.duplicatesSkipped": "skipped {n, plural, one {# duplicate file} other {# duplicate files}}",
+    "status.recordingCopiesCombined": "combined {n, plural, one {# recording copy} other {# recording copies}}; event markers kept",
     "status.hvccRepaired": "fixed {n, plural, one {# damaged file} other {# damaged files}}",
     "status.audioDamaged": "{n, plural, one {# file has broken audio — video only} other {# files have broken audio — video only}}",
     "status.dropReadFailed": "Couldn't read some files. Check that the memory card or drive is connected, then open the folder again.",
@@ -660,6 +661,7 @@ export const enDict = {
     "ingestOverlay.queued": "{n, plural, one {# more folder queued} other {# more folders queued}}",
     "ingestOverlay.stage.preparing": "Opening your folder...",
     "ingestOverlay.stage.classifying": "Sorting through files...",
+    "ingestOverlay.stage.checkingCopies": "Checking for duplicate recordings...",
     "ingestOverlay.stage.parsingLogs": "Reading GPS files...",
     "ingestOverlay.stage.parsingSidecars": "Reading GPS files...",
     "ingestOverlay.stage.canceling": "Stopping...",

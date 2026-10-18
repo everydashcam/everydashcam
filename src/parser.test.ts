@@ -1226,6 +1226,8 @@ describe("cloneRecordsAcrossChannels (BlackVue shared .gps sidecar)", () => {
     const NF = "20260718_070333_NF.mp4";
     const NR = "20260718_070333_NR.mp4";
     const NI = "20260718_070333_NI.mp4";
+    const EF = "20260718_070333_EF.mp4";
+    const ER = "20260718_070333_ER.mp4";
 
     function logWith(...recs: GpsRecord[]): ParsedLog {
         return rebuildLog([], recs, []);
@@ -1242,6 +1244,90 @@ describe("cloneRecordsAcrossChannels (BlackVue shared .gps sidecar)", () => {
             sourceKey,
         }));
     }
+
+    it.each(["canonical", "alias-keyed", "alias-unowned"])(
+        "shares %s GPS through a normal copy of the event survivor",
+        (sourceKind) => {
+            const [normal, rear] = loaded(NF, NR);
+            const survivor = { ...loaded(EF)[0]!, recordingCopies: [normal!] };
+            const source = rec(100, 52, 0, {
+                mp4Filename: sourceKind === "canonical" ? EF : NF,
+                ...(sourceKind === "alias-unowned"
+                    ? {}
+                    : { videoKey: vendorFileKey(sourceKind === "canonical" ? survivor : normal!) }),
+            });
+            const log = logWith(source);
+
+            expect(cloneRecordsAcrossChannels(log, [survivor, rear!])).toBe(1);
+            const rebuilt = rebuildLog([], log.records, []);
+            expect(rebuilt.byVideoKey.get(vendorFileKey(rear!))?.[0]?.mp4Filename).toBe(NR);
+            expect(cloneRecordsAcrossChannels(rebuilt, [survivor, rear!])).toBe(0);
+        },
+    );
+
+    it("clones to the event survivor instead of its normal alias", () => {
+        const [normal, rear] = loaded(NF, NR);
+        const survivor = { ...loaded(EF)[0]!, recordingCopies: [normal!] };
+        const log = logWith(rec(100, 52, 0, { mp4Filename: NR, videoKey: vendorFileKey(rear!) }));
+
+        expect(cloneRecordsAcrossChannels(log, [survivor, rear!])).toBe(1);
+        const rebuilt = rebuildLog([], log.records, []);
+        expect(rebuilt.byFilename.get(NF)).toBeUndefined();
+        expect(rebuilt.byVideoKey.get(vendorFileKey(survivor))?.[0]?.mp4Filename).toBe(EF);
+    });
+
+    it("clones once when both physical modes connect the same survivors", () => {
+        const [normalFront, normalRear] = loaded(NF, NR);
+        const front = { ...loaded(EF)[0]!, recordingCopies: [normalFront!] };
+        const rear = { ...loaded(ER)[0]!, recordingCopies: [normalRear!] };
+        const log = logWith(rec(100, 52, 0, { mp4Filename: EF, videoKey: vendorFileKey(front) }));
+
+        expect(cloneRecordsAcrossChannels(log, [front, rear])).toBe(1);
+        expect(log.records).toHaveLength(2);
+        const rebuilt = rebuildLog([], log.records, []);
+        expect(rebuilt.byVideoKey.get(vendorFileKey(rear))?.[0]?.mp4Filename).toBe(ER);
+        expect(cloneRecordsAcrossChannels(rebuilt, [front, rear])).toBe(0);
+    });
+
+    it("revisits an earlier mode group after its confirmed copy receives shared GPS", () => {
+        const [normalFront, interior] = loaded(NF, NI);
+        const front = { ...loaded(EF)[0]!, recordingCopies: [normalFront!] };
+        const rear = loaded(ER)[0]!;
+        const log = logWith(rec(100, 52, 0, { mp4Filename: NI, videoKey: vendorFileKey(interior!) }));
+
+        expect(cloneRecordsAcrossChannels(log, [front, rear, interior!])).toBe(2);
+        const rebuilt = rebuildLog([], log.records, []);
+        expect(rebuilt.byVideoKey.get(vendorFileKey(front))?.[0]?.mp4Filename).toBe(EF);
+        expect(rebuilt.byVideoKey.get(vendorFileKey(rear))?.[0]?.mp4Filename).toBe(ER);
+    });
+
+    it.each([true, false])("preserves source isolation for aliases with keyed GPS %s", (isKeyed) => {
+        const [aNormal, aRear] = loadedFrom("card-a", NF, NR);
+        const [bNormal, bRear] = loadedFrom("card-b", NF, NR);
+        const aFront = { ...loadedFrom("card-a", EF)[0]!, recordingCopies: [aNormal!] };
+        const bFront = { ...loadedFrom("card-b", EF)[0]!, recordingCopies: [bNormal!] };
+        const source = rec(100, 52, 0, {
+            mp4Filename: NF,
+            ...(isKeyed ? { videoKey: vendorFileKey(aNormal!) } : {}),
+        });
+        const log = logWith(source);
+
+        expect(cloneRecordsAcrossChannels(log, [aFront, aRear!, bFront, bRear!])).toBe(isKeyed ? 1 : 0);
+        const rebuilt = rebuildLog([], log.records, []);
+        expect(rebuilt.byVideoKey.get(vendorFileKey(aRear!))?.length ?? 0).toBe(isKeyed ? 1 : 0);
+        expect(rebuilt.byVideoKey.get(vendorFileKey(bFront))).toBeUndefined();
+        expect(rebuilt.byVideoKey.get(vendorFileKey(bRear!))).toBeUndefined();
+    });
+
+    it("leaves a physical alias claimed by independent survivors out of the clone groups", () => {
+        const [normal, rear] = loadedFrom("copy-card", NF, NR);
+        const first = { ...loadedFrom("card-a", EF)[0]!, recordingCopies: [normal!] };
+        const second = { ...loadedFrom("card-b", EF)[0]!, recordingCopies: [normal!] };
+        const log = logWith(rec(100, 52, 0, { mp4Filename: EF, videoKey: vendorFileKey(first) }));
+
+        expect(cloneRecordsAcrossChannels(log, [first, second, rear!])).toBe(0);
+        expect(log.records).toHaveLength(1);
+    });
 
     it("clones the front-bound records onto the rear clip (identical but for mp4Filename)", () => {
         const log = logWith(

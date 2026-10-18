@@ -1,10 +1,11 @@
 import { mergeIntoGpsLog } from "./parser.js";
-import type { GpsRecord, ParsedLog, VendorFile } from "./parsers/types.js";
+import type { GpsRecord, ParsedLog, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 
 export interface VideoAssociationIndex {
     videosByFilename: ReadonlyMap<string, readonly VendorFile[]>;
+    canonicalByFileKey: ReadonlyMap<string, VideoWithRecordingCopies>;
 }
 
 export interface RecordingStartAssociationResult {
@@ -67,21 +68,29 @@ function findRecordingStartCandidate(
     return match;
 }
 
-export function buildVideoAssociationIndex(videos: readonly VendorFile[]): VideoAssociationIndex {
+export function buildVideoAssociationIndex(videos: readonly VideoWithRecordingCopies[]): VideoAssociationIndex {
     const mutable = new Map<string, VendorFile[]>();
-    const seen = new Set<string>();
+    const canonicalByFileKey = new Map<string, VideoWithRecordingCopies>();
     for (const video of videos) {
-        const key = vendorFileKey(video);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        let sameName = mutable.get(video.file.name);
-        if (!sameName) {
-            sameName = [];
-            mutable.set(video.file.name, sameName);
+        for (const physical of [video, ...(video.recordingCopies ?? [])]) {
+            const key = vendorFileKey(physical);
+            const existing = canonicalByFileKey.get(key);
+            if (existing) {
+                if (vendorFileKey(existing) !== vendorFileKey(video)) {
+                    throw new Error("recording copy has multiple canonical owners");
+                }
+                continue;
+            }
+            canonicalByFileKey.set(key, video);
+            let sameName = mutable.get(physical.file.name);
+            if (!sameName) {
+                sameName = [];
+                mutable.set(physical.file.name, sameName);
+            }
+            sameName.push(physical);
         }
-        sameName.push(video);
     }
-    return { videosByFilename: mutable };
+    return { videosByFilename: mutable, canonicalByFileKey };
 }
 
 /**
@@ -143,7 +152,7 @@ export function bindRecordsByRecordingStart(
     };
 }
 
-type VideosOrIndex = readonly VendorFile[] | VideoAssociationIndex;
+type VideosOrIndex = readonly VideoWithRecordingCopies[] | VideoAssociationIndex;
 
 function asIndex(videos: VideosOrIndex): VideoAssociationIndex {
     return "videosByFilename" in videos ? videos : buildVideoAssociationIndex(videos);
@@ -168,31 +177,42 @@ function commonPrefixLength(a: string[], b: string[]): number {
  * cannot contaminate several same-named recordings.
  */
 export function resolveVideoKey(source: VendorFile, mp4Filename: string, videos: VideosOrIndex): string | null {
-    let candidates = [...(asIndex(videos).videosByFilename.get(mp4Filename) ?? [])];
+    const video = resolveVideo(source, mp4Filename, asIndex(videos));
+    return video ? vendorFileKey(video) : null;
+}
+
+function uniqueCanonicalVideo(videos: readonly VendorFile[], index: VideoAssociationIndex): VendorFile | null {
+    let canonical: VendorFile | null = null;
+    for (const video of videos) {
+        const candidate = index.canonicalByFileKey.get(vendorFileKey(video)) ?? video;
+        if (canonical && vendorFileKey(canonical) !== vendorFileKey(candidate)) return null;
+        canonical = candidate;
+    }
+    return canonical;
+}
+
+function resolveVideo(source: VendorFile, mp4Filename: string, index: VideoAssociationIndex): VendorFile | null {
+    let candidates = [...(index.videosByFilename.get(mp4Filename) ?? [])];
     if (candidates.length === 0) return null;
-    if (candidates.length === 1) return vendorFileKey(candidates[0]!);
 
     if (source.sourceKey !== undefined) {
         const sameSource = candidates.filter((video) => video.sourceKey === source.sourceKey);
-        if (sameSource.length === 1) return vendorFileKey(sameSource[0]!);
-        if (sameSource.length > 1) candidates = sameSource;
+        if (sameSource.length > 0) candidates = sameSource;
     }
 
     const sourceParent = parentSegments(source.relativePath);
     let bestScore = -1;
-    let best: VendorFile | null = null;
-    let tied = false;
+    let best: VendorFile[] = [];
     for (const candidate of candidates) {
         const score = commonPrefixLength(sourceParent, parentSegments(candidate.relativePath));
         if (score > bestScore) {
             bestScore = score;
-            best = candidate;
-            tied = false;
+            best = [candidate];
         } else if (score === bestScore) {
-            tied = true;
+            best.push(candidate);
         }
     }
-    return best && !tied ? vendorFileKey(best) : null;
+    return uniqueCanonicalVideo(best, index);
 }
 
 /** Adds a concrete video owner while the external source file is still known. */
@@ -201,16 +221,72 @@ export function associateRecordsWithVideos(
     source: VendorFile,
     videos: VideosOrIndex,
 ): void {
-    const keyByFilename = new Map<string, string | null>();
+    const index = asIndex(videos);
+    const videoByFilename = new Map<string, VendorFile | null>();
     for (const record of records) {
-        let key = keyByFilename.get(record.mp4Filename);
-        if (key === undefined) {
-            key = resolveVideoKey(source, record.mp4Filename, videos);
-            keyByFilename.set(record.mp4Filename, key);
+        let video: VendorFile | null | undefined;
+        if (record.videoKey !== undefined) {
+            // A concrete owner from another source is stronger than a matching
+            // basename. Only a matched copy permits replacing that owner.
+            // Keep an absent owner's key: removing it would let basename-only
+            // fallback attach another source's GPS to this recording.
+            video = index.canonicalByFileKey.get(record.videoKey);
+            if (!video) continue;
+        } else {
+            video = videoByFilename.get(record.mp4Filename);
+            if (video === undefined) {
+                video = resolveVideo(source, record.mp4Filename, index);
+                videoByFilename.set(record.mp4Filename, video);
+            }
         }
-        if (key === null) delete record.videoKey;
-        else record.videoKey = key;
+        if (video) {
+            record.videoKey = vendorFileKey(video);
+            record.mp4Filename = video.file.name;
+        }
     }
+}
+
+/**
+ * Reconciles logs loaded before physical recording copies were identified.
+ * Exact owners survive source/path ambiguity; unowned rows can move only when
+ * their basename has one canonical recording. A new log is returned so callers
+ * can commit refreshed candidate records together with the copy metadata.
+ */
+export function rebindRecordingCopyRecords(
+    log: ParsedLog,
+    videos: VideosOrIndex,
+): { log: ParsedLog; reboundRecords: number } {
+    const index = asIndex(videos);
+    const copyOwners = new Set<VideoWithRecordingCopies>();
+    for (const video of index.canonicalByFileKey.values()) {
+        if (video.recordingCopies?.length) copyOwners.add(video);
+    }
+    if (copyOwners.size === 0) return { log, reboundRecords: 0 };
+    const canonicalByFilename = new Map<string, VideoWithRecordingCopies | null>();
+    let reboundRecords = 0;
+    const records = log.records.map((record) => {
+        if (record.recordingAssociation !== undefined) return record;
+        let canonical: VideoWithRecordingCopies | null | undefined;
+        if (record.videoKey !== undefined) {
+            canonical = index.canonicalByFileKey.get(record.videoKey);
+        } else {
+            canonical = canonicalByFilename.get(record.mp4Filename);
+            if (canonical === undefined) {
+                canonical = uniqueCanonicalVideo(index.videosByFilename.get(record.mp4Filename) ?? [], index);
+                canonicalByFilename.set(record.mp4Filename, canonical);
+            }
+        }
+        if (!canonical || !copyOwners.has(canonical)) return record;
+        const videoKey = vendorFileKey(canonical);
+        if (record.videoKey === videoKey && record.mp4Filename === canonical.file.name) return record;
+        reboundRecords++;
+        return { ...record, videoKey, mp4Filename: canonical.file.name };
+    });
+    if (reboundRecords === 0) return { log, reboundRecords };
+    return {
+        log: mergeIntoGpsLog(null, { records, appliedExtractors: log.appliedExtractors, skipped: log.skipped }),
+        reboundRecords,
+    };
 }
 
 /**
@@ -219,12 +295,20 @@ export function associateRecordsWithVideos(
  * requires an exact videoKey.
  */
 export function recordsForVideo(log: ParsedLog, video: VendorFile, loadedVideos: VideosOrIndex): GpsRecord[] {
-    const key = vendorFileKey(video);
-    const sameNameVideos = asIndex(loadedVideos).videosByFilename.get(video.file.name) ?? [];
-    if (sameNameVideos.length > 1) return log.byVideoKey.get(key) ?? [];
-
-    const bucket = log.byFilename.get(video.file.name) ?? [];
-    return bucket.filter((record) => record.videoKey === undefined || record.videoKey === key);
+    const index = asIndex(loadedVideos);
+    const canonical = index.canonicalByFileKey.get(vendorFileKey(video)) ?? video;
+    const key = vendorFileKey(canonical);
+    const sameNameVideos = index.videosByFilename.get(canonical.file.name) ?? [];
+    const owned = log.byVideoKey.get(key) ?? [];
+    const unowned =
+        sameNameVideos.length > 1 && !uniqueCanonicalVideo(sameNameVideos, index)
+            ? []
+            : (log.byFilename.get(canonical.file.name) ?? []).filter((record) => record.videoKey === undefined);
+    if (owned.length === 0) return unowned;
+    if (unowned.length === 0 && !index.canonicalByFileKey.get(key)?.recordingCopies?.length) return owned;
+    // A newly bound alias can still carry its old basename until the next log
+    // merge. Gather by owner and restore chronological order across those buckets.
+    return owned.concat(unowned).sort((a, b) => a.unixSeconds - b.unixSeconds);
 }
 
 /** Rebinds candidate.records without ever falling back across an ambiguous basename. */

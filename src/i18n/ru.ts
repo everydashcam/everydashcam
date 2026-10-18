@@ -210,6 +210,7 @@ export const ruDict = {
 
     "status.filesNotSelected": "файлы не выбраны",
     "status.duplicatesSkipped": "пропустил {n, plural, one {# файл-дубликат} few {# файла-дубликата} other {# файлов-дубликатов}}",
+    "status.recordingCopiesCombined": "объединил {n, plural, one {# копию записи} few {# копии записей} other {# копий записей}}; отметки событий сохранены",
     "status.hvccRepaired": "{n, plural, one {починил # повреждённый файл} few {починил # повреждённых файла} other {починил # повреждённых файлов}}",
     "status.audioDamaged": "{n, plural, one {в # файле повреждён звук — только видео} few {в # файлах повреждён звук — только видео} other {в # файлах повреждён звук — только видео}}",
     "status.dropReadFailed": "Не удалось прочитать часть файлов. Проверь, подключена ли карта памяти или диск, и открой папку заново.",
@@ -664,6 +665,7 @@ export const ruDict = {
     "ingestOverlay.queued": "{n, plural, one {в очереди ещё # папка} few {в очереди ещё # папки} other {в очереди ещё # папок}}",
     "ingestOverlay.stage.preparing": "Открываю папку...",
     "ingestOverlay.stage.classifying": "Разбираю файлы...",
+    "ingestOverlay.stage.checkingCopies": "Проверяю копии записей...",
     "ingestOverlay.stage.parsingLogs": "Читаем файлы GPS...",
     "ingestOverlay.stage.parsingSidecars": "Читаю GPS-файлы...",
     "ingestOverlay.stage.canceling": "Останавливаю...",

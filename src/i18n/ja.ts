@@ -215,6 +215,7 @@ export const jaDict = {
 
     "status.filesNotSelected": "ファイル未選択",
     "status.duplicatesSkipped": "重複ファイルを {n} 件スキップしました",
+    "status.recordingCopiesCombined": "録画のコピー {n} 件をまとめました。イベントのマークは保持されています",
     "status.hvccRepaired": "{n, plural, other {壊れたファイルを # 件修復しました}}",
     "status.audioDamaged": "{n, plural, other {音声が壊れたファイル # 件、映像のみ再生します}}",
     "status.dropReadFailed": "一部のファイルを読み込めませんでした。メモリーカードやドライブの接続を確認して、フォルダーを開き直してください。",
@@ -669,6 +670,7 @@ export const jaDict = {
     "ingestOverlay.queued": "あと {n} 件のフォルダーが待機中",
     "ingestOverlay.stage.preparing": "フォルダーを開いています…",
     "ingestOverlay.stage.classifying": "ファイルを整理中…",
+    "ingestOverlay.stage.checkingCopies": "重複する録画を確認中…",
     "ingestOverlay.stage.parsingLogs": "GPS ファイルを読み込み中…",
     "ingestOverlay.stage.parsingSidecars": "GPS ファイルを読み込み中…",
     "ingestOverlay.stage.canceling": "停止中…",

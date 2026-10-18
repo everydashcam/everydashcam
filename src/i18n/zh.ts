@@ -204,6 +204,7 @@ export const zhDict = {
 
     "status.filesNotSelected": "未选择文件",
     "status.duplicatesSkipped": "{n, plural, other {已跳过 # 个重复文件}}",
+    "status.recordingCopiesCombined": "已合并 {n} 个录像副本，事件标记已保留",
     "status.hvccRepaired": "{n, plural, other {已修复 # 个损坏的文件}}",
     "status.audioDamaged": "{n, plural, other {# 个文件音频损坏，仅播放视频}}",
     "status.dropReadFailed": "无法读取部分文件。请确认存储卡或硬盘已连接，然后重新打开文件夹。",
@@ -656,6 +657,7 @@ export const zhDict = {
     "ingestOverlay.queued": "{n, plural, other {队列中还有 # 个文件夹}}",
     "ingestOverlay.stage.preparing": "正在打开文件夹...",
     "ingestOverlay.stage.classifying": "正在整理文件...",
+    "ingestOverlay.stage.checkingCopies": "正在检查重复录像...",
     "ingestOverlay.stage.parsingLogs": "正在读取 GPS 文件…",
     "ingestOverlay.stage.parsingSidecars": "正在读取 GPS 文件...",
     "ingestOverlay.stage.canceling": "正在停止...",

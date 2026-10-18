@@ -205,6 +205,7 @@ export const frDict = {
 
     "status.filesNotSelected": "aucun fichier sélectionné",
     "status.duplicatesSkipped": "{n, plural, one {# fichier en double ignoré} other {# fichiers en double ignorés}}",
+    "status.recordingCopiesCombined": "{n, plural, one {# copie d’enregistrement regroupée} other {# copies d’enregistrements regroupées}} ; les repères d’événements sont conservés",
     "status.hvccRepaired": "{n, plural, one {# fichier endommagé réparé} other {# fichiers endommagés réparés}}",
     "status.audioDamaged": "{n, plural, one {# fichier au son endommagé — vidéo seule} other {# fichiers au son endommagé — vidéo seule}}",
     "status.dropReadFailed": "Impossible de lire certains fichiers. Vérifie que la carte mémoire ou le disque est branché, puis ouvre à nouveau le dossier.",
@@ -659,6 +660,7 @@ export const frDict = {
     "ingestOverlay.queued": "{n, plural, one {# dossier de plus en file} other {# dossiers de plus en file}}",
     "ingestOverlay.stage.preparing": "Ouverture de ton dossier...",
     "ingestOverlay.stage.classifying": "Tri des fichiers...",
+    "ingestOverlay.stage.checkingCopies": "Recherche d’enregistrements en double...",
     "ingestOverlay.stage.parsingLogs": "Lecture des fichiers GPS…",
     "ingestOverlay.stage.parsingSidecars": "Lecture des fichiers GPS...",
     "ingestOverlay.stage.canceling": "Arrêt...",

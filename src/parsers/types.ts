@@ -136,11 +136,18 @@ export interface InterpolatedPosition extends SpeedSample {
 // TeslaCam/SentryClips/) instead of in the filename.
 export interface VendorFile {
     file: File;
+    // Empty when a file was selected without directory structure.
     relativePath: string;
     // Opaque per-source session scope assigned at the ingest entry point.
     // Optional because parser fixtures and standalone parser callers do not
     // participate in a UI ingest session.
     sourceKey?: string;
+}
+
+/** Session aliases matched by duplicate-file metadata and bounded content
+ * samples. Their names retain GPS ownership and recording-mode evidence. */
+export interface VideoWithRecordingCopies extends VendorFile {
+    recordingCopies?: readonly VendorFile[];
 }
 
 // Camera channel for multi-camera recorders.

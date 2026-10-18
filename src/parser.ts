@@ -10,7 +10,13 @@ export type { GpsRecord, ParsedLog, SkippedLine } from "./parsers/types.js";
 
 import { mai70NameCore } from "./parsers/filename/_patterns.js";
 import { blackvueChannelCloneGroup } from "./parsers/blackvue-clone-group.js";
-import type { GpsRecord, InterpolatedPosition, ParsedLog, SkippedLine, VendorFile } from "./parsers/types.js";
+import type {
+    GpsRecord,
+    InterpolatedPosition,
+    ParsedLog,
+    SkippedLine,
+    VideoWithRecordingCopies,
+} from "./parsers/types.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 import { interpolateSpeed, isSameTrackSegment } from "./gps-telemetry.js";
 import { wrapDegrees } from "./coordinates.js";
@@ -780,56 +786,103 @@ export function rebindOrphanLogRecords(log: ParsedLog, loadedVideoNames: Iterabl
  * dedup, which keeps the max-|G| accel copy.
  *
  * Channels sharing a recording are keyed by source-local path plus
- * `date_time_mode` (channel dropped). Only clones onto siblings that carry NO
- * records, so it never overwrites a channel with its own embedded GPS and is
- * idempotent across re-ingest. Mutates `log.records`; the caller must rebuild
- * the byFilename buckets (they are now stale). Returns the number of cloned
- * records.
+ * `date_time_mode` (channel dropped). Matched physical copies retain that
+ * membership even when the playback survivor has a different mode or source.
+ * Cloned rows always belong to the surviving recording. Only clones onto
+ * siblings that carry no records, so it never overwrites a channel with its own
+ * embedded GPS and is idempotent across re-ingest. Mutates `log.records`; the
+ * caller must rebuild the byFilename buckets (they are now stale). Returns the
+ * number of cloned records.
  */
-export function cloneRecordsAcrossChannels(log: ParsedLog, loadedVideos: Iterable<VendorFile>): number {
+export function cloneRecordsAcrossChannels(log: ParsedLog, loadedVideos: Iterable<VideoWithRecordingCopies>): number {
     // Source + normalized parent path isolate equal BlackVue names from another
     // folder/card; the channel-group key then joins only one recording's F/R/I.
-    const groups = new Map<string, VendorFile[]>();
-    const nameCounts = new Map<string, number>();
+    const owners = new Map<string, VideoWithRecordingCopies>();
+    const physicalOwners = new Map<string, string | null>();
+    const nameOwners = new Map<string, Set<string>>();
     for (const video of loadedVideos) {
-        nameCounts.set(video.file.name, (nameCounts.get(video.file.name) ?? 0) + 1);
-        const recordingKey = blackvueChannelCloneGroup(video);
-        if (recordingKey === null) continue;
-        const key = `${video.sourceKey ?? ""}\0${recordingKey}`;
-        let arr = groups.get(key);
-        if (!arr) {
-            arr = [];
-            groups.set(key, arr);
+        const ownerKey = vendorFileKey(video);
+        owners.set(ownerKey, video);
+        for (const physical of [video, ...(video.recordingCopies ?? [])]) {
+            const physicalKey = vendorFileKey(physical);
+            if (physicalOwners.has(physicalKey) && physicalOwners.get(physicalKey) !== ownerKey) {
+                physicalOwners.set(physicalKey, null);
+            } else {
+                physicalOwners.set(physicalKey, ownerKey);
+            }
+            let named = nameOwners.get(physical.file.name);
+            if (!named) {
+                named = new Set();
+                nameOwners.set(physical.file.name, named);
+            }
+            named.add(ownerKey);
         }
-        arr.push(video);
+    }
+
+    const groups = new Map<string, Set<string>>();
+    const groupsByOwner = new Map<string, Set<string>>();
+    const recordsByOwner = new Map<string, GpsRecord[]>();
+    for (const [ownerKey, video] of owners) {
+        for (const physical of [video, ...(video.recordingCopies ?? [])]) {
+            const physicalKey = vendorFileKey(physical);
+            if (physicalOwners.get(physicalKey) !== ownerKey) continue;
+            // Both raw alias records and already-canonicalized records can be
+            // present, depending on when a log or a copy joined the ingest.
+            if (!recordsByOwner.has(ownerKey)) {
+                const owned = log.byVideoKey.get(physicalKey);
+                const records = owned?.length
+                    ? owned
+                    : nameOwners.get(physical.file.name)?.size === 1
+                      ? (log.byFilename.get(physical.file.name) ?? []).filter((record) => record.videoKey === undefined)
+                      : [];
+                if (records.length > 0) recordsByOwner.set(ownerKey, records);
+            }
+            const recordingKey = blackvueChannelCloneGroup(physical);
+            if (recordingKey === null) continue;
+            const groupKey = `${physical.sourceKey ?? ""}\0${recordingKey}`;
+            let siblings = groups.get(groupKey);
+            if (!siblings) {
+                siblings = new Set();
+                groups.set(groupKey, siblings);
+            }
+            siblings.add(ownerKey);
+            let ownerGroups = groupsByOwner.get(ownerKey);
+            if (!ownerGroups) {
+                ownerGroups = new Set();
+                groupsByOwner.set(ownerKey, ownerGroups);
+            }
+            ownerGroups.add(groupKey);
+        }
     }
 
     let cloned = 0;
-    for (const siblings of groups.values()) {
-        if (siblings.length < 2) continue;
-        // Source: the first channel that actually carries records (the clip the
-        // sidecar classified against). A recording with no GPS on any channel
-        // has no source and is skipped.
-        const source = siblings.find((video) => {
-            const owned = log.byVideoKey.get(vendorFileKey(video));
-            if (owned && owned.length > 0) return true;
-            return nameCounts.get(video.file.name) === 1 && (log.byFilename.get(video.file.name)?.length ?? 0) > 0;
-        });
+    const pending = [...groups.keys()];
+    const queued = new Set(pending);
+    for (let cursor = 0; cursor < pending.length; cursor++) {
+        const groupKey = pending[cursor]!;
+        queued.delete(groupKey);
+        const siblings = groups.get(groupKey)!;
+        if (siblings.size < 2) continue;
+        const source = [...siblings].find((ownerKey) => recordsByOwner.has(ownerKey));
         if (source === undefined) continue;
-        const sourceRecords =
-            log.byVideoKey.get(vendorFileKey(source)) ??
-            (nameCounts.get(source.file.name) === 1 ? log.byFilename.get(source.file.name) : undefined);
-        if (!sourceRecords) continue;
-        for (const sibling of siblings) {
-            if (sibling === source) continue;
-            const siblingKey = vendorFileKey(sibling);
-            const hasOwnRecords =
-                (log.byVideoKey.get(siblingKey)?.length ?? 0) > 0 ||
-                (nameCounts.get(sibling.file.name) === 1 && (log.byFilename.get(sibling.file.name)?.length ?? 0) > 0);
-            if (hasOwnRecords) continue;
-            for (const rec of sourceRecords) {
-                log.records.push({ ...rec, mp4Filename: sibling.file.name, videoKey: siblingKey });
-                cloned++;
+        const sourceRecords = recordsByOwner.get(source)!;
+        for (const siblingKey of siblings) {
+            if (recordsByOwner.has(siblingKey)) continue;
+            const sibling = owners.get(siblingKey)!;
+            const records = sourceRecords.map((record) => ({
+                ...record,
+                mp4Filename: sibling.file.name,
+                videoKey: siblingKey,
+            }));
+            for (const record of records) log.records.push(record);
+            cloned += records.length;
+            recordsByOwner.set(siblingKey, records);
+            // A physical copy can join another mode/source group. Revisit that
+            // group after its first GPS arrives, independent of input order.
+            for (const linked of groupsByOwner.get(siblingKey) ?? []) {
+                if (linked === groupKey || queued.has(linked)) continue;
+                pending.push(linked);
+                queued.add(linked);
             }
         }
     }

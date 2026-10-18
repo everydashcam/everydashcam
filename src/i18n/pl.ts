@@ -205,6 +205,7 @@ export const plDict = {
 
     "status.filesNotSelected": "nie wybrano plików",
     "status.duplicatesSkipped": "{n, plural, one {pominięto # zduplikowany plik} few {pominięto # zduplikowane pliki} many {pominięto # zduplikowanych plików} other {pominięto # zduplikowanego pliku}}",
+    "status.recordingCopiesCombined": "{n, plural, one {połączono # kopię nagrania} few {połączono # kopie nagrań} many {połączono # kopii nagrań} other {połączono # kopii nagrania}}; znaczniki zdarzeń zachowane",
     "status.hvccRepaired": "{n, plural, one {naprawiono # uszkodzony plik} few {naprawiono # uszkodzone pliki} many {naprawiono # uszkodzonych plików} other {naprawiono # uszkodzonego pliku}}",
     "status.audioDamaged": "{n, plural, one {# plik z uszkodzonym dźwiękiem — tylko obraz} few {# pliki z uszkodzonym dźwiękiem — tylko obraz} many {# plików z uszkodzonym dźwiękiem — tylko obraz} other {# pliku z uszkodzonym dźwiękiem — tylko obraz}}",
     "status.dropReadFailed": "Nie udało się odczytać części plików. Sprawdź, czy karta pamięci lub dysk są podłączone, i otwórz folder ponownie.",
@@ -659,6 +660,7 @@ export const plDict = {
     "ingestOverlay.queued": "{n, plural, one {jeszcze # folder w kolejce} few {jeszcze # foldery w kolejce} many {jeszcze # folderów w kolejce} other {jeszcze # folderu w kolejce}}",
     "ingestOverlay.stage.preparing": "Otwieram twój folder...",
     "ingestOverlay.stage.classifying": "Porządkuję pliki...",
+    "ingestOverlay.stage.checkingCopies": "Sprawdzam kopie nagrań...",
     "ingestOverlay.stage.parsingLogs": "Czytam pliki GPS…",
     "ingestOverlay.stage.parsingSidecars": "Czytam pliki GPS...",
     "ingestOverlay.stage.canceling": "Zatrzymuję...",

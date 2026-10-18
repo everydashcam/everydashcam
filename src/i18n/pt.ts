@@ -205,6 +205,7 @@ export const ptDict = {
 
     "status.filesNotSelected": "nenhum arquivo selecionado",
     "status.duplicatesSkipped": "{n, plural, one {# arquivo duplicado ignorado} other {# arquivos duplicados ignorados}}",
+    "status.recordingCopiesCombined": "{n, plural, one {# cópia de gravação combinada} other {# cópias de gravações combinadas}}; marcações de eventos preservadas",
     "status.hvccRepaired": "{n, plural, one {# arquivo danificado corrigido} other {# arquivos danificados corrigidos}}",
     "status.audioDamaged": "{n, plural, one {# arquivo com áudio danificado — só vídeo} other {# arquivos com áudio danificado — só vídeo}}",
     "status.dropReadFailed": "Não foi possível ler alguns arquivos. Verifique a conexão do cartão de memória ou da unidade e abra a pasta novamente.",
@@ -659,6 +660,7 @@ export const ptDict = {
     "ingestOverlay.queued": "{n, plural, one {mais # pasta na fila} other {mais # pastas na fila}}",
     "ingestOverlay.stage.preparing": "Abrindo sua pasta...",
     "ingestOverlay.stage.classifying": "Organizando arquivos...",
+    "ingestOverlay.stage.checkingCopies": "Procurando gravações duplicadas...",
     "ingestOverlay.stage.parsingLogs": "Lendo arquivos GPS…",
     "ingestOverlay.stage.parsingSidecars": "Lendo arquivos de GPS...",
     "ingestOverlay.stage.canceling": "Parando...",

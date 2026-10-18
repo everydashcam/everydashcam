@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
     associateRecordsWithVideos,
     bindRecordsByRecordingStart,
+    buildVideoAssociationIndex,
+    rebindRecordingCopyRecords,
     recordsForVideo,
     resolveVideoKey,
 } from "./gps-association.js";
 import { mergeIntoGpsLog, rebuildLog } from "./parser.js";
-import type { GpsRecord, VendorFile } from "./parsers/types.js";
+import type { GpsRecord, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 
@@ -85,6 +87,158 @@ function recordingRecord(startUtc: number, sourceKey?: string): GpsRecord {
 }
 
 describe("GPS video association", () => {
+    it("leaves an ordinary log unchanged when no recording copies are known", () => {
+        const ordinary = video("Normal/clip.mp4", "card-a");
+        const unowned = record(10);
+        const original = rebuildLog([], [unowned], []);
+
+        const result = rebindRecordingCopyRecords(original, [ordinary]);
+
+        expect(result.log).toBe(original);
+        expect(result.reboundRecords).toBe(0);
+        expect(unowned.videoKey).toBeUndefined();
+    });
+
+    it("leaves ordinary recordings unowned when another recording has copies", () => {
+        const ordinary = video("Normal/clip.mp4", "card-a");
+        const withCopy: VideoWithRecordingCopies = {
+            ...video("Event/event.mp4", "card-a"),
+            recordingCopies: [video("Normal/copied.mp4", "card-a")],
+        };
+        const unowned = record(10);
+        const original = rebuildLog([], [unowned], []);
+
+        const result = rebindRecordingCopyRecords(original, [ordinary, withCopy]);
+
+        expect(result.log).toBe(original);
+        expect(result.reboundRecords).toBe(0);
+        expect(unowned.videoKey).toBeUndefined();
+    });
+
+    it.each(["normal", "event"])("binds both protected-copy filenames to the %s survivor", (survivorMode) => {
+        const normal = video("Normal/Front/NO20260101-120000-000001F.MP4", "card-a");
+        const event = video("Event/Front/EV20260101-120000-000001F.MP4", "card-a");
+        const [kept, copy] = survivorMode === "normal" ? [normal, event] : [event, normal];
+        const survivor: VideoWithRecordingCopies = { ...kept!, recordingCopies: [copy!] };
+        const index = buildVideoAssociationIndex([survivor]);
+        const source = video("GPSData.txt", "card-a");
+        const records = [
+            { ...record(10), mp4Filename: normal.file.name },
+            { ...record(10), mp4Filename: event.file.name, accelXg: 2 },
+        ];
+
+        associateRecordsWithVideos(records, source, index);
+        const log = mergeIntoGpsLog(null, { records, appliedExtractors: [], skipped: [] });
+
+        expect([...index.videosByFilename.keys()]).toEqual([kept!.file.name, copy!.file.name]);
+        expect(records.map((rec) => rec.videoKey)).toEqual([vendorFileKey(survivor), vendorFileKey(survivor)]);
+        expect(records.map((rec) => rec.mp4Filename)).toEqual([survivor.file.name, survivor.file.name]);
+        expect(log.records).toHaveLength(1);
+        expect(recordsForVideo(log, survivor, index)[0]?.accelXg).toBe(2);
+    });
+
+    it("treats same-named physical copies as one owner without hiding unowned rows", () => {
+        const normal = video("Normal/clip.mp4", "card-a");
+        const event = video("Event/clip.mp4", "card-a");
+        const survivor: VideoWithRecordingCopies = { ...normal, recordingCopies: [event] };
+        const source = video("GPSData.txt", "late-drop");
+        const rec = record(10);
+        const index = buildVideoAssociationIndex([survivor]);
+
+        expect(resolveVideoKey(source, "clip.mp4", index)).toBe(vendorFileKey(normal));
+        expect(recordsForVideo(rebuildLog([], [rec], []), survivor, index)).toEqual([rec]);
+    });
+
+    it("uses each copy's source and directory before choosing the canonical recording", () => {
+        const first: VideoWithRecordingCopies = {
+            ...video("A/Event/event.mp4", "card-a"),
+            recordingCopies: [video("A/Normal/clip.mp4", "card-a")],
+        };
+        const second: VideoWithRecordingCopies = {
+            ...video("B/Event/event.mp4", "card-b"),
+            recordingCopies: [video("B/Normal/clip.mp4", "card-b")],
+        };
+        const index = buildVideoAssociationIndex([first, second]);
+
+        expect(resolveVideoKey(video("logs/GPSData.txt", "card-b"), "clip.mp4", index)).toBe(vendorFileKey(second));
+        expect(resolveVideoKey(video("B/Normal/clip.gpx", "late-drop"), "clip.mp4", index)).toBe(vendorFileKey(second));
+        expect(resolveVideoKey(video("logs/GPSData.txt", "late-drop"), "clip.mp4", index)).toBeNull();
+        const unowned = record(10);
+        expect(recordsForVideo(rebuildLog([], [unowned], []), first, index)).toEqual([]);
+        expect(recordsForVideo(rebuildLog([], [unowned], []), second, index)).toEqual([]);
+    });
+
+    it("rebinds earlier keyed and unowned copy rows once without mutating the previous log", () => {
+        const normal = video("Normal/clip.mp4", "card-a");
+        const event = video("Event/event.mp4", "card-a");
+        const survivor: VideoWithRecordingCopies = { ...event, recordingCopies: [normal] };
+        const ownedCopy = { ...record(10), videoKey: vendorFileKey(normal) };
+        const unownedCopy = { ...record(11), unixSeconds: 101 };
+        const canonical = { ...record(10), mp4Filename: event.file.name, videoKey: vendorFileKey(event), accelXg: 2 };
+        const original = rebuildLog(["csv-70mai"], [ownedCopy, unownedCopy, canonical], []);
+
+        const rebound = rebindRecordingCopyRecords(original, [survivor]);
+
+        expect(rebound.reboundRecords).toBe(2);
+        expect(ownedCopy.videoKey).toBe(vendorFileKey(normal));
+        expect(unownedCopy.videoKey).toBeUndefined();
+        expect(rebound.log.records).toHaveLength(2);
+        expect(recordsForVideo(rebound.log, survivor, [survivor]).map((rec) => rec.unixSeconds)).toEqual([100, 101]);
+        expect(rebound.log.records.every((rec) => rec.mp4Filename === event.file.name)).toBe(true);
+        expect(rebound.log.records[0]?.accelXg).toBe(2);
+        expect(rebindRecordingCopyRecords(rebound.log, [survivor])).toEqual({ log: rebound.log, reboundRecords: 0 });
+    });
+
+    it("preserves unknown concrete owners and ambiguous unowned rows when copies arrive", () => {
+        const first: VideoWithRecordingCopies = {
+            ...video("A/Event/event.mp4", "card-a"),
+            recordingCopies: [video("A/Normal/clip.mp4", "card-a")],
+        };
+        const second: VideoWithRecordingCopies = {
+            ...video("B/Event/event.mp4", "card-b"),
+            recordingCopies: [video("B/Normal/clip.mp4", "card-b")],
+        };
+        const foreign = { ...record(10), videoKey: vendorFileKey(video("C/clip.mp4", "card-c")) };
+        const unowned = record(11);
+        const original = rebuildLog([], [foreign, unowned], []);
+
+        const rebound = rebindRecordingCopyRecords(original, [first, second]);
+        associateRecordsWithVideos([foreign], video("A/GPSData.txt", "card-a"), [first, second]);
+
+        expect(rebound).toEqual({ log: original, reboundRecords: 0 });
+        expect(foreign.videoKey).toBe(vendorFileKey(video("C/clip.mp4", "card-c")));
+        expect(foreign.mp4Filename).toBe("clip.mp4");
+        expect(unowned.videoKey).toBeUndefined();
+    });
+
+    it("does not attach a foreign owner's GPS to the only same-named recording", () => {
+        const local = video("A/clip.mp4", "card-a");
+        const foreign = { ...record(10), videoKey: vendorFileKey(video("B/clip.mp4", "card-b")) };
+        const owner = foreign.videoKey;
+
+        associateRecordsWithVideos([foreign], video("A/GPSData.txt", "card-a"), [local]);
+
+        expect(foreign.videoKey).toBe(owner);
+        expect(recordsForVideo(rebuildLog([], [foreign], []), local, [local])).toEqual([]);
+    });
+
+    it("reads canonical-owned rows across alias names in chronological order before normalization", () => {
+        const survivor: VideoWithRecordingCopies = {
+            ...video("Event/event.mp4", "card-a"),
+            recordingCopies: [video("Normal/clip.mp4", "card-a")],
+        };
+        const early = { ...record(10), videoKey: vendorFileKey(survivor) };
+        const late = {
+            ...record(11),
+            unixSeconds: 200,
+            mp4Filename: survivor.file.name,
+            videoKey: vendorFileKey(survivor),
+        };
+        const log = rebuildLog([], [late, early], []);
+
+        expect(recordsForVideo(log, survivor, [survivor])).toEqual([early, late]);
+    });
+
     it("indexes pending sections through incremental merges and removes resolved hints", () => {
         const startUtc = 1_777_777_777;
         const first = recordingRecord(startUtc, "card-a");

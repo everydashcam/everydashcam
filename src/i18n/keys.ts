@@ -282,6 +282,7 @@ export type I18nKey =
     // progress stays in the relevant overlay instead of duplicating channels.
     | "status.filesNotSelected"
     | "status.duplicatesSkipped"
+    | "status.recordingCopiesCombined"
     | "status.hvccRepaired"
     | "status.audioDamaged"
     | "status.dropReadFailed"
@@ -895,6 +896,7 @@ export type I18nKey =
     // directory - before the real ingest stages below begin.
     | "ingestOverlay.stage.preparing"
     | "ingestOverlay.stage.classifying"
+    | "ingestOverlay.stage.checkingCopies"
     | "ingestOverlay.stage.parsingLogs"
     | "ingestOverlay.stage.parsingSidecars"
     | "ingestOverlay.stage.canceling"

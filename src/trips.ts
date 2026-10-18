@@ -15,7 +15,7 @@ import {
     lastSyncedRecord,
     totalDistanceKm,
 } from "./parser.js";
-import type { GpsRecord, Channel, RecordingMode, VendorFile } from "./parsers/types.js";
+import type { GpsRecord, Channel, RecordingMode, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCodec } from "mediabunny";
 import type { Mp4Rotation } from "./indexer.js";
 import { createLogger } from "./log.js";
@@ -64,14 +64,7 @@ export interface ClassifierMatches {
 }
 
 // Video candidate for grouping.
-export interface VideoCandidate {
-    file: File;
-    // Path from the selected folder root. Empty string if file was picked without
-    // directory structure. Used by classifiers for path-based heuristics.
-    relativePath: string;
-    // Source scope copied from VendorFile. Together with path + metadata it
-    // distinguishes reused paths and equal directory trees inside a session.
-    sourceKey?: string;
+export interface VideoCandidate extends VideoWithRecordingCopies {
     // Stable camera key (see camera-fingerprint.ts). Used for trip-grouping
     // and per-fingerprint TZ heuristics. Replaces the old vendorId.
     fingerprint: string;
