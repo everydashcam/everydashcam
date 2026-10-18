@@ -113,6 +113,74 @@ describe("real-anonymized iBox RoadScan 2K dual-channel card", () => {
         }
     });
 
+    it("keeps staggered unsynced sibling samples on their source clocks", async () => {
+        const candidates: VideoCandidate[] = [];
+        for (const [path, name] of [
+            ["Normal/F/REC20260913-125420-1370.mp4", "REC20260913-125620-1370.mp4"],
+            ["Normal/R/REC20260913-125420-1334.mp4", "REC20260913-125621-1334.mp4"],
+        ] as const) {
+            // Renaming makes the recorded GPS clock stale; the real sample
+            // timestamps still provide each channel's distinct media offsets.
+            const file = fixture(path, name);
+            const index = await buildMp4Index(file.file);
+            const result = await sstarSsmdPrimitive.parse(file, index);
+            expect(result.records).toHaveLength(61);
+            expect(result.videoStartUtcHint).toBeUndefined();
+            expect(result.records.every((record) => record.timeUnsynced && record.unixSeconds === 0)).toBe(true);
+            const track = index.tracks[0]!;
+            const durations = readSampleDurationsInTicks(index.moovView!, track.trakBox)!;
+            const durationSec =
+                durations.reduce((sum, duration) => sum + duration, 0) /
+                readMediaTimescale(index.moovView!, track.trakBox)!;
+            const candidate = buildProvisionalCandidate({
+                file,
+                fingerprint: cameraFingerprint(file),
+                startUtc: 0,
+                startSource: "mtime",
+                cameraTzSec: null,
+                durationSec,
+                records: result.records,
+                appliedExtractors: ["sstar-ssmd"],
+            });
+            candidate.createdUtc = index.createdUtc;
+            candidates.push(candidate);
+        }
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+        const front = candidates[0]!;
+        const rear = candidates[1]!;
+        expect(candidates.map((candidate) => candidate.channel)).toEqual(["front", "rear"]);
+        expect(candidates.every((candidate) => candidate.startSource === "name")).toBe(true);
+        expect(front.fingerprint).toBe(rear.fingerprint);
+        expect(rear.startUtc).toBe(front.startUtc + 1);
+
+        // Anonymization rounds both tracks to one position. Their telemetry
+        // proves that the rear starts at the front's second fix, not its first.
+        expect(front.records[0]).toMatchObject({ speedMs: 0, bearingDeg: 178, relStartSeconds: 0 });
+        expect(rear.records[0]).toMatchObject({
+            lat: front.records[0]!.lat,
+            lon: front.records[0]!.lon,
+            speedMs: front.records[1]!.speedMs,
+            bearingDeg: front.records[1]!.bearingDeg,
+            relStartSeconds: 0,
+        });
+        expect(rear.records[0]!.speedMs).toBeCloseTo(2 / 3.6);
+        expect(rear.records[0]!.bearingDeg).toBe(172);
+        expect(front.records[1]!.relStartSeconds).toBeCloseTo(0.9899444444444444);
+
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(1);
+        expect(trips[0]!.frames).toHaveLength(1);
+        expect(Object.keys(trips[0]!.frames[0]!.channels).sort()).toEqual(["front", "rear"]);
+        const rearRecords = trips[0]!.records.filter((record) => record.mp4Filename === rear.file.name);
+        expect(rearRecords).toHaveLength(rear.records.length);
+        for (const [i, record] of rearRecords.entries()) {
+            expect(record.relStartSeconds).toBeCloseTo(rear.records[i]!.relStartSeconds!, 8);
+            expect(record.speedMs).toBeCloseTo(rear.records[i]!.speedMs);
+            expect(record.bearingDeg).toBe(rear.records[i]!.bearingDeg);
+            expect(record.unixSeconds).toBeCloseTo(rear.startUtc + record.relStartSeconds!, 5);
+        }
+    });
+
     it.each([
         ["Event/F/SOS20260913-125521-1371.mp4", "SOS20260913-125721-1371.mp4"],
         ["Parking/F/PAR20260913-121858-1.mp4", "PAR20260913-122058-1.mp4"],

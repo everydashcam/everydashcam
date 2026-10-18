@@ -11,6 +11,7 @@ import {
     accelMagnitude,
     dropTeleportOutliers,
     firstSyncedRecord,
+    isValidGpsFix,
     lastSyncedRecord,
     totalDistanceKm,
 } from "./parser.js";
@@ -1465,10 +1466,9 @@ function finalizeTrip(frames: TripFrame[]): Trip {
  *  Every GPS calibration starts here, so repeated edits never accumulate
  *  floating-point drift or lose points trimmed by the previous value. */
 function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsRecord[]; mergedCount: number } {
-    // Records from all channels in all frames, each channel's file placed on
-    // its frame's wall axis (frameGpsSource). Dedup by (unixSeconds, lat, lon)
-    // collapses the copies a vendor writes when it muxes one GPS stream into
-    // every channel (novatek-ts F+R; 70mai carries GPS on front only).
+    // Records from all channels in all frames. Proven unsynced copies share
+    // the canonical channel's clock (frameGpsSource); other sources keep their
+    // own. Dedup collapses copies by (unixSeconds, lat, lon, trackSegment).
     // frameChannels iterates in CHANNEL_PRIORITY order (front first), so front's
     // record wins its identity on a collision - but a camera with per-channel IMU
     // can carry the impact spike on the lower-priority channel, so transplant the
@@ -1517,33 +1517,56 @@ function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsReco
     return { records: dropTeleportOutliers(merged), mergedCount: merged.length };
 }
 
-/**
- * GPS source of one channel's file, placed on the wall axis its frame plays
- * it on. A camera that muxes its single GPS stream into every channel hands
- * the trip one copy per channel, each with a placeholder clock
- * (`timeUnsynced`) that reanchorUnsyncedTimes tied to that file's own start.
- * Sibling files of one frame open within the same second, yet their filename
- * clocks routinely differ by one tick, so the copies land a second apart and
- * interleave into a zigzag (p(t), p(t-1), p(t+1), ...) that triples the
- * measured distance. The frame already plays the sibling video from the
- * canonical channel's start (finalizeFrameTiming), so its placeholder clock
- * moves by the same delta and identical fixes collapse in the cross-channel
- * dedup. Satellite-synced records keep their clock; so does a file whose
- * clock synced mid-way, because its cold-start rows are pinned below the
- * first synced row and must not cross it. Interval frames place every file by
- * its own start through mediaOffsetSec, so their copies already share an axis.
- * Returns clones when shifting; parser-owned records are never mutated.
- */
+/** Unsynced clocks alone do not prove duplication: independently cut channels
+ * can carry trustworthy media offsets. Require the complete relative GPS
+ * sequence and at least two distinct valid positions to agree. Stationary or
+ * partial tracks cannot establish a shared origin. IMU is channel-local and
+ * deliberately excluded so the stronger impulse still survives the dedup. */
+function matchesUnsyncedGpsCopy(
+    records: readonly GpsRecord[],
+    reference: readonly GpsRecord[],
+    shiftSec: number,
+): boolean {
+    if (records.length < 2 || records.length !== reference.length) return false;
+    let firstFix: GpsRecord | undefined;
+    let hasMovement = false;
+    for (const [i, record] of records.entries()) {
+        const other = reference[i]!;
+        if (
+            !record.timeUnsynced ||
+            !other.timeUnsynced ||
+            record.externalTrack ||
+            other.externalTrack ||
+            // Allow only floating-point rounding, not a different sample phase.
+            !(Math.abs(record.unixSeconds + shiftSec - other.unixSeconds) <= 0.000001) ||
+            record.active !== other.active ||
+            record.lat !== other.lat ||
+            record.lon !== other.lon ||
+            record.speedMs !== other.speedMs ||
+            record.speedSource !== other.speedSource ||
+            record.bearingDeg !== other.bearingDeg ||
+            record.trackSegment !== other.trackSegment
+        )
+            return false;
+        if (isValidGpsFix(record)) {
+            firstFix ??= record;
+            hasMovement ||= record.lat !== firstFix.lat || record.lon !== firstFix.lon;
+        }
+    }
+    return hasMovement;
+}
+
+/** Identical unsynced streams (e.g. Novatek TS) may be anchored a filename tick
+ * apart. Align only a proven copy to the canonical channel in this frame.
+ * Missing GPS on that channel supplies no evidence, even if another frame had
+ * a copy. Interval frames retain their explicit per-file placement. */
 function frameGpsSource(frame: TripFrame, candidate: VideoCandidate): TripGpsSource {
     const records = usableCandidateRecords(candidate);
     const wallDurationSec = candidate.wallDurationSec ?? candidate.durationSec;
     const shiftSec = frame.mediaOffsetSec ? 0 : frame.startUtc - candidate.startUtc;
-    if (
-        !Number.isFinite(shiftSec) ||
-        shiftSec === 0 ||
-        records.length === 0 ||
-        !records.every((record) => record.timeUnsynced)
-    ) {
+    const canonical = frameCanonicalCandidate(frame);
+    const reference = canonical ? usableCandidateRecords(canonical) : [];
+    if (!Number.isFinite(shiftSec) || shiftSec === 0 || !matchesUnsyncedGpsCopy(records, reference, shiftSec)) {
         return {
             records,
             startUtc: candidate.startUtc,
@@ -1552,7 +1575,8 @@ function frameGpsSource(frame: TripFrame, candidate: VideoCandidate): TripGpsSou
         };
     }
     return {
-        records: records.map((record) => ({ ...record, unixSeconds: record.unixSeconds + shiftSec })),
+        // Reuse the reference times exactly so rounding cannot defeat dedup.
+        records: records.map((record, i) => ({ ...record, unixSeconds: reference[i]!.unixSeconds })),
         startUtc: frame.startUtc,
         endUtc: frame.startUtc + wallDurationSec,
         channel: candidate.channel,

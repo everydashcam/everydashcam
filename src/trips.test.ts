@@ -2739,20 +2739,26 @@ describe("finalizeTrip: unsynced GPS copies on sibling channels (novatek-ts F+R)
         return makeCandidate({ name, channel, startUtc, durationSec: 60, sequence, fingerprint: SAME_CAM, records });
     }
 
-    it("collapses a sibling copy anchored one second later onto the frame axis", () => {
-        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 1, 2, 3]));
-        const rear = channelCandidate("r.ts", "rear", 1001, unsyncedCopy("r.ts", 1001, [0, 1, 2, 3]));
+    it.each([
+        [1000, 1001],
+        [1000, 999],
+        [1700000000.125, 1700000001.25],
+        [1700000000.1, 1700000001.2],
+    ])("collapses a proven copy from %s / %s onto the frame axis", (frontStart, rearStart) => {
+        const front = channelCandidate("f.ts", "front", frontStart, unsyncedCopy("f.ts", frontStart, [0, 1, 2, 3]));
+        const rear = channelCandidate("r.ts", "rear", rearStart, unsyncedCopy("r.ts", rearStart, [0, 1, 2, 3]));
         const trips = groupTrips([front, rear]);
         expect(trips).toHaveLength(1);
         const trip = trips[0]!;
         expect(trip.frames).toHaveLength(1);
-        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003]);
+        expect(trip.records.map((r) => r.unixSeconds)).toEqual([0, 1, 2, 3].map((i) => frontStart + i));
         expect(trip.distanceKm, "one straight pass, no zigzag").toBeCloseTo(haversineKm(50, 30, 50.0003, 30), 8);
         // Clone, not in-place: the rear's parser-owned records keep their own anchor.
-        expect(rear.records.map((r) => r.unixSeconds)).toEqual([1001, 1002, 1003, 1004]);
+        expect(rear.records.map((r) => r.unixSeconds)).toEqual([0, 1, 2, 3].map((i) => rearStart + i));
+        expect(groupTrips([rear, front])[0]!.records).toEqual(trip.records);
     });
 
-    it("fills a frame whose canonical channel lacks GPS from the sibling copy, on the frame axis", () => {
+    it("keeps the sibling clock when this frame lacks canonical GPS despite a preceding copy", () => {
         const front1 = channelCandidate("f1.ts", "front", 1000, unsyncedCopy("f1.ts", 1000, [0, 1]));
         const rear1 = channelCandidate("r1.ts", "rear", 1001, unsyncedCopy("r1.ts", 1001, [0, 1]));
         const front2 = channelCandidate("f2.ts", "front", 1060, [], 2);
@@ -2761,8 +2767,78 @@ describe("finalizeTrip: unsynced GPS copies on sibling channels (novatek-ts F+R)
         expect(trips).toHaveLength(1);
         const trip = trips[0]!;
         expect(trip.frames).toHaveLength(2);
-        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1060, 1061]);
+        expect(trip.records.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1061, 1062]);
         expect(trip.distanceKm).toBeCloseTo(haversineKm(50, 30, 50.0003, 30), 8);
+    });
+
+    it.each([-1, 1])("preserves genuinely staggered samples with a %s second sibling offset", (offset) => {
+        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [1, 2, 3, 4]));
+        const rear = channelCandidate(
+            "r.ts",
+            "rear",
+            1000 + offset,
+            unsyncedCopy(
+                "r.ts",
+                1000 + offset,
+                [1, 2, 3, 4].map((step) => step + offset),
+            ),
+        );
+        const trip = groupTrips([front, rear])[0]!;
+        const start = Math.min(1000, 1000 + offset);
+        expect(trip.records.map((record) => record.unixSeconds)).toEqual([0, 1, 2, 3, 4].map((i) => start + i));
+        expect(trip.records.map((record) => record.lat)).toEqual(
+            [0, 1, 2, 3, 4].map((i) => 50 + (start - 999 + i) * 0.0001),
+        );
+        expect(trip.distanceKm).toBeCloseTo(haversineKm(trip.records[0]!.lat, 30, trip.records.at(-1)!.lat, 30), 8);
+    });
+
+    it.each(["position", "speed", "bearing", "time", "missing fix", "extra fix"])(
+        "keeps source clocks when a potential copy has a different %s",
+        (difference) => {
+            const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 1, 2]));
+            const rearRecords = unsyncedCopy("r.ts", 1001, [0, 1, 2]);
+            if (difference === "position") rearRecords[2]!.lat += 0.0001;
+            if (difference === "speed") rearRecords[2]!.speedMs += 1;
+            if (difference === "bearing") rearRecords[2]!.bearingDeg += 1;
+            if (difference === "time") rearRecords[2]!.unixSeconds += 0.01;
+            if (difference === "missing fix") rearRecords.splice(1, 1);
+            if (difference === "extra fix") rearRecords.push(unsyncedCopy("r.ts", 1004, [3])[0]!);
+            const rear = channelCandidate("r.ts", "rear", 1001, rearRecords);
+            const trip = groupTrips([front, rear])[0]!;
+            expect(trip.records.filter((record) => record.mp4Filename === "r.ts")).toEqual(rearRecords);
+        },
+    );
+
+    it("does not use stationary fixes to move a channel-local impact", () => {
+        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 0, 0]));
+        const rearRecords = unsyncedCopy("r.ts", 1001, [0, 0, 0]);
+        rearRecords[0]!.accelXg = 1.2;
+        const rear = channelCandidate("r.ts", "rear", 1001, rearRecords);
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.records.find((record) => record.accelXg === 1.2)!.unixSeconds).toBe(1001);
+        expect(trip.records.map((record) => record.unixSeconds)).toEqual([1000, 1001, 1002, 1003]);
+    });
+
+    it("transplants channel-local acceleration from a proven moving copy without mutating its source", () => {
+        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 1, 2]));
+        const rearRecords = unsyncedCopy("r.ts", 1001, [0, 1, 2]);
+        rearRecords[0]!.accelXg = 1.2;
+        const rear = channelCandidate("r.ts", "rear", 1001, rearRecords);
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.records).toHaveLength(3);
+        expect(trip.records[0]).toMatchObject({ unixSeconds: 1000, mp4Filename: "f.ts", accelXg: 1.2 });
+        expect(front.records[0]!.accelXg).toBe(0);
+        expect(rear.records[0]!.unixSeconds).toBe(1001);
+    });
+
+    it("preserves file clocks in playback intervals even when their relative GPS sequences agree", () => {
+        const front = channelCandidate("f.ts", "front", 1000, unsyncedCopy("f.ts", 1000, [0, 1, 2]));
+        const rear = channelCandidate("r.ts", "rear", 1001, unsyncedCopy("r.ts", 1001, [0, 1, 2]));
+        rear.durationSec = 90;
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.frames.length).toBeGreaterThan(1);
+        expect(trip.frames.every((frame) => frame.mediaOffsetSec !== undefined)).toBe(true);
+        expect(trip.records.filter((record) => record.mp4Filename === "r.ts")).toEqual(rear.records);
     });
 
     it("leaves satellite-synced sibling records on their own clock", () => {
