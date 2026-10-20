@@ -55,15 +55,13 @@ function sessionRecordingState(page: Page) {
 }
 
 async function openRecordingTrip(page: Page, name: string): Promise<void> {
-    const tripIndex = await page.evaluate((name) => {
-        return window.__everydashcam.state.trips.findIndex((trip) =>
-            trip.frames.some((frame) =>
-                Object.values(frame.channels).some((candidate) => candidate.file.name === name),
-            ),
-        );
-    }, name);
-    expect(tripIndex).toBeGreaterThanOrEqual(0);
-    await page.locator(`li.trip[data-trip-index="${tripIndex}"] .trip-title`).click();
+    // Embedded GPS can refine clocks and reorder trips while Playwright waits
+    // for the click. Resolve the card by recording identity on every retry.
+    await page
+        .locator("li.trip")
+        .filter({ has: page.locator(".file-name", { hasText: name }) })
+        .locator(".trip-title")
+        .click();
     await expect
         .poll(() =>
             page.evaluate((name) => {
