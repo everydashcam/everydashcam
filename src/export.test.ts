@@ -178,6 +178,7 @@ describe("stream-copy export", () => {
         "./parsers/__fixtures__/novatek-ts/real-anonymized.TS",
         "./parsers/__fixtures__/ligogps-trailer-ts/real-anonymized-count.TS",
         "./parsers/__fixtures__/ligogps-trailer-ts/real-anonymized-empty.TS",
+        "./parsers/__fixtures__/ligogps-ts-pes/real-anonymized.TS",
     ])("copies video and audio from a transport clock in %s", async (path) => {
         const file = fixture(path);
         const source = open(file);

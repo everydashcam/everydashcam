@@ -63,3 +63,28 @@ export function removeGravityBaselineOrZero(records: GpsRecord[]): void {
         r.accelZg = 0;
     }
 }
+
+/**
+ * removeGravityBaselineOrZero for a gravity-included triple in an undocumented
+ * unit. The static reading of any accelerometer is gravity, and driving adds
+ * little next to it, so the clip's median magnitude stands for 1 g: every
+ * triple is divided by it before the bias is removed. On the real LigoGPS TS
+ * sample (rest magnitude ~4.7 units) this puts the motion peaks at the speed
+ * track's own deceleration scale; the raw units would read as hard braking.
+ */
+export function removeGravityBaselineInUnknownUnits(records: GpsRecord[]): void {
+    const magnitudes = records
+        .filter((r) => r.accelXg !== 0 || r.accelYg !== 0 || r.accelZg !== 0)
+        .map((r) => Math.hypot(r.accelXg, r.accelYg, r.accelZg))
+        .sort((a, b) => a - b);
+    const gravity = magnitudes.length >= 2 ? magnitudes[magnitudes.length >> 1]! : 0;
+    if (gravity > 0) {
+        for (const r of records) {
+            r.accelXg /= gravity;
+            r.accelYg /= gravity;
+            r.accelZg /= gravity;
+        }
+    }
+    // Below two samples the helper zeroes the triple, so the scale is moot.
+    removeGravityBaselineOrZero(records);
+}

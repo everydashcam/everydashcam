@@ -11,6 +11,7 @@
 import { type ParsedRecords, type VendorFile, WrongFormatError } from "../types.js";
 import type { Mp4Index } from "../internal/mp4-index.js";
 import { extractJuscarTsGps } from "../internal/juscar-ts-extract.js";
+import { findLigoGpsTsPesPid } from "../internal/ligogps-ts-pes.js";
 import { looksLikeMpegTs } from "../internal/ts-walk.js";
 // Name regex + group key live in clone-groups.ts so the main-thread shard
 // planner shares them without importing this (worker-weight) module.
@@ -31,12 +32,15 @@ export const juscarTsPrimitive: Primitive = {
         // next to it, so the literal alone cannot tell them apart); its
         // stream never carries plaintext records, and the full-file scan
         // that proves so is pure waste - also on a no-fix clip whose empty
-        // table lets the dispatcher walk on to this primitive.
+        // table lets the dispatcher walk on to this primitive. The enciphered
+        // PES dialect of ligogps-ts-pes is excluded for the same reason: it
+        // never carries plaintext either.
         return (
             index?.hasLigoGpsMarker === true &&
             !!index.headerBytes &&
             looksLikeMpegTs(index.headerBytes) &&
-            index.tsGpsTrailer == null
+            index.tsGpsTrailer == null &&
+            findLigoGpsTsPesPid(index.headerBytes) === null
         );
     },
 

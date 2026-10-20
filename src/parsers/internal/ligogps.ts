@@ -1,10 +1,12 @@
 // LigoGPS - GPS payload written by several SoC families under the
-// LIGOGPSINFO\0 marker. Claimed here in two carriers: the encrypted `ssmd`
-// meta-track (CARCAM 4CH 360-WiFi and relatives) and the plaintext half of
-// the file trailer (Beferich J18 - see parseLigoGpsTrailer below). The
-// freeGPS-wrapped and `gpmd` carriers (Rexing, Kingslim, iiway, XGODY,
-// Redtiger F9 4K) plus the encrypted trailer twin are a recognize-and-bail
-// case, deliberately left unclaimed - see FUZZ_SETTLED_SAMPLE_FORMAT.
+// LIGOGPSINFO\0 marker. Claimed here: the encrypted `ssmd` meta-track
+// (CARCAM 4CH 360-WiFi and relatives), the plaintext half of the file trailer
+// (Beferich J18 - see parseLigoGpsTrailer below) and the plaintext TXT log
+// written next to a .TS. The enciphered MPEG-TS PES dialect that log mirrors
+// lives in ligogps-ts-pes.ts. The freeGPS-wrapped and `gpmd` carriers (Rexing,
+// Kingslim, iiway, XGODY, Redtiger F9 4K) plus the encrypted trailer twin are
+// a recognize-and-bail case, deliberately left unclaimed - see
+// FUZZ_SETTLED_SAMPLE_FORMAT.
 //
 // Source of truth: ExifTool LigoGPS.pm (DecryptLigoGPS + ParseLigoGPS),
 // ported 1-to-1 to avoid divergence. ExifTool MIT/Artistic-2.
@@ -26,6 +28,7 @@
 import { findTsGpsTrailer, isTsGpsTrailerTerminator, TS_TRAILER_SLOTS_OFFSET } from "../../ts-trailer.js";
 import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types.js";
 import { KNOTS_TO_MS, WrongFormatError } from "../types.js";
+import { removeGravityBaselineInUnknownUnits } from "./accel-baseline.js";
 import { utcMillisecondsFromParts } from "./calendar.js";
 import { findByteSequence } from "./byte-search.js";
 import { loadSamples, readSampleTable } from "./mp4-walker.js";
@@ -35,9 +38,12 @@ const LIGO_MAGIC = "LIGOGPSINFO";
 const LIGO_MAGIC_BYTES = new TextEncoder().encode(LIGO_MAGIC);
 
 /**
- * The one carrier whose fuzz state is settled by a real sample: LigoGPS in an
- * `ssmd` meta-track decodes correctly WITHOUT the upstream unfuzz step, which
- * is why nothing here calls it.
+ * The MP4 carrier whose fuzz state is settled by a real sample: LigoGPS in an
+ * `ssmd` meta-track decodes correctly WITHOUT the upstream unfuzz step. The
+ * only other settled carrier is the enciphered MPEG-TS PES, and only under the
+ * exact stream type and chunk header of its sample (ligogps-ts-pes.ts): that
+ * one IS fuzzed, at LIGO_FUZZ_SCALE_3, proven against the camera's plaintext
+ * TXT twin.
  *
  * Any other carrier stays unclaimed on purpose. Upstream decides fuzzing from
  * a header byte (LigoGPS.pm:299, v1.06), and that rule misclassifies our real
@@ -63,7 +69,7 @@ const FUZZ_SETTLED_SAMPLE_FORMAT = "ssmd";
  * 3 bits (steering bits) select one of 4 decryption branches; the lower
  * bits are mixed with the next 4 (or 3, or 1) bytes via OR and XOR with 0x20.
  */
-function decryptLigoGps(chunk: Uint8Array): Uint8Array | null {
+export function decryptLigoGps(chunk: Uint8Array): Uint8Array | null {
     if (chunk.length < 8) return null;
     // num at offset 4 LE u32 - size of the encrypted body.
     const dv = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
@@ -163,7 +169,10 @@ const REC_RX = /^.{4}(\S+ \S+)\s+([NS?]):(-?)([.\d]+)\s+([EW?]):(-?)([.\d]+)\s+(
  *  in degrees, x/y/z accelerometer components. H: (altitude) has no
  *  GpsRecord field and M: (magnetic variation) no consumer - both dropped. */
 const COURSE_RX = /\bA:(-?[.\d]+)/;
-const TS_POSITIONAL_COURSE_RX = /x:-?[.\d]+\sy:-?[.\d]+\sz:-?[.\d]+\s+(-?[.\d]+)\s+-\s+-\s*$/;
+const COURSE_AFTER_ACCEL_RX = /x:-?[.\d]+\sy:-?[.\d]+\sz:-?[.\d]+\s+(-?[.\d]+)\s+-\s+-\s*$/;
+// "<speed> km/h <course> <altitude> <satellites> x:..." - the field order of
+// the enciphered TS PES and its TXT twin, course verified against the track.
+const COURSE_AFTER_SPEED_RX = /\skm\/h\s+(-?[.\d]+)\s+-?[.\d]+\s+\d+\s+x:/;
 const ACCEL_RX = /x:(-?[.\d]+)\sy:(-?[.\d]+)\sz:(-?[.\d]+)/;
 
 /**
@@ -173,12 +182,51 @@ const ACCEL_RX = /x:(-?[.\d]+)\sy:(-?[.\d]+)\sz:(-?[.\d]+)/;
  */
 type LigoSpeedUnit = "knots" | "kmh";
 
-function parseLigoGpsRecord(
+/**
+ * Where an untagged course sits. Every dialect also honours an `A:` tag;
+ * the positional forms are dialect-specific, so a caller opts into one.
+ */
+type LigoCourseLayout = "tagged" | "after-accel" | "after-speed";
+
+export interface LigoRecordOptions {
+    speedUnit?: LigoSpeedUnit;
+    courseLayout?: LigoCourseLayout;
+    /** Undoes the firmware coordinate fuzzing with this scale (see unfuzzLigoGps); absent = plain coordinates. */
+    fuzzScale?: number;
+}
+
+/**
+ * ExifTool `%gpsScl` entry 3 (LigoGPS.pm ParseLigoGPS). The enciphered TS PES
+ * dialect matches it: every record of the real sample lands within 12 m of the
+ * camera's own plaintext TXT twin, while scales 1, 1.524855137 and 1.456027985
+ * miss by 104-252 km.
+ */
+export const LIGO_FUZZ_SCALE_3 = 1.15368;
+
+/**
+ * Inverse of the firmware fuzzing (ExifTool LigoGPS.pm UnfuzzLigoGPS): the
+ * fractional parts of latitude and longitude within their 10-degree cells are
+ * swapped and multiplied by `scale`. Takes and returns unsigned degrees; the
+ * caller applies hemisphere signs afterwards, as ExifTool does.
+ */
+export function unfuzzLigoGps(lat: number, lon: number, scale: number): { lat: number; lon: number } {
+    const latCell = Math.trunc(lat / 10) * 10;
+    const lonCell = Math.trunc(lon / 10) * 10;
+    return { lat: latCell + (lon - lonCell) * scale, lon: lonCell + (lat - latCell) * scale };
+}
+
+function courseMatchFor(text: string, layout: LigoCourseLayout): RegExpMatchArray | null {
+    const tagged = text.match(COURSE_RX);
+    if (tagged || layout === "tagged") return tagged;
+    return text.match(layout === "after-accel" ? COURSE_AFTER_ACCEL_RX : COURSE_AFTER_SPEED_RX);
+}
+
+export function parseLigoGpsRecord(
     text: string,
     mp4Filename: string,
-    speedUnit: LigoSpeedUnit = "knots",
-    hasPositionalCourse = false,
+    options: LigoRecordOptions = {},
 ): GpsRecord | null {
+    const { speedUnit = "knots", courseLayout = "tagged", fuzzScale } = options;
     const m = text.match(REC_RX);
     if (!m) return null;
 
@@ -190,7 +238,7 @@ function parseLigoGpsRecord(
     const lonNeg = m[6] === "-";
     const lonStr = m[7]!;
     const speedStr = m[8]!;
-    const courseMatch = text.match(COURSE_RX) ?? (hasPositionalCourse ? text.match(TS_POSITIONAL_COURSE_RX) : null);
+    const courseMatch = courseMatchFor(text, courseLayout);
     const accelMatch = text.match(ACCEL_RX);
 
     // datetime: "YYYY/MM/DD HH:MM:SS" (UTC).
@@ -212,6 +260,7 @@ function parseLigoGpsRecord(
     const speedRaw = Number(speedStr);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(speedRaw)) return null;
 
+    if (fuzzScale !== undefined) ({ lat, lon } = unfuzzLigoGps(lat, lon, fuzzScale));
     if (latNeg || nsRef === "S") lat = -lat;
     if (lonNeg || ewRef === "W") lon = -lon;
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
@@ -371,7 +420,9 @@ export async function parseLigoGpsFromMp4(file: VendorFile, index: Mp4Index): Pr
     return { records, skipped };
 }
 
-function bytesToAscii(buf: Uint8Array): string {
+/** One char per byte; bytes >= 0x80 become "." while control bytes stay, so the
+ *  4-byte binary record counter keeps the width REC_RX skips. */
+export function bytesToAscii(buf: Uint8Array): string {
     let out = "";
     for (let i = 0; i < buf.length; i++) {
         const b = buf[i]!;
@@ -508,7 +559,7 @@ export async function parseLigoGpsTrailer(file: VendorFile, index: Mp4Index): Pr
             // Blank (all-zero) slots are a normal firmware gap, not an error.
             if (slot.every((b) => b === 0)) continue;
             const text = bytesToAscii(slot).replace(/\0+$/, "");
-            const record = parseLigoGpsRecord(text, file.file.name, "kmh");
+            const record = parseLigoGpsRecord(text, file.file.name, { speedUnit: "kmh" });
             if (record) {
                 records.push(record);
             } else {
@@ -567,7 +618,10 @@ export async function parseLigoGpsTsTrailer(file: VendorFile): Promise<ParsedRec
         const text = bytesToAscii(slot).replace(/\0+$/, "");
         // The paired lowercase-skip table starts directly with the timestamp.
         const indexedText = trailer.unindexedRecordsOffset === undefined ? text : `\0\0\0\0${text}`;
-        const record = parseLigoGpsRecord(indexedText, file.file.name, "kmh", true);
+        const record = parseLigoGpsRecord(indexedText, file.file.name, {
+            speedUnit: "kmh",
+            courseLayout: "after-accel",
+        });
         if (record) {
             records.push(record);
         } else {
@@ -580,6 +634,38 @@ export async function parseLigoGpsTsTrailer(file: VendorFile): Promise<ParsedRec
         }
     }
     return { records, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Plaintext TXT log next to a .TS.
+//
+// One line per second, the deciphered text of the enciphered TS PES without
+// its 4-byte counter and WITHOUT the fuzzing: on the real sample every line
+// equals the unfuzzed PES record of the same second. Layout and evidence:
+// docs/format-ligogps-ts-pes.md. Times are the camera's local clock, parsed as
+// UTC like the other LigoGPS carriers.
+
+/** Options shared by the TXT log and the enciphered PES it mirrors. */
+export const LIGO_TS_DIALECT_OPTIONS: LigoRecordOptions = { speedUnit: "kmh", courseLayout: "after-speed" };
+
+/**
+ * Parses a LigoGPS TXT log into records bound to `mp4Filename`. Lines without
+ * a fix ('?' hemisphere) or at 0,0 are dropped. Throws WrongFormatError when
+ * no line is a LigoGPS record, so a same-name .txt of another kind stays
+ * unclaimed.
+ */
+export function parseLigoGpsTextLog(text: string, mp4Filename: string): GpsRecord[] {
+    const records: GpsRecord[] = [];
+    let hasRecordShape = false;
+    for (const line of text.split(/\r?\n/)) {
+        if (!REC_RX.test(`\0\0\0\0${line}`)) continue;
+        hasRecordShape = true;
+        const record = parseLigoGpsRecord(`\0\0\0\0${line}`, mp4Filename, LIGO_TS_DIALECT_OPTIONS);
+        if (record && (record.lat !== 0 || record.lon !== 0)) records.push(record);
+    }
+    if (!hasRecordShape) throw new WrongFormatError("no ligogps record lines in text log");
+    removeGravityBaselineInUnknownUnits(records);
+    return records;
 }
 
 export const _internal = { decryptLigoGps, parseLigoGpsRecord, findLigoGpsChunkOffset, findLigoMagicOffsets };

@@ -301,6 +301,13 @@ describe("shouldTryEmbeddedGps", () => {
         expect(shouldTryEmbeddedGps(generic, false)).toBe(true);
         expect(shouldTryEmbeddedGps(generic, true)).toBe(false);
     });
+
+    it("keeps the enciphered LigoGPS PES clip probe-able for when its TXT log is missing", () => {
+        const clip = vf("2026_10_18_130426_00.TS");
+        expect(classifyGpsSource(clip)).toBe("unknown");
+        expect(shouldTryEmbeddedGps(clip, false)).toBe(true);
+        expect(shouldTryEmbeddedGps(clip, true), "the TXT twin already supplied records").toBe(false);
+    });
 });
 
 // Production regexes are mostly disjoint, so real-world collisions are rare.

@@ -17,11 +17,10 @@
 
 import { CustomSource } from "mediabunny";
 
-import { createBackgroundReadErrorHandler } from "./blob-source.js";
+import { createBackgroundReadErrorHandler, demuxView } from "./blob-source.js";
 import { identifyBrowser } from "./capabilities.js";
 import { createLogger } from "./log.js";
 import { isSourceReadError } from "./source-read-error.js";
-import { clampTsTrailingBytes } from "./ts-trailer.js";
 
 const log = createLogger("retrying-blob-source");
 
@@ -303,17 +302,21 @@ export function createRetryingBlobSource(blob: Blob, signal?: AbortSignal): Cust
     readSignal.addEventListener("abort", () => pool.disposeAll(), { once: true });
     if (readSignal.aborted) pool.disposeAll();
     const avoidBlobStream = identifyBrowser().engine === "webkit";
-    // A .ts file may end in bytes past the last packet that break demuxer sync
-    // (see ts-trailer.ts). getSize is guaranteed to run before read, so
-    // reporting the clamped size keeps every read inside the clean TS stream -
-    // the read path below stays on the original blob untouched.
+    // A .ts file may need a patched view before mediabunny sees it (see
+    // demuxView). getSize is guaranteed to run before read, so resolving the
+    // view there routes every read through it.
+    let readBlob = blob;
     let effectiveSize: Promise<number> | null = null;
     return new CustomSource({
-        getSize: () => (effectiveSize ??= clampTsTrailingBytes(blob).then((b) => b.size)),
+        getSize: () =>
+            (effectiveSize ??= demuxView(blob).then((view) => {
+                readBlob = view;
+                return view.size;
+            })),
         read: (start, end) =>
             avoidBlobStream
-                ? readRangeWithRetry(blob, start, end, readSignal)
-                : createRetryingRangeStream(blob, pool, start, end, readSignal),
+                ? readRangeWithRetry(readBlob, start, end, readSignal)
+                : createRetryingRangeStream(readBlob, pool, start, end, readSignal),
         dispose: () => disposeController.abort(),
         // Mirror BlobSource: 8 MiB cache is its default, fileSystem prefetch is
         // what it hard-codes for local reads.

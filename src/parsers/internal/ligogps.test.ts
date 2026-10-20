@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseLigoGpsFromMp4 } from "./ligogps.js";
+import { LIGO_FUZZ_SCALE_3, parseLigoGpsFromMp4, unfuzzLigoGps } from "./ligogps.js";
 import { _internal } from "./ligogps.js";
 import { WrongFormatError } from "../types.js";
 import { buildMp4Index } from "./mp4-index.js";
@@ -117,6 +117,39 @@ describe("parseLigoGpsRecord", () => {
     it("rejects out-of-range coords", () => {
         const text = "@@@@2025/06/07 18:06:17 N:99.0 E:200.0 25.5";
         expect(parseLigoGpsRecord(text, "x.mp4")).toBeNull();
+    });
+
+    it("reads the course right after km/h only when the dialect places it there", () => {
+        const text =
+            "@@@@2026/10/18 13:04:31 N:12.500000 E:34.250000 10.4 km/h 237.70 000.00 12 x:-0.07 y:-4.18 z:2.50";
+        expect(parseLigoGpsRecord(text, "x.ts", { speedUnit: "kmh", courseLayout: "after-speed" })!.bearingDeg).toBe(
+            237.7,
+        );
+        expect(parseLigoGpsRecord(text, "x.ts", { speedUnit: "kmh" })!.bearingDeg).toBe(0);
+    });
+
+    it("unfuzzes before applying hemisphere signs", () => {
+        // Fuzzed from 12.5, 34.25 at scale 2: each fraction moved to the other
+        // coordinate's 10-degree cell and halved.
+        const text = "@@@@2026/01/02 03:04:05 S:12.125000 W:31.250000 0.0";
+        const record = parseLigoGpsRecord(text, "x.ts", { fuzzScale: 2 })!;
+        expect(record.lat).toBeCloseTo(-12.5, 9);
+        expect(record.lon).toBeCloseTo(-34.25, 9);
+    });
+});
+
+describe("unfuzzLigoGps", () => {
+    it("swaps the fractions within the 10-degree cells and scales them", () => {
+        const fuzzed = { lat: 40 + 9 / LIGO_FUZZ_SCALE_3, lon: 60 + 1.5 / LIGO_FUZZ_SCALE_3 };
+        const plain = unfuzzLigoGps(fuzzed.lat, fuzzed.lon, LIGO_FUZZ_SCALE_3);
+        expect(plain.lat).toBeCloseTo(41.5, 9);
+        expect(plain.lon).toBeCloseTo(69, 9);
+    });
+
+    it("may move a coordinate into the next cell, as the firmware does", () => {
+        const plain = unfuzzLigoGps(48.8, 69.5, LIGO_FUZZ_SCALE_3);
+        expect(plain.lat).toBeCloseTo(40 + 9.5 * LIGO_FUZZ_SCALE_3, 9);
+        expect(plain.lat).toBeGreaterThan(50);
     });
 });
 

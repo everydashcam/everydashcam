@@ -22,6 +22,7 @@ import { ligoJsonPrimitive } from "./ligo-json.js";
 import { ligoGpsPrimitive } from "./ligogps.js";
 import { ligoGpsTrailerPrimitive } from "./ligogps-trailer.js";
 import { ligoGpsTrailerTsPrimitive } from "./ligogps-trailer-ts.js";
+import { ligoGpsTsPesPrimitive } from "./ligogps-ts-pes.js";
 import { navitelTailPrimitive } from "./navitel-tail.js";
 import { nextbaseGdatPrimitive } from "./nextbase-gdat.js";
 import { nextbaseSubtitlePrimitive } from "./nextbase-subtitle.js";
@@ -117,6 +118,11 @@ import { threeSixtyGpsJsonlPrimitive } from "./360gps-jsonl.js";
 //      trailer camera that muxes an ENCIPHERED LigoGPS PES (Blackview X5S
 //      PRO) and then reads the whole file before rejecting it for lacking
 //      plaintext records.
+//   8a0. ligogps-ts-pes - hasLigoGpsMarker plus an in-memory PMT and chunk
+//      header check on the probe for the enciphered, fuzzed PES dialect.
+//      Before juscar-ts, whose marker the literal satisfies too and whose
+//      parse would read the whole file before rejecting a stream with no
+//      plaintext records; juscar-ts excludes this dialect explicitly.
 //   8a. juscar-ts       - hasLigoGpsMarker + MPEG-TS sync; its PES extractor
 //      supplies the stronger dialect check, so renamed clips remain importable.
 //   8b. novatek-ts      - Novatek GPS struct in a private PES (MPEG-TS).
@@ -157,6 +163,7 @@ export const VIDEO_EMBEDDED_PRIMITIVES: readonly Primitive[] = [
     nmeaSubtitlePrimitive,
     gpsLogNbmtPrimitive,
     ligoGpsTrailerTsPrimitive,
+    ligoGpsTsPesPrimitive,
     juscarTsPrimitive,
     novatekTsPrimitive,
     tsPesGpsPrimitive,

@@ -5,10 +5,10 @@
 
 import type { VendorFile } from "../types.js";
 
-/** Reads a sidecar's full text with the standard abort seams. */
-export async function readSidecarText(file: VendorFile, signal?: AbortSignal): Promise<string> {
+/** Reads a sidecar's text, optionally limited to a prefix, with the standard abort seams. */
+export async function readSidecarText(file: VendorFile, signal?: AbortSignal, maxBytes?: number): Promise<string> {
     throwIfAborted(signal);
-    const text = await file.file.text();
+    const text = await (maxBytes === undefined ? file.file : file.file.slice(0, maxBytes)).text();
     throwIfAborted(signal);
     return text;
 }

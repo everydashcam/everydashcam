@@ -19,5 +19,6 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "vite.config.ts", "vite.portable.config.ts", "vite-plugins/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "vite.config.ts", "vite.portable.config.ts", "vite-plugins/**/*.ts"],
+  "exclude": ["tests/test-results/**"]
 }

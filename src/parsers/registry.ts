@@ -59,6 +59,7 @@ import { LOG_SIDECAR_PRIMITIVES, VIDEO_EMBEDDED_PRIMITIVES } from "./primitives/
 import { blackvue3gfSidecar } from "./sidecars/blackvue-3gf.js";
 import { escortMapSidecar } from "./sidecars/escort-map.js";
 import { gpxSidecar } from "./sidecars/gpx.js";
+import { ligoGpsTxtSidecar } from "./sidecars/ligogps-txt.js";
 import { blackvueGpsSidecar, ddpaiGpxSidecar, nmeaSidecar } from "./sidecars/nmea-sidecar.js";
 
 const log = createLogger("dispatch");
@@ -75,6 +76,7 @@ export const SIDECARS: readonly SidecarHandler[] = [
     blackvueGpsSidecar,
     escortMapSidecar,
     nmeaSidecar,
+    ligoGpsTxtSidecar,
 ];
 
 export const ACCEL_SIDECARS: readonly AccelSidecarHandler[] = [blackvue3gfSidecar];

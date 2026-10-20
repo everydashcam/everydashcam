@@ -103,6 +103,14 @@ const CASES = [
         extractor: "juscar-ts",
     },
     {
+        // Same literal and container as Juscar, so the gate is the same; the
+        // enciphered dialect must win before juscar-ts scans the whole file.
+        label: "enciphered fuzzed LigoGPS PES in MPEG-TS -> ligogps-ts-pes",
+        rel: "ligogps-ts-pes/real-anonymized.TS",
+        name: "2026_10_18_130426_00.TS",
+        extractor: "ligogps-ts-pes",
+    },
+    {
         // Third no-moov variant: the GPS table sits PAST the last whole TS
         // packet, so the kind-gate keys off index.tsGpsTrailer - nothing in
         // headerBytes or the box walk can see it.
