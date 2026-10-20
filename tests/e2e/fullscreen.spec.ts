@@ -607,10 +607,11 @@ test("expanded fallback isolates fixed banners while an existing GPS dialog stay
     await expect.poll(accessibleCopyCount).toBe(0);
     await expect(player.locator("#gps-sync-modal")).toBeVisible();
     await expect(dialog).not.toHaveAttribute("inert");
-    const offset = page.locator("#gps-sync-offset-input");
-    await expect(offset).toBeFocused();
+    const timezone = page.locator("#gps-sync-timezone-select");
+    await expect(timezone).toBeFocused();
     await page.locator("#support-banner-close").evaluate((element) => element.focus());
-    await expect(offset).toBeFocused();
+    await expect(timezone).toBeFocused();
+    const offset = page.locator("#gps-sync-offset-input");
     await offset.fill("1");
     await offset.press("Enter");
     await expect(page.locator("#gps-sync-reset")).toBeEnabled();

@@ -291,15 +291,22 @@ export async function check70maiCameraTimezone(
     await page.locator("#folder-input").setInputFiles(SAMPLE_GOPRO);
     await expect
         .poll(() =>
-            page.evaluate(() =>
-                window.__everydashcam.state.trips.some((trip) =>
-                    trip.frames.some((frame) =>
-                        Object.values(frame.channels).some(
-                            (candidate) => candidate.file.name === "hero5-trimmed.mp4" && candidate.metadataReady,
+            page.evaluate(() => {
+                const state = window.__everydashcam.state;
+                // The closing metadata sweep can still reorder trip indices
+                // after this recording becomes ready.
+                return (
+                    state.ingestController === null &&
+                    state.recordingAnalysisProgress === null &&
+                    state.trips.some((trip) =>
+                        trip.frames.some((frame) =>
+                            Object.values(frame.channels).some(
+                                (candidate) => candidate.file.name === "hero5-trimmed.mp4" && candidate.metadataReady,
+                            ),
                         ),
-                    ),
-                ),
-            ),
+                    )
+                );
+            }),
         )
         .toBe(true);
     await openRecordingTrip(page, "hero5-trimmed.mp4");
