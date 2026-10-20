@@ -7,6 +7,11 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-10-20
+
+- **New:** Added camera time zone selection in GPS sync.
+- **New camera support:** Added GPS support for 70mai Dash Cam Pro Plus A500S.
+
 ## 2026-10-18
 
 - **Fixed:** Fixed incorrect speed readings in some TS recordings.

@@ -28,6 +28,38 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-10-20.2",
+        category: "feature",
+        text: {
+            en: "Added camera time zone selection in GPS sync.",
+            ru: "Добавлен выбор часового пояса регистратора в синхронизации GPS.",
+            de: "Auswahl der Kamera-Zeitzone in der GPS-Synchronisierung hinzugefügt.",
+            es: "Añadida la selección de zona horaria de la cámara en la sincronización GPS.",
+            fr: "Ajout du choix du fuseau horaire de la caméra dans la synchronisation GPS.",
+            pl: "Dodano wybór strefy czasowej kamery w synchronizacji GPS.",
+            pt: "Adicionada a seleção do fuso horário da câmera na sincronização GPS.",
+            zh: "在 GPS 同步中新增了行车记录仪时区选择。",
+            ja: "GPS 同期にカメラのタイムゾーン選択を追加しました。",
+            ko: "GPS 동기화에 카메라 시간대 선택을 추가했어요.",
+        },
+    },
+    {
+        id: "2026-10-20.1",
+        category: "support",
+        text: {
+            en: "Added GPS support for 70mai Dash Cam Pro Plus A500S.",
+            ru: "Добавлена поддержка GPS для 70mai Dash Cam Pro Plus A500S.",
+            de: "GPS-Unterstützung für die 70mai Dash Cam Pro Plus A500S hinzugefügt.",
+            es: "Añadida compatibilidad con el GPS de 70mai Dash Cam Pro Plus A500S.",
+            fr: "Ajout de la prise en charge du GPS de la 70mai Dash Cam Pro Plus A500S.",
+            pl: "Dodano obsługę GPS dla 70mai Dash Cam Pro Plus A500S.",
+            pt: "Adicionado suporte a GPS para a 70mai Dash Cam Pro Plus A500S.",
+            zh: "新增对 70mai Dash Cam Pro Plus A500S 的 GPS 支持。",
+            ja: "70mai Dash Cam Pro Plus A500S の GPS に対応しました。",
+            ko: "70mai Dash Cam Pro Plus A500S의 GPS 지원을 추가했어요.",
+        },
+    },
+    {
         id: "2026-10-18.4",
         category: "fix",
         text: {
