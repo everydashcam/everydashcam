@@ -63,7 +63,18 @@ async function openRecordingTrip(page: Page, name: string): Promise<void> {
         );
     }, name);
     expect(tripIndex).toBeGreaterThanOrEqual(0);
-    await page.locator(`li.trip[data-trip-index="${tripIndex}"]`).click();
+    await page.locator(`li.trip[data-trip-index="${tripIndex}"] .trip-title`).click();
+    await expect
+        .poll(() =>
+            page.evaluate((name) => {
+                const state = window.__everydashcam.state;
+                const trip = state.active ? state.trips[state.active.trip] : undefined;
+                return trip?.frames.some((frame) =>
+                    Object.values(frame.channels).some((candidate) => candidate.file.name === name),
+                );
+            }, name),
+        )
+        .toBe(true);
     await pausePlayback(page);
     await expect(page.locator("#trip-analysis-status")).toBeHidden();
 }
