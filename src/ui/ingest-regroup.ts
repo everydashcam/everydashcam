@@ -1,6 +1,15 @@
 import { applyStoredGpsSyncToTrip } from "../gps-sync.js";
+import { applyStoredCameraTimezones, setCameraTimezoneForRecordings } from "../camera-timezone.js";
+import { attachRecordsToCandidates } from "../gps-association.js";
+import { bindRecordingLogs } from "../gps-time-association.js";
 import { classifyFilenameClockTimelapse, classifyFilenameTime } from "../parsers/filename/index.js";
-import { finalizeTripFromFrames, rederiveStartUtcForCandidates, type VideoCandidate } from "../trips.js";
+import {
+    finalizeTripFromFrames,
+    rederiveStartUtcForCandidates,
+    type Trip,
+    tripAllCandidates,
+    type VideoCandidate,
+} from "../trips.js";
 
 import { applyRegroup } from "./apply-regroup.js";
 import { carryBlurRegions } from "./blur-regions-state.js";
@@ -22,9 +31,36 @@ export function registerRecordingWorkCoordinator(coordinator: RecordingWorkCoord
     workCoordinator = coordinator;
 }
 
-/** Recomputes absolute recording clocks without replacing the current trip list. */
-export function reanchorRecordingCandidates(candidates: VideoCandidate[]): void {
+/** Recomputes absolute recording clocks without replacing the current trip list.
+ * Returns how many pending log rows the new clocks bound to recordings. */
+export function reanchorRecordingCandidates(candidates: VideoCandidate[]): {
+    boundRecords: number;
+    boundVideos: number;
+} {
+    applyStoredCameraTimezones(candidates, state.gpsLog);
     rederiveStartUtcForCandidates(candidates, classifyFilenameTime, classifyFilenameClockTimelapse);
+    // Deferred embedded GPS or a camera-zone choice can move the clocks that
+    // both recording-start and directory-window hints are matched against, so
+    // every pending log is re-offered on the new clock.
+    if (!state.gpsLog || state.gpsLog.pendingByFilename.size === 0) return { boundRecords: 0, boundVideos: 0 };
+    const bound = bindRecordingLogs(state.gpsLog, candidates);
+    state.gpsLog = bound.log;
+    attachRecordsToCandidates(bound.log, candidates, candidates);
+    return { boundRecords: bound.boundRecords, boundVideos: bound.boundVideos };
+}
+
+/** A camera-zone edit changes recording ownership before rebuilding the viewer. */
+export function applyRecordingCameraTimezone(trip: Trip, offsetSec: number | null): void {
+    const coordinator = workCoordinator;
+    const paused = coordinator?.pauseForRegroup() ?? false;
+    try {
+        const candidates = state.trips.flatMap(tripAllCandidates);
+        setCameraTimezoneForRecordings(tripAllCandidates(trip), candidates, state.gpsLog, offsetSec);
+        reanchorRecordingCandidates(candidates);
+        commitRecordingTrips(candidates);
+    } finally {
+        if (paused) coordinator?.resumeAfterRegroup();
+    }
 }
 
 /** Groups already-anchored candidates and atomically replaces the trip list. */

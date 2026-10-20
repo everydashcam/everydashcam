@@ -6,11 +6,12 @@
 import { indexAllMp4Files } from "../indexer.js";
 import {
     attachRecordsToCandidates,
-    bindRecordsByRecordingStart,
     buildVideoAssociationIndex,
     recordsForVideo,
     type VideoAssociationIndex,
 } from "../gps-association.js";
+import { bindRecordingLogs } from "../gps-time-association.js";
+import { applyStoredCameraTimezones } from "../camera-timezone.js";
 import { createLogger } from "../log.js";
 import { captureSentryException, captureSentryMessage } from "../sentry.js";
 import { SLICE_COST_STREAM_ABOVE } from "../parsers/internal/mp4-walker.js";
@@ -433,8 +434,15 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     // offsets in isolation. Re-anchor the mixed pool before its first grouping
     // (and before loose-GPX matching), otherwise a warm GPS-less sibling can sit
     // hours away from the same cold-ingest recording until the closing sweep.
-    if (ctx.allCandidates.some((candidate) => candidate.metadataReady === true)) {
+    applyStoredCameraTimezones(ctx.allCandidates, state.gpsLog);
+    if (
+        ctx.allCandidates.some(
+            (candidate) => candidate.metadataReady === true || candidate.cameraTimezoneOverrideSec != null,
+        )
+    ) {
         rederiveStartUtcForCandidates(ctx.allCandidates, classifyFilenameTime, classifyFilenameClockTimelapse);
+        bindReadyRecordingLogs(ctx.allCandidates);
+        if (state.gpsLog) attachRecordsToCandidates(state.gpsLog, ctx.allCandidates, ctx.videoAssociation);
     }
 
     // Wall spans for time-lapse runs, from filename cadence alone - the
@@ -1167,8 +1175,11 @@ async function readRecordingData(
 
 /** Rebuilds affected trips from their current metadata without changing list indices. */
 function refreshTripsAfterRecordingRead(tripIndices: readonly number[]): void {
+    const allCandidates = candidatePool ?? state.trips.flatMap(tripAllCandidates);
     if (state.gpsLog && state.gpsLog.pendingByFilename.size > 0) {
-        bindReadyRecordingLogs(candidatePool ?? state.trips.flatMap(tripAllCandidates));
+        bindReadyRecordingLogs(allCandidates);
+    } else {
+        applyStoredCameraTimezones(allCandidates, state.gpsLog);
     }
     const association = recordingAssociation();
     for (const tripIdx of tripIndices) {
@@ -1190,7 +1201,12 @@ function recordingAssociation(): VideoAssociationIndex {
 
 function bindReadyRecordingLogs(candidates: readonly VideoCandidate[]): void {
     if (!state.gpsLog) return;
-    const bound = bindRecordsByRecordingStart(state.gpsLog, candidates);
+    // Directory rows inherit a video's window, so derive it from metadata and
+    // independent GPS before associating them. Reusing the old provisional
+    // duration would give adjacent recordings each other's samples.
+    applyStoredCameraTimezones(candidates, state.gpsLog);
+    rederiveStartUtcForCandidates(candidates, classifyFilenameTime, classifyFilenameClockTimelapse);
+    const bound = bindRecordingLogs(state.gpsLog, candidates);
     state.gpsLog = bound.log;
     if (bound.boundRecords > 0) {
         log.info("bound recording-scoped gps log", {

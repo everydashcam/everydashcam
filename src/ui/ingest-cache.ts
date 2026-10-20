@@ -260,6 +260,7 @@ function isCurrentEmbeddedGps(value: unknown, availableIdentityKeys: ReadonlySet
                 (raw.relStartSeconds === undefined || isFiniteNumber(raw.relStartSeconds)) &&
                 raw.videoKey === undefined &&
                 raw.recordingAssociation === undefined &&
+                raw.timeAssociation === undefined &&
                 raw.externalTrack === undefined &&
                 raw.externalTrackKey === undefined &&
                 raw.localClockOffsetAppliedSec === undefined

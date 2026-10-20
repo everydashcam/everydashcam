@@ -36,6 +36,12 @@ export function accelMagnitude(xg: number, yg: number, zg: number): number {
     return Math.hypot(xg, yg, zg);
 }
 
+function recordOwnerKey(record: GpsRecord): string {
+    if (record.videoKey !== undefined) return record.videoKey;
+    const hint = record.timeAssociation;
+    return hint ? JSON.stringify([hint.sourceKey ?? null, hint.sourcePath, hint.extractorId]) : record.mp4Filename;
+}
+
 /**
  * Deduplicates records by composite key (unixSeconds, lat, lon, video owner).
  * Needed on merge from multiple sources / repeated drag-drops: a re-dropped
@@ -60,7 +66,7 @@ export function dedupRecords(records: GpsRecord[]): GpsRecord[] {
         // Relative offsets survive reanchoring and distinguish stationary
         // fixes. Without one, ignore the rewritten placeholder clock so a
         // re-drop still deduplicates against the already-reanchored copy.
-        const owner = r.videoKey ?? r.mp4Filename;
+        const owner = recordOwnerKey(r);
         const clock = r.timeUnsynced
             ? `u|${Number.isFinite(r.relStartSeconds) ? r.relStartSeconds : ""}`
             : r.unixSeconds;
@@ -129,7 +135,7 @@ export function thinDenseRecords(records: GpsRecord[]): GpsRecord[] {
         } else {
             bucketKey = String(Math.floor(r.unixSeconds * GPS_THIN_HZ));
         }
-        const key = `${bucketKey}|${r.videoKey ?? r.mp4Filename}|${r.trackSegment ?? ""}`;
+        const key = `${bucketKey}|${recordOwnerKey(r)}|${r.trackSegment ?? ""}`;
         const existingIdx = indexByKey.get(key);
         if (existingIdx === undefined) {
             indexByKey.set(key, out.length);
@@ -157,13 +163,14 @@ export function thinDenseRecords(records: GpsRecord[]): GpsRecord[] {
  * First record whose GPS clock was synced (a real wall-clock time). Cold-start
  * records (`timeUnsynced`) carry a near-epoch placeholder written before the
  * chip decoded satellite time; manually attached external tracks carry another
- * device's clock. Neither may be used as a source for video start / camera-TZ
- * derivation. Returns null when every record is in either category.
+ * device's clock. Directory-log rows were selected using the video's clock,
+ * so using them to calibrate it would be circular. None may anchor the video.
+ * Returns null when every record is in one of these categories.
  */
 export function firstSyncedRecord(records: GpsRecord[] | null | undefined): GpsRecord | null {
     if (!records) return null;
     for (const r of records) {
-        if (!r.timeUnsynced && !r.externalTrack) return r;
+        if (!r.timeUnsynced && !r.externalTrack && !r.timeAssociation) return r;
     }
     return null;
 }
@@ -173,7 +180,8 @@ export function firstSyncedRecord(records: GpsRecord[] | null | undefined): GpsR
 export function lastSyncedRecord(records: GpsRecord[] | null | undefined): GpsRecord | null {
     if (!records) return null;
     for (let i = records.length - 1; i >= 0; i--) {
-        if (!records[i]!.timeUnsynced && !records[i]!.externalTrack) return records[i]!;
+        const record = records[i]!;
+        if (!record.timeUnsynced && !record.externalTrack && !record.timeAssociation) return record;
     }
     return null;
 }
@@ -352,14 +360,16 @@ export function freezeStationaryBearings(records: GpsRecord[]): void {
     }
 }
 
-/** Applies bearing stabilization independently to each concrete video owner. */
+/** Keeps bearing stabilization inside one owner and continuous track segment. */
 function freezeStationaryBearingsByOwner(records: GpsRecord[]): void {
     if (records.length < 2) {
         freezeStationaryBearings(records);
         return;
     }
-    const firstOwner = records[0]!.videoKey;
-    if (records.every((record) => record.videoKey === firstOwner)) {
+    const bearingScope = (record: GpsRecord): string =>
+        JSON.stringify([recordOwnerKey(record), record.trackSegment ?? null]);
+    const firstOwner = bearingScope(records[0]!);
+    if (records.every((record) => bearingScope(record) === firstOwner)) {
         freezeStationaryBearings(records);
         return;
     }
@@ -367,7 +377,7 @@ function freezeStationaryBearingsByOwner(records: GpsRecord[]): void {
     for (const record of records) {
         // All records in this caller already share mp4Filename. Unowned rows
         // therefore form one safe legacy bucket; concrete owners stay isolated.
-        const owner = record.videoKey ?? "";
+        const owner = bearingScope(record);
         let owned = recordsByOwner.get(owner);
         if (!owned) {
             owned = [];
@@ -908,7 +918,12 @@ export function rebuildLog(appliedExtractors: string[], records: GpsRecord[], sk
             byFilename.set(rec.mp4Filename, bucket);
         }
         bucket.push(rec);
-        if (rec.recordingAssociation !== undefined) pendingByFilename.set(rec.mp4Filename, bucket);
+        if (
+            rec.recordingAssociation !== undefined ||
+            (rec.timeAssociation !== undefined && rec.videoKey === undefined)
+        ) {
+            pendingByFilename.set(rec.mp4Filename, bucket);
+        }
     }
     for (const arr of byFilename.values()) {
         arr.sort((a, b) => a.unixSeconds - b.unixSeconds);
@@ -1029,7 +1044,12 @@ export function mergeIntoGpsLog(
     for (const bucket of byFilename.values()) {
         for (const rec of bucket) {
             records.push(rec);
-            if (rec.recordingAssociation !== undefined) pendingByFilename.set(rec.mp4Filename, bucket);
+            if (
+                rec.recordingAssociation !== undefined ||
+                (rec.timeAssociation !== undefined && rec.videoKey === undefined)
+            ) {
+                pendingByFilename.set(rec.mp4Filename, bucket);
+            }
             if (rec.videoKey === undefined) continue;
             let owned = byVideoKey.get(rec.videoKey);
             if (!owned) {

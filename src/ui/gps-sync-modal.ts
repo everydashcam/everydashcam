@@ -15,9 +15,10 @@ import {
     setTripGpsTrimToVideo,
     tripHasRawGps,
 } from "../gps-sync.js";
-import { t } from "../i18n/index.js";
+import { getDateLocale, t } from "../i18n/index.js";
 import { contentToWallUtc, type Trip } from "../trips.js";
 
+import { getTripCameraTimezoneState, setTripCameraTimezone } from "./camera-timezone.js";
 import { dom } from "./dom.js";
 import { initGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { requestGpsSyncSurfaceRefresh } from "./gps-sync-refresh.js";
@@ -31,6 +32,11 @@ let getTripCurrentTime: () => number = () => 0;
 let initialized = false;
 let isModalPresentation: boolean | null = null;
 let returnFocus: HTMLElement | null = null;
+
+function initialControl(): HTMLElement {
+    if (!dom.gpsSyncTimezoneSection.hidden) return dom.gpsSyncTimezoneSelect;
+    return tripHasRawGps(activeTrip()) ? dom.gpsSyncOffsetInput : dom.gpsSyncClose;
+}
 
 function closeGpsSync(): void {
     dom.gpsSyncModal.hidden = true;
@@ -65,14 +71,38 @@ function syncPresentationMode(): void {
     if (isModalPresentation) {
         activateModal(dom.gpsSyncModal, {
             onClose: closeGpsSync,
-            initialFocus: tripHasRawGps(activeTrip()) ? dom.gpsSyncOffsetInput : dom.gpsSyncClose,
+            initialFocus: initialControl(),
         });
     }
 }
 
 function syncDialog(trip: Trip | null): void {
     const hasGps = tripHasRawGps(trip);
-    dom.gpsSyncNoTrack.hidden = hasGps;
+    const timezone = getTripCameraTimezoneState(trip);
+    dom.gpsSyncTimezoneSection.hidden = timezone === null;
+    dom.gpsSyncTimezoneNoMatch.hidden = hasGps || timezone === null;
+    if (timezone !== null) {
+        dom.gpsSyncTimezoneSelect.value = timezone.overrideSec === null ? "auto" : String(timezone.overrideSec);
+        dom.gpsSyncTimezoneReset.disabled = timezone.overrideSec === null;
+        const sourceKey =
+            timezone.overrideSec !== null
+                ? "gpsSync.timezone.source.manual"
+                : timezone.fromDevice
+                  ? "gpsSync.timezone.source.device"
+                  : "gpsSync.timezone.source.recordings";
+        dom.gpsSyncTimezoneSource.textContent = t(sourceKey, { offset: formatTimezoneOffset(timezone.effectiveSec) });
+        const formatter = new Intl.DateTimeFormat(getDateLocale(), {
+            dateStyle: "medium",
+            timeStyle: "medium",
+            timeZone: "UTC",
+            hourCycle: "h23",
+        });
+        dom.gpsSyncTimezonePreview.textContent = t("gpsSync.timezone.preview", {
+            camera: formatter.format(new Date(timezone.cameraUnix * 1000)),
+            utc: formatter.format(new Date(timezone.utcUnix * 1000)),
+        });
+    }
+    dom.gpsSyncNoTrack.hidden = hasGps || timezone !== null;
     dom.gpsSyncControls.hidden = !hasGps;
     if (!trip || !hasGps) return;
 
@@ -94,6 +124,37 @@ function syncDialog(trip: Trip | null): void {
     } else {
         dom.gpsSyncOutsideStatus.textContent = "";
     }
+}
+
+/** Reads the current Trip again after regrouping or changing the active trip. */
+export function syncGpsSyncDialog(): void {
+    if (!dom.gpsSyncModal.hidden) syncDialog(activeTrip());
+}
+
+function formatTimezoneOffset(offsetSec: number): string {
+    const minutes = Math.round(Math.abs(offsetSec) / 60);
+    const hours = String(Math.floor(minutes / 60)).padStart(2, "0");
+    const remainder = String(minutes % 60).padStart(2, "0");
+    return `UTC${offsetSec < 0 ? "−" : "+"}${hours}:${remainder}`;
+}
+
+function initTimezoneOptions(): void {
+    const options = document.createDocumentFragment();
+    for (let offsetSec = -12 * 3600; offsetSec <= 14 * 3600; offsetSec += 15 * 60) {
+        const option = document.createElement("option");
+        option.value = String(offsetSec);
+        option.textContent = formatTimezoneOffset(offsetSec);
+        options.append(option);
+    }
+    dom.gpsSyncTimezoneSelect.append(options);
+}
+
+function applyTimezone(offsetSec: number | null): void {
+    const trip = activeTrip();
+    if (!trip || getTripCameraTimezoneState(trip) === null) return;
+    setTripCameraTimezone(trip, offsetSec);
+    // Changing the clock may replace the Trip during regrouping.
+    syncGpsSyncDialog();
 }
 
 function formatOutsideDuration(seconds: number): string {
@@ -136,7 +197,7 @@ export function openGpsSync(): void {
     isModalPresentation = null;
     syncPresentationMode();
     if (isModalPresentation === false) {
-        (tripHasRawGps(trip) ? dom.gpsSyncOffsetInput : dom.gpsSyncClose).focus({ preventScroll: true });
+        initialControl().focus({ preventScroll: true });
     }
 }
 
@@ -146,7 +207,17 @@ export function initGpsSyncModal(opts: { getTripCurrentTime: () => number }): vo
     getTripCurrentTime = opts.getTripCurrentTime;
     dom.gpsSyncOffsetInput.min = String(-GPS_OFFSET_MAX_SEC);
     dom.gpsSyncOffsetInput.max = String(GPS_OFFSET_MAX_SEC);
-    initGpsSyncLaunchers(openGpsSync);
+    initTimezoneOptions();
+    initGpsSyncLaunchers(openGpsSync, syncGpsSyncDialog);
+    dom.gpsSyncTimezoneSelect.addEventListener("change", () => {
+        const value = dom.gpsSyncTimezoneSelect.value;
+        if (value === "auto") applyTimezone(null);
+        else {
+            const offsetSec = Number(value);
+            if (Number.isFinite(offsetSec)) applyTimezone(offsetSec);
+        }
+    });
+    dom.gpsSyncTimezoneReset.addEventListener("click", () => applyTimezone(null));
     dom.gpsSyncClose.addEventListener("click", closeGpsSync);
     wireBackdropDismiss(dom.gpsSyncModal, closeGpsSync, { cardSelector: ".gps-sync-card" });
     window.matchMedia(GPS_SYNC_MODAL_QUERY).addEventListener("change", syncPresentationMode);

@@ -18,6 +18,7 @@ function toCachedRecord(record: GpsRecord): CachedEmbeddedGpsRecord {
     const {
         videoKey: _videoKey,
         recordingAssociation: _recordingAssociation,
+        timeAssociation: _timeAssociation,
         externalTrack: _externalTrack,
         externalTrackKey: _externalTrackKey,
         localClockOffsetAppliedSec: _localClockOffsetAppliedSec,

@@ -636,6 +636,17 @@ describe("firstSyncedRecord / lastSyncedRecord", () => {
         expect(lastSyncedRecord(recs)).toBeNull();
     });
 
+    it("does not calibrate a recording from directory rows selected using its own clock", () => {
+        const hint = { sourcePath: "CARD/GPSData.txt", sourceKey: "card", extractorId: "csv-70mai" };
+        const records = [
+            rec(1000, 1, 2, { timeAssociation: hint, videoKey: "clip" }),
+            rec(1001, 1, 2, { timeAssociation: hint, videoKey: "clip" }),
+        ];
+        expect(firstSyncedRecord(records)).toBeNull();
+        expect(lastSyncedRecord(records)).toBeNull();
+        expect(firstSyncedRecord([...records, rec(2000, 1, 2)])?.unixSeconds).toBe(2000);
+    });
+
     it("null/empty input returns null", () => {
         expect(firstSyncedRecord([])).toBeNull();
         expect(firstSyncedRecord(null)).toBeNull();
@@ -995,6 +1006,52 @@ describe("dropTeleportOutliers", () => {
     it("handles empty and single-record input", () => {
         expect(dropTeleportOutliers([])).toEqual([]);
         expect(dropTeleportOutliers([rec(1000, LAT, LON)])).toHaveLength(1);
+    });
+});
+
+describe("directory log record ownership", () => {
+    it("does not carry a moving heading into a later stationary session", () => {
+        const hint = { sourcePath: "CARD/GPSData.txt", extractorId: "csv-70mai" };
+        const records = [
+            rec(1000, 1, 2, { bearingDeg: 90, speedMs: 10, trackSegment: 0, timeAssociation: hint }),
+            rec(2000, 1, 2, { bearingDeg: 180, trackSegment: 1, timeAssociation: hint }),
+            rec(2001, 1, 2, { bearingDeg: 190, trackSegment: 1, timeAssociation: hint }),
+        ];
+        const log = rebuildLog(["csv-70mai"], records, []);
+        expect(log.records.map((record) => record.bearingDeg)).toEqual([90, 180, 180]);
+    });
+
+    it("keeps pending card sources distinct through deduplication, thinning and bearing stabilization", () => {
+        const source = (sourceKey: string, bearingDeg: number) =>
+            [1000, 1001].map((time) =>
+                rec(time, 1, 2, {
+                    mp4Filename: "GPSData.txt",
+                    bearingDeg,
+                    timeAssociation: { sourcePath: "CARD/GPSData.txt", sourceKey, extractorId: "csv-70mai" },
+                }),
+            );
+        const first = source("a", 90);
+        const second = source("b", 180);
+        const log = mergeIntoGpsLog(null, {
+            records: [...first, ...second],
+            appliedExtractors: ["csv-70mai"],
+            skipped: [],
+        });
+        expect(log.records).toHaveLength(4);
+        expect(log.pendingByFilename.size).toBe(1);
+        expect(log.byVideoKey.size).toBe(0);
+        expect(first.map((record) => record.bearingDeg)).toEqual([90, 90]);
+        expect(second.map((record) => record.bearingDeg)).toEqual([180, 180]);
+
+        const bound = { ...first[0]!, mp4Filename: "clip.mp4", videoKey: "clip" };
+        const merged = mergeIntoGpsLog(log, {
+            records: [bound, ...first, ...second],
+            appliedExtractors: [],
+            skipped: [],
+        });
+        expect(merged.records).toHaveLength(5);
+        expect(merged.pendingByFilename.has("clip.mp4")).toBe(false);
+        expect(merged.byVideoKey.get("clip")).toEqual([bound]);
     });
 });
 

@@ -4,7 +4,7 @@
 // delimiters, validity flags, column order, accel columns) but strips location
 // by rounding lat/lon to whole degrees (~110 km - the region stays undisclosed).
 //
-// Two models are onboarded on purpose: the accelerometer's gravity-bearing
+// The default pair exists on purpose: the accelerometer's gravity-bearing
 // axis is MODEL-DEPENDENT - x800 carries ~1g on field6/ay (column 7), A810 on
 // field5/ax (column 6). Both fixtures exist so the regression test can prove
 // gravity removal is model-agnostic (see csv-70mai.ts and real-anonymized.test.ts).
@@ -15,6 +15,10 @@
 //
 // Run:
 //   node scripts/anonymize-70mai-log.mjs
+//   node scripts/anonymize-70mai-log.mjs <input.txt> <output.txt> [--from-utc <ISO-UTC>]
+// --from-utc selects records by their corrected UTC clock without changing
+// the stored timestamp. Useful for whole-card logs whose first session does
+// not overlap the supplied video.
 //
 // Idempotent w.r.t. its inputs: re-running gives the same output (determined
 // only by input content + the constants below).
@@ -42,25 +46,51 @@ const SAMPLES = [
 // enough to keep the diff readable.
 const MAX_LINES = 50;
 const FIELDS_PER_ROW = 13;
+// Same firmware clock correction as csv-70mai.ts; selection only.
+const GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC = 8 * 3600;
 
 // Rounds one log's records to whole-degree coordinates, keeping the first
-// MAX_LINES well-formed rows. Malformed rows are skipped here (parser edge
-// cases are covered by synthetic-edge.txt, not the real fixture).
-function anonymizeLog(text) {
+// MAX_LINES well-formed rows after the optional UTC boundary. Session
+// separators remain intact so an unnamed log keeps its recording boundaries.
+// Malformed rows are covered by synthetic-edge.txt, not the real fixture.
+function anonymizeLog(text, fromUtcSec = -Infinity) {
     const lines = text.split(/\r?\n/);
     const out = [];
-    // The $V02 signature is the first line and carries over 1-to-1.
-    out.push(lines[0]);
+    let signature = null;
+    let session = 0;
+    let writtenSession = -1;
 
     let kept = 0;
-    for (let i = 1; i < lines.length && kept < MAX_LINES; i++) {
-        const raw = lines[i];
+    for (let i = 0; i < lines.length && kept < MAX_LINES; i++) {
+        const raw = lines[i].trim();
         if (raw === "") continue;
+        if (/^\$V\d{2}$/.test(raw)) {
+            signature = raw;
+            session++;
+            continue;
+        }
         const parts = raw.split(",");
-        if (parts.length !== FIELDS_PER_ROW) continue;
+        if (signature === null || parts.length !== FIELDS_PER_ROW) continue;
+        const timestamp = Number(parts[0]);
+        const latitude = Number(parts[2]);
+        const longitude = Number(parts[3]);
+        if (
+            !Number.isFinite(timestamp) ||
+            !Number.isFinite(latitude) ||
+            !Number.isFinite(longitude) ||
+            Math.abs(latitude) > 90 ||
+            Math.abs(longitude) > 180
+        ) {
+            continue;
+        }
+        if (timestamp + GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC < fromUtcSec) continue;
 
-        const lat = Math.round(Number(parts[2])).toFixed(6);
-        const lon = Math.round(Number(parts[3])).toFixed(6);
+        const lat = Math.round(latitude).toFixed(6);
+        const lon = Math.round(longitude).toFixed(6);
+        if (session !== writtenSession) {
+            out.push(signature);
+            writtenSession = session;
+        }
 
         out.push(
             [
@@ -81,14 +111,30 @@ function anonymizeLog(text) {
         );
         kept++;
     }
+    if (kept === 0) throw new Error("no matching gps records");
 
     out.push("");
     return { text: out.join("\n"), kept };
 }
 
+function samplesFromArgs(args) {
+    if (args.length === 0) return SAMPLES;
+    if (args.length !== 2 && args.length !== 4) {
+        throw new Error("usage: anonymize-70mai-log.mjs <input.txt> <output.txt> [--from-utc <ISO-UTC>]");
+    }
+    const [input, output, flag, utc] = args;
+    if (args.length === 2) return [{ input, output }];
+    if (flag !== "--from-utc" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(utc)) {
+        throw new Error("--from-utc requires an ISO timestamp ending in Z");
+    }
+    const fromUtcSec = Date.parse(utc) / 1000;
+    if (!Number.isFinite(fromUtcSec)) throw new Error("invalid UTC timestamp");
+    return [{ input, output, fromUtcSec }];
+}
+
 function main() {
-    for (const { input, output } of SAMPLES) {
-        const { text, kept } = anonymizeLog(readFileSync(resolve(REPO_ROOT, input), "utf8"));
+    for (const { input, output, fromUtcSec } of samplesFromArgs(process.argv.slice(2))) {
+        const { text, kept } = anonymizeLog(readFileSync(resolve(REPO_ROOT, input), "utf8"), fromUtcSec);
         const outPath = resolve(REPO_ROOT, output);
         mkdirSync(dirname(outPath), { recursive: true });
         writeFileSync(outPath, text);

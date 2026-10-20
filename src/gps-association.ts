@@ -224,6 +224,7 @@ export function associateRecordsWithVideos(
     const index = asIndex(videos);
     const videoByFilename = new Map<string, VendorFile | null>();
     for (const record of records) {
+        if (record.timeAssociation !== undefined && record.videoKey === undefined) continue;
         let video: VendorFile | null | undefined;
         if (record.videoKey !== undefined) {
             // A concrete owner from another source is stronger than a matching
@@ -265,7 +266,11 @@ export function rebindRecordingCopyRecords(
     const canonicalByFilename = new Map<string, VideoWithRecordingCopies | null>();
     let reboundRecords = 0;
     const records = log.records.map((record) => {
-        if (record.recordingAssociation !== undefined) return record;
+        if (
+            record.recordingAssociation !== undefined ||
+            (record.timeAssociation !== undefined && record.videoKey === undefined)
+        )
+            return record;
         let canonical: VideoWithRecordingCopies | null | undefined;
         if (record.videoKey !== undefined) {
             canonical = index.canonicalByFileKey.get(record.videoKey);
@@ -303,7 +308,12 @@ export function recordsForVideo(log: ParsedLog, video: VendorFile, loadedVideos:
     const unowned =
         sameNameVideos.length > 1 && !uniqueCanonicalVideo(sameNameVideos, index)
             ? []
-            : (log.byFilename.get(canonical.file.name) ?? []).filter((record) => record.videoKey === undefined);
+            : (log.byFilename.get(canonical.file.name) ?? []).filter(
+                  (record) =>
+                      record.videoKey === undefined &&
+                      record.recordingAssociation === undefined &&
+                      record.timeAssociation === undefined,
+              );
     if (owned.length === 0) return unowned;
     if (unowned.length === 0 && !index.canonicalByFileKey.get(key)?.recordingCopies?.length) return owned;
     // A newly bound alias can still carry its old basename until the next log

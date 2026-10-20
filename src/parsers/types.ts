@@ -48,6 +48,15 @@ export interface GpsRecord extends SpeedSample {
         extractorId: string;
         sourceKey?: string;
     };
+    // A directory log supplies UTC samples for recordings below its parent.
+    // Without videoKey this is a pending source row; bound copies retain the
+    // provenance so later metadata or overlapping sources can revise ownership.
+    // These samples cannot calibrate the clock used to associate them.
+    timeAssociation?: {
+        sourcePath: string;
+        sourceKey?: string;
+        extractorId: string;
+    };
     // The position fix is valid but the GPS *clock* was not yet synced when
     // this record was written (cold start after a power-up: the chip delivers
     // coordinates before it decodes satellite time, so the firmware stamps a
@@ -118,7 +127,7 @@ export interface ParsedLog {
     // Records with an unambiguous ingest-time owner, grouped by vendorFileKey.
     // byFilename remains the raw-format index and includes these records too.
     byVideoKey: Map<string, GpsRecord[]>;
-    // Filename buckets still containing recording-start association hints.
+    // Filename buckets containing unbound recording-start or directory-time hints.
     pendingByFilename: Map<string, GpsRecord[]>;
     skipped: SkippedLine[];
 }

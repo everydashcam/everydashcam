@@ -2504,6 +2504,22 @@
         <div class="export-modal-card modal-card gps-sync-card">
             <div class="export-modal-title" id="gps-sync-modal-title" data-i18n="gpsSync.title">Sync GPS with video</div>
             <p class="gps-sync-description" data-i18n="gpsSync.description">Play or seek as you adjust — the route and speed update immediately.</p>
+            <div id="gps-sync-timezone-section" class="export-modal-section gps-sync-section" hidden>
+                <div class="settings-select-row">
+                    <label class="settings-select-label" for="gps-sync-timezone-select" data-i18n="gpsSync.timezone.label">Camera time zone</label>
+                    <select id="gps-sync-timezone-select" class="settings-select gps-sync-timezone-select"
+                            aria-describedby="gps-sync-timezone-source gps-sync-timezone-scope">
+                        <option value="auto" data-i18n="gpsSync.timezone.auto">Automatic</option>
+                    </select>
+                </div>
+                <p id="gps-sync-timezone-source" class="gps-sync-timezone-source"></p>
+                <p id="gps-sync-timezone-preview" class="gps-sync-timezone-preview" aria-live="polite" aria-atomic="true"></p>
+                <p id="gps-sync-timezone-scope" class="gps-sync-timezone-scope" data-i18n="gpsSync.timezone.scope">Applies to recordings in the same folder.</p>
+                <button id="gps-sync-timezone-reset" class="dc-btn dc-btn--secondary gps-sync-timezone-reset" type="button"
+                        data-i18n="gpsSync.timezone.reset">Use automatic time zone</button>
+                <p id="gps-sync-timezone-no-match" class="gps-sync-empty gps-sync-timezone-no-match" hidden
+                   data-i18n="gpsSync.timezone.noMatch">No GPS points match this trip yet. Check the camera time zone.</p>
+            </div>
             <p id="gps-sync-no-track" class="gps-sync-empty" hidden data-i18n="gpsSync.noTrack">This trip has no GPS track to sync.</p>
             <div id="gps-sync-controls">
                 <div class="export-modal-section gps-sync-section">

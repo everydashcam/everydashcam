@@ -1,9 +1,9 @@
-// End-to-end parse of the two anonymized real 70mai $V02 logs. Coordinates are
+// End-to-end parse of anonymized real 70mai $V02 logs. Coordinates are
 // rounded to whole degrees (see scripts/anonymize-70mai-log.mjs), everything
-// else is byte-for-byte from real cards. Both models exist here to lock the
-// one cross-model invariant the parser has to get right: the gravity-bearing
+// else is byte-for-byte from real cards. The gravity-bearing
 // accel axis is model-dependent (x800 on ay/field 7, A810 on ax/field 6), yet
-// gravity must be removed for both without a hard-coded axis.
+// gravity must be removed without a hard-coded axis. A500S has no video
+// filenames at all and retains its UTC fixes for scoped time association.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -11,6 +11,12 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import {
+    matchFilenameChannel,
+    matchFilenameMode,
+    matchFilenameSequence,
+    matchFilenameTime,
+} from "../../filename/index.js";
 import { csv70maiPrimitive } from "../../primitives/csv-70mai.js";
 import { makeVendorFile } from "../helpers.js";
 
@@ -42,6 +48,23 @@ async function parseFixture(name: string) {
 }
 
 describe("70mai real-anonymized fixtures", () => {
+    it.each([
+        ["NO20261020-162549-000239F.MP4", "2026-10-20T16:25:49Z", 239],
+        ["NO20261020-163049-000244F.MP4", "2026-10-20T16:30:49Z", 244],
+    ])("a500s: classifies all filename fields of %s", (name, localClock, sequence) => {
+        const file = makeVendorFile(name, "");
+        expect(matchFilenameTime(file)).toEqual({
+            matchedId: "70mai-time",
+            value: new Date(localClock),
+        });
+        expect(matchFilenameChannel(file)).toEqual({
+            matchedId: "70mai-channel",
+            value: { channel: "front", confident: true },
+        });
+        expect(matchFilenameMode(file)).toEqual({ matchedId: "70mai-mode", value: "normal" });
+        expect(matchFilenameSequence(file)).toEqual({ matchedId: "70mai-sequence", value: sequence });
+    });
+
     it("x800: carries gravity on the ay axis (field 7) in the raw log", async () => {
         const { text } = await parseFixture("real-anonymized-x800.txt");
         const raw = rawAxisMeans(text);
@@ -56,7 +79,7 @@ describe("70mai real-anonymized fixtures", () => {
         expect(Math.abs(raw.y)).toBeLessThan(0.3);
     });
 
-    it.each(["real-anonymized-x800.txt", "real-anonymized-a810.txt"])(
+    it.each(["real-anonymized-x800.txt", "real-anonymized-a810.txt", "real-anonymized-a500s.txt"])(
         "%s: parses into plausible, anonymized records with gravity removed",
         async (name) => {
             const { result } = await parseFixture(name);
@@ -83,6 +106,29 @@ describe("70mai real-anonymized fixtures", () => {
             expect(Math.abs(mean((r) => r.accelZg))).toBeLessThan(0.02);
         },
     );
+
+    it("a500s: preserves 50 unnamed UTC fixes with their original cadence", async () => {
+        const name = "real-anonymized-a500s.txt";
+        const { text, result } = await parseFixture(name);
+        const rows = text.trim().split(/\r?\n/).slice(1).map((line) => line.split(","));
+        expect(rows).toHaveLength(50);
+        expect(rows.every((row) => row.slice(9).every((field) => field === "0"))).toBe(true);
+        expect(result.records).toHaveLength(50);
+        expect(result.skipped).toEqual([]);
+        expect(result.records[0]!.unixSeconds).toBe(Date.parse("2026-10-20T13:25:50Z") / 1000);
+        expect(result.records.at(-1)!.unixSeconds).toBe(Date.parse("2026-10-20T13:27:02Z") / 1000);
+        for (let i = 0; i < result.records.length; i++) {
+            const record = result.records[i]!;
+            expect(record.mp4Filename).toBe(name);
+            expect(record.videoKey).toBeUndefined();
+            expect(record.timeAssociation).toEqual({ sourcePath: name, extractorId: "csv-70mai" });
+            expect(record.trackSegment).toBe(0);
+            expect(record.timeUnsynced).toBeUndefined();
+            expect(record.unixSeconds).toBe(Number(rows[i]![0]) + 8 * 3600);
+            expect(record.speedMs).toBeCloseTo(Number(rows[i]![5]) / 100, 6);
+            if (i > 0) expect(record.unixSeconds).toBeGreaterThan(result.records[i - 1]!.unixSeconds);
+        }
+    });
 
     it("a810 (stationary capture): every axis is near zero at rest after gravity removal", async () => {
         // The A810 fixture is a parked window - true accel is ~0 on every axis.

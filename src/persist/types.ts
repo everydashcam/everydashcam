@@ -70,7 +70,12 @@ export interface CachedRecordingMetadata {
  * are rebuilt on restore rather than persisted with byte-derived GPS. */
 export type CachedEmbeddedGpsRecord = Omit<
     GpsRecord,
-    "videoKey" | "recordingAssociation" | "externalTrack" | "externalTrackKey" | "localClockOffsetAppliedSec"
+    | "videoKey"
+    | "recordingAssociation"
+    | "timeAssociation"
+    | "externalTrack"
+    | "externalTrackKey"
+    | "localClockOffsetAppliedSec"
 >;
 
 export interface CachedParsedEmbeddedGps {

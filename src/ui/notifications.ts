@@ -35,6 +35,8 @@ export interface NotifyInput {
      *  and a stale button there would fire on state that no longer exists. */
     actionKey?: I18nKey;
     onAction?: () => void;
+    /** Separates identical messages whose actions belong to different sources. */
+    dedupKey?: string;
 }
 
 interface Notification extends NotifyInput {
@@ -47,7 +49,7 @@ interface Notification extends NotifyInput {
 
 /** Stable signature for de-duplicating identical notifications. */
 function notifSignature(input: NotifyInput): string {
-    return `${input.severity}|${input.messageKey}|${JSON.stringify(input.messageParams ?? {})}|${input.actionKey ?? ""}`;
+    return `${input.severity}|${input.messageKey}|${JSON.stringify(input.messageParams ?? {})}|${input.actionKey ?? ""}|${input.dedupKey ?? ""}`;
 }
 
 // Newest first. Capped to keep the drawer from growing unboundedly in long

@@ -8,7 +8,6 @@
 import { t } from "../i18n/index.js";
 import {
     attachRecordsToCandidates,
-    bindRecordsByRecordingStart,
     buildVideoAssociationIndex,
     rebindRecordingCopyRecords,
     recordsForVideo,
@@ -53,6 +52,7 @@ import { cancelDeferredGpsLoad } from "./deferred-gps.js";
 import { countByExtension, countByField } from "./ingest-core.js";
 import { reportParseErrors } from "./ingest-diagnostics.js";
 import { scopeIngestFiles } from "./ingest-source-key.js";
+import { reanchorRecordingCandidates } from "./ingest-regroup.js";
 import { resolveLooseGpxFiles } from "./loose-gpx-ingest.js";
 
 const log = createLogger("ingest");
@@ -376,8 +376,7 @@ async function ingestFilesInternal(
         }
     }
     if (state.gpsLog) {
-        const bound = bindRecordsByRecordingStart(state.gpsLog, state.trips.flatMap(tripAllCandidates));
-        state.gpsLog = bound.log;
+        const bound = reanchorRecordingCandidates(state.trips.flatMap(tripAllCandidates));
         if (bound.boundRecords > 0) {
             log.info("bound recording-scoped gps log", {
                 records: bound.boundRecords,
@@ -530,11 +529,7 @@ async function ingestFilesInternal(
         });
     }
     if (state.gpsLog && cachedCandidates.length > 0) {
-        const bound = bindRecordsByRecordingStart(state.gpsLog, [
-            ...state.trips.flatMap(tripAllCandidates),
-            ...cachedCandidates,
-        ]);
-        state.gpsLog = bound.log;
+        const bound = reanchorRecordingCandidates([...state.trips.flatMap(tripAllCandidates), ...cachedCandidates]);
         if (bound.boundRecords > 0) {
             log.info("bound recording-scoped gps log", {
                 records: bound.boundRecords,

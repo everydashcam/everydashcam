@@ -46,7 +46,7 @@ The remaining lines are records of 13 fields each.
 
 - **Duplicate timestamps.** Up to 3 identical timestamps per second can appear, with different acceleration values. Looks like a buffered flush triggered by G-sensor changes. The parser must not deduplicate by timestamp unconditionally - the extra points can be useful for shock events. For drawing the track it's enough to take the first record of each second.
 
-- **`filename = '0'`.** Occurs 176 times (0.6%). Means GPS is being written but no video is recording at that moment (between files, on startup, etc). The parser binds such orphan rows to the file that was recording around them - see the anchor/orphan handling in `src/parsers/primitives/csv-70mai.ts`.
+- **`filename = '0'`.** Occurs 176 times (0.6%) in the X800 sample. Means GPS is being written but no video is recording at that moment (between files, on startup, etc). The parser binds such orphan rows to the file that was recording around them - see the anchor/orphan handling in `src/parsers/primitives/csv-70mai.ts`. The Dash Cam Pro Plus A500S never fills this field: every row of every session is `0`. A wholly unnamed session keeps its UTC rows and is matched to recordings by time window inside the log's directory instead (`src/gps-time-association.ts`); such rows never calibrate the recording clock they were selected with.
 
 - **Timezone is a firmware bug.** Field[0] is written by 70mai firmware NOT as UTC but 8 hours behind real UTC. Independent of the camera's install region, season, or DST - a constant offset. The root cause is the firmware's UTC+8 (China) default clock, not a US "PST" timezone. Without correction everything drifts 8 hours back.
 

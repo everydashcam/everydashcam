@@ -117,12 +117,16 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     // correction (single-channel, healthy camera, or an unmeasurable session).
     driftLeadSec: number | null;
     startSource: StartSource;
-    // Camera-clock zone for DISPLAY: snapshot of the per-fingerprint
-    // filenameTzSec estimate (see displayTzSec for the invariant it feeds).
-    // null when the fleet produced no filename/GPS pair for this camera.
+    // Camera-clock zone for DISPLAY: explicit choice or snapshot of the
+    // per-fingerprint filenameTzSec estimate (see displayTzSec for the invariant
+    // it feeds). null when neither a choice nor a filename/GPS pair is available.
     // Deliberately NOT mvhdTzSec-backed: honest-UTC-mvhd firmware yields 0
     // there and would flip the display from the viewer's zone to raw UTC.
     cameraTzSec: number | null;
+    // Explicit zone of the camera's filename clock: positive means local time
+    // is ahead of UTC. Null/absent keeps automatic inference. This preference
+    // changes recording anchors and display, never the parser-owned GPS axis.
+    cameraTimezoneOverrideSec?: number | null;
     // Per-file evidence that this file's GPS record clocks are the camera's
     // LOCAL wall time (zone baked in): the extractor's cold-start clock-jump
     // measurement (ParsedRecords.localClockOffsetHintSec). A parse-time
@@ -2193,9 +2197,9 @@ interface DeriveStartUtcArgs {
     // self-calibration is then used instead. See deriveStartUtc.
     preciseFilenameOffsetSec: number | null;
     // Wall-clock of video frame 0 reported by the GPS extractor itself, if it
-    // can tie it (RVMI tReV). Highest-priority signal: trusted whenever set,
-    // because it skips inference from mvhd/firstGps/filename. null when
-    // unknown.
+    // can tie it (RVMI tReV). Highest-priority automatic signal: trusted whenever
+    // set, because it skips inference from mvhd/firstGps/filename. null when
+    // unknown. An explicit filename-clock timezone takes precedence.
     embeddedStartUtcHint: number | null;
     // Filename-flagged time-lapse clip (VideoCandidate.isTimelapse). Gates the
     // mvhd-minus-filename wall-span reading in the no-GPS branch.
@@ -2205,12 +2209,20 @@ interface DeriveStartUtcArgs {
     // durationSec - a time-lapse clip's GPS covers its WALL span, and checking
     // it against the video duration would reject every correct anchor.
     wallDurationSec: number | null;
+    // Explicit interpretation of the filename's camera-local clock. Without a
+    // filename claim it cannot establish whether an arbitrary mvhd is local.
+    cameraTimezoneOverrideSec?: number | null;
 }
 
 /**
  * Determines a file's startUtc by priority (see StartSource).
  *
- * Two regimes, split by whether the file has its own GPS fix:
+ * An explicit timezone first anchors a recognized filename clock, preserving
+ * corroborating container start/finalize precision. Without a filename clock,
+ * the selected zone cannot reinterpret an unknown container timestamp.
+ *
+ * Automatic inference has two regimes, split by whether the file has its own
+ * GPS fix:
  *
  * WITH GPS - anchor on the camera's own clock, do not guess. mvhd.creation_time
  * and the filename each NAME the clip's t=0 in the camera's local clock; the
@@ -2269,6 +2281,35 @@ function localUnixFromNaiveClock(naiveUnixSec: number): number {
             clock.getUTCMilliseconds(),
         ).getTime() / 1000
     );
+}
+
+/** Only a corroborating filename establishes whether the container's clock
+ * names the start or end of a recording in the same local time scale. */
+function corroboratedCameraClockStart(
+    createdNaiveSec: number,
+    filenameNaiveSec: number,
+    durationSec: number,
+    isTimelapse: boolean,
+    wallDurationSec: number | null,
+): { naiveStartSec: number; source: StartSource } | null {
+    const delta = createdNaiveSec - filenameNaiveSec;
+    // Keep the container's sub-second precision. The dur/2 floor prevents
+    // short start-stamped clips from looking like finalize-stamped recordings.
+    if (delta >= durationSec / 2 && Math.abs(delta - durationSec) <= MVHD_FINALIZE_TOLERANCE_SEC) {
+        return { naiveStartSec: createdNaiveSec - durationSec, source: "mp4" };
+    }
+    // A time-lapse with a derived wall span retains the filename start.
+    if (isTimelapse && wallDurationSec !== null) {
+        return { naiveStartSec: filenameNaiveSec, source: "name" };
+    }
+    if (Math.abs(delta) <= MVHD_FINALIZE_TOLERANCE_SEC) {
+        return { naiveStartSec: createdNaiveSec, source: "mp4" };
+    }
+    return null;
+}
+
+function explicitCameraTimezone(offset: number | null | undefined): number | null {
+    return offset != null && Number.isFinite(offset) ? offset : null;
 }
 
 /**
@@ -2336,6 +2377,7 @@ export function deriveStartUtc({
     embeddedStartUtcHint,
     isTimelapse,
     wallDurationSec,
+    cameraTimezoneOverrideSec,
 }: DeriveStartUtcArgs): { startUtc: number; source: StartSource; mvhdRejected?: boolean } {
     // Window span the clip's GPS may legitimately cover: the wall span for a
     // time-lapse clip, the video duration otherwise.
@@ -2346,6 +2388,33 @@ export function deriveStartUtc({
     // null and we fall through to mvhd / filename below.
     const firstSynced = firstSyncedRecord(records);
     const firstGpsUnix = firstSynced ? firstSynced.unixSeconds : null;
+
+    // An explicit zone makes the filename a deliberate clock claim, rather
+    // than another inference to calibrate from GPS. Use matching container
+    // precision when its start/finalize semantics are corroborated. Without a
+    // filename, retain the independent UTC/metadata priority below: a user zone
+    // alone cannot prove that an unknown container stores local wall time.
+    const timezoneOverride = explicitCameraTimezone(cameraTimezoneOverrideSec);
+    if (timezoneOverride !== null) {
+        const name = parseFilenameLocalTime(file);
+        if (name !== null) {
+            const filenameNaiveSec = name.getTime() / 1000;
+            const clock =
+                createdUtc !== null
+                    ? corroboratedCameraClockStart(
+                          createdUtc.getTime() / 1000,
+                          filenameNaiveSec,
+                          durationSec,
+                          isTimelapse,
+                          wallDurationSec,
+                      )
+                    : null;
+            return {
+                startUtc: (clock?.naiveStartSec ?? filenameNaiveSec) - timezoneOverride,
+                source: clock?.source ?? "name",
+            };
+        }
+    }
 
     // 0. Embedded hint - GPS extractor ties wall-clock to media-time 0
     //    directly (RVMI tReV). Skips mvhd inference, which is wrong for
@@ -2434,30 +2503,19 @@ export function deriveStartUtc({
         }
         if (filenameLocalDate !== null) {
             const filenameNaiveSec = filenameLocalDate.getTime() / 1000;
-            const delta = createdNaiveSec - filenameNaiveSec;
-            // A same-clock difference of one clip length proves finalize
-            // semantics. Keep the container's sub-second precision. The dur/2
-            // floor excludes start-semantics cameras on clips shorter than the
-            // close-latency tolerance.
-            if (delta >= durationSec / 2 && Math.abs(delta - durationSec) <= MVHD_FINALIZE_TOLERANCE_SEC) {
-                return { startUtc: localUnixFromNaiveClock(createdNaiveSec - durationSec), source: "mp4" };
-            }
-            // For a time-lapse the same delta is the recording's real WALL
-            // span. deriveWallDurationSec already judged exactly this
-            // evidence (this branch has no synced GPS, so its GPS arm was
-            // excluded and only the mvhd-minus-filename arm could produce a
-            // value) - branch on its verdict instead of re-deriving the
-            // delta against the same thresholds in a second place.
-            if (isTimelapse && wallDurationSec !== null) {
-                return { startUtc: localUnixFromNaiveClock(filenameNaiveSec), source: "name" };
-            }
             // A same-clock filename proves that mvhd carries camera-local fields
-            // despite the UTC-shaped container value. Preserve its finer timing,
-            // but interpret those fields in the browser's zone just like the
-            // filename-only fallback below. Honest-UTC mvhd paired with a local
-            // filename differs by the camera zone and does not enter this branch.
-            if (Math.abs(delta) <= MVHD_FINALIZE_TOLERANCE_SEC) {
-                return { startUtc: localUnixFromNaiveClock(createdNaiveSec), source: "mp4" };
+            // despite the UTC-shaped container value. With no explicit zone,
+            // interpret those fields in the browser's zone like filename-only
+            // fallback. Honest-UTC mvhd with a local filename does not match.
+            const clock = corroboratedCameraClockStart(
+                createdNaiveSec,
+                filenameNaiveSec,
+                durationSec,
+                isTimelapse,
+                wallDurationSec,
+            );
+            if (clock) {
+                return { startUtc: localUnixFromNaiveClock(clock.naiveStartSec), source: clock.source };
             }
         }
         // Without corroboration, the container stamp still outranks filename
@@ -2604,7 +2662,7 @@ function applyLocalClockCorrections(candidates: readonly VideoCandidate[]): void
         const desired = offsetByFingerprint.get(c.fingerprint);
         if (desired === undefined) continue;
         for (const record of c.records) {
-            if (record.externalTrack) continue;
+            if (record.externalTrack || record.timeAssociation) continue;
             const applied = record.localClockOffsetAppliedSec ?? 0;
             if (applied === desired) continue;
             record.unixSeconds += applied - desired;
@@ -2734,14 +2792,16 @@ export function rederiveStartUtcForCandidates(
     const recoverySamples = new Map<string, TzSample>();
     for (const c of candidates) {
         const vendorFile = { file: c.file, relativePath: c.relativePath };
-        if (c.hasStaleGps) continue;
+        const timezoneOverride = explicitCameraTimezone(c.cameraTimezoneOverrideSec);
+        const hasExplicitClock = timezoneOverride !== null && memoizedFilenameTime(vendorFile) !== null;
+        if (c.hasStaleGps && !hasExplicitClock) continue;
         const scope = candidateGroupingKey(c);
         const derived = deriveStartUtc({
             file: vendorFile,
             fingerprint: c.fingerprint,
             createdUtc: c.createdUtc,
             durationSec: c.durationSec,
-            records: c.records,
+            records: usableCandidateRecords(c),
             fingerprintTz: tzByFingerprint.get(scope) ?? null,
             parseFilenameLocalTime: memoizedFilenameTime,
             preciseFilenameOffsetSec: resolvePreciseClockOffsetForFile(
@@ -2753,12 +2813,17 @@ export function rederiveStartUtcForCandidates(
             embeddedStartUtcHint: c.embeddedStartUtcHint,
             isTimelapse: c.isTimelapse,
             wallDurationSec: c.wallDurationSec,
+            cameraTimezoneOverrideSec: timezoneOverride,
         });
         anchors.set(c, derived);
         const first = firstSyncedRecord(c.records);
         const last = lastSyncedRecord(c.records);
         const name = memoizedFilenameTime(vendorFile);
         if (
+            // User preferences are not independent UTC evidence for automatic
+            // recovery of another recording's clock.
+            timezoneOverride === null &&
+            !c.hasStaleGps &&
             name &&
             first &&
             last &&
@@ -2795,8 +2860,9 @@ export function rederiveStartUtcForCandidates(
     for (const c of candidates) {
         const scope = candidateGroupingKey(c);
         let derived = anchors.get(c);
-        let hasRecoveryOffset = false;
-        if (c.hasStaleGps) {
+        const timezoneOverride = explicitCameraTimezone(c.cameraTimezoneOverrideSec);
+        let hasRecoveryOffset = timezoneOverride !== null && memoizedFilenameTime(c) !== null;
+        if (c.hasStaleGps && !hasRecoveryOffset) {
             const name = memoizedFilenameTime(c);
             if (name !== null) {
                 const offset = resolvePreciseClockOffsetForFile(recoveryRuns, scope, c, memoizedFilenameTime);
@@ -2813,11 +2879,12 @@ export function rederiveStartUtcForCandidates(
         c.startUtc = startUtc;
         c.startSource = source;
         c.hasUncalibratedClock = c.hasStaleGps === true && !hasRecoveryOffset;
-        // Display-layer snapshot, NOT an anchor input: the UI renders
-        // startUtc + this (see displayTzSec). filenameTzSec only - the mvhd
-        // estimate reflects the container clock, not the OSD clock.
+        // Display-layer snapshot, not an anchor input: the UI renders
+        // startUtc + this (see displayTzSec). An explicit zone wins; automatic
+        // inference uses filenameTzSec because mvhd may have a different zone.
         c.cameraTzSec =
-            c.hasStaleGps && !hasRecoveryOffset ? null : (tzByFingerprint.get(scope)?.filenameTzSec ?? null);
+            timezoneOverride ??
+            (c.hasStaleGps && !hasRecoveryOffset ? null : (tzByFingerprint.get(scope)?.filenameTzSec ?? null));
         if (mvhdRejected && c.createdUtc !== null) {
             const firstSynced = firstSyncedRecord(c.records);
             if (firstSynced) {

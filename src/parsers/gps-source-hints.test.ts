@@ -105,6 +105,16 @@ describe("classifyGpsSource", () => {
         expect(classifyGpsSource(vf("NO20260101-120000-000195R-20260101120642.mp4"))).toBe("embedded");
     });
 
+    it.each(["NO20261020-162549-000239F.MP4", "NO20261020-163049-000244F.MP4"])(
+        "70mai A500S %s retains the embedded fallback until its log is associated",
+        (name) => {
+            const file = vf(name);
+            expect(classifyGpsSource(file)).toBe("embedded");
+            expect(shouldTryEmbeddedGps(file, false)).toBe(true);
+            expect(shouldTryEmbeddedGps(file, true)).toBe(false);
+        },
+    );
+
     it("neoline / vueroid / novatek-ts filename shapes classify embedded", () => {
         expect(classifyGpsSource(vf("INF20260520-214526-1-F.mp4"))).toBe("embedded"); // Neoline Spectrum (sstar-ssmd)
         expect(classifyGpsSource(vf("20251111_085423_INF_F_N.mp4"))).toBe("embedded"); // Vueroid (vueroid-txet)

@@ -70,7 +70,10 @@ import { initNotifications, notify } from "./ui/notifications.js";
 import { initPwaInstall } from "./ui/pwa-install.js";
 import { initOfflineUse } from "./ui/offline-use.js";
 import { initMapSettingsPopover } from "./ui/map-settings-popover.js";
-import { initGpsSyncModal } from "./ui/gps-sync-modal.js";
+import { initGpsSyncModal, openGpsSync } from "./ui/gps-sync-modal.js";
+import { notifyUnmatchedDirectoryGps } from "./ui/gps-sync-nudge.js";
+import { registerCameraTimezoneHandler } from "./ui/camera-timezone.js";
+import { applyRecordingCameraTimezone } from "./ui/ingest-regroup.js";
 import { initSettingsModal } from "./ui/settings-modal.js";
 import { initNoRecordingsModal } from "./ui/no-recordings-modal.js";
 import { isIntentionalNavigation } from "./ui/nav-intent.js";
@@ -143,7 +146,7 @@ import { initSupportPrompt } from "./ui/support-prompt.js";
 import { resetVideoZoom } from "./ui/player-zoom.js";
 import { clearOpeningTrip, initSidebar, renderTrips, syncSortControls } from "./ui/sidebar.js";
 import { initSidebarResize } from "./ui/sidebar-resize.js";
-import { state } from "./ui/state.js";
+import { activeTrip, state } from "./ui/state.js";
 import type { AppState } from "./ui/state.js";
 import { getThemeChoice, refreshThemeColors } from "./ui/theme.js";
 
@@ -458,6 +461,10 @@ if (!__PORTABLE__) initOfflineBanner();
 // GPS calibration stays scoped to the open trip or an explicit set of loaded
 // trips from the same camera.
 initGpsSyncModal({ getTripCurrentTime });
+registerCameraTimezoneHandler((trip, offsetSec) => {
+    applyRecordingCameraTimezone(trip, offsetSec);
+    renderTrips();
+});
 initSettingsModal();
 initMapSettingsPopover();
 initIngestOverlay();
@@ -709,6 +716,7 @@ async function openTripFrame(tripIdx: number, requestedFrameIdx?: number): Promi
         const trip = state.trips[prepared.tripIdx];
         const tour = trip ? pickTripOpenTour(trip) : null;
         playFrame(prepared.tripIdx, prepared.frameIdx, undefined, /* autoPlay */ tour === null);
+        notifyUnmatchedDirectoryGps(activeTrip(), openGpsSync);
         if (tour) {
             runTripOpenTour(tour, () => void dom.player.play().catch(() => {}));
         } else if (!isMapAvailable()) {
@@ -742,6 +750,7 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
             return;
         }
         playTripEvent(resolved.tripIdx, nextEventIndex);
+        notifyUnmatchedDirectoryGps(activeTrip(), openGpsSync);
         if (saveClip && trip) {
             const event = trip.events[nextEventIndex]!;
             openExportMode();

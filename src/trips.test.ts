@@ -3049,6 +3049,269 @@ describe("rederiveStartUtcForCandidates: camera-clock zone snapshot", () => {
     });
 });
 
+describe("explicit camera timezone", () => {
+    const name = "NO20261020-162549-000239F.MP4";
+    const nameNaive = Date.UTC(2026, 9, 20, 16, 25, 49) / 1000;
+    const options = {
+        file: makeVendorFile(name),
+        fingerprint: "fp:camera-timezone",
+        createdUtc: null,
+        durationSec: 60,
+        records: [],
+        fingerprintTz: null,
+        parseFilenameLocalTime: classifyFilenameTime,
+        preciseFilenameOffsetSec: null,
+        embeddedStartUtcHint: null,
+        isTimelapse: false,
+        wallDurationSec: null,
+    };
+
+    it.each([0, 900, -900, 20700, -12600])("uses the chosen UTC offset %s for the filename clock", (offset) => {
+        const derived = deriveStartUtc({ ...options, cameraTimezoneOverrideSec: offset });
+
+        expect(derived).toEqual({ startUtc: nameNaive - offset, source: "name" });
+    });
+
+    it.each([undefined, null, Number.NaN, Number.POSITIVE_INFINITY])(
+        "retains automatic GPS calibration for an absent or invalid override %s",
+        (offset) => {
+            const records = [makeRecord(nameNaive - 10800 + 2), makeRecord(nameNaive - 10800 + 59)];
+            const derived = deriveStartUtc({ ...options, records, cameraTimezoneOverrideSec: offset });
+
+            expect(derived.startUtc).toBe(nameNaive - 10800);
+            expect(derived.source).toBe("name");
+        },
+    );
+
+    it("treats an explicit filename zone as the chosen clock without moving independent GPS", () => {
+        const records = [makeRecord(nameNaive - 10800 + 2), makeRecord(nameNaive - 10800 + 59)];
+        const raw = structuredClone(records);
+        const derived = deriveStartUtc({
+            ...options,
+            records,
+            cameraTimezoneOverrideSec: 20700,
+            embeddedStartUtcHint: nameNaive - 10800,
+            fingerprintTz: { filenameTzSec: 10800, mvhdTzSec: 0 },
+            preciseFilenameOffsetSec: 10800,
+        });
+
+        expect(derived).toEqual({ startUtc: nameNaive - 20700, source: "name" });
+        expect(records).toEqual(raw);
+    });
+
+    it("preserves an independent embedded UTC anchor when the filename has no clock", () => {
+        const derived = deriveStartUtc({
+            ...options,
+            file: makeVendorFile("clip.mp4"),
+            cameraTimezoneOverrideSec: 20700,
+            embeddedStartUtcHint: nameNaive - 10800,
+        });
+
+        expect(derived).toEqual({ startUtc: nameNaive - 10800, source: "embedded" });
+    });
+
+    it("does not reinterpret an uncorroborated container timestamp as camera-local time", () => {
+        const derived = deriveStartUtc({
+            ...options,
+            file: makeVendorFile("clip.mp4"),
+            createdUtc: new Date(nameNaive * 1000),
+            cameraTimezoneOverrideSec: 20700,
+        });
+
+        expect(derived).toEqual({ startUtc: nameNaive, source: "mp4" });
+    });
+
+    it.each([0.375, 60.375])(
+        "preserves same-clock container precision for a %s-second timestamp difference",
+        (delta) => {
+            const derived = deriveStartUtc({
+                ...options,
+                createdUtc: new Date((nameNaive + delta) * 1000),
+                cameraTimezoneOverrideSec: 10800,
+            });
+
+            expect(derived.source).toBe("mp4");
+            expect(derived.startUtc).toBeCloseTo(nameNaive - 10800 + 0.375, 6);
+        },
+    );
+
+    it("uses the explicit filename clock when the container uses a different time scale", () => {
+        const derived = deriveStartUtc({
+            ...options,
+            createdUtc: new Date((nameNaive - 10800) * 1000),
+            cameraTimezoneOverrideSec: 19800,
+        });
+
+        expect(derived).toEqual({ startUtc: nameNaive - 19800, source: "name" });
+    });
+
+    it("restores automatic anchors and display after changing or clearing a selected timezone", () => {
+        const candidate = makeCandidate({
+            name,
+            startUtc: 0,
+            records: [makeRecord(nameNaive - 10800 + 2), makeRecord(nameNaive - 10800 + 59)],
+        });
+        const raw = structuredClone(candidate.records);
+        rederiveStartUtcForCandidates([candidate], classifyFilenameTime);
+        expect(candidate.startUtc).toBe(nameNaive - 10800);
+        expect(candidate.cameraTzSec).toBe(10800);
+
+        for (const offset of [20700, 0, -900]) {
+            candidate.cameraTimezoneOverrideSec = offset;
+            rederiveStartUtcForCandidates([candidate], classifyFilenameTime);
+            expect(candidate.startUtc).toBe(nameNaive - offset);
+            expect(candidate.cameraTzSec).toBe(offset);
+            expect(candidate.records).toEqual(raw);
+        }
+        candidate.cameraTimezoneOverrideSec = null;
+        rederiveStartUtcForCandidates([candidate], classifyFilenameTime);
+        expect(candidate.startUtc).toBe(nameNaive - 10800);
+        expect(candidate.cameraTzSec).toBe(10800);
+        expect(candidate.records).toEqual(raw);
+    });
+
+    it("reanchors A500S finalize timestamps without using or shifting directory GPS", () => {
+        const records = [nameNaive - 10800, nameNaive - 10800 + 59].map((time) => ({
+            ...makeRecord(time),
+            timeAssociation: {
+                sourcePath: "Card/GPSData000001.txt",
+                sourceKey: "card",
+                extractorId: "csv-70mai",
+            },
+        }));
+        const candidate = makeCandidate({ name, startUtc: 0, records });
+        candidate.createdUtc = new Date((nameNaive + 60) * 1000);
+        candidate.cameraTimezoneOverrideSec = 10800;
+        const raw = structuredClone(records);
+
+        rederiveStartUtcForCandidates([candidate], classifyFilenameTime);
+
+        expect(candidate.startUtc).toBe(nameNaive - 10800);
+        expect(candidate.startSource).toBe("mp4");
+        expect(candidate.cameraTzSec).toBe(10800);
+        expect(candidate.records).toEqual(raw);
+        candidate.cameraTimezoneOverrideSec = null;
+        rederiveStartUtcForCandidates([candidate], classifyFilenameTime);
+        expect(candidate.startUtc).toBe(nameNaive);
+        expect(candidate.cameraTzSec).toBeNull();
+        expect(candidate.records).toEqual(raw);
+    });
+
+    it("preserves a time-lapse wall span while changing its filename timezone", () => {
+        const lapseName = "LA20240522-105233-001495F.MP4";
+        const lapseNaive = Date.UTC(2024, 4, 22, 10, 52, 33) / 1000;
+        const candidate = makeCandidate({
+            name: lapseName,
+            startUtc: 0,
+            durationSec: 6.533,
+            isTimelapse: true,
+        });
+        candidate.createdUtc = new Date((lapseNaive + 98) * 1000);
+        candidate.cameraTimezoneOverrideSec = 20700;
+
+        rederiveStartUtcForCandidates([candidate], classifyFilenameTime);
+
+        expect(candidate.wallDurationSec).toBe(98);
+        expect(candidate.startUtc).toBe(lapseNaive - 20700);
+        expect(candidate.startSource).toBe("name");
+    });
+
+    it("keeps another source's automatic clocks independent of a selected timezone", () => {
+        const selected = makeCandidate({
+            name,
+            startUtc: 0,
+            records: [makeRecord(nameNaive - 10800), makeRecord(nameNaive - 10800 + 59)],
+        });
+        selected.sourceKey = "card-a";
+        selected.cameraTimezoneOverrideSec = 20700;
+        const other = makeCandidate({
+            name,
+            startUtc: 0,
+            records: [makeRecord(nameNaive - 19800), makeRecord(nameNaive - 19800 + 59)],
+        });
+        other.sourceKey = "card-b";
+        const sibling = makeCandidate({ name: "NO20261020-162549-000239R.MP4", startUtc: 0 });
+        sibling.sourceKey = "card-b";
+
+        rederiveStartUtcForCandidates([selected, other, sibling], classifyFilenameTime);
+
+        expect(selected.startUtc).toBe(nameNaive - 20700);
+        expect(selected.cameraTzSec).toBe(20700);
+        expect(other.startUtc).toBe(nameNaive - 19800);
+        expect(sibling.startUtc).toBe(other.startUtc);
+        expect(other.cameraTzSec).toBe(19800);
+        expect(sibling.cameraTzSec).toBe(19800);
+    });
+
+    it("applies an explicit zone to stale-clock recovery and restores the uncalibrated Auto fallback", () => {
+        const names = [
+            "NO20261020-162549-000239F.MP4",
+            "NO20261020-162649-000240F.MP4",
+            "NO20261020-162749-000241F.MP4",
+        ];
+        const candidates = names.map((clipName, index) => {
+            const candidate = makeCandidate({ name: clipName, startUtc: 0, records: [makeRecord(nameNaive - 18000)] });
+            candidate.createdUtc = new Date((nameNaive + (index + 1) * 60) * 1000);
+            candidate.cameraTimezoneOverrideSec = 19800;
+            return candidate;
+        });
+        const raw = candidates.map((candidate) => structuredClone(candidate.records));
+
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+
+        expect(candidates.every((candidate) => candidate.hasStaleGps && !candidate.hasUncalibratedClock)).toBe(true);
+        expect(candidates.map((candidate) => candidate.startUtc)).toEqual(
+            names.map((_, index) => nameNaive + index * 60 - 19800),
+        );
+        expect(candidates.every((candidate) => candidate.cameraTzSec === 19800)).toBe(true);
+        expect(candidates.map((candidate) => candidate.records)).toEqual(raw);
+        for (const candidate of candidates) candidate.cameraTimezoneOverrideSec = null;
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+        expect(candidates.every((candidate) => candidate.hasStaleGps && candidate.hasUncalibratedClock)).toBe(true);
+        expect(candidates.map((candidate) => candidate.startUtc)).toEqual(
+            names.map((_, index) => nameNaive + index * 60),
+        );
+        expect(candidates.map((candidate) => candidate.records)).toEqual(raw);
+    });
+
+    it("does not promote an overridden anchor into automatic stale-clock calibration", () => {
+        const names = [
+            "NO20261020-162549-000239F.MP4",
+            "NO20261020-162649-000240F.MP4",
+            "NO20261020-162749-000241F.MP4",
+            "NO20261020-162849-000242F.MP4",
+            "NO20261020-162949-000243F.MP4",
+        ];
+        const candidates = names.map((clipName, index) => {
+            const naive = nameNaive + index * 60;
+            const candidate = makeCandidate({
+                name: clipName,
+                startUtc: 0,
+                records:
+                    index < 3
+                        ? [makeRecord(nameNaive - 18000)]
+                        : [makeRecord(naive - 10800 + 2), makeRecord(naive - 10800 + 59)],
+            });
+            candidate.createdUtc = new Date((naive + 60) * 1000);
+            if (index >= 3) candidate.cameraTimezoneOverrideSec = 20700;
+            return candidate;
+        });
+
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+
+        expect(candidates.slice(0, 3).every((candidate) => candidate.hasUncalibratedClock)).toBe(true);
+        expect(candidates.slice(0, 3).map((candidate) => candidate.startUtc)).toEqual([
+            nameNaive,
+            nameNaive + 60,
+            nameNaive + 120,
+        ]);
+        expect(candidates.slice(3).map((candidate) => candidate.startUtc)).toEqual([
+            nameNaive + 180 - 20700,
+            nameNaive + 240 - 20700,
+        ]);
+    });
+});
+
 describe("groupTrips: cameraTzSec lift", () => {
     it("lifts the first non-null candidate estimate onto the trip", () => {
         const a = makeCandidate({ name: "a.mp4", startUtc: 1000 });

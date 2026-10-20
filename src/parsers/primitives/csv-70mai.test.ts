@@ -40,7 +40,7 @@ describe("csv70maiPrimitive.marker", () => {
 describe("csv70maiPrimitive.parse", () => {
     // Full V02 row: 13 fields: ts,A,lat,lon,bearing*100,speed*100,ax*100,ay*100,az*100,mp4,?,?,?.
     // ts = 1700000000 (camera claims 2023-11-14 22:13:20 UTC, but the
-    // firmware Pacific bias shifts the record by 8h - real UTC is
+    // firmware clock bias shifts the record by 8h - real UTC is
     // 1700000000 + 28800).
     const exampleRow = "1700000000,A,55.123,37.456,12000,1500,10,105,-3,NO20231114-221320F.mp4,,,";
 
@@ -171,13 +171,94 @@ describe("csv70maiPrimitive.parse", () => {
         await expect(csv70maiPrimitive.parse(makeVf("GPSData.txt", text))).rejects.toBeInstanceOf(WrongFormatError);
     });
 
-    it("sentinel mp4Filename '0'/'' with NO prior named row in the session - row in skipped", async () => {
-        const noMp4 = "1700000000,A,55.0,37.0,0,0,0,100,0,0,,,";
-        const text = `$V02\n${noMp4}\n`;
+    it.each(["0", ""])(
+        "keeps an entirely unnamed session with %j filenames for scoped time association",
+        async (name) => {
+            const noMp4 = `1700000000,A,55.0,37.0,12000,1500,0,100,0,${name},0,0,0`;
+            const file = makeVf("GPSData.txt", `$V02\n${noMp4}\n`);
+            file.relativePath = "card/GPSData.txt";
+            file.sourceKey = "card-source";
+            const result = await csv70maiPrimitive.parse(file);
+            expect(result.skipped).toEqual([]);
+            expect(result.records).toHaveLength(1);
+            expect(result.records[0]).toMatchObject({
+                mp4Filename: "GPSData.txt",
+                unixSeconds: 1700000000 + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC,
+                speedMs: 15,
+                bearingDeg: 120,
+                trackSegment: 0,
+                timeAssociation: {
+                    sourcePath: "card/GPSData.txt",
+                    sourceKey: "card-source",
+                    extractorId: "csv-70mai",
+                },
+            });
+            expect(result.records[0]!.timeUnsynced).toBeUndefined();
+            expect(result.records[0]!.videoKey).toBeUndefined();
+        },
+    );
+
+    it("falls back to the source basename when no relative path is available", async () => {
+        const row = "1700000000,A,55.0,37.0,0,0,0,100,0,0,0,0,0";
+        const file = makeVf("GPSData.txt", `$V02\n${row}\n`);
+        file.relativePath = "";
+        const result = await csv70maiPrimitive.parse(file);
+        expect(result.records[0]!.timeAssociation).toEqual({
+            sourcePath: "GPSData.txt",
+            extractorId: "csv-70mai",
+        });
+        expect(_internal.parseSingleLog(`$V02\n${row}\n`, "GPSData.txt").records[0]!.timeAssociation).toEqual(
+            result.records[0]!.timeAssociation,
+        );
+    });
+
+    it("keeps separate segments for two unnamed sessions and removes gravity from their records", async () => {
+        const first = "1700000000,A,55.0,37.0,0,0,100,0,0,0,0,0,0";
+        const second = "1700000100,A,55.0,37.0,0,0,100,0,0,0,0,0,0";
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${first}\n$V02\n${second}\n`));
+        expect(result.skipped).toEqual([]);
+        expect(result.records.map((record) => record.trackSegment)).toEqual([0, 1]);
+        for (const record of result.records) {
+            expect(record.mp4Filename).toBe("GPSData.txt");
+            expect(record.timeAssociation?.extractorId).toBe("csv-70mai");
+            expect(record.accelXg).toBeCloseTo(0, 6);
+        }
+    });
+
+    it.each([1700000001, -28801])(
+        "still skips early orphans in a session with a valid named fix at raw timestamp %s",
+        async (namedTimestamp) => {
+            const orphan = "1700000000,A,55.0,37.0,0,0,0,100,0,0,0,0,0";
+            const named = `${namedTimestamp},A,55.0,37.0,0,0,0,100,0,clip.mp4,0,0,0`;
+            const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${orphan}\n${named}\n`));
+            expect(result.records).toHaveLength(1);
+            expect(result.records[0]!.mp4Filename).toBe("clip.mp4");
+            expect(result.records[0]!.timeAssociation).toBeUndefined();
+            expect(result.skipped).toEqual([{ line: 2, raw: orphan, reason: "missing or sentinel mp4 filename" }]);
+        },
+    );
+
+    it("drops clockless orphans but retains synced rows when named rows are void or malformed", async () => {
+        const cold = "-28801,A,55.0,37.0,0,0,0,100,0,0,0,0,0";
+        const malformedNamed = "1700000000,A,91,37.0,0,0,0,100,0,clip.mp4,0,0,0";
+        const voidNamed = "1700000001,V,55.0,37.0,0,0,0,100,0,clip.mp4,0,0,0";
+        const synced = "1700000002,A,55.0,37.0,0,0,0,100,0,0,0,0,0";
+        const text = `$V02\n${cold}\n${malformedNamed}\n${voidNamed}\n${synced}\n`;
         const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
-        expect(result.records).toHaveLength(0);
+        expect(result.records).toHaveLength(1);
+        expect(result.records[0]!.timeAssociation).toBeDefined();
+        expect(result.records[0]!.unixSeconds).toBe(1700000002 + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC);
+        expect(result.skipped).toEqual([
+            { line: 2, raw: cold, reason: "missing or sentinel mp4 filename" },
+            { line: 3, raw: malformedNamed, reason: "bad coordinates" },
+        ]);
+    });
+
+    it("keeps a cold-start-only unnamed session out of pending time association", async () => {
+        const cold = "-28801,A,55.0,37.0,0,0,0,100,0,0,0,0,0";
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${cold}\n`));
+        expect(result.records).toEqual([]);
         expect(result.skipped).toHaveLength(1);
-        expect(result.skipped[0]!.reason).toMatch(/mp4 filename/);
     });
 
     it("orphan burst (empty/'0' mp4 name) inherits the session's last valid filename, fields intact", async () => {
@@ -251,9 +332,13 @@ describe("csv70maiPrimitive.parse", () => {
         const orphanZero = "1700000100,A,55.1,37.1,0,1600,10,105,-3,0,,,";
         const text = `$V02\n${named}\n$V02\n${orphanZero}\n`;
         const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
-        expect(result.records).toHaveLength(1); // only the named row survives
-        expect(result.skipped).toHaveLength(1);
-        expect(result.skipped[0]!.reason).toMatch(/mp4 filename/);
+        expect(result.records).toHaveLength(2);
+        expect(result.skipped).toEqual([]);
+        expect(result.records[0]!.mp4Filename).toBe("NO20231114-221320F.mp4");
+        expect(result.records[0]!.timeAssociation).toBeUndefined();
+        expect(result.records[1]!.mp4Filename).toBe("GPSData.txt");
+        expect(result.records[1]!.trackSegment).toBe(1);
+        expect(result.records[1]!.timeAssociation).toBeDefined();
     });
 
     it("a log with a recovered orphan and a malformed row fills both records and skipped", async () => {

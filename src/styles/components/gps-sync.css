@@ -1,6 +1,6 @@
 /* GPS/video calibration: a quiet launcher beside the live GPS readout, the
-   same action in map settings, and one focused per-trip panel. A non-zero
-   shift is the only state that receives accent, so calibration never becomes
+   same action in map settings, and one focused per-trip panel. A manual
+   calibration receives accent, so calibration never becomes
    ambient chrome for users whose camera clocks already agree. */
 
 .gps-sync-pill {
@@ -127,6 +127,36 @@
 .gps-sync-section {
     padding: var(--dc-space-3) 0;
     border-top: 1px solid var(--border);
+}
+.gps-sync-timezone-select {
+    width: 100%;
+    min-width: 0;
+    margin-top: var(--dc-space-1);
+    font-variant-numeric: tabular-nums;
+}
+.gps-sync-timezone-source,
+.gps-sync-timezone-scope {
+    margin: var(--dc-space-2) 0;
+    color: var(--fg-dim);
+    font-size: var(--dc-text-sm);
+    line-height: 1.5;
+}
+.gps-sync-timezone-preview {
+    margin: var(--dc-space-3) 0;
+    color: var(--fg);
+    font-size: var(--dc-text-sm);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+.gps-sync-timezone-reset {
+    margin-top: var(--dc-space-1);
+    max-width: 100%;
+    white-space: normal;
+}
+.gps-sync-timezone-no-match {
+    margin: var(--dc-space-3) 0 0;
+    font-size: var(--dc-text-sm);
 }
 .gps-sync-offset-row {
     display: flex;

@@ -327,6 +327,7 @@ describe("buildEmbeddedGpsCacheArtifactUpdates", () => {
                         mp4Filename: "clip.mp4",
                         videoKey: key,
                         recordingAssociation: { startUtc: 90, extractorId: "session-log" },
+                        timeAssociation: { sourcePath: "GPSData.txt", extractorId: "csv-70mai" },
                         externalTrack: true,
                         externalTrackKey: "manual-gpx",
                         localClockOffsetAppliedSec: 18_000,
@@ -345,6 +346,7 @@ describe("buildEmbeddedGpsCacheArtifactUpdates", () => {
         expect(artifact.records[0]!.unixSeconds).toBe(18_100);
         expect(artifact.records[0]).not.toHaveProperty("videoKey");
         expect(artifact.records[0]).not.toHaveProperty("recordingAssociation");
+        expect(artifact.records[0]).not.toHaveProperty("timeAssociation");
         expect(artifact.records[0]).not.toHaveProperty("externalTrack");
         expect(artifact.records[0]).not.toHaveProperty("externalTrackKey");
         expect(artifact.records[0]).not.toHaveProperty("localClockOffsetAppliedSec");

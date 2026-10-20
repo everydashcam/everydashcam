@@ -1,9 +1,10 @@
 // 70mai $V02 CSV-log parser. Sits next to MP4 files, named `GPSData*.txt`.
-// 13-field CSV row; field[9] = name of the front-MP4 the record belongs to.
+// 13-field CSV row; field[9] usually names the front-MP4. A500S sessions leave
+// it at "0", so those UTC records wait for directory-scoped time association.
 //
 // 70mai firmware quirks (live here, not in a generic layer):
 //   - 8-hour firmware bias on field[0] (timestamp) - known 70mai firmware
-//     bug, writes Pacific Standard Time instead of UTC. We apply a constant
+//     bug associated with the firmware's UTC+8 default. We apply a constant
 //     +28800-second shift so unixSeconds on output is honest UTC. Sources:
 //       https://dashcamtalk.com/forum/threads/unix-time-code-in-gps-txt-file-is-8-hours-out.51107/
 //       https://dashcamtalk.com/forum/threads/date-and-time-reset.36547/
@@ -27,6 +28,7 @@ import { type GpsRecord, type ParsedRecords, type SkippedLine, type VendorFile, 
 import type { Primitive } from "./types.js";
 
 const log = createLogger("primitive:csv-70mai");
+const FORMAT_ID = "csv-70mai";
 
 // Keep content probing to text files, but do not require the firmware basename:
 // OS copies and exports commonly rename the log while its `$Vxx` signature and
@@ -68,7 +70,7 @@ const MAX_ORPHAN_GAP_SEC = 300;
 const MARKER_PROBE_BYTES = 512;
 
 export const csv70maiPrimitive: Primitive = {
-    id: "csv-70mai",
+    id: FORMAT_ID,
     displayName: "70mai $V02 CSV log",
     kind: "log-sidecar",
 
@@ -93,7 +95,7 @@ export const csv70maiPrimitive: Primitive = {
         if (signal?.aborted) throw new DOMException("aborted", "AbortError");
         const text = await file.file.text();
         if (signal?.aborted) throw new DOMException("aborted", "AbortError");
-        return parseSingleLog(text, file.file.name);
+        return parseSingleLog(text, file.file.name, file.relativePath || file.file.name, file.sourceKey);
     },
 };
 
@@ -104,7 +106,12 @@ export const csv70maiPrimitive: Primitive = {
 // re-init (new session after parking mode/reboot/SD removal). Repeated $V??
 // is a session separator, silently skipped (not in skipped).
 // Source: max2697/dashcam-gpx-converter treats $V02 as a track break.
-function parseSingleLog(text: string, sourceFilename: string): ParsedRecords {
+function parseSingleLog(
+    text: string,
+    sourceFilename: string,
+    sourcePath = sourceFilename,
+    sourceKey?: string,
+): ParsedRecords {
     const lines = text.split(/\r?\n/);
 
     let firstSignature: string | null = null;
@@ -133,12 +140,38 @@ function parseSingleLog(text: string, sourceFilename: string): ParsedRecords {
     // every session separator so a new session never inherits the previous file.
     let anchorMp4: string | null = null;
     let anchorUnix = 0;
+    let sessionIndex = -1;
+    const pendingOrphans: Array<{ record: GpsRecord; line: number; raw: string }> = [];
+    const timeAssociation = {
+        sourcePath,
+        extractorId: FORMAT_ID,
+        ...(sourceKey === undefined ? {} : { sourceKey }),
+    };
+
+    // A missing filename can mean a short rollover burst or an entirely
+    // unnamed session. Wait until a real named fix or the session boundary
+    // distinguishes them; early rows of a named session keep the old skip.
+    const flushOrphans = (hasNamedFix: boolean): void => {
+        for (const { record, line, raw } of pendingOrphans) {
+            if (!hasNamedFix && record.timeUnsynced !== true) {
+                record.mp4Filename = sourceFilename;
+                record.timeAssociation = timeAssociation;
+                record.trackSegment = Math.max(0, sessionIndex);
+                records.push(record);
+            } else {
+                skipped.push({ line, raw, reason: "missing or sentinel mp4 filename" });
+            }
+        }
+        pendingOrphans.length = 0;
+    };
 
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i]!;
         if (raw === "") continue;
         if (raw.trim().startsWith(EXPECTED_SIGNATURE_PREFIX)) {
+            flushOrphans(anchorMp4 !== null);
             anchorMp4 = null;
+            sessionIndex++;
             continue;
         }
 
@@ -148,14 +181,17 @@ function parseSingleLog(text: string, sourceFilename: string): ParsedRecords {
             continue;
         }
         if ("orphan" in parsed) {
+            if (anchorMp4 === null) {
+                pendingOrphans.push({ record: parsed.orphan, line: i + 1, raw });
+                continue;
+            }
             // Bind to the anchor unless a synced-clock gap says recording stopped
             // between them (see MAX_ORPHAN_GAP_SEC) - that would extend a finished
             // file's track. Cold-start rows (timeUnsynced placeholder clock) skip
-            // the gap check and fall back to pure row contiguity. No anchor yet
-            // this session -> nothing to bind to.
+            // the gap check and fall back to pure row contiguity.
             const bothSynced = parsed.orphan.timeUnsynced !== true && anchorUnix >= MIN_PLAUSIBLE_UNIX_SEC;
             const gapTooLarge = bothSynced && Math.abs(parsed.orphan.unixSeconds - anchorUnix) > MAX_ORPHAN_GAP_SEC;
-            if (anchorMp4 !== null && !gapTooLarge) {
+            if (!gapTooLarge) {
                 parsed.orphan.mp4Filename = anchorMp4;
                 records.push(parsed.orphan);
             } else {
@@ -166,11 +202,15 @@ function parseSingleLog(text: string, sourceFilename: string): ParsedRecords {
         // V (void / no-fix) rows return { record: null }: drop silently and do
         // NOT update the anchor - they carry no usable file/time context.
         if (parsed.record !== null) {
+            flushOrphans(true);
             anchorMp4 = parsed.record.mp4Filename;
             anchorUnix = parsed.record.unixSeconds;
             records.push(parsed.record);
         }
     }
+    flushOrphans(anchorMp4 !== null);
+    // Deferred orphan decisions must not reorder the source-line diagnostics.
+    skipped.sort((a, b) => a.line - b.line);
 
     // Gravity + mount-tilt removal (DC block). The vertical axis is
     // model-dependent (x800: ay, A810: ax), so we subtract the per-axis mean
@@ -188,9 +228,9 @@ function parseSingleLog(text: string, sourceFilename: string): ParsedRecords {
 }
 
 // `record: null` = void row (no fix), intentionally dropped. `orphan` = a valid
-// fix whose front-MP4 name field is empty/"0" (firmware glitch at file rollover);
-// parseSingleLog binds it to the session's last known filename. `error` = a row
-// we cannot use at all.
+// fix whose front-MP4 name field is empty/"0". parseSingleLog either carries
+// forward a named session's anchor or retains a wholly unnamed session for
+// time association. `error` = a row we cannot use at all.
 type RowResult = { record: GpsRecord | null } | { orphan: GpsRecord } | { error: string };
 
 function parseRow(raw: string): RowResult {
@@ -255,8 +295,8 @@ function parseRow(raw: string): RowResult {
     // only the binding is missing. Hand it back as an orphan so parseSingleLog
     // can bind it to the session's current file - rows of one file are written
     // contiguously, so an orphan belongs to the last named file (subject to a
-    // synced-clock gap sanity check there). Orphans before the session's first
-    // named row (true pre-file cold-start) are unrecoverable -> skipped.
+    // synced-clock gap sanity check there). A wholly unnamed session instead
+    // keeps synced rows pending for directory-scoped time association.
     if (mp4Filename === "" || mp4Filename === "0") {
         return { orphan: record };
     }

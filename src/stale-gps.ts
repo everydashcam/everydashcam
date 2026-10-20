@@ -35,13 +35,14 @@ export function findStaleGpsCandidates(
             candidate.durationSec <= 0
         )
             continue;
-        const first = candidate.records.find((record) => !record.externalTrack);
+        const first = candidate.records.find((record) => !record.externalTrack && !record.timeAssociation);
         if (
             !first ||
             !Number.isFinite(first.unixSeconds) ||
             candidate.records.some(
                 (record) =>
                     !record.externalTrack &&
+                    !record.timeAssociation &&
                     (record.timeUnsynced ||
                         record.unixSeconds !== first.unixSeconds ||
                         record.lat !== first.lat ||
