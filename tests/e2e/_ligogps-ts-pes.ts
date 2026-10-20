@@ -20,12 +20,14 @@ export async function checkLigoGpsTsPes(page: Page, withTxt: boolean): Promise<v
     await page.locator("#file-input").setInputFiles(withTxt ? [VIDEO, LOG] : [VIDEO]);
     const trips = page.locator("li.trip:not(.unindexed-note)");
     await expect(trips).toHaveCount(1);
-    await trips.first().click();
+    await trips.first().locator(".trip-title").click();
     await expect
         .poll(() =>
             page.evaluate(() => {
                 const state = window.__everydashcam.state;
-                const records = state.trips[state.active!.trip]!.records;
+                const trip = state.active ? state.trips[state.active.trip] : undefined;
+                if (!trip) return null;
+                const records = trip.records;
                 const onAnonymizedFix = records.every(
                     (record) => Math.abs(record.lat - 41) < 1e-5 && Math.abs(record.lon - 69) < 1e-5,
                 );
