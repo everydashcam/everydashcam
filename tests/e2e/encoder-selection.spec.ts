@@ -161,11 +161,11 @@ test("a real short probe confirms detail loss before choosing software", async (
 });
 
 test("a medium-quality probe detects a default encoder that ignores bitrate increases", async ({ page }, info) => {
-    await restrictDefaultEncoder(page, { softwareBitrate: 13_000_000 });
+    await restrictDefaultEncoder(page, { softwareBitrate: 12_700_000 });
     await presetLocalStorage(page);
     await gotoApp(page, "en");
     // Keep the target above the Linux encoder's bitrate floor while the simulated
-    // software quality stays below the 2 dB direct-selection threshold.
+    // software quality has margin below the 2 dB direct-selection threshold.
     const bitrate = 29_000_000;
     const result = await runProbe(page, { width: 3840, height: 2160, frameRate: 25, bitrate });
     await info.attach("measurement", { body: JSON.stringify(result), contentType: "application/json" });
@@ -200,7 +200,7 @@ test("a probe keeps the default when software exceeds the requested size", async
 });
 
 test("a probe retains a default encoder that responds to a higher bitrate", async ({ page }, info) => {
-    await restrictDefaultEncoder(page, { higherTarget: "responsive", softwareBitrate: 13_000_000 });
+    await restrictDefaultEncoder(page, { higherTarget: "responsive", softwareBitrate: 12_700_000 });
     await presetLocalStorage(page);
     await gotoApp(page, "en");
     const bitrate = 29_000_000;
@@ -214,7 +214,7 @@ test("a probe retains a default encoder that responds to a higher bitrate", asyn
 });
 
 test("an unsupported higher bitrate preserves the original probe measurements", async ({ page }, info) => {
-    await restrictDefaultEncoder(page, { higherTarget: "unsupported", softwareBitrate: 13_000_000 });
+    await restrictDefaultEncoder(page, { higherTarget: "unsupported", softwareBitrate: 12_700_000 });
     await presetLocalStorage(page);
     await gotoApp(page, "en");
     const bitrate = 29_000_000;
@@ -241,7 +241,7 @@ test("automatic selection reaches the export encoder and the standard notificati
         if (PROBE_WORKER.test(worker.url())) probes++;
     });
     // Use the same native encoding conditions as the moderate-gain worker probe.
-    await restrictDefaultEncoder(page, { softwareBitrate: 13_000_000 });
+    await restrictDefaultEncoder(page, { softwareBitrate: 12_700_000 });
     await prepareExport(page, join(REPO_ROOT, "tests/testdata/encoder-selection"));
     await page.locator("#export-panel-output").selectOption("custom");
     const dimensions = page.locator('.export-panel__output-custom input[type="number"]');
