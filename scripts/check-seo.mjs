@@ -105,6 +105,25 @@ function localFile(directory, pathname) {
     return null;
 }
 
+function localResource(build, pathname) {
+    const visited = new Set();
+    while (!visited.has(pathname)) {
+        visited.add(pathname);
+        // Pages applies the first matching redirect even when a file exists.
+        const redirect = build.redirects.find(({ pattern }) => pattern.test(pathname));
+        if (!redirect) return localFile(build.directory, pathname);
+        // Resolve exact local aliases; dynamic destinations need their captures
+        // expanded before they can prove that a referenced artifact exists.
+        if (redirect.source !== pathname) return null;
+        const target = new URL(redirect.destination, build.origin);
+        if (target.origin !== build.origin) return null;
+        pathname = target.pathname;
+        // A Pages proxy serves its first target without applying another rule.
+        if (redirect.status === "200") return localFile(build.directory, pathname);
+    }
+    return null;
+}
+
 function jsonLd(doc, label) {
     return elements(doc, "script")
         .filter((node) => node.getAttribute("type") === "application/ld+json")
@@ -360,14 +379,16 @@ function readBuild(directory) {
     }
     requireCondition(pages.size > 0, "deployment has no content pages");
 
+    const redirects = [];
     for (const line of readFileSync(join(directory, "_redirects"), "utf8").split(/\r?\n/)) {
         if (!line.trim() || line.trim().startsWith("#")) continue;
-        const [source, , status = "302"] = line.trim().split(/\s+/);
+        const [source, destination, status = "302"] = line.trim().split(/\s+/);
         requireCondition(
             ["200", "301", "302", "303", "307", "308"].includes(status),
             `unsupported Cloudflare redirect status: ${line}`,
         );
         const pattern = pathPattern(source);
+        redirects.push({ source, destination, status, pattern });
         for (const { url } of entries.values()) {
             requireCondition(
                 !pattern.test(url.pathname) && !pattern.test(url.href),
@@ -375,7 +396,7 @@ function readBuild(directory) {
             );
         }
     }
-    return { directory, origin, globalNoIndex, entries, pages };
+    return { directory, origin, globalNoIndex, entries, pages, redirects };
 }
 
 function check() {
@@ -467,7 +488,7 @@ function check() {
                 const targetBuild = byOrigin.get(url.origin);
                 if (!targetBuild) return;
                 requireCondition(
-                    localFile(targetBuild.directory, url.pathname),
+                    localResource(targetBuild, url.pathname),
                     `${href}: ${label} references missing local resource ${value}`,
                 );
             }

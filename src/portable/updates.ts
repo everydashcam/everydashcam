@@ -1,4 +1,10 @@
-import { type PortableFile, parsePortableManifest, PORTABLE_PRIMARY_ORIGIN, PORTABLE_UPDATE_URL } from "./manifest.mjs";
+import {
+    type PortableFile,
+    parsePortableManifest,
+    portableDownloadPath,
+    PORTABLE_PRIMARY_ORIGIN,
+    PORTABLE_UPDATE_URL,
+} from "./manifest.mjs";
 import { compareReleaseTags, isReleaseTag } from "./release-tags.mjs";
 
 interface UpdateNotice {
@@ -85,7 +91,7 @@ export function createPortableUpdateCheck(options: UpdateCheckOptions): {
             options.onUpdate({
                 version: manifest.version,
                 href: file
-                    ? new URL(file.path, PORTABLE_PRIMARY_ORIGIN).href
+                    ? new URL(portableDownloadPath(options.locale), PORTABLE_PRIMARY_ORIGIN).href
                     : `${PORTABLE_PRIMARY_ORIGIN}/${options.locale}/`,
                 ...(file ? { file } : {}),
             });

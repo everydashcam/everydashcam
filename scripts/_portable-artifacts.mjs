@@ -19,13 +19,7 @@ export function readPortableArtifacts(manifestPath, allowDevelopment = false, al
     return manifest;
 }
 
-export function stagePortableArtifacts(
-    manifestPath,
-    distDir,
-    publishLatest = true,
-    allowCustom = false,
-    allowDevelopment = false,
-) {
+export function stagePortableArtifacts(manifestPath, distDir, allowCustom = false, allowDevelopment = false) {
     const manifest = readPortableArtifacts(manifestPath, allowDevelopment, allowCustom);
     for (const file of Object.values(manifest.files)) {
         // Pages injects analytics into .html assets even with no-transform.
@@ -34,11 +28,9 @@ export function stagePortableArtifacts(
         mkdirSync(dirname(target), { recursive: true });
         copyFileSync(resolve(dirname(manifestPath), file.filename), target);
     }
-    if (publishLatest) {
-        const target = resolve(distDir, "downloads/portable/latest.json");
-        mkdirSync(dirname(target), { recursive: true });
-        writeFileSync(target, `${JSON.stringify(manifest)}\n`);
-    }
+    const target = resolve(distDir, "downloads/portable/latest.json");
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, `${JSON.stringify(manifest)}\n`);
     return manifest;
 }
 

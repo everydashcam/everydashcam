@@ -258,6 +258,8 @@ export default defineConfig(({ command }) => {
         // search policy to those standalone documents before CSP and precache
         // hash their final bytes.
         staticSearchMetaPlugin({ noIndex: NO_INDEX, deployment: SEO_DEPLOYMENT }),
+        // Generate site redirects before portable publication adds stable downloads.
+        redirectsPlugin(),
         // Unit tests must not depend on locally staged download artifacts.
         !process.env.VITEST && portableDownloadsPlugin(),
         // CSP for the inline bootstrap: 'sha256-...' into dist/_headers, plus
@@ -286,11 +288,6 @@ export default defineConfig(({ command }) => {
         // written the manifest into the readable source, so the injected manifest
         // is minified together with the rest of the SW.
         minifyServiceWorker(),
-        // _redirects file for Cloudflare Pages: 301 redirects from legacy
-        // /cameras/* paths (pre-2026-05 English vendor URLs) to the new
-        // /en/cameras/* locations. Edge-level 301, preserves link equity
-        // for any external backlinks pointing at the old paths.
-        redirectsPlugin(),
         // llms.txt for AI agents (Claude, Perplexity, ChatGPT). Independent
         // of noIndex - the file lists production URLs, so even on staging
         // it points agents at the canonical site. See vite-plugins/llms-txt.ts.

@@ -4,6 +4,10 @@ export const PORTABLE_PRIMARY_ORIGIN = "https://everydashcam.app";
 export const PORTABLE_UPDATE_URL = `${PORTABLE_PRIMARY_ORIGIN}/downloads/portable/latest.json`;
 export const PORTABLE_MAX_BYTES = 25 * 1024 * 1024;
 
+export function portableDownloadPath(locale) {
+    return `/downloads/portable/${locale}.html`;
+}
+
 function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -25,6 +29,8 @@ export function parsePortableManifest(value, allowDevelopment = false, allowCust
         const filename = file.filename;
         if (filename !== portableFilename(version, locale) && filename !== legacyPortableFilename(version, locale))
             return null;
+        // Released portable files require this exact v1 path to recognize updates.
+        // Website links use a stable locale redirect to the current artifact.
         const path = `/downloads/portable/${version}/${filename.replace(/\.html$/, "")}`;
         if (
             file.path !== path ||

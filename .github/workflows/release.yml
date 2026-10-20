@@ -225,12 +225,6 @@ jobs:
           release="$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)"
           npx --no-install sentry-cli sourcemaps upload --release="${release}" dist
 
-      - name: Retain earlier published portable downloads
-        if: steps.gate.outputs.deploy == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/retain-portable-downloads.mjs
-
       - name: Save the final hosted dist for recovery
         if: steps.gate.outputs.deploy == 'true'
         uses: actions/upload-artifact@v7

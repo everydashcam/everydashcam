@@ -131,6 +131,39 @@ describe("SEO artifact regressions", () => {
         expectRejected(files, "references missing local resource /missing.svg");
     });
 
+    it("accepts a stable download redirect to an existing versioned artifact", () => {
+        const files = makeArtifacts();
+        replaceArtifact(files, "en/index.html", 'href="/en/">Home', 'href="/downloads/portable/en.html">Download');
+        files._redirects += "/downloads/portable/en.html /downloads/portable/v2026.10.21/portable-en 302\n";
+        files["downloads/portable/v2026.10.21/portable-en"] = "portable bytes";
+        const result = validate(files);
+        expect(result.status, result.output).toBe(0);
+    });
+
+    it.each([
+        { label: "a missing target", rules: "/downloads/portable/en.html /missing 302\n" },
+        {
+            label: "a redirect cycle",
+            rules: "/downloads/portable/en.html /download 302\n/download /downloads/portable/en.html 302\n",
+        },
+        { label: "an external target", rules: "/downloads/portable/en.html https://other.example/asset.svg 302\n" },
+        {
+            label: "an earlier matching rule",
+            rules: "/downloads/* /missing 302\n/downloads/portable/en.html /asset.svg 302\n",
+        },
+    ])("rejects a local download alias with $label", ({ rules }) => {
+        const files = makeArtifacts();
+        replaceArtifact(files, "en/index.html", 'href="/en/">Home', 'href="/downloads/portable/en.html">Download');
+        files._redirects += rules;
+        expectRejected(files, "references missing local resource /downloads/portable/en.html");
+    });
+
+    it("rejects a broken redirect even when its source file exists", () => {
+        const files = makeArtifacts();
+        files._redirects += "/asset.svg /missing.svg 302\n";
+        expectRejected(files, "references missing local resource /asset.svg");
+    });
+
     it("rejects an unsupported Cloudflare not-found rewrite", () => {
         const files = makeArtifacts();
         files._redirects += "/* /404.html 404\n";

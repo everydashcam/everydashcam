@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Plugin } from "vite";
 import { readPortableArtifacts, stagePortableArtifacts } from "../scripts/_portable-artifacts.mjs";
-import type { PortableManifest } from "../src/portable/manifest.mjs";
+import { type PortableManifest, portableDownloadPath } from "../src/portable/manifest.mjs";
 
 const DOWNLOAD_ANCHOR = /<a\b(?=[^>]*\bid="portable-download")[^>]*>[\s\S]*?<\/a>/g;
 
@@ -22,7 +22,7 @@ function renderPortableDownload(html: string, manifest: PortableManifest | null,
             .replace(/\s+data-i18n-attr="title:portable.download.description"/, "")
             .replace(/\s+hidden(?:="[^"]*")?/, "")
             .replace(/\s+download(?:="[^"]*")?/, "")
-            .replace("<a ", `<a href="${file.path}" download="${file.filename}" data-portable-bytes="${file.bytes}" data-portable-version="${manifest?.version}" `);
+            .replace("<a ", `<a href="${portableDownloadPath(locale!)}" download="${file.filename}" data-portable-bytes="${file.bytes}" data-portable-version="${manifest?.version}" `);
     });
 }
 
@@ -33,7 +33,7 @@ export function publishPortableDownloads(
     allowDevelopment = false,
 ): void {
     const manifest = manifestPath
-        ? stagePortableArtifacts(resolve(manifestPath), dist, true, allowCustom, allowDevelopment)
+        ? stagePortableArtifacts(resolve(manifestPath), dist, allowCustom, allowDevelopment)
         : null;
     // Process shells and their marketing descendants after prerendering.
     function updatePages(directory: string, locale?: string): void {
@@ -51,6 +51,16 @@ export function publishPortableDownloads(
     }
     updatePages(dist);
     if (!manifest) return;
+    // Keep one copy of the current binaries. A temporary redirect is not
+    // heuristically cached, so saved locale links follow each new deployment.
+    // Prepend these rules: Pages treats only the leading splat-free block as
+    // static (exact lookup, 2,000-rule limit); every rule after the first
+    // dynamic one is matched in file order against the 100-rule dynamic limit.
+    const redirects = join(dist, "_redirects");
+    const stableDownloads = Object.entries(manifest.files)
+        .map(([locale, file]) => `${portableDownloadPath(locale)} ${file.path} 302`)
+        .join("\n");
+    writeFileSync(redirects, `${stableDownloads}\n${existsSync(redirects) ? readFileSync(redirects, "utf8") : ""}`);
     const headers = join(dist, "_headers");
     // Binary assets retain the dated .html download filename. Pages Analytics
     // checks the uploaded asset type before these response headers apply.
@@ -78,6 +88,7 @@ export function portableDownloadsPlugin(options: { allowCustom?: boolean } = {})
             }
             const manifest = developmentManifest;
             const files = new Map(Object.values(manifest?.files ?? {}).map((file) => [file.path, file]));
+            const redirects = new Map(Object.entries(manifest?.files ?? {}).map(([locale, file]) => [portableDownloadPath(locale), file.path]));
             server.middlewares.use((request, response, next) => {
                 const pathname = request.url?.split("?")[0] ?? "";
                 if (!pathname.startsWith("/downloads/portable/")) return next();
@@ -87,6 +98,13 @@ export function portableDownloadsPlugin(options: { allowCustom?: boolean } = {})
                 if (request.method !== "GET" && request.method !== "HEAD") {
                     response.setHeader("Allow", "GET, HEAD");
                     response.statusCode = 405;
+                    response.end();
+                    return;
+                }
+                const destination = redirects.get(pathname);
+                if (destination) {
+                    response.statusCode = 302;
+                    response.setHeader("Location", destination);
                     response.end();
                     return;
                 }

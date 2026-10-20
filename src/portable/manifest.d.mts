@@ -13,6 +13,7 @@ export interface PortableManifest {
 export declare const PORTABLE_PRIMARY_ORIGIN: string;
 export declare const PORTABLE_UPDATE_URL: string;
 export declare const PORTABLE_MAX_BYTES: number;
+export declare function portableDownloadPath(locale: string): string;
 export declare function parsePortableManifest(
     value: unknown,
     allowDevelopment?: boolean,

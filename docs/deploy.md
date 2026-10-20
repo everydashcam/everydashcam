@@ -216,10 +216,15 @@ dry-run the pipeline.
 Portable HTML is built and tested once, then shared by the GitHub Release and
 the primary website. Production deployment follows release publication so its
 download links and update metadata cannot advertise an unpublished release.
-Keep earlier published portable downloads in subsequent deployments; Pages
-does not guarantee old asset URLs remain available after a deployment.
-See `scripts/retain-portable-downloads.mjs` and
-`scripts/smoke-portable-downloads.mjs` for retention and download verification.
+Website download links use stable locale URLs such as
+`/downloads/portable/en.html`, with a temporary 302 redirect to the current
+versioned artifact. Deployments and recovery artifacts contain only the current
+portable files; archived versions remain in GitHub Releases. Update metadata
+keeps the versioned paths understood by previously downloaded portable files.
+Hosts that do not apply `_redirects` must publish the current artifact under
+the same stable path themselves; the Object Storage mirror uploads it as a
+revalidating copy. See `vite-plugins/portable-downloads.ts` and
+`scripts/smoke-portable-downloads.mjs` for publication and download verification.
 
 The ghcr.io package is created by the first tag run and keeps the visibility it
 had then - it is never re-synced with the repo, so check package Settings after

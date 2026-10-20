@@ -7,7 +7,6 @@ export declare function readPortableArtifacts(
 export declare function stagePortableArtifacts(
     manifestPath: string,
     distDir: string,
-    publishLatest?: boolean,
     allowCustom?: boolean,
     allowDevelopment?: boolean,
 ): PortableManifest;

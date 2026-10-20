@@ -67,7 +67,7 @@ test("downloads the matching built public file through Vite with its exact filen
     await page.goto(`${origin}/ru/?test=download`);
     const anchor = page.locator("#portable-download");
     await expect(anchor).toBeVisible();
-    await expect(anchor).toHaveAttribute("href", file.path);
+    await expect(anchor).toHaveAttribute("href", "/downloads/portable/ru.html");
     await expect(anchor).toHaveAttribute("title", new RegExp(manifest.version));
     const pendingDownload = page.waitForEvent("download");
     await anchor.click();
@@ -83,6 +83,10 @@ test("downloads the matching built public file through Vite with its exact filen
     expect(metadata.headers()["access-control-allow-origin"]).toBe("*");
     expect(metadata.headers()["content-disposition"]).toBeUndefined();
     expect(await metadata.json()).toEqual(manifest);
+    const redirect = await request.get(`${origin}/downloads/portable/ru.html`, { maxRedirects: 0 });
+    expect(redirect.status()).toBe(302);
+    expect(redirect.headers().location).toBe(file.path);
+    expect(redirect.headers()["cache-control"]).toBe("no-store, no-transform");
     const head = await request.head(`${origin}${file.path}`);
     expect(head.headers()["content-type"]).toBe("application/octet-stream");
     expect(head.headers()["content-disposition"]).toBe(`attachment; filename="${file.filename}"`);
@@ -91,6 +95,7 @@ test("downloads the matching built public file through Vite with its exact filen
     expect((await head.body()).length).toBe(0);
     expect((await request.get(`${origin}/downloads/portable/missing`)).status()).toBe(404);
     expect((await request.post(`${origin}${file.path}`)).status()).toBe(405);
+    expect((await request.post(`${origin}/downloads/portable/ru.html`)).status()).toBe(405);
     await page.goto(`${origin}/xx/`);
     await expect(page.locator("#portable-download")).toHaveCount(0);
 });

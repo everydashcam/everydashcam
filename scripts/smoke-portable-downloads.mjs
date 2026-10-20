@@ -2,15 +2,15 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { parsePortableManifest, PORTABLE_PRIMARY_ORIGIN } from "../src/portable/manifest.mjs";
+import { parsePortableManifest, portableDownloadPath, PORTABLE_PRIMARY_ORIGIN } from "../src/portable/manifest.mjs";
 
-async function request(origin, path) {
+async function request(origin, path, allowRedirect = false) {
     const response = await fetch(new URL(path, origin), {
-        redirect: "error",
+        redirect: allowRedirect ? "manual" : "error",
         headers: { Origin: "null" },
         signal: AbortSignal.timeout(30000),
     });
-    if (!response.ok) throw new Error(`portable download returned HTTP ${response.status}`);
+    if (!response.ok && !allowRedirect) throw new Error(`portable download returned HTTP ${response.status}`);
     return response;
 }
 
@@ -26,7 +26,19 @@ async function verifyDownloads(expected, origin, allowDevelopment) {
     const manifest = parsePortableManifest(await latest.json(), allowDevelopment);
     if (!manifest || JSON.stringify(manifest) !== JSON.stringify(expected))
         throw new Error("published portable metadata differs from the tested artifact");
-    for (const file of Object.values(manifest.files)) {
+    for (const [locale, file] of Object.entries(manifest.files)) {
+        const redirect = await request(origin, portableDownloadPath(locale), true);
+        const location = redirect.headers.get("location");
+        if (redirect.status !== 302 || !location || new URL(location, origin).href !== new URL(file.path, origin).href)
+            throw new Error(
+                `portable stable link does not redirect to the current artifact: ${locale} (HTTP ${redirect.status}, location ${location ?? "none"})`,
+            );
+        const redirectCache = redirect.headers.get("cache-control") ?? "";
+        if (
+            redirectCache.includes("immutable") ||
+            [...redirectCache.matchAll(/(?:s-maxage|max-age)=(\d+)/g)].some((match) => Number(match[1]) > 0)
+        )
+            throw new Error("portable stable link caches a stale release redirect");
         const response = await request(origin, file.path);
         if (response.headers.get("content-disposition") !== `attachment; filename="${file.filename}"`)
             throw new Error(`portable download filename mismatch: ${file.filename}`);
