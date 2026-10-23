@@ -21,6 +21,21 @@ async function addMarker(page: import("@playwright/test").Page, text: string): P
     await expect(storage).toBeHidden();
 }
 
+/** The marker list is a secondary action and can move into More controls. */
+async function openMarkerList(page: import("@playwright/test").Page): Promise<void> {
+    const button = page.locator("#player-marker-list");
+    await expect(button, "a trip with markers exposes the list action").toHaveJSProperty("hidden", false);
+    if (await button.isVisible()) {
+        await button.click();
+    } else {
+        await page.locator("#player-overflow").click();
+        const action = page.locator("#player-overflow-menu").getByRole("button", { name: "Trip markers", exact: true });
+        await expect(action).toBeVisible();
+        await action.click();
+    }
+    await expect(page.locator("#marker-list-modal")).toBeVisible();
+}
+
 test.describe("timeline markers", () => {
     test.beforeEach(async ({ page }) => {
         await presetLocalStorage(page);
@@ -29,13 +44,12 @@ test.describe("timeline markers", () => {
         await loadTrip(page);
     });
 
-    test("the list button appears with the first marker and opens the trip's markers", async ({ page }) => {
+    test("the list action appears with the first marker and opens the trip's markers", async ({ page }) => {
         const listButton = page.locator("#player-marker-list");
-        await expect(listButton, "no markers yet - the list button is a dead control").toBeHidden();
+        await expect(listButton, "no markers yet - the list action is unavailable").toHaveJSProperty("hidden", true);
 
         await addMarker(page, "checkpoint");
-        await expect(listButton).toBeVisible();
-        await listButton.click();
+        await openMarkerList(page);
 
         const rows = page.locator("#marker-list-items .marker-list-row");
         await expect(rows).toHaveCount(1);
@@ -45,7 +59,7 @@ test.describe("timeline markers", () => {
 
     test("renaming in the list persists to the pin", async ({ page }) => {
         await addMarker(page, "before");
-        await page.locator("#player-marker-list").click();
+        await openMarkerList(page);
 
         const textInput = page.locator("#marker-list-items .marker-list-text").first();
         await textInput.fill("after");
@@ -87,7 +101,7 @@ test.describe("timeline markers", () => {
             .poll(async () => Math.abs((await playheadX()) - pinX), { message: "the away-seek must move the playhead" })
             .toBeGreaterThan(ruler.width * 0.2);
 
-        await page.locator("#player-marker-list").click();
+        await openMarkerList(page);
         await page.locator("#marker-list-items .marker-list-seek").first().click();
         // The backdrop hides the video, so a seek that left the modal open
         // would show the user nothing.
@@ -139,7 +153,7 @@ test.describe("timeline markers", () => {
         await page.locator("#marker-modal-cancel").click();
         await expect(page.locator("#marker-modal")).toBeHidden();
         await expect(page.locator(".timeline-marker"), "cancel undoes the drop").toHaveCount(0);
-        await expect(page.locator("#player-marker-list")).toBeHidden();
+        await expect(page.locator("#player-marker-list")).toHaveJSProperty("hidden", true);
 
         // Escape is the other dismissal route and means the same thing.
         await page.locator("#player-add-marker").click();
@@ -160,12 +174,12 @@ test.describe("timeline markers", () => {
 
     test("deleting the last marker empties the list and retracts the bar button", async ({ page }) => {
         await addMarker(page, "gone soon");
-        await page.locator("#player-marker-list").click();
+        await openMarkerList(page);
         await page.locator("#marker-list-items .marker-list-delete").first().click();
 
         await expect(page.locator("#marker-list-items .marker-list-row")).toHaveCount(0);
         await expect(page.locator("#marker-list-empty")).toBeVisible();
         await expect(page.locator(".timeline-marker")).toHaveCount(0);
-        await expect(page.locator("#player-marker-list")).toBeHidden();
+        await expect(page.locator("#player-marker-list")).toHaveJSProperty("hidden", true);
     });
 });
