@@ -43,7 +43,7 @@ import {
 import { escapeHtml } from "../escape.js";
 import { getDateLocale, t } from "../i18n/index.js";
 import { emitLifecycle } from "../perf.js";
-import { findNearestIndex } from "../parser.js";
+import { findNearestIndex, isValidGpsFix } from "../parser.js";
 import {
     pickFrameChannel,
     wallToContentSec,
@@ -2113,7 +2113,7 @@ export function rebuildChartFromTrip(trip: Trip): void {
             speedData.push({ x: (wallToContentSec(trip.timeline, previous.unixSeconds) + x) / 2, y: Number.NaN });
         }
         if (r.speedSource === "estimated") estimatedIndices.add(speedData.length);
-        speedData.push({ x, y: r.active && hasSpeed(r) ? formatSpeedFromMs(r.speedMs).value : Number.NaN });
+        speedData.push({ x, y: isValidGpsFix(r) && hasSpeed(r) ? formatSpeedFromMs(r.speedMs).value : Number.NaN });
         previous = r;
         accelData.push({ x, y: gMagnitude(r) });
     }

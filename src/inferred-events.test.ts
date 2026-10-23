@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 import { detectInferredSegments, type InferredSegmentKind } from "./inferred-events.js";
 import type { GpsRecord } from "./parsers/types.js";
@@ -82,6 +82,13 @@ describe("detectInferredSegments", () => {
             const records: GpsRecord[] = [];
             for (let i = 0; i < 10; i++) records.push(rec({ unixSeconds: i, speedMs: 0.1, active: false }));
             expect(only(detectInferredSegments(records, 0), "stop")).toHaveLength(0);
+        });
+
+        it("does not mistake a series of zero-pair positions for a stop", () => {
+            const records = Array.from({ length: 10 }, (_, unixSeconds) =>
+                rec({ unixSeconds, lat: 0, lon: 0, speedMs: 0 }),
+            );
+            expect(detectInferredSegments(records, 0)).toEqual([]);
         });
 
         test("respects tripStartUtc offset", () => {
@@ -243,6 +250,18 @@ describe("detectInferredSegments", () => {
             expect(only(segs, "brake")).toHaveLength(0);
             expect(only(segs, "accel")).toHaveLength(0);
             expect(only(segs, "turn")).toHaveLength(0);
+        });
+
+        it.each([0, 20])("does not infer motion from a zero-pair record carrying speed=%s", (speedMs) => {
+            const records = [
+                rec({ unixSeconds: 0, speedMs: 20 }),
+                rec({ unixSeconds: 1, speedMs: 20 }),
+                rec({ unixSeconds: 2, lat: 0, lon: 0, speedMs, bearingDeg: 180, accelXg: 0.8 }),
+                rec({ unixSeconds: 3, speedMs: 20 }),
+                rec({ unixSeconds: 4, speedMs: 20 }),
+            ];
+            expect(detectInferredSegments(records, 0)).toEqual([]);
+            expect(records[2]).toMatchObject({ speedMs, bearingDeg: 180, accelXg: 0.8 });
         });
 
         test("intensity is always in [0, 1] regardless of input magnitude", () => {

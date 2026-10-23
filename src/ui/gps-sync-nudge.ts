@@ -29,11 +29,7 @@ function validDirectoryTimes(candidate: VideoCandidate, log: ParsedLog): number[
         ...new Set(
             directoryGpsRecordsForFile(candidate, log)
                 .filter(
-                    (record) =>
-                        isValidGpsFix(record) &&
-                        (record.lat !== 0 || record.lon !== 0) &&
-                        !record.timeUnsynced &&
-                        Number.isFinite(record.unixSeconds),
+                    (record) => isValidGpsFix(record) && !record.timeUnsynced && Number.isFinite(record.unixSeconds),
                 )
                 .map((record) => record.unixSeconds),
         ),

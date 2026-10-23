@@ -8,6 +8,7 @@
 
 import type { AudioCodec } from "mediabunny";
 
+import { isValidGpsFix } from "./parser.js";
 import type { Channel, GpsRecord } from "./parsers/types.js";
 import { serializeGpx } from "./parsers/sidecars/gpx.js";
 import type { Trip, TripTimeline, VideoCandidate } from "./trips.js";
@@ -225,7 +226,7 @@ export function rangeSourceBitrateBps(segments: readonly FileSegment[]): number 
  */
 export function clipRecordsForRange(trip: Trip, startContentSec: number, endContentSec: number): GpsRecord[] {
     return trip.records.filter((r) => {
-        if (!r.active) return false;
+        if (!isValidGpsFix(r)) return false;
         const c = wallToContentSecIfCovered(trip.timeline, r.unixSeconds);
         return c !== null && c >= startContentSec && c <= endContentSec;
     });

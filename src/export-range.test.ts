@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    buildClipGpx,
     candidatesInRange,
     clipRecordsForRange,
     type FileSegment,
@@ -177,6 +178,28 @@ function makeGpsRecord(unixSeconds: number, active = true): GpsRecord {
 }
 
 describe("clipRecordsForRange", () => {
+    it("counts the same valid fixes as the GPX file without dropping source telemetry", () => {
+        const candidate = makeCandidate({ name: "clip.mp4", startUtc: 1000, durationSec: 60 });
+        const trip = groupTrips([candidate])[0]!;
+        const source = [
+            { ...makeGpsRecord(1010), lat: 0, lon: 0, accelYg: 0.8 },
+            { ...makeGpsRecord(1011), lat: 0 },
+            makeGpsRecord(1012, false),
+            { ...makeGpsRecord(1013), lon: 0 },
+            { ...makeGpsRecord(1014), lat: 0, lon: 0 },
+        ];
+        trip.records = source;
+
+        const selected = clipRecordsForRange(trip, 10, 14);
+        const xml = buildClipGpx(trip, 10, 14);
+        expect(selected).toEqual([source[1], source[3]]);
+        expect(xml.match(/<trkpt /g)).toHaveLength(selected.length);
+        expect(clipRecordsForRange(trip, 14, 14)).toEqual([]);
+        expect(buildClipGpx(trip, 14, 14)).not.toContain("<trkpt ");
+        expect(trip.records).toBe(source);
+        expect(source[0]).toMatchObject({ unixSeconds: 1010, accelYg: 0.8 });
+    });
+
     it("excludes GPX points at and beyond the fractional footage end", () => {
         const candidate = makeCandidate({ name: "clip.mp4", startUtc: 1000, durationSec: 60.37 });
         const trip = groupTrips([candidate])[0]!;

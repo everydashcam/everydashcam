@@ -16,7 +16,8 @@ export interface SpeedSample {
 
 export interface GpsRecord extends SpeedSample {
     unixSeconds: number;
-    // GPS fix was valid at record time (true = valid lat/lon).
+    // Receiver-reported fix status. Use isValidGpsFix for usable GPS position
+    // and motion; firmware can mark missing-signal placeholders active.
     active: boolean;
     lat: number; // decimal degrees
     lon: number; // decimal degrees

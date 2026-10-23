@@ -24,6 +24,7 @@ import {
     cumulativeDistanceKm,
     haversineKm,
     interpolatePosition,
+    isValidGpsFix,
     lastSyncedRecord,
     mergeIntoGpsLog,
     rebindOrphanLogRecords,
@@ -99,21 +100,32 @@ describe("totalDistanceKm", () => {
     });
 
     it("sums haversine across all consecutive active records", () => {
-        const records = [rec(0, 0, 0), rec(1, 1, 0), rec(2, 2, 0)];
-        const expected = 2 * haversineKm(0, 0, 1, 0);
+        const records = [rec(0, 1, 0), rec(1, 2, 0), rec(2, 3, 0)];
+        const expected = 2 * haversineKm(1, 0, 2, 0);
         expect(totalDistanceKm(records)).toBeCloseTo(expected, 6);
     });
 
     it("skips records with active=false (no fix gaps don't inflate distance)", () => {
         const records = [
-            rec(0, 0, 0),
+            rec(0, 1, 0),
             rec(1, 10, 10, { active: false }), // lost fix - skipped
-            rec(2, 1, 0),
+            rec(2, 2, 0),
         ];
         // Skip the middle point - distance is computed 0→2 directly (1 deg),
         // as if the lost point never existed: prev tracks last active record.
-        const expected = haversineKm(0, 0, 1, 0);
+        const expected = haversineKm(1, 0, 2, 0);
         expect(totalDistanceKm(records)).toBeCloseTo(expected, 6);
+    });
+
+    it("excludes zero-pair signal loss from distance while retaining its telemetry", () => {
+        const records = [rec(100, 43, 77), rec(101, 0, 0, { speedMs: 12, accelYg: 0.8 }), rec(102, 43.0001, 77)];
+        const expected = haversineKm(43, 77, 43.0001, 77);
+        expect(totalDistanceKm(records)).toBeCloseTo(expected, 9);
+        const cumulative = cumulativeDistanceKm(records);
+        expect(cumulative[0]).toBe(0);
+        expect(cumulative[1]).toBe(0);
+        expect(cumulative[2]).toBeCloseTo(expected, 9);
+        expect(records[1]).toMatchObject({ unixSeconds: 101, speedMs: 12, accelYg: 0.8 });
     });
 });
 
@@ -125,8 +137,8 @@ describe("cumulativeDistanceKm", () => {
     });
 
     it("starts at zero and grows with each leg", () => {
-        const records = [rec(0, 0, 0), rec(1, 1, 0), rec(2, 2, 0)];
-        const leg = haversineKm(0, 0, 1, 0);
+        const records = [rec(0, 1, 0), rec(1, 2, 0), rec(2, 3, 0)];
+        const leg = haversineKm(1, 0, 2, 0);
         const prefix = cumulativeDistanceKm(records);
         expect(prefix[0]).toBe(0);
         expect(prefix[1]).toBeCloseTo(leg, 6);
@@ -134,12 +146,12 @@ describe("cumulativeDistanceKm", () => {
     });
 
     it("carries the running total across a lost fix without advancing it", () => {
-        const records = [rec(0, 0, 0), rec(1, 10, 10, { active: false }), rec(2, 1, 0)];
+        const records = [rec(0, 1, 0), rec(1, 10, 10, { active: false }), rec(2, 2, 0)];
         const prefix = cumulativeDistanceKm(records);
         // The lost-fix record keeps the total it inherited - stepping onto it
         // must not credit the coordinate jump that its stale lat/lon implies.
         expect(prefix[1]).toBe(0);
-        expect(prefix[2]).toBeCloseTo(haversineKm(0, 0, 1, 0), 6);
+        expect(prefix[2]).toBeCloseTo(haversineKm(1, 0, 2, 0), 6);
     });
 
     it("ends on the same total as totalDistanceKm", () => {
@@ -180,6 +192,31 @@ describe("recordsHaveGps", () => {
         const invalid = [rec(0, Number.NaN, 37), rec(1, 55, Number.POSITIVE_INFINITY), rec(2, 91, 37), rec(3, 55, 181)];
         expect(recordsHaveGps(invalid)).toBe(false);
         expect(recordsHaveGps([...invalid, rec(4, 55, 37)])).toBe(true);
+    });
+});
+
+describe("isValidGpsFix", () => {
+    it.each([
+        [0, 0],
+        [-0, 0],
+        [0, -0],
+    ])("treats (%s, %s) as missing signal even when marked active", (lat, lon) => {
+        const record = rec(100, lat, lon);
+        expect(isValidGpsFix(record)).toBe(false);
+        expect(recordsHaveGps([record])).toBe(false);
+    });
+
+    it.each([
+        [0, 77],
+        [43, 0],
+        [0, -77],
+        [-43, 0],
+        [0.000001, 0.000001],
+    ])("keeps (%s, %s) as a valid fix", (lat, lon) => {
+        const record = rec(100, lat, lon);
+        expect(isValidGpsFix(record)).toBe(true);
+        expect(recordsHaveGps([record])).toBe(true);
+        expect(interpolatePosition([record], 100)).toMatchObject({ lat, lon });
     });
 });
 
@@ -275,6 +312,7 @@ describe("interpolatePosition", () => {
 
     it.each<Partial<GpsRecord>>([
         { active: false },
+        { lat: 0, lon: 0 },
         { lat: Number.NaN },
         { lon: Number.POSITIVE_INFINITY },
         { lat: 90.1 },
@@ -312,10 +350,10 @@ describe("interpolatePosition", () => {
     });
 
     it("interpolates linearly between two points at t=0.5", () => {
-        const records = [rec(100, 0, 0, { bearingDeg: 0, speedMs: 0 }), rec(200, 2, 4, { bearingDeg: 0, speedMs: 10 })];
+        const records = [rec(100, 0, 1, { bearingDeg: 0, speedMs: 0 }), rec(200, 2, 5, { bearingDeg: 0, speedMs: 10 })];
         const result = interpolatePosition(records, 150)!;
         expect(result.lat).toBeCloseTo(1, 9);
-        expect(result.lon).toBeCloseTo(2, 9);
+        expect(result.lon).toBeCloseTo(3, 9);
         expect(result.speedMs).toBeCloseTo(5, 9);
     });
 
@@ -332,7 +370,7 @@ describe("interpolatePosition", () => {
     });
 
     it("handles bearing wrap (350° → 10° interpolates through 0°, not 180°)", () => {
-        const records = [rec(100, 0, 0, { bearingDeg: 350 }), rec(200, 0, 0, { bearingDeg: 10 })];
+        const records = [rec(100, 0, 1, { bearingDeg: 350 }), rec(200, 0, 1, { bearingDeg: 10 })];
         // At midpoint expect 0° (or close), not 180°.
         const result = interpolatePosition(records, 150)!;
         // Allow small deviation due to normalization into [0, 360).
@@ -341,7 +379,7 @@ describe("interpolatePosition", () => {
     });
 
     it("handles reverse bearing wrap (10° → 350° goes through 0°)", () => {
-        const records = [rec(100, 0, 0, { bearingDeg: 10 }), rec(200, 0, 0, { bearingDeg: 350 })];
+        const records = [rec(100, 0, 1, { bearingDeg: 10 }), rec(200, 0, 1, { bearingDeg: 350 })];
         const result = interpolatePosition(records, 150)!;
         // 10 + (-20)*0.5 = 0; normalized = 0.
         const normalized = result.bearingDeg > 180 ? result.bearingDeg - 360 : result.bearingDeg;
@@ -539,15 +577,18 @@ describe("thinDenseRecords", () => {
         expect(out[0]!).toBe(records[0]!);
     });
 
-    it("prefers the first record with a fix over an earlier no-fix one, keeping the max accel", () => {
-        const records = [rec(100.0, 0, 0, { active: false, accelYg: 0.8 }), rec(100.1, 1, 1, { active: true })];
-        const out = thinDenseRecords(records);
-        expect(out).toHaveLength(1);
-        expect(out[0]!.lat, "fix acquired mid-bucket wins the coordinates").toBe(1);
-        expect(out[0]!.accelYg, "accel of the dropped no-fix record still rides along").toBe(0.8);
-        expect(out[0]!, "the transplant must clone, not mutate the fix record").not.toBe(records[1]!);
-        expect(records[1]!.accelYg, "input record untouched by the transplant").toBe(0);
-    });
+    it.each([false, true])(
+        "prefers the first fix over an earlier no-fix pair with active=%s, keeping max accel",
+        (active) => {
+            const records = [rec(100.0, 0, 0, { active, accelYg: 0.8 }), rec(100.1, 1, 1, { active: true })];
+            const out = thinDenseRecords(records);
+            expect(out).toHaveLength(1);
+            expect(out[0]!.lat, "fix acquired mid-bucket wins the coordinates").toBe(1);
+            expect(out[0]!.accelYg, "accel of the dropped no-fix record still rides along").toBe(0.8);
+            expect(out[0]!, "the transplant must clone, not mutate the fix record").not.toBe(records[1]!);
+            expect(records[1]!.accelYg, "input record untouched by the transplant").toBe(0);
+        },
+    );
 
     it("keeps the fix record as-is when it also carries the max |G|", () => {
         const records = [
@@ -655,12 +696,26 @@ describe("firstSyncedRecord / lastSyncedRecord", () => {
 });
 
 describe("fillForwardBearings", () => {
+    it("keeps missing positions and source cuts out of bearing look-ahead", () => {
+        const records = [
+            rec(100, 0, 20, { speedMs: 10 }),
+            rec(101, 0, 20.0001, { speedMs: 10 }),
+            rec(102, 0, 0, { speedMs: 10, bearingDeg: 270 }),
+            rec(103, 0, 20.0002, { speedMs: 10 }),
+            rec(104, 0, 20.0003, { speedMs: 10 }),
+            rec(105, 1, 20.0003, { speedMs: 10, trackSegment: 1 }),
+        ];
+        fillForwardBearings(records);
+        for (const index of [0, 1, 3, 4]) expect(records[index]!.bearingDeg).toBeCloseTo(90, 6);
+        expect(records[2]!.bearingDeg, "missing-signal telemetry stays untouched").toBe(270);
+    });
+
     it("fills bearing from look-ahead point", () => {
         // Moving due east: +lon, lat=0.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 0, speedMs: 10 }),
-            rec(101, 0, 0.0001, { bearingDeg: 0, speedMs: 10 }),
-            rec(102, 0, 0.0002, { bearingDeg: 0, speedMs: 10 }),
+            rec(100, 0, 1, { bearingDeg: 0, speedMs: 10 }),
+            rec(101, 0, 1.0001, { bearingDeg: 0, speedMs: 10 }),
+            rec(102, 0, 1.0002, { bearingDeg: 0, speedMs: 10 }),
         ];
         fillForwardBearings(records);
         // Moving east = bearing ≈ 90°.
@@ -673,9 +728,9 @@ describe("fillForwardBearings", () => {
     it("uses lastValid bearing on stationary samples (speed < MIN_SPEED)", () => {
         // Car is stationary for first 2 samples, then moves.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 999, speedMs: 0.1 }), // stationary
-            rec(101, 0, 0, { bearingDeg: 999, speedMs: 0.2 }), // stationary
-            rec(102, 0, 0.0001, { bearingDeg: 999, speedMs: 10 }), // moving east
+            rec(100, 0, 1, { bearingDeg: 999, speedMs: 0.1 }), // stationary
+            rec(101, 0, 1, { bearingDeg: 999, speedMs: 0.2 }), // stationary
+            rec(102, 0, 1.0001, { bearingDeg: 999, speedMs: 10 }), // moving east
         ];
         fillForwardBearings(records);
         // Stationary records inherit lastValid (initially 0).
@@ -688,9 +743,9 @@ describe("fillForwardBearings", () => {
     it("skips look-ahead points within MIN_DIST and finds farther point", () => {
         // First point is close to second (< MIN), but third is far enough.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 999, speedMs: 10 }),
-            rec(101, 0, 1e-6, { bearingDeg: 999, speedMs: 10 }), // too close
-            rec(102, 0, 0.0001, { bearingDeg: 999, speedMs: 10 }), // far enough (east)
+            rec(100, 0, 1, { bearingDeg: 999, speedMs: 10 }),
+            rec(101, 0, 1.000001, { bearingDeg: 999, speedMs: 10 }), // too close
+            rec(102, 0, 1.0001, { bearingDeg: 999, speedMs: 10 }), // far enough (east)
         ];
         fillForwardBearings(records);
         // First bearing should be ~90° (east).
@@ -699,9 +754,9 @@ describe("fillForwardBearings", () => {
 
     it("last record inherits lastValid (no look-ahead available)", () => {
         const records = [
-            rec(100, 0, 0, { bearingDeg: 0, speedMs: 10 }),
-            rec(101, 0, 0.0001, { bearingDeg: 0, speedMs: 10 }), // moving east
-            rec(102, 0, 0.0002, { bearingDeg: 999, speedMs: 10 }), // last, no next
+            rec(100, 0, 1, { bearingDeg: 0, speedMs: 10 }),
+            rec(101, 0, 1.0001, { bearingDeg: 0, speedMs: 10 }), // moving east
+            rec(102, 0, 1.0002, { bearingDeg: 999, speedMs: 10 }), // last, no next
         ];
         fillForwardBearings(records);
         // Last record inherits lastValid from previous (≈90°).
@@ -709,7 +764,7 @@ describe("fillForwardBearings", () => {
     });
 
     it("mutates input array in place", () => {
-        const records = [rec(100, 0, 0, { bearingDeg: 999, speedMs: 10 }), rec(101, 0, 0.001, { speedMs: 10 })];
+        const records = [rec(100, 0, 1, { bearingDeg: 999, speedMs: 10 }), rec(101, 0, 1.001, { speedMs: 10 })];
         const originalRef = records[0];
         fillForwardBearings(records);
         expect(records[0]).toBe(originalRef); // same object reference
@@ -718,12 +773,23 @@ describe("fillForwardBearings", () => {
 });
 
 describe("forwardFillBearingsIfAllZero", () => {
+    it("ignores an unusable position's course when deciding whether the track has bearings", () => {
+        const records = [
+            rec(100, 0, 0, { bearingDeg: 270, speedMs: 10 }),
+            rec(101, 0, 20, { speedMs: 10 }),
+            rec(102, 0, 20.0001, { speedMs: 10 }),
+        ];
+        forwardFillBearingsIfAllZero(records);
+        expect(records[0]!.bearingDeg).toBe(270);
+        expect(records[1]!.bearingDeg).toBeCloseTo(90, 6);
+    });
+
     it("fills bearings when every record has bearingDeg=0 (parser without course)", () => {
         // Moving due east.
         const records = [
-            rec(100, 0, 0, { speedMs: 10 }),
-            rec(101, 0, 0.0001, { speedMs: 10 }),
-            rec(102, 0, 0.0002, { speedMs: 10 }),
+            rec(100, 0, 1, { speedMs: 10 }),
+            rec(101, 0, 1.0001, { speedMs: 10 }),
+            rec(102, 0, 1.0002, { speedMs: 10 }),
         ];
         forwardFillBearingsIfAllZero(records);
         expect(records[0]!.bearingDeg).toBeCloseTo(90, 0);
@@ -733,9 +799,9 @@ describe("forwardFillBearingsIfAllZero", () => {
         // Parser that writes course (NMEA RMC etc.): even one non-zero value
         // is treated as proof the format provides bearing.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 45, speedMs: 10 }),
-            rec(101, 0, 0.0001, { bearingDeg: 0, speedMs: 10 }), // a real zero
-            rec(102, 0, 0.0002, { bearingDeg: 47, speedMs: 10 }),
+            rec(100, 0, 1, { bearingDeg: 45, speedMs: 10 }),
+            rec(101, 0, 1.0001, { bearingDeg: 0, speedMs: 10 }), // a real zero
+            rec(102, 0, 1.0002, { bearingDeg: 47, speedMs: 10 }),
         ];
         forwardFillBearingsIfAllZero(records);
         expect(records[0]!.bearingDeg).toBe(45);
@@ -748,22 +814,33 @@ describe("forwardFillBearingsIfAllZero", () => {
         forwardFillBearingsIfAllZero(empty);
         expect(empty).toEqual([]);
 
-        const one = [rec(100, 0, 0)];
+        const one = [rec(100, 0, 1)];
         forwardFillBearingsIfAllZero(one);
         expect(one[0]!.bearingDeg).toBe(0); // single record has no neighbour to bear toward
     });
 });
 
 describe("freezeStationaryBearings", () => {
+    it("keeps missing-signal bearings out of stationary heading stabilization", () => {
+        const records = [
+            rec(100, 0, 0, { bearingDeg: 270, speedMs: 10 }),
+            rec(101, 0, 20, { bearingDeg: 90, speedMs: 0 }),
+            rec(102, 0, 0, { bearingDeg: 180, speedMs: 10 }),
+            rec(103, 0, 20, { bearingDeg: 45, speedMs: 0 }),
+        ];
+        freezeStationaryBearings(records);
+        expect(records.map((record) => record.bearingDeg)).toEqual([270, 90, 180, 90]);
+    });
+
     it("inherits last moving bearing across a stationary gap", () => {
         // 90 -> stop -> stop -> 270 (sharp U-turn after the gap).
         // Stationary records must NOT spin to random angles, they hold the
         // last "moving" value until the next real heading arrives.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 90, speedMs: 10 }),
-            rec(101, 0, 0, { bearingDeg: 17, speedMs: 0.1 }), // NMEA noise on a stopped car
-            rec(102, 0, 0, { bearingDeg: 243, speedMs: 0.4 }), // more noise
-            rec(103, 0, 0, { bearingDeg: 270, speedMs: 10 }),
+            rec(100, 0, 1, { bearingDeg: 90, speedMs: 10 }),
+            rec(101, 0, 1, { bearingDeg: 17, speedMs: 0.1 }), // NMEA noise on a stopped car
+            rec(102, 0, 1, { bearingDeg: 243, speedMs: 0.4 }), // more noise
+            rec(103, 0, 1, { bearingDeg: 270, speedMs: 10 }),
         ];
         freezeStationaryBearings(records);
         expect(records[0]!.bearingDeg).toBe(90);
@@ -774,9 +851,9 @@ describe("freezeStationaryBearings", () => {
 
     it("keeps the moving bearing untouched (no smoothing of real motion)", () => {
         const records = [
-            rec(100, 0, 0, { bearingDeg: 10, speedMs: 5 }),
-            rec(101, 0, 0, { bearingDeg: 350, speedMs: 5 }),
-            rec(102, 0, 0, { bearingDeg: 5, speedMs: 5 }),
+            rec(100, 0, 1, { bearingDeg: 10, speedMs: 5 }),
+            rec(101, 0, 1, { bearingDeg: 350, speedMs: 5 }),
+            rec(102, 0, 1, { bearingDeg: 5, speedMs: 5 }),
         ];
         freezeStationaryBearings(records);
         expect(records[0]!.bearingDeg).toBe(10);
@@ -788,9 +865,9 @@ describe("freezeStationaryBearings", () => {
         // No "moving" record before the stationary ones - the freeze cannot
         // invent a heading, so it picks the first record's bearing and holds.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 42, speedMs: 0.1 }),
-            rec(101, 0, 0, { bearingDeg: 313, speedMs: 0.2 }),
-            rec(102, 0, 0, { bearingDeg: 50, speedMs: 10 }),
+            rec(100, 0, 1, { bearingDeg: 42, speedMs: 0.1 }),
+            rec(101, 0, 1, { bearingDeg: 313, speedMs: 0.2 }),
+            rec(102, 0, 1, { bearingDeg: 50, speedMs: 10 }),
         ];
         freezeStationaryBearings(records);
         expect(records[0]!.bearingDeg).toBe(42);
@@ -801,9 +878,9 @@ describe("freezeStationaryBearings", () => {
     it("threshold is inclusive of stationary (< 1.0 m/s) and exclusive at boundary", () => {
         // Speeds chosen around 1.0 m/s - the documented STATIONARY_SPEED_MS.
         const records = [
-            rec(100, 0, 0, { bearingDeg: 100, speedMs: 2 }),
-            rec(101, 0, 0, { bearingDeg: 999, speedMs: 0.99 }), // stationary
-            rec(102, 0, 0, { bearingDeg: 200, speedMs: 1.0 }), // exactly at boundary - moving
+            rec(100, 0, 1, { bearingDeg: 100, speedMs: 2 }),
+            rec(101, 0, 1, { bearingDeg: 999, speedMs: 0.99 }), // stationary
+            rec(102, 0, 1, { bearingDeg: 200, speedMs: 1.0 }), // exactly at boundary - moving
         ];
         freezeStationaryBearings(records);
         expect(records[0]!.bearingDeg).toBe(100);
@@ -836,6 +913,24 @@ describe("dropTeleportOutliers", () => {
         const kept = dropTeleportOutliers(records);
         expect(kept).toHaveLength(9);
         expect(kept.some((r) => r.lat > LAT + 0.01)).toBe(false);
+    });
+
+    it.each([1, 2, 3])("preserves telemetry through %s zero-pair samples without replacing valid anchors", (count) => {
+        const healthy = track1Hz(4);
+        const records = [
+            rec(999, 0, 0, { accelYg: 0.2 }),
+            ...healthy.slice(0, 2),
+            ...Array.from({ length: count }, (_, i) => rec(1001 + (i + 1) / (count + 1), 0, 0, { accelYg: 0.8 })),
+            ...healthy.slice(2),
+            rec(1004, 0, 0, { accelYg: 0.1 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept).toEqual(records);
+        for (let i = 0; i < records.length; i++) expect(kept[i]).toBe(records[i]);
+        expect(totalDistanceKm(kept)).toBeCloseTo(totalDistanceKm(healthy), 9);
+        expect(detectEvents(kept, 999)).toContainEqual(
+            expect.objectContaining({ unixSeconds: records[3]!.unixSeconds, kind: "brake", severity: 0.8 }),
+        );
     });
 
     it("keeps every sample of an 18 Hz GoPro-style track with ±10 m jitter (distance floor)", () => {

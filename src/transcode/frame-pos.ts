@@ -13,6 +13,7 @@
 
 import type { GpsRecord, InterpolatedPosition, SpeedSample } from "../parsers/types.js";
 import { hasMeasuredSpeed, hasSpeed, interpolateSpeed, isSameTrackSegment } from "../gps-telemetry.js";
+import { cumulativeDistanceKm, isValidGpsFix } from "../parser.js";
 
 /** Standard gravity (m/s^2) - converts m/s^2 to g. */
 const G = 9.80665;
@@ -66,28 +67,11 @@ export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: 
 
 /**
  * Cumulative travelled distance (meters) at each record. Same length as
- * `records`; index 0 = 0. Segments where either endpoint is a non-finite or
- * lost-fix (active=false) position contribute 0 - those carry NaN coordinates
- * in some parsers and would poison the running sum.
+ * `records`; index 0 = 0. Uses the viewer's distance calculation so missing
+ * fixes and source boundaries have the same meaning in both readouts.
  */
 export function computeCumulativeDistanceM(records: GpsRecord[]): number[] {
-    const out = new Array<number>(records.length);
-    let acc = 0;
-    for (let i = 0; i < records.length; i++) {
-        if (i > 0) {
-            const a = records[i - 1]!;
-            const b = records[i]!;
-            if (drawable(a) && drawable(b) && isSameTrackSegment(a, b))
-                acc += haversineMeters(a.lat, a.lon, b.lat, b.lon);
-        }
-        out[i] = acc;
-    }
-    return out;
-}
-
-/** A record usable for geometry: valid fix and finite coordinates. */
-function drawable(r: GpsRecord): boolean {
-    return r.active && Number.isFinite(r.lat) && Number.isFinite(r.lon);
+    return Array.from(cumulativeDistanceKm(records), (distanceKm) => distanceKm * 1000);
 }
 
 /** Index of the last record with unixSeconds <= target (binary search). -1 if
@@ -109,10 +93,9 @@ function lastLeq(records: GpsRecord[], target: number): number {
 }
 
 /**
- * True when a usable (active, finite-coordinate) record lies within
- * FIX_TOLERANCE_SEC of `target`. Records flagged active=false are the
- * receiver's own "no fix" markers, so they do not count as coverage; the scan
- * walks outward from the binary-search neighbors and is O(1) on healthy data.
+ * True when a valid GPS fix lies within FIX_TOLERANCE_SEC of `target`.
+ * Missing-signal placeholders do not count as coverage; the scan walks outward
+ * from the binary-search neighbors and is O(1) on healthy data.
  */
 export function hasFixAt(records: GpsRecord[], target: number): boolean {
     const n = records.length;
@@ -121,12 +104,12 @@ export function hasFixAt(records: GpsRecord[], target: number): boolean {
     for (let k = i; k >= 0; k--) {
         const r = records[k]!;
         if (target - r.unixSeconds > FIX_TOLERANCE_SEC) break;
-        if (drawable(r)) return true;
+        if (isValidGpsFix(r)) return true;
     }
     for (let k = i + 1; k < n; k++) {
         const r = records[k]!;
         if (r.unixSeconds - target > FIX_TOLERANCE_SEC) break;
-        if (drawable(r)) return true;
+        if (isValidGpsFix(r)) return true;
     }
     return false;
 }
@@ -155,13 +138,12 @@ export function interpScalar(records: GpsRecord[], values: number[], target: num
 /** Interpolated speed (m/s) at target, clamped to ends. */
 function speedAt(records: GpsRecord[], target: number): SpeedSample {
     const n = records.length;
-    if (n === 0) return { speedMs: 0, speedSource: "unavailable" };
-    const i = lastLeq(records, target);
-    if (i < 0) return records[0]!;
-    if (i >= n - 1 || records[i]!.unixSeconds === target) return records[i]!;
-    const a = records[i]!;
+    const i = Math.max(0, lastLeq(records, target));
+    const a = records[i];
+    if (!a || !isValidGpsFix(a)) return { speedMs: 0, speedSource: "unavailable" };
+    if (i >= n - 1 || target <= a.unixSeconds) return a;
     const b = records[i + 1]!;
-    if (!isSameTrackSegment(a, b)) return { speedMs: 0, speedSource: "unavailable" };
+    if (!isValidGpsFix(b) || !isSameTrackSegment(a, b)) return { speedMs: 0, speedSource: "unavailable" };
     const span = b.unixSeconds - a.unixSeconds;
     return span <= 0 ? a : interpolateSpeed(a, b, (target - a.unixSeconds) / span);
 }
@@ -194,7 +176,7 @@ function hasMeasuredSpeedWindow(records: GpsRecord[], target: number): boolean {
     const end = Math.min(records.length - 1, lastLeq(records, target + DERIV_HALF_WINDOW_SEC) + 1);
     for (let i = start; i <= end; i++) {
         const record = records[i]!;
-        if (!record.active || !hasMeasuredSpeed(record)) return false;
+        if (!isValidGpsFix(record) || !hasMeasuredSpeed(record)) return false;
         if (i > start && !isSameTrackSegment(records[i - 1]!, record)) return false;
     }
     return true;

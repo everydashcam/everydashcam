@@ -145,7 +145,7 @@ export function thinDenseRecords(records: GpsRecord[]): GpsRecord[] {
         const kept = out[existingIdx]!;
         const keptIsStrongest =
             accelMagnitude(kept.accelXg, kept.accelYg, kept.accelZg) >= accelMagnitude(r.accelXg, r.accelYg, r.accelZg);
-        if (!kept.active && r.active) {
+        if (!isValidGpsFix(kept) && isValidGpsFix(r)) {
             // Fix acquired mid-bucket: this record's coordinates win, but the
             // strongest accel seen so far must ride along (kept already holds
             // the max of every earlier record in this bucket).
@@ -187,8 +187,8 @@ export function lastSyncedRecord(records: GpsRecord[] | null | undefined): GpsRe
 }
 
 /**
- * Total trip distance via haversine over all active GPS records.
- * Only `active === true` records are counted - lost-fix points produce
+ * Total trip distance via haversine over all valid GPS fixes.
+ * Only isValidGpsFix records are counted - lost-fix points produce
  * coordinate jumps that inflate distance.
  *
  * Accuracy is ~5-15% at 1 Hz with good sky visibility - sufficient for
@@ -239,8 +239,8 @@ export function cumulativeDistanceKm(records: GpsRecord[] | null | undefined): F
 }
 
 /**
- * True iff the records carry at least one valid GPS fix. "active" = a valid
- * lat/lon fix (see GpsRecord); lost-fix points do not count. This is the single
+ * True iff the records carry at least one valid GPS fix. Receiver status alone
+ * is insufficient; missing/invalid positions do not count. This is the single
  * gate for every GPS-dependent export option - the GPS-track-only mode, the
  * embedded telemetry track, the .gpx sidecar, and the speed/coords/map overlays
  * - none of which produce anything without a fix. The export panel disables the
@@ -251,10 +251,13 @@ export function recordsHaveGps(records: GpsRecord[] | null | undefined): boolean
     return !!records && records.some(isValidGpsFix);
 }
 
-/** A fix must be safe to project even when a malformed record escapes parsing. */
+/** A fix must be safe to project even when a malformed record escapes parsing.
+ * Cameras can report (0, 0) during signal loss while still marking it active;
+ * a single zero coordinate remains valid on the equator or prime meridian. */
 export function isValidGpsFix(record: GpsRecord): boolean {
     return (
         record.active &&
+        (record.lat !== 0 || record.lon !== 0) &&
         Number.isFinite(record.lat) &&
         Number.isFinite(record.lon) &&
         Math.abs(record.lat) <= 90 &&
@@ -275,6 +278,8 @@ export function isValidGpsFix(record: GpsRecord): boolean {
  *
  * Stationary points (speedMs < MIN_BEARING_SPEED_MS) inherit the last valid
  * bearing so the marker does not jitter on coordinate noise.
+ * Missing fixes and source boundaries stop the look-ahead; their coordinates
+ * cannot supply a heading for the valid track.
  *
  * Mutates input array in place.
  */
@@ -291,6 +296,7 @@ export function fillForwardBearings(records: GpsRecord[]): void {
     let lastValid = 0;
     for (let i = 0; i < records.length; i++) {
         const cur = records[i]!;
+        if (!isValidGpsFix(cur)) continue;
         if (cur.speedMs < MIN_BEARING_SPEED_MS) {
             cur.bearingDeg = lastValid;
             continue;
@@ -300,6 +306,7 @@ export function fillForwardBearings(records: GpsRecord[]): void {
         const jEnd = Math.min(records.length, i + 1 + LOOKAHEAD_CAP);
         for (let j = i + 1; j < jEnd; j++) {
             const cand = records[j]!;
+            if (!isValidGpsFix(cand) || !isSameTrackSegment(cur, cand)) break;
             const dLat = cand.lat - cur.lat;
             const dLon = cand.lon - cur.lon;
             if (Math.hypot(dLat, dLon) >= MIN_BEARING_DIST_DEG) {
@@ -342,16 +349,16 @@ const STATIONARY_SPEED_MS = 1.0;
  *
  * Records expected pre-sorted by unixSeconds. Idempotent.
  *
- * Initial lastValid is the first record's bearingDeg, so a trip that starts
+ * Initial lastValid is the first valid fix's bearingDeg, so a trip that starts
  * stationary at least holds one stable angle until the first movement
  * arrives and overwrites lastValid with real data.
  *
  * Mutates input in place.
  */
 export function freezeStationaryBearings(records: GpsRecord[]): void {
-    if (records.length === 0) return;
-    let lastValid = records[0]!.bearingDeg;
+    let lastValid = records.find(isValidGpsFix)?.bearingDeg ?? 0;
     for (const r of records) {
+        if (!isValidGpsFix(r)) continue;
         if (r.speedMs < STATIONARY_SPEED_MS) {
             r.bearingDeg = lastValid;
         } else {
@@ -389,7 +396,7 @@ function freezeStationaryBearingsByOwner(records: GpsRecord[]): void {
 }
 
 /**
- * Calls fillForwardBearings on a per-file batch only when no record carries
+ * Calls fillForwardBearings on a per-file batch only when no valid fix carries
  * a non-zero bearing - i.e. the parser does not extract course at all.
  *
  * Used as a centralized normalization step in the dispatcher so individual
@@ -409,7 +416,7 @@ function freezeStationaryBearingsByOwner(records: GpsRecord[]): void {
 export function forwardFillBearingsIfAllZero(records: GpsRecord[]): void {
     if (records.length < 2) return;
     for (const r of records) {
-        if (r.bearingDeg !== 0) return;
+        if (isValidGpsFix(r) && r.bearingDeg !== 0) return;
     }
     fillForwardBearings(records);
 }
@@ -445,10 +452,10 @@ const DEFAULT_TELEPORT_FILTER: TeleportFilterOptions = { maxImpliedSpeedMs: 100,
  * reversible.
  *
  * Algorithm - anchor chain walk:
- *   - Only active, time-synced records participate. active === false rows
- *     (escort-map void fixes - the only active:false emitter) and timeUnsynced
- *     rows (cold-start placeholders re-anchored onto the video window later)
- *     are ALWAYS kept, never become anchors, and are skipped by the lookahead.
+ *   - Only valid, time-synced fixes participate. Missing/invalid fixes and
+ *     timeUnsynced rows (cold-start placeholders re-anchored onto the video
+ *     window later) are ALWAYS kept with their telemetry, never become anchors,
+ *     and are skipped by the lookahead.
  *     Consequence: fully-timeUnsynced formats (70mai freegps / gps-box,
  *     Wolfbox variant A) are entirely exempt from this filter.
  *   - A record is a drop candidate only when BOTH gates trip: displacement
@@ -494,7 +501,7 @@ export function dropTeleportOutliers(
     records: GpsRecord[],
     opts: TeleportFilterOptions = DEFAULT_TELEPORT_FILTER,
 ): GpsRecord[] {
-    const isEligible = (r: GpsRecord): boolean => r.active && !r.timeUnsynced;
+    const isEligible = (r: GpsRecord): boolean => isValidGpsFix(r) && !r.timeUnsynced;
     // Thin record-shaped adapter over the shared accelMagnitude helper.
     const accelMag = (r: GpsRecord): number => accelMagnitude(r.accelXg, r.accelYg, r.accelZg);
     const out: GpsRecord[] = [];

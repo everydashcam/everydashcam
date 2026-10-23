@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { GpsRecord } from "../parsers/types.js";
+import { totalDistanceKm } from "../parser.js";
 import {
     computeCumulativeDistanceM,
     deriveGLat,
@@ -64,16 +65,38 @@ describe("computeCumulativeDistanceM", () => {
         for (let i = 1; i < cum.length; i++) expect(cum[i]!).toBeGreaterThanOrEqual(cum[i - 1]!);
         expect(cum[4]!).toBeGreaterThan(0);
     });
-    it("skips lost-fix / non-finite segments", () => {
+    it("carries distance through a lost fix and resumes from the last valid position", () => {
         const recs = series(4);
         recs[2]!.active = false;
         recs[2]!.lat = Number.NaN;
         const cum = computeCumulativeDistanceM(recs);
-        // segment 1->2 and 2->3 contribute 0; 0->1 contributes the only distance
         expect(cum[1]!).toBeGreaterThan(0);
         expect(cum[2]).toBe(cum[1]);
-        expect(cum[3]).toBe(cum[2]);
-        expect(Number.isFinite(cum[3]!)).toBe(true);
+        expect(cum[3]).toBeCloseTo(
+            cum[1]! + haversineMeters(recs[1]!.lat, recs[1]!.lon, recs[3]!.lat, recs[3]!.lon),
+            6,
+        );
+        expect(cum[3]).toBeCloseTo(totalDistanceKm(recs) * 1000, 6);
+    });
+
+    it("ignores origin placeholders without changing their telemetry", () => {
+        const recs = series(4);
+        recs[2] = { ...recs[2]!, lat: 0, lon: 0, accelYg: 0.8 };
+        const cum = computeCumulativeDistanceM(recs);
+        expect(cum[1]!).toBeGreaterThan(0);
+        expect(cum[2]).toBe(cum[1]);
+        expect(cum[3]).toBeCloseTo(totalDistanceKm(recs) * 1000, 6);
+        expect(cum[3]!).toBeGreaterThan(cum[1]!);
+        expect(recs[2]).toMatchObject({ active: true, lat: 0, lon: 0, accelYg: 0.8 });
+    });
+
+    it("does not connect separate track segments across a missing fix", () => {
+        const recs = series(4);
+        recs[2] = { ...recs[2]!, lat: 0, lon: 0 };
+        recs[3]!.trackSegment = 1;
+        const cum = computeCumulativeDistanceM(recs);
+        expect(cum[3]).toBe(cum[1]);
+        expect(cum[3]).toBeCloseTo(totalDistanceKm(recs) * 1000, 6);
     });
 });
 
@@ -109,6 +132,12 @@ describe("deriveGLong", () => {
         const flat = series(6, { speed: () => 20 });
         expect(Math.abs(deriveGLong(flat, 1002))).toBeLessThan(1e-6);
     });
+
+    it.each([false, true])("does not derive acceleration from a missing position with active=%s", (active) => {
+        const recs = series(5, { speed: () => 20 });
+        recs[2] = { ...recs[2]!, active, lat: 0, lon: 0, speedMs: 0 };
+        for (const target of [1001, 1002, 1003]) expect(deriveGLong(recs, target)).toBe(0);
+    });
 });
 
 describe("deriveGLat", () => {
@@ -128,6 +157,12 @@ describe("deriveGLat", () => {
         const g = deriveGLat(wrap, 1002);
         expect(Math.abs(g)).toBeLessThan(0.5);
     });
+
+    it.each([false, true])("does not derive a turn from a missing position with active=%s", (active) => {
+        const recs = series(5, { speed: () => 20 });
+        recs[2] = { ...recs[2]!, active, lat: 0, lon: 0, bearingDeg: 180 };
+        for (const target of [1001, 1002, 1003]) expect(deriveGLat(recs, target)).toBe(0);
+    });
 });
 
 describe("sampleSpeedAcross", () => {
@@ -142,11 +177,48 @@ describe("sampleSpeedAcross", () => {
     it("never returns fewer than 2 samples", () => {
         expect(sampleSpeedAcross(series(3), 1000, 1002, 1)).toHaveLength(2);
     });
+
+    it.each([false, true])("leaves a graph gap through a missing position with active=%s", (active) => {
+        const recs = series(3, { speed: () => 20 });
+        recs[1] = { ...recs[1]!, active, lat: 0, lon: 0, speedMs: 0 };
+        const samples = sampleSpeedAcross(recs, 1000, 1002, 9);
+        expect(samples[0]).toBe(20);
+        expect(samples.at(-1)).toBe(20);
+        for (const value of samples.slice(1, -1)) expect(value).toBeNaN();
+        expect(recs[1]!.speedMs, "raw telemetry remains available").toBe(0);
+    });
+
+    it("does not extend a missing endpoint's speed outside the track", () => {
+        const recs = series(2, { speed: () => 20 });
+        recs[0] = { ...recs[0]!, lat: 0, lon: 0, speedMs: 0 };
+        const samples = sampleSpeedAcross(recs, 999, 1002, 4);
+        expect(samples[0]).toBeNaN();
+        expect(samples[1]).toBeNaN();
+        expect(samples[2]).toBe(20);
+        expect(samples[3]).toBe(20);
+    });
 });
 
 describe("resolveFramePos", () => {
     const recs = series(6, { speed: (i) => 10 + 2 * i, bearing: () => 90, accel: true });
     const cum = computeCumulativeDistanceM(recs);
+
+    it("retains recorded acceleration when GPS motion is unavailable", () => {
+        const records = series(5, { speed: () => 20 });
+        records[2] = { ...records[2]!, lat: 0, lon: 0, speedMs: 0, bearingDeg: 180, accelXg: 0.8 };
+        const frame = resolveFramePos({
+            records,
+            base: { lat: 47, lon: 30, speedMs: 20, bearingDeg: 0 },
+            cumulative: null,
+            distanceBaseM: 0,
+            frameUtc: 1002,
+            progress: 0.5,
+        });
+        expect(frame.gLong).toBe(0);
+        expect(frame.gLat).toBe(0);
+        expect(frame.gMag).toBeCloseTo(0.8, 9);
+        expect(recordsHaveAccel(records)).toBe(true);
+    });
 
     it("subtracts the range-start distance base", () => {
         const base = { lat: 47, lon: 30, speedMs: 14, bearingDeg: 90 };
@@ -220,6 +292,13 @@ describe("hasFixAt", () => {
     it("ignores active=false records - the receiver's own no-fix markers", () => {
         const recs = series(3).map((r) => ({ ...r, active: false }));
         expect(hasFixAt(recs, 1001)).toBe(false);
+    });
+
+    it("rejects origin placeholders while accepting a single zero coordinate", () => {
+        const record = series(1)[0]!;
+        expect(hasFixAt([{ ...record, lat: 0, lon: 0 }], record.unixSeconds)).toBe(false);
+        expect(hasFixAt([{ ...record, lat: 0 }], record.unixSeconds)).toBe(true);
+        expect(hasFixAt([{ ...record, lon: 0 }], record.unixSeconds)).toBe(true);
     });
 });
 

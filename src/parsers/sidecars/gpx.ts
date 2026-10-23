@@ -11,7 +11,7 @@
 
 import type { GpsRecord, SidecarHandler, VendorFile } from "../types.js";
 import { escapeXml } from "../../escape.js";
-import { forwardFillBearingsIfAllZero } from "../../parser.js";
+import { forwardFillBearingsIfAllZero, isValidGpsFix } from "../../parser.js";
 import { hasSpeed, isSameTrackSegment } from "../../gps-telemetry.js";
 import { utcMillisecondsFromParts } from "../internal/calendar.js";
 import { isCoordinateInRange } from "../internal/ddmm.js";
@@ -303,7 +303,7 @@ export function serializeGpx({ records, trackName, creator = "everydashcam" }: S
     let points = "";
     let previous: GpsRecord | null = null;
     for (const record of records) {
-        if (!record.active) continue;
+        if (!isValidGpsFix(record)) continue;
         if (previous && !isSameTrackSegment(previous, record)) points += "\n    </trkseg>\n    <trkseg>";
         points += serializeTrkpt(record);
         previous = record;

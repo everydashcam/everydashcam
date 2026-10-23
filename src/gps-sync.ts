@@ -4,7 +4,7 @@
 // localStorage, anchored to a recording's stable file identity. The resolved
 // preference is applied to each freshly-derived Trip at the regroup boundary.
 
-import { recordsHaveGps } from "./parser.js";
+import { isValidGpsFix, recordsHaveGps } from "./parser.js";
 import { usableCandidateRecords } from "./stale-gps.js";
 import { fileIdentityKey } from "./persist/identity.js";
 import { applyGpsSyncToTrip, rawTripGpsRecords, type Trip, tripAllCandidates } from "./trips.js";
@@ -216,16 +216,16 @@ export function gpsSyncPeerTrips(trip: Trip, trips: readonly Trip[]): Trip[] {
 }
 
 export function rawGpsStartUnix(trip: Trip): number | null {
-    return rawTripGpsRecords(trip).find((record) => record.active)?.unixSeconds ?? null;
+    return rawTripGpsRecords(trip).find(isValidGpsFix)?.unixSeconds ?? null;
 }
 
 /** Edge overhang after applying an offset. It intentionally measures only the
  *  track prefix/suffix; recording pauses inside a trip are explained separately
  *  by the timeline and do not read as an accidentally long GPX. */
 export function gpsTrackOverhangSec(trip: Trip, offsetSec: number): number {
-    const active = rawTripGpsRecords(trip).filter((record) => record.active);
-    const first = active[0];
-    const last = active[active.length - 1];
+    const fixes = rawTripGpsRecords(trip).filter(isValidGpsFix);
+    const first = fixes[0];
+    const last = fixes[fixes.length - 1];
     const firstSegment = trip.timeline.segments[0];
     const lastSegment = trip.timeline.segments[trip.timeline.segments.length - 1];
     if (!first || !last || !firstSegment || !lastSegment) return 0;

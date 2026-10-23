@@ -138,6 +138,20 @@ describe("packGpmfSamples - GPS round-trip", () => {
         expect(decodeNumeric(gpsf!)?.[0]).toBe(3);
     });
 
+    it("omits origin placeholders from GPS5 while preserving one-zero-coordinate fixes", () => {
+        const records = [
+            makeRecord({ unixSeconds: baseUtc + 0.1, lat: 0, lon: 0 }),
+            makeRecord({ unixSeconds: baseUtc + 0.2, lat: 0, lon: 37 }),
+            makeRecord({ unixSeconds: baseUtc + 0.3, lat: 55, lon: 0 }),
+        ];
+        const samples = packAtUtc(records, baseUtc, 1, { includeAccel: false });
+        expect(decodeFirstGps5(samples[0]!.payload).map(({ lat, lon }) => ({ lat, lon }))).toEqual([
+            { lat: 0, lon: 37 },
+            { lat: 55, lon: 0 },
+        ]);
+        expect(decodeNumeric(findFirstToken(samples[0]!.payload, "GPSF")!)?.[0]).toBe(3);
+    });
+
     it("filters records outside [clipStart, clipStart + duration)", () => {
         const records: GpsRecord[] = [
             // before range
@@ -200,6 +214,21 @@ describe("packGpmfSamples - GPS round-trip", () => {
 describe("packGpmfSamples - ACCL round-trip", () => {
     const baseUtc = Date.UTC(2026, 4, 8, 12, 30, 45) / 1000;
     const G_TO_MS2 = 9.80665;
+
+    it("preserves acceleration and time while marking origin-only GPS as no fix", () => {
+        const records = [makeRecord({ unixSeconds: baseUtc + 0.1, lat: 0, lon: 0, accelXg: 0.5, accelYg: -0.25 })];
+        const samples = packAtUtc(records, baseUtc, 1, { includeAccel: true });
+        const payload = samples[0]!.payload;
+        expect(decodeNumeric(findFirstToken(payload, "GPSF")!)?.[0]).toBe(0);
+        expect(decodeFirstGps5(payload)).toHaveLength(1);
+        const gpsu = findFirstToken(payload, "GPSU");
+        expect(parseGpsuTimestamp(decodeString(gpsu!))).toBeCloseTo(baseUtc, 2);
+        const accel = decodeAccl(payload);
+        expect(accel).toHaveLength(1);
+        expect(accel[0]!.x).toBeCloseTo(0.5 * G_TO_MS2, 2);
+        expect(accel[0]!.y).toBeCloseTo(-0.25 * G_TO_MS2, 2);
+        expect(records[0]).toMatchObject({ active: true, lat: 0, lon: 0, accelXg: 0.5, accelYg: -0.25 });
+    });
 
     it("includeAccel=false omits ACCL stream entirely", () => {
         const records: GpsRecord[] = [makeRecord({ unixSeconds: baseUtc + 0.1, accelXg: 0.5 })];

@@ -1458,8 +1458,8 @@ function refreshEventsLayer(map: maplibregl.Map, trip: Trip | null): void {
 
     if (!trip || trip.events.length === 0) return;
 
-    // Event coordinates from trip.records[event.recordIndex]. Skip records
-    // without an active GPS fix - no reliable coordinate.
+    // Event coordinates come from the event's own record. Keep an event with
+    // no usable position on the timeline, without inventing a location for its pin.
     const features: Array<{
         type: "Feature";
         geometry: { type: "Point"; coordinates: [number, number] };

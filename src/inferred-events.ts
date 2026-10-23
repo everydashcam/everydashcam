@@ -26,6 +26,7 @@
 // of the user's display preference.
 
 import { hasMeasuredSpeed, isSameTrackSegment } from "./gps-telemetry.js";
+import { isValidGpsFix } from "./parser.js";
 import type { GpsRecord } from "./parsers/types.js";
 
 export type InferredSegmentKind = "stop" | "brake" | "turn" | "accel";
@@ -122,8 +123,7 @@ export function detectInferredSegments(records: GpsRecord[], tripStartUtc: numbe
 }
 
 /** Stop: speedMs < threshold sustained >= MIN_STOP_DURATION_SEC.
- *  Inactive records (no GPS fix) are excluded - loss of fix mid-trip is rare
- *  and not worth special-casing. Intensity is scaled by segment duration. */
+ *  Missing GPS fixes break the segment. Intensity is scaled by duration. */
 function detectStops(records: GpsRecord[], tripStartUtc: number, out: InferredSegment[]): void {
     let segStart = -1;
     for (let i = 0; i < records.length; i++) {
@@ -136,7 +136,7 @@ function detectStops(records: GpsRecord[], tripStartUtc: number, out: InferredSe
             flushStop(records, tripStartUtc, segStart, i - 1, out);
             segStart = -1;
         }
-        const stationary = r.active && hasMeasuredSpeed(r) && r.speedMs < SPEED_STOP_THRESHOLD_MS;
+        const stationary = isValidGpsFix(r) && hasMeasuredSpeed(r) && r.speedMs < SPEED_STOP_THRESHOLD_MS;
         if (stationary) {
             if (segStart < 0) segStart = i;
         } else if (segStart >= 0) {
@@ -172,16 +172,14 @@ function detectBrakeAndAccel(records: GpsRecord[], tripStartUtc: number, out: In
         const prev = records[i - 1]!;
         const cur = records[i]!;
         const dt = cur.unixSeconds - prev.unixSeconds;
-        // Guard against same-second duplicates, >5s gaps (GPS drop), and
-        // no-fix records: parsers that emit active=false rows (escort .map
-        // status "V") report speedMs=0 on a dropout, and a fix-loss next to a
-        // moving record reads as a phantom full-intensity brake+accel pair.
-        // Same gating detectStops applies via `r.active`.
+        // A missing fix can carry placeholder speed=0, which would create a
+        // phantom brake/accel pair beside moving records. Invalid fixes split
+        // the segment just like duplicate clocks or gaps longer than 5 s.
         if (
             dt <= 0 ||
             dt > 5 ||
-            !prev.active ||
-            !cur.active ||
+            !isValidGpsFix(prev) ||
+            !isValidGpsFix(cur) ||
             !hasMeasuredSpeed(prev) ||
             !hasMeasuredSpeed(cur) ||
             !isSameTrackSegment(prev, cur)
@@ -229,14 +227,14 @@ function detectTurns(records: GpsRecord[], tripStartUtc: number, out: InferredSe
         const cur = records[i]!;
         const dt = cur.unixSeconds - prev.unixSeconds;
         const tooSlow = cur.speedMs < TURN_MIN_SPEED_MS || prev.speedMs < TURN_MIN_SPEED_MS;
-        // !active: bearing on a no-fix record is garbage - same gating as
+        // Bearing on a no-fix record is garbage - same gating as
         // detectBrakeAndAccel (phantom events on fix dropouts).
         if (
             dt <= 0 ||
             dt > 5 ||
             tooSlow ||
-            !prev.active ||
-            !cur.active ||
+            !isValidGpsFix(prev) ||
+            !isValidGpsFix(cur) ||
             !hasMeasuredSpeed(prev) ||
             !hasMeasuredSpeed(cur) ||
             !isSameTrackSegment(prev, cur)

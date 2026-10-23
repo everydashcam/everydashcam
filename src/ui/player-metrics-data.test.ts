@@ -22,20 +22,24 @@ function record(unixSeconds: number, overrides: Partial<GpsRecord> = {}): GpsRec
 beforeEach(_resetForTests);
 
 describe("resolvePlayerMetrics", () => {
-    it("hides readouts with the map through a lost-fix interval and restores them on the recovered fix", () => {
-        const records = [record(100), record(101, { active: false, lat: 0, lon: 0, accelYg: 0.8 }), record(102)];
-        for (const target of [100, 100.2, 100.8, 101, 101.2, 101.8, 102]) {
-            const metrics = resolvePlayerMetrics(records, target);
-            expect(metrics.fix === "ok", `map/readout agreement at ${target}`).toBe(
-                interpolatePosition(records, target) !== null,
-            );
-        }
-        expect(resolvePlayerMetrics(records, 100.2)).toMatchObject({ fix: "lost", distanceKm: null });
-        expect(resolvePlayerMetrics(records, 101).record?.accelYg, "GPS loss preserves independent acceleration").toBe(
-            0.8,
-        );
-        expect(resolvePlayerMetrics(records, 102).record).toBe(records[2]);
-    });
+    it.each([false, true])(
+        "hides readouts through a zero-pair interval with active=%s and restores the recovered fix",
+        (active) => {
+            const records = [record(100), record(101, { active, lat: 0, lon: 0, accelYg: 0.8 }), record(102)];
+            for (const target of [100, 100.2, 100.8, 101, 101.2, 101.8, 102]) {
+                const metrics = resolvePlayerMetrics(records, target);
+                expect(metrics.fix === "ok", `map/readout agreement at ${target}`).toBe(
+                    interpolatePosition(records, target) !== null,
+                );
+            }
+            expect(resolvePlayerMetrics(records, 100.2)).toMatchObject({ fix: "lost", distanceKm: null });
+            expect(
+                resolvePlayerMetrics(records, 101).record?.accelYg,
+                "GPS loss preserves independent acceleration",
+            ).toBe(0.8);
+            expect(resolvePlayerMetrics(records, 102).record).toBe(records[2]);
+        },
+    );
 
     it("selects the valid concurrent channel for an exact timestamp", () => {
         const records = [record(99), record(100, { active: false, lat: 0, lon: 0 }), record(100), record(101)];

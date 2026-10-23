@@ -19,6 +19,7 @@ afterAll(() => {
 import { makeVendorFile } from "../__fixtures__/helpers.js";
 import { gpxSidecar, parseGpxTrack, serializeGpx } from "./gpx.js";
 import type { GpsRecord } from "../types.js";
+import { dropTeleportOutliers, interpolatePosition, recordsHaveGps } from "../../parser.js";
 
 function gpxDoc(content: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -65,6 +66,25 @@ describe("gpxSidecar.matches", () => {
 });
 
 describe("gpxSidecar.parse", () => {
+    it.each([
+        [0, 20],
+        [50, 0],
+    ])("preserves telemetry through missing positions beside a valid (%s, %s) fix", async (lat, lon) => {
+        const text = gpxDoc(`<trk><trkseg>
+            <trkpt lat="${lat}" lon="${lon}"><time>2024-01-15T12:34:56Z</time><speed>5</speed></trkpt>
+            <trkpt lat="0" lon="0"><time>2024-01-15T12:34:57Z</time><speed>6</speed></trkpt>
+            <trkpt lat="${lat}" lon="${lon}"><time>2024-01-15T12:34:58Z</time><speed>7</speed></trkpt>
+        </trkseg></trk>`);
+        const parsed = await gpxSidecar.parse!(makeVendorFile("trip.gpx", text), "trip.mp4");
+        const records = dropTeleportOutliers(parsed);
+        expect(records).toEqual(parsed);
+        expect(records.map((record) => record.speedMs)).toEqual([5, 6, 7]);
+        expect(recordsHaveGps([records[1]!])).toBe(false);
+        expect(interpolatePosition(records, records[0]!.unixSeconds)).toMatchObject({ lat, lon });
+        expect(interpolatePosition(records, records[1]!.unixSeconds)).toBeNull();
+        expect(interpolatePosition(records, records[2]!.unixSeconds)).toMatchObject({ lat, lon });
+    });
+
     it("parses trkpt with lat/lon/time", async () => {
         const text = gpxDoc(`
             <trk><trkseg>
@@ -417,6 +437,17 @@ describe("serializeGpx", () => {
         expect(out).not.toContain('lat="56.000000"');
     });
 
+    it("omits origin placeholders while preserving points with one zero coordinate", async () => {
+        const records = [rec(1700000000, 0, 0), rec(1700000001, 0, 37), rec(1700000002, 55, 0)];
+        const out = serializeGpx({ records, trackName: "missing signal" });
+        const parsed = await gpxSidecar.parse!(makeVendorFile("x.gpx", out), "x.mp4");
+        expect(parsed.map(({ lat, lon }) => ({ lat, lon }))).toEqual([
+            { lat: 0, lon: 37 },
+            { lat: 55, lon: 0 },
+        ]);
+        expect(records[0]).toMatchObject({ active: true, lat: 0, lon: 0 });
+    });
+
     it("formats lat/lon with 6 decimals", () => {
         const out = serializeGpx({ records: [rec(0, 55.123456789, 37.987654321)], trackName: "t" });
         expect(out).toContain('lat="55.123457"');
@@ -424,7 +455,10 @@ describe("serializeGpx", () => {
     });
 
     it("formats speed/course with 2 decimals", () => {
-        const out = serializeGpx({ records: [rec(0, 0, 0, { speedMs: 12.3456, bearingDeg: 90.987 })], trackName: "t" });
+        const out = serializeGpx({
+            records: [rec(0, 55, 37, { speedMs: 12.3456, bearingDeg: 90.987 })],
+            trackName: "t",
+        });
         expect(out).toContain('<dc:speed source="measured">12.35</dc:speed>');
         expect(out).toContain("<dc:course>90.99</dc:course>");
     });

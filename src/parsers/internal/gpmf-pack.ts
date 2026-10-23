@@ -43,6 +43,7 @@
 
 import { hasSpeed } from "../../gps-telemetry.js";
 import { concat } from "../../bytes.js";
+import { isValidGpsFix } from "../../parser.js";
 import type { GpsRecord } from "../types.js";
 import { type TripTimeline, wallToContentSecIfCovered, contentToWallUtc } from "../../trips.js";
 
@@ -188,10 +189,13 @@ function packSpeedMetadata(samples: GpsRecord[]): Uint8Array[] {
 
 /** STRM with GPS5 and associated tags. */
 function packGpsStream(inSecond: GpsRecord[], secondStartUtc: number): Uint8Array {
-    // No records this second: inject a placeholder lat=lon=0 / GPSF=0 so the
+    // Filter positions here so active records with unusable positions still
+    // contribute ACCL; receiver-reported inactive records are excluded earlier.
+    const fixes = inSecond.filter(isValidGpsFix);
+    // No fixes this second: inject a placeholder lat=lon=0 / GPSF=0 so the
     // gpmd track has a sample for every second (no gaps); readers will discard it.
-    const samples = inSecond.length > 0 ? inSecond : [makePlaceholderRecord(secondStartUtc)];
-    const fixQuality = inSecond.length > 0 ? GPSF_3D_FIX : GPSF_NO_FIX;
+    const samples = fixes.length > 0 ? fixes : [makePlaceholderRecord(secondStartUtc)];
+    const fixQuality = fixes.length > 0 ? GPSF_3D_FIX : GPSF_NO_FIX;
 
     // GPS5: 5 int32 per record, sampleSize=20, repeat=N.
     const gps5Payload = new Uint8Array(samples.length * 20);

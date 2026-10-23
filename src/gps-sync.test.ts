@@ -7,6 +7,7 @@ import {
     gpsSyncPeerTrips,
     gpsTrackOverhangSec,
     normalizeGpsOffsetSec,
+    rawGpsStartUnix,
     resolvedGpsSyncForTrip,
     setTripGpsOffsetSec,
     setTripGpsTrimToVideo,
@@ -114,6 +115,31 @@ describe("GPS synchronization", () => {
         setTripGpsTrimToVideo(value, true);
         applyStoredGpsSyncToTrip(value);
         expect(value.records.map((item) => item.unixSeconds)).toEqual([1000, 1010]);
+    });
+
+    it.each([
+        [0, 20],
+        [50, 0],
+    ])("ignores missing-signal edges around valid (%s, %s) fixes when aligning the track", (lat, lon) => {
+        const source = [
+            { ...record(900, 0), lat: 0, lon: 0, accelYg: 0.8 },
+            { ...record(995, 1), lat, lon },
+            { ...record(1025, 2), lat, lon },
+            { ...record(1100, 3), lat: 0, lon: 0 },
+        ];
+        const value = groupTrips([candidate(source)])[0]!;
+        expect(rawGpsStartUnix(value)).toBe(995);
+        expect(gpsTrackOverhangSec(value, 0)).toBe(10);
+        expect(gpsTrackOverhangSec(value, 5)).toBe(10);
+        expect(source[0]).toMatchObject({ unixSeconds: 900, accelYg: 0.8 });
+        expect(value.records).toHaveLength(source.length);
+    });
+
+    it("has no GPS alignment start or overhang when every position is missing", () => {
+        const source = [900, 1100].map((time, index) => ({ ...record(time, index), lat: 0, lon: 0 }));
+        const value = groupTrips([candidate(source)])[0]!;
+        expect(rawGpsStartUnix(value)).toBeNull();
+        expect(gpsTrackOverhangSec(value, 0)).toBe(0);
     });
 
     it("keeps an external track on its absolute clock until the user applies an offset", () => {
