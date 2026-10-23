@@ -4,26 +4,27 @@
 // (or missing) per dialog:
 //   - body scroll-lock while any modal is open (released when the last closes);
 //   - focus-trap: Tab/Shift+Tab cycle within the topmost modal;
-//   - focus restore: the element focused before opening is refocused on close;
-//   - a single Escape handler driven by a stack, so Escape closes only the
-//     topmost modal (no more N independent document listeners each firing).
+//   - focus restore when the foreground dialog closes; background completion
+//     only updates the return path and never steals focus;
+//   - one Escape handler for the foreground dialog's own dismissal policy.
 //
 // Usage: call activateModal(el, { onClose, initialFocus }) right after the
 // modal becomes visible, and deactivateModal(el) right after it is hidden.
-// onClose is the modal's own close function - the manager calls it for Escape.
+// onClose handles Escape; a busy dialog may keep working instead of closing.
 
 interface ModalEntry {
     el: HTMLElement;
+    layer: number;
     onClose: () => void;
     savedFocus: HTMLElement | null;
-    /** Where the modal lived before it was re-homed under the fullscreen
-     *  element, so it can go back on close. Null when it was not moved. */
+    /** Original position before joining the shared modal host, restored on close. */
     home: { parent: Node; next: Node | null } | null;
 }
 
-// Topmost = last. A stack (not a single ref) so nested dialogs - e.g. the reset
-// confirm opened from settings - close in LIFO order and the scroll-lock is
-// only released when the last one goes away.
+// Topmost = last. Order follows the CSS layers of the fixed dialog roots, which
+// share body (or the expanded player) as their stacking context. Equal layers
+// follow opening order because active roots are appended to that shared host.
+// Scroll-lock is released only when the last closes.
 const stack: ModalEntry[] = [];
 let keydownBound = false;
 
@@ -97,6 +98,8 @@ function onKeydown(ev: KeyboardEvent): void {
  * locks body scroll (first modal only), and moves focus inside - to
  * initialFocus if given, else the first focusable element, else the modal root
  * (which must be focusable, e.g. tabindex="-1", for the trap to hold).
+ * CSS z-index owns the layer order: opening background work beneath a visible
+ * dialog preserves that dialog's keyboard ownership and focus return path.
  */
 export function activateModal(el: HTMLElement, opts: { onClose: () => void; initialFocus?: HTMLElement | null }): void {
     // Re-activating an already-tracked modal is a no-op (idempotent open).
@@ -112,25 +115,45 @@ export function activateModal(el: HTMLElement, opts: { onClose: () => void; init
 
     const savedFocus = (document.activeElement as HTMLElement) ?? null;
     if (stack.length === 0) document.body.style.overflow = "hidden";
-    stack.push({ el, onClose: opts.onClose, savedFocus, home: adoptIntoFullscreen(el) });
+    const home = adoptIntoModalHost(el);
+    const entry: ModalEntry = {
+        el,
+        layer: Number.parseInt(getComputedStyle(el).zIndex, 10) || 0,
+        onClose: opts.onClose,
+        savedFocus,
+        home,
+    };
+    const target = opts.initialFocus ?? focusableWithin(el)[0] ?? el;
+    const foregroundIndex = stack.findIndex((other) => other.layer > entry.layer);
+    if (foregroundIndex !== -1) {
+        // Splice background work into the first higher dialog's return path;
+        // later dialogs retain their existing chain back to that foreground.
+        const foreground = stack[foregroundIndex]!;
+        entry.savedFocus = foreground.savedFocus;
+        foreground.savedFocus = target;
+        stack.splice(foregroundIndex, 0, entry);
+        return;
+    }
+    stack.push(entry);
 
     // preventScroll: several modals put initialFocus on a "Close" button in
     // the card's footer (settings, unsupported-formats). A plain focus()
     // scrolls the focused element into view, so a card taller than the
     // viewport opened scrolled to the bottom. Focus still lands on the
     // button for Escape/Enter; it just doesn't drag the scroll with it.
-    const target = opts.initialFocus ?? focusableWithin(el)[0] ?? el;
     target.focus?.({ preventScroll: true });
 }
 
-/** Keeps dialogs inside the expanded player's visible and interactive subtree.
- *  Fixed positioning preserves their geometry; media fullscreen takes no children. */
-function adoptIntoFullscreen(el: HTMLElement): ModalEntry["home"] {
+/** Keeps fixed dialog roots in one stacking context and paints equal layers in
+ *  opening order. Media fullscreen takes no children; other fullscreen modes
+ *  host dialogs inside the player's visible and interactive subtree. */
+function adoptIntoModalHost(el: HTMLElement): ModalEntry["home"] {
     const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
-    if (!(fullscreen instanceof HTMLElement) || fullscreen instanceof HTMLMediaElement) return null;
-    if (fullscreen.contains(el) || !el.parentNode) return null;
+    const host =
+        fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement) ? fullscreen : document.body;
+    if (!el.parentNode || (el.parentNode === host && el.nextSibling === null)) return null;
     const home = { parent: el.parentNode, next: el.nextSibling };
-    fullscreen.appendChild(el);
+    host.appendChild(el);
     return home;
 }
 
@@ -144,11 +167,15 @@ function restoreModalHome(entry: ModalEntry): void {
 
 function syncModalParents(): void {
     const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
+    const host =
+        fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement) ? fullscreen : document.body;
     const focused = document.activeElement;
     for (const entry of stack) {
-        if (fullscreen?.contains(entry.el)) continue;
+        if (entry.el.parentNode === host) continue;
         restoreModalHome(entry);
-        entry.home = adoptIntoFullscreen(entry.el);
+        // Appending in stack order preserves same-layer paint order when
+        // leaving fullscreen, even if the original markup orders roots otherwise.
+        entry.home = adoptIntoModalHost(entry.el);
     }
     if (focused instanceof HTMLElement && stack.at(-1)?.el.contains(focused)) {
         focused.focus({ preventScroll: true });
@@ -181,16 +208,24 @@ export function wireBackdropDismiss(el: HTMLElement, onClose: () => void, opts: 
 
 /**
  * Releases a11y management for a now-hidden modal. Restores body scroll when no
- * modals remain and refocuses the element that was focused before this modal
- * opened. No-op if the modal was not tracked.
+ * modals remain. Closing the topmost dialog restores its saved focus; closing
+ * a lower dialog preserves the foreground dialog. No-op if not tracked.
  */
 export function deactivateModal(el: HTMLElement): void {
     const idx = stack.findIndex((e) => e.el === el);
     if (idx === -1) return;
+    const wasTopmost = idx === stack.length - 1;
     const [entry] = stack.splice(idx, 1);
+    // Background work can finish underneath a warning dialog. Keep its focus
+    // inside the warning and let that dialog restore the original opener later.
+    for (const remaining of stack) {
+        if (remaining.savedFocus && el.contains(remaining.savedFocus)) {
+            remaining.savedFocus = entry?.savedFocus ?? null;
+        }
+    }
     if (stack.length === 0) document.body.style.overflow = "";
     // Back to its own place in the document before anything else looks for it
     // there (a later open outside fullscreen, a querySelector on the layout).
     if (entry) restoreModalHome(entry);
-    entry?.savedFocus?.focus?.();
+    if (wasTopmost) entry?.savedFocus?.focus?.();
 }

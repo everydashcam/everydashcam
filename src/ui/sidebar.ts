@@ -310,8 +310,13 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     chevron.setAttribute("aria-label", chevLabel);
     chevron.setAttribute("aria-expanded", expanded ? "true" : "false");
     chevron.title = chevLabel;
-    // Thin chevron `›` (U+203A) instead of a filled triangle to avoid resembling a play button. Rotates 90deg to `v` when expanded.
-    chevron.textContent = "›";
+    // Rotate only the glyph: rotating the button would move its asymmetric
+    // touch target into the event chip and away from the lower card corner.
+    const chevronIcon = document.createElement("span");
+    chevronIcon.className = "trip-chevron__icon";
+    chevronIcon.setAttribute("aria-hidden", "true");
+    chevronIcon.textContent = "›";
+    chevron.appendChild(chevronIcon);
     // Click is handled by the delegated listener in initSidebar via data-action and data-trip-index.
     chevron.dataset.action = "chevron";
     chevron.dataset.tripIndex = String(tripIdx);
@@ -623,7 +628,11 @@ function appendOpeningSpinner(li: Element): void {
     if (header && !header.querySelector(".trip-opening-spinner")) {
         const spinner = document.createElement("div");
         spinner.className = "trip-opening-spinner";
-        spinner.setAttribute("aria-hidden", "true");
+        spinner.setAttribute("role", "status");
+        const label = document.createElement("span");
+        label.className = "trip-opening-label";
+        label.textContent = t("recordingLoad.title");
+        spinner.appendChild(label);
         header.appendChild(spinner);
     }
 }

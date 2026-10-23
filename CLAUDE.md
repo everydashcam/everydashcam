@@ -206,6 +206,7 @@ instructions, not requirements to install or invoke a particular agent tool.
 | Behavior changes, tests, fixtures, or screenshots | [.claude/rules/testing.md](.claude/rules/testing.md) |
 | Portable builds/runtime/downloads, or shared viewer/map/export changes affecting it | [.claude/rules/portable.md](.claude/rules/portable.md) |
 | UI copy or localization | [.claude/rules/voice.md](.claude/rules/voice.md) |
+| UI polish or visual review | [.claude/skills/ui-polish/SKILL.md](.claude/skills/ui-polish/SKILL.md) |
 | New recording format | [.claude/skills/onboard-format/SKILL.md](.claude/skills/onboard-format/SKILL.md) |
 | Changelog maintenance | [.claude/skills/changelog/SKILL.md](.claude/skills/changelog/SKILL.md) |
 | Release or production promotion | [.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md), [docs/deploy.md](docs/deploy.md) |

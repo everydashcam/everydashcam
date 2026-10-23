@@ -161,6 +161,10 @@ body.has-expanded-player .export-panel {
     border-color: var(--accent);
 }
 
+.export-panel__primary-btn:focus-visible {
+    outline-color: var(--fg);
+}
+
 .export-panel__primary-btn:hover:not(:disabled) {
     background: var(--accent-hot);
     border-color: var(--accent-hot);

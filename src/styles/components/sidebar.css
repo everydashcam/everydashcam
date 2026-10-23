@@ -454,9 +454,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition:
-        transform var(--dc-dur-base) var(--dc-ease),
-        background var(--dc-dur-fast) var(--dc-ease);
+    transition: background var(--dc-dur-fast) var(--dc-ease);
 }
 .trip-header:not(.has-preview) .trip-chevron {
     background: var(--bg-elev);
@@ -470,7 +468,15 @@
     background: var(--bg-hover);
     color: var(--accent-ink);
 }
-.trip.expanded .trip-chevron {
+.trip-chevron__icon {
+    display: block;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .trip-chevron__icon {
+        transition: transform var(--dc-dur-base) var(--dc-ease);
+    }
+}
+.trip.expanded .trip-chevron__icon {
     transform: rotate(90deg);
 }
 
@@ -655,16 +661,41 @@
     border-top-color: var(--accent);
     animation: trip-opening-spin 0.7s linear infinite;
 }
+.trip-opening-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 @keyframes trip-opening-spin {
     to {
         transform: rotate(360deg);
     }
 }
-/* A loading spinner is functional, not decorative - keep it turning for
-   reduced-motion users, just slower. */
 @media (prefers-reduced-motion: reduce) {
+    .trip-opening-spinner {
+        flex-direction: column-reverse;
+        gap: var(--dc-space-1);
+    }
     .trip-opening-spinner::after {
-        animation-duration: 1.5s;
+        animation: none;
+    }
+    .trip-opening-label {
+        position: static;
+        width: auto;
+        height: auto;
+        max-width: calc(100% - 2 * var(--dc-space-2));
+        overflow: visible;
+        clip-path: none;
+        white-space: normal;
+        padding: var(--dc-space-1) var(--dc-space-2);
+        border-radius: var(--dc-radius-sm);
+        background: var(--bg-elev);
+        color: var(--fg);
+        font-size: var(--dc-text-xs);
+        text-align: center;
     }
 }
 
@@ -681,6 +712,12 @@
     z-index: 0;
     pointer-events: none;
 }
+@container sidebar (max-width: 240px) {
+    /* The compact card's caption crosses the centered placeholder glyph. */
+    .trip-no-preview-icon {
+        display: none;
+    }
+}
 
 .trip-files {
     list-style: none;
@@ -695,8 +732,8 @@
 }
 
 .trip-files li {
-    /* position: relative anchors the absolutely-placed details toggle; the extra
-       right padding reserves room so a long file name never slides under it. */
+    /* Fine pointers keep a compact, absolutely placed details toggle; reserve
+       room so a long filename never slides under it. Touch uses a grid below. */
     position: relative;
     padding: var(--dc-space-1) var(--dc-space-6) var(--dc-space-1) var(--dc-space-5);
     font-size: var(--dc-text-xs);
@@ -747,9 +784,9 @@
     gap: var(--dc-space-1);
 }
 
-/* Per-clip technical-details toggle (the "i" button). Absolutely placed in the
-   top-right of the clip row; muted until hover/focus/open so it does not compete
-   with the file name. */
+/* Per-clip technical-details toggle (the "i" button). Fine pointers place it in
+   the top-right of the clip row; muted until hover/focus/open so it does not
+   compete with the file name. */
 .file-details-toggle {
     position: absolute;
     top: var(--dc-space-1);
@@ -783,6 +820,39 @@
 .trip-files li.file-details-open .file-details-toggle {
     opacity: 1;
     color: var(--accent-ink);
+}
+
+/* Reserve a column for the info target so a finger can open details without
+   starting playback or covering a filename. The panel below spans both columns. */
+@media (pointer: coarse) {
+    .trip-files li {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 44px;
+        column-gap: var(--dc-space-1);
+        padding-right: var(--dc-space-1);
+    }
+    .trip-files .file-name {
+        grid-column: 1;
+        grid-row: 1;
+    }
+    .trip-files .file-meta {
+        grid-column: 1;
+        grid-row: 2;
+    }
+    .trip-files .file-details {
+        grid-column: 1 / -1;
+    }
+    .file-details-toggle {
+        position: static;
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        width: 44px;
+        height: 44px;
+        opacity: 1;
+    }
+}
+.file-details-toggle:active {
+    background: var(--bg-active);
 }
 
 /* The details panel: hidden until the row carries .file-details-open. Indented

@@ -288,6 +288,47 @@ test("narrow desktop export keeps speed and GPS synchronization inside the reado
 test.describe("touch player toolbar", () => {
     test.use({ hasTouch: true, isMobile: true, locale: "ru-RU" });
 
+    test("tablet controls keep touch targets in the desktop layout", async ({ page }) => {
+        await page.setViewportSize({ width: 1024, height: 768 });
+        await gotoApp(page);
+        await loadTrip(page, SAMPLE_70MAI);
+        await pausePlayback(page);
+
+        for (const selector of [".player-transport button", "#player-speed", "#player-view-menu", "#player-export"]) {
+            for (const control of await page.locator(selector).all()) {
+                await expect(control).toBeVisible();
+                const bounds = await control.boundingBox();
+                expect(bounds).not.toBeNull();
+                expect(bounds!.width).toBeGreaterThanOrEqual(40);
+                expect(bounds!.height).toBeGreaterThanOrEqual(40);
+            }
+        }
+        for (const control of await page.locator(".player-transport button").all()) {
+            const bounds = await control.boundingBox();
+            expect(bounds!.width, "transport has the full touch target").toBeGreaterThanOrEqual(44);
+            expect(bounds!.height, "transport controls share a height").toBe(44);
+        }
+        await expect
+            .poll(() => page.locator("#player-bar").evaluate((bar) => bar.scrollWidth - bar.clientWidth))
+            .toBeLessThanOrEqual(1);
+
+        await page.locator("#player-speed").tap();
+        for (const row of await page.locator("#player-speed-menu li").all()) {
+            expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        }
+        await page.locator('#player-speed-menu [data-rate="1.25"]').tap();
+        await expect(page.locator("#player-speed")).toHaveText("1.25x");
+        await expect(page.locator("#player-speed-menu")).toBeHidden();
+
+        await page.locator("#player-view-menu").tap();
+        for (const row of await page.locator(".view-menu-row:visible, .view-menu-map__modes button:visible").all()) {
+            expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        }
+        await page.locator('[data-map-mode="off"]').tap();
+        await expect(page.locator('[data-map-mode="off"]')).toHaveAttribute("aria-checked", "true");
+        await shot(page, "player-touch-tablet-view-menu");
+    });
+
     test("a narrow phone keeps fullscreen and export reachable", async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 568 });
         await page.addInitScript(() => localStorage.setItem("everydashcam:hotkeys:seekStepSec", "600"));

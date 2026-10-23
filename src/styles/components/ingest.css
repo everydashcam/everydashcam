@@ -130,6 +130,11 @@
     .ingest-overlay-spinner {
         animation: none;
     }
+    .ingest-progress-bar[data-state="indeterminate"] .ingest-progress-bar-fill {
+        width: 100%;
+        animation: none;
+        opacity: 0.55;
+    }
 }
 
 .ingest-overlay-title {

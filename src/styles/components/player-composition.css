@@ -547,30 +547,38 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
 }
 
 .timeline-range__tab::before {
-    /* Visible spine in the middle of the touch target. */
+    /* Keep the spine on the true time boundary even when targets split. */
     content: "";
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 50%;
+    left: var(--range-tab-anchor-x, 50%);
     width: 2px;
     transform: translateX(-50%);
     background: var(--range-tab-color);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
 }
 
 .timeline-range__tab::after {
-    /* Pull-handle grip at the top of the analytics trim surface. */
+    /* Keep the entire grip inside its own target. Close boundaries displace
+       the grips outwards while the spines still show their precise times. */
+    --range-tab-grip-w: 10px;
     content: "";
     position: absolute;
     top: 4px;
-    left: 50%;
+    left: clamp(
+        calc(var(--range-tab-grip-w) / 2 + 1px),
+        var(--range-tab-anchor-x, 50%),
+        calc(100% - var(--range-tab-grip-w) / 2 - 1px)
+    );
     transform: translateX(-50%);
-    width: 10px;
+    width: var(--range-tab-grip-w);
     height: 14px;
     border-radius: var(--dc-radius-sm);
     background: var(--range-tab-color);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
 }
 
 /* A boundary beyond the visible zoom window is only pinned to an edge. Dim the
@@ -581,7 +589,6 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
     opacity: 0.35;
 }
 .timeline-range__tab.is-offscreen::after {
-    width: 10px;
     height: 12px;
     border-radius: 0;
     box-shadow: none;
@@ -659,27 +666,27 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
     display: none;
 }
 
-/* Touch: the 16px hit area is too thin to grab on a phone over a ~100px-tall
+/* Touch: the 16px hit area is too thin to grab over a ~100px-tall
    chart - the finger lands on the click-through mask and seeks instead of
-   dragging the boundary. Widen the invisible hit area on mobile; the 2px spine
-   and grip stay centered (::before/::after at 50%) so the visual is unchanged.
-   timeline-range.ts centers the tab via offsetWidth, so this width is the single
-   source of truth and the spine stays exactly on the boundary. The grip also
+   dragging the boundary. Include tablets independently of the phone layout.
+   timeline-range.ts reads the actual target width and splits close targets;
+   each grip stays inside its own target while its spine marks the true time.
+   The grip also
    grows into a knob that clears the fingertip - the 10x14 desktop pill is
    invisible under a thumb mid-drag. */
-@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+@media (pointer: coarse), (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
     .timeline-range__tab {
         width: 36px;
     }
     .timeline-range__tab::after {
-        width: 16px;
+        --range-tab-grip-w: 16px;
         height: 22px;
         border-radius: var(--dc-radius-md);
     }
     /* Off-screen chevron grows with the touch grip (the higher-specificity
        is-offscreen rule would otherwise keep the desktop 10x12 triangle). */
     .timeline-range__tab.is-offscreen::after {
-        width: 14px;
+        --range-tab-grip-w: 14px;
         height: 18px;
     }
 }

@@ -150,12 +150,27 @@ export function syncTimelineRange(): void {
     syncTabState(tabEnd, "end", isEditable, suppressEnd, endSide);
 
     container.hidden = false;
-    // Center each tab on its boundary using its ACTUAL rendered width (16px on
-    // desktop, 36px on touch - see player-composition.css). offsetWidth is valid
-    // now that container.hidden=false above; reading it keeps the visible spine
-    // exactly on the boundary regardless of the touch-widened hit area.
-    if (tabStart) tabStart.style.left = `${startX - tabStart.offsetWidth / 2}px`;
-    if (tabEnd) tabEnd.style.left = `${endX - tabEnd.offsetWidth / 2}px`;
+    // Close boundaries share two adjacent targets instead of letting the later
+    // end button cover the start. Spines retain the real boundary positions;
+    // CSS keeps each grip wholly inside its own target. Keep the split between
+    // the anchors even near the viewport edges, with the host clipping overflow.
+    const startWidth = tabStart?.offsetWidth ?? 0;
+    const endWidth = tabEnd?.offsetWidth ?? 0;
+    let startLeft = startX - startWidth / 2;
+    let endLeft = endX - endWidth / 2;
+    if (!suppressStart && !suppressEnd && endLeft < startLeft + startWidth) {
+        const splitX = (startX + endX) / 2;
+        startLeft = splitX - startWidth;
+        endLeft = splitX;
+    }
+    if (tabStart) {
+        tabStart.style.left = `${startLeft}px`;
+        tabStart.style.setProperty("--range-tab-anchor-x", `${startX - startLeft}px`);
+    }
+    if (tabEnd) {
+        tabEnd.style.left = `${endLeft}px`;
+        tabEnd.style.setProperty("--range-tab-anchor-x", `${endX - endLeft}px`);
+    }
     // Masks dim everything left/right of the range (incl. the axis gutters)
     // across the viewport-mapped rows above the whole-trip navigator.
     if (maskLeft) {
@@ -227,10 +242,23 @@ function attachTabDrag(tab: HTMLButtonElement, which: "start" | "end"): void {
         tab.setPointerCapture(ev.pointerId);
         tab.classList.add("is-dragging");
         showBubbleFor(tab, which);
+        // A compact target can sit beside its true boundary. Preserve that
+        // grab offset so the first movement does not jump the selected edge.
+        const grabOffset = ev.clientX - tabBoundaryClientX(tab);
 
         const onMove = (mv: PointerEvent) => {
             if (mv.pointerId !== ev.pointerId) return;
-            updateRangeFromPointer(mv.clientX, which);
+            // A split target can be farther from its spine than the timeline
+            // gutter is wide. Reaching the host edge must still reach the view
+            // edge, even when the preserved grab offset would stop short.
+            const hostRect = dom.playerChartEl?.getBoundingClientRect();
+            const x =
+                hostRect && mv.clientX <= hostRect.left + 1
+                    ? hostRect.left
+                    : hostRect && mv.clientX >= hostRect.right - 1
+                      ? hostRect.right
+                      : mv.clientX - grabOffset;
+            updateRangeFromPointer(x, which);
             // Re-anchor AFTER the range edit: setRangeEdge notified
             // synchronously, so the tab's left already reflects the clamped
             // value - the bubble reads the committed truth, and freezing at
@@ -286,6 +314,10 @@ function attachTabDrag(tab: HTMLButtonElement, which: "start" | "end"): void {
     });
 }
 
+function tabBoundaryClientX(tab: HTMLButtonElement): number {
+    return tab.getBoundingClientRect().left + Number.parseFloat(tab.style.getPropertyValue("--range-tab-anchor-x"));
+}
+
 /** Desktop affordance: hovering a tab shows its current timecode without
  *  starting a drag. Mouse only - on touch the bubble appears with the drag. */
 function attachTabHoverBubble(tab: HTMLButtonElement, which: "start" | "end"): void {
@@ -315,7 +347,7 @@ function showBubbleFor(tab: HTMLButtonElement, which: "start" | "end"): void {
     // offsetWidth is valid now that hidden=false. Clamp inside the viewport so
     // the start bubble is not cut at the left edge (nor end at the right).
     const w = bubble.offsetWidth;
-    const left = Math.max(4, Math.min(rect.left + rect.width / 2 - w / 2, window.innerWidth - w - 4));
+    const left = Math.max(4, Math.min(tabBoundaryClientX(tab) - w / 2, window.innerWidth - w - 4));
     bubble.style.left = `${left}px`;
     bubble.style.top = `${rect.top - bubble.offsetHeight - 6}px`;
 }

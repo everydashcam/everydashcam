@@ -5,6 +5,7 @@
 import { t } from "../i18n/index.js";
 
 import { dom } from "./dom.js";
+import { activateModal, deactivateModal } from "./modal-helper.js";
 import { state } from "./state.js";
 
 // Pre-ingest "reading" phase ownership, as a REFCOUNT (not a bool). The overlay
@@ -19,6 +20,36 @@ import { state } from "./state.js";
 // (showIngestOverlay).
 let preIngestOwners = 0;
 
+function openOverlay(): void {
+    dom.ingestOverlay.hidden = false;
+    dom.ingestOverlayCancel.disabled = false;
+    dom.ingestOverlayCancel.textContent = t("ingestOverlay.cancel");
+    activateModal(dom.ingestOverlay, {
+        // Escape can dismiss a picker wait, but aborting real work requires
+        // deliberately activating Cancel. Space/Enter on arrival must not stop
+        // an import when the user was just controlling playback.
+        onClose: () => {
+            if (!state.ingestController) endPreIngestReading();
+        },
+        initialFocus: dom.ingestOverlay,
+    });
+}
+
+function cancelIngest(): void {
+    if (dom.ingestOverlayCancel.disabled) return;
+    if (!state.ingestController) {
+        // Dismissing this wait cannot close a native picker. A later file
+        // selection starts ingest normally and reopens the overlay.
+        endPreIngestReading();
+        return;
+    }
+    state.ingestController.abort();
+    // Abort cleanup is asynchronous. Disable repeat cancellation and show that
+    // stopping is in progress until ingest's finally block hides the overlay.
+    dom.ingestOverlayCancel.disabled = true;
+    setIngestStage(t("ingestOverlay.stage.canceling"));
+}
+
 /**
  * Shows the overlay and re-enables the Cancel button - important when re-launching
  * ingest from the queue (a previous ingest may have ended via Cancel and left
@@ -29,9 +60,7 @@ export function showIngestOverlay(): void {
     // finally{}). Release ALL pre-ingest claims so a late endPreIngestReading()
     // from an overlapping gesture cannot pull the overlay out mid-ingest.
     preIngestOwners = 0;
-    dom.ingestOverlay.hidden = false;
-    dom.ingestOverlayCancel.disabled = false;
-    dom.ingestOverlayCancel.textContent = t("ingestOverlay.cancel");
+    openOverlay();
 }
 
 /**
@@ -44,7 +73,7 @@ export function showIngestOverlay(): void {
  * second drop during ingest just queues - see ingestFiles).
  *
  * Cancel stays ENABLED and, in this phase, just dismisses the waiting overlay
- * (see initIngestOverlay). The picker "cancel" event is the seamless auto-retract
+ * (see cancelIngest). The picker "cancel" event is the seamless auto-retract
  * on modern browsers, but Chrome/Edge 94-112 are within our support floor
  * (Chrome 94, docs/browser-support.md) and never fire it - a working button is
  * the guaranteed escape so a dismissed picker is never a reload-only dead end.
@@ -54,9 +83,7 @@ export function showIngestOverlay(): void {
 export function beginPreIngestReading(): boolean {
     if (state.ingestController !== null) return false;
     preIngestOwners++;
-    dom.ingestOverlay.hidden = false;
-    dom.ingestOverlayCancel.disabled = false;
-    dom.ingestOverlayCancel.textContent = t("ingestOverlay.cancel");
+    openOverlay();
     setIngestStage(t("ingestOverlay.stage.preparing"));
     showIngestProgress();
     // A queue may carry over from a previous run - keep the indicator honest.
@@ -82,6 +109,7 @@ export function endPreIngestReading(): void {
 
 export function hideIngestOverlay(): void {
     dom.ingestOverlay.hidden = true;
+    deactivateModal(dom.ingestOverlay);
     dom.ingestOverlayStatus.textContent = "";
     dom.ingestOverlayQueue.hidden = true;
 }
@@ -134,20 +162,5 @@ export function syncIngestQueueIndicator(): void {
  * Attaches the Cancel handler. Call once on startup.
  */
 export function initIngestOverlay(): void {
-    dom.ingestOverlayCancel.addEventListener("click", () => {
-        if (!state.ingestController) {
-            // Pre-ingest "preparing" phase: no AbortController yet, so the click
-            // just dismisses the waiting overlay (the user backed out of the file
-            // picker on a browser that did not fire the cancel event, or wants to
-            // bail on a slow dropped-folder read). If a folder was actually
-            // selected, the change event re-raises the overlay via ingestFiles.
-            endPreIngestReading();
-            return;
-        }
-        state.ingestController.abort();
-        // Guard against double-click and give "stopping" feedback. ingestFiles
-        // hides the overlay as soon as the active parser observes the abort.
-        dom.ingestOverlayCancel.disabled = true;
-        setIngestStage(t("ingestOverlay.stage.canceling"));
-    });
+    dom.ingestOverlayCancel.addEventListener("click", cancelIngest);
 }

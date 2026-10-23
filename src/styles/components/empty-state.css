@@ -133,7 +133,7 @@
 
 @media (prefers-reduced-motion: reduce) {
     .trip-preparation-spinner {
-        animation-duration: 1.8s;
+        animation: none;
     }
     .trip-preparation-progress-fill {
         transition: none;

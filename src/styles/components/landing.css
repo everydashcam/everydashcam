@@ -104,6 +104,12 @@ body.no-trips .viewer {
     color: var(--accent-ink-display);
 }
 
+@media (max-width: 360px) {
+    .landing-hero-h1 {
+        font-size: var(--dc-text-3xl);
+    }
+}
+
 .landing-hero-kicker {
     font-family: var(--dc-font-body);
     font-weight: 400;

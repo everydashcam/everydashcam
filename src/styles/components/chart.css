@@ -601,6 +601,11 @@
         transform: scaleX(1.6);
     }
 }
+@media (prefers-reduced-motion: reduce) {
+    .player-chart-flash {
+        display: none;
+    }
+}
 /* Mobile (any orientation) - axis labels too cramped when player-chart is
    shrunk: the strip's row labels, and the ruler's corner unit labels (which
    would otherwise collide with the first/last time ticks in the 14px top band).

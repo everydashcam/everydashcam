@@ -87,17 +87,9 @@
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
-/* Height the desktop bar occupies: its tallest control (the transport group
-   below) plus the vertical padding and the top border. Every term is the token
-   the bar itself lays out with, so growing a control moves this with it - the
-   fullscreen chart overlay is absolutely positioned and has to clear the bar
-   (viewer.css), and a number that only LOOKS derived silently loses that
-   clearance the next time the transport grows. Mobile has its own
-   --mobile-bar-h. */
 .player-wrap {
     --player-transport-size: 38px;
     --player-bar-border: 1px;
-    --player-bar-h: calc(var(--player-transport-size) + 2 * var(--dc-space-1) + var(--player-bar-border));
 }
 
 /* Desktop sizing: transport controls are noticeably larger - the
@@ -114,10 +106,8 @@
     width: 18px;
     height: 18px;
 }
-/* Kept at id / class-pair specificity so the mobile block's #player-play
-   (44px) and .player-btn:not(#player-play) (40px) rules still win there. */
 #player-play,
-.player-bar .player-step {
+.player-bar .player-btn.player-step {
     width: var(--player-transport-size);
     height: var(--player-transport-size);
 }
@@ -670,6 +660,43 @@
     }
 }
 
+/* Touch sizes also apply to tablets that keep the desktop layout. */
+@media (pointer: coarse), (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+    .player-wrap {
+        --player-transport-size: 44px;
+    }
+    .player-bar .player-btn:not(.player-btn-text) {
+        width: var(--dc-iconbtn-touch);
+        height: var(--dc-iconbtn-touch);
+    }
+    .player-bar .player-transport .player-btn {
+        width: var(--player-transport-size);
+        height: var(--player-transport-size);
+    }
+    .player-bar .player-btn.player-seek {
+        width: auto;
+        min-width: var(--player-transport-size);
+    }
+    .player-bar .player-btn-text,
+    .player-bar .player-export-btn {
+        min-width: var(--dc-iconbtn-touch);
+        min-height: var(--dc-iconbtn-touch);
+    }
+    .view-menu-row {
+        min-height: 44px;
+        padding: var(--dc-space-2) var(--dc-space-3);
+    }
+    .view-menu-map__modes button {
+        min-height: 44px;
+    }
+    .player-speed-menu li {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        padding: var(--dc-space-2) var(--dc-space-3);
+    }
+}
+
 /* ==========================================================================
    MOBILE PLAYER BAR
    At <=767px the bar becomes touch-friendly:
@@ -728,13 +755,10 @@
         width: 18px;
         height: 18px;
     }
-    /* Other buttons 40x40 - touch-target floor. */
-    .player-bar .player-btn:not(#player-play, .player-seek) {
+    /* Secondary actions keep the compact 40px touch floor. */
+    .player-bar-secondary .player-btn:not(#player-play, .player-seek),
+    .player-info .player-btn:not(#player-play, .player-seek) {
         width: var(--dc-iconbtn-touch);
-        height: var(--dc-iconbtn-touch);
-    }
-    .player-bar .player-seek {
-        min-width: var(--dc-iconbtn-touch);
         height: var(--dc-iconbtn-touch);
     }
     .player-bar .player-btn:not(#player-play) svg {
@@ -787,10 +811,6 @@
     .view-menu-popover {
         width: 240px;
     }
-    .view-menu-row {
-        min-height: 44px;
-        padding: var(--dc-space-2) var(--dc-space-3);
-    }
     .view-menu-row__label {
         font-size: var(--dc-text-base);
     }
@@ -801,7 +821,6 @@
         min-height: 28px;
     }
     .view-menu-map__modes button {
-        min-height: 40px;
         font-size: var(--dc-text-md);
     }
     /* The corner mini-map is intentionally absent on phones; do not offer a
@@ -811,14 +830,6 @@
     }
     .view-menu-map__modes [data-map-mode="mini"] {
         display: none;
-    }
-    /* Playback-speed dropdown rows get the same 44px touch floor as the
-       view-menu rows next to them. */
-    .player-speed-menu li {
-        min-height: 44px;
-        display: flex;
-        align-items: center;
-        padding: var(--dc-space-2) var(--dc-space-3);
     }
     /* Cap the drop-up menus to the space ABOVE the sticky bar and scroll inside.
        These open with bottom:100% from the player-bar pinned at the screen bottom;
