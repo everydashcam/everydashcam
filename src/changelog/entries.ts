@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-10-24.1",
+        category: "improvement",
+        text: {
+            en: "Improved support for 70mai dashcams.",
+            ru: "Улучшена поддержка регистраторов 70mai.",
+            de: "Verbesserte Unterstützung für 70mai-Dashcams.",
+            es: "Compatibilidad mejorada con las cámaras 70mai.",
+            fr: "Prise en charge améliorée des caméras 70mai.",
+            pl: "Ulepszono obsługę kamer 70mai.",
+            pt: "Suporte aprimorado para câmeras 70mai.",
+            zh: "改进了对 70mai 行车记录仪的支持。",
+            ja: "70mai ドライブレコーダーへの対応を改善しました。",
+            ko: "70mai 블랙박스 지원을 개선했어요.",
+        },
+    },
+    {
         id: "2026-10-20.2",
         category: "feature",
         text: {

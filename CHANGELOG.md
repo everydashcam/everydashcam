@@ -7,6 +7,10 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-10-24
+
+- **Improved:** Improved support for 70mai dashcams.
+
 ## 2026-10-20
 
 - **New:** Added camera time zone selection in GPS sync.
