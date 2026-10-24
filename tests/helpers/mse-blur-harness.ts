@@ -48,10 +48,13 @@ export async function checkMseBlurPreview(bytes: number[], motion: MotionFixture
         video.addEventListener("loadeddata", () => resolve(), { once: true });
         video.addEventListener("error", () => reject(new Error("mse video failed")), { once: true });
     });
+    // loadeddata can precede the first compositor submission. Consume that
+    // frame before seeking so its callback cannot satisfy the target-frame wait.
+    const firstPresented = new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
     const results = [];
     try {
         await backend.attach(video);
-        await ready;
+        await Promise.all([ready, firstPresented]);
         video.pause();
         for (const index of [4, 5]) {
             const target = motion.frames[index]!;
@@ -59,10 +62,13 @@ export async function checkMseBlurPreview(bytes: number[], motion: MotionFixture
             const presented = new Promise<VideoFrameCallbackMetadata>((resolve) =>
                 video.requestVideoFrameCallback((_, metadata) => resolve(metadata)),
             );
+            const seeked = new Promise<void>((resolve) =>
+                video.addEventListener("seeked", () => resolve(), { once: true }),
+            );
             // Consecutive paused source frames, with a seek safely inside each
             // frame's interval. Geometry still uses the actual compositor PTS.
             video.currentTime = target.contentSec + 0.001;
-            const metadata = await presented;
+            const [metadata] = await Promise.all([presented, seeked]);
             ctx.drawImage(video, 0, 0, motion.width, motion.height);
             const pixel = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
             const rawLeadingPixel = pixel(target.box.x + target.box.w - 5, target.box.y + 10);
