@@ -57,11 +57,54 @@ describe("csv70maiPrimitive.parse", () => {
         );
     });
 
+    it.each([0, 4, 5])("rejects an isolated jump between fixes %s seconds apart", async (gap) => {
+        const bad = exampleRow.replace("1700000000", "1763158400");
+        const next = exampleRow.replace("1700000000", String(1700000000 + gap));
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${exampleRow}\n${bad}\n${next}\n`));
+        expect(result.skipped).toEqual([{ line: 3, raw: bad, reason: "isolated timestamp outlier" }]);
+        expect(result.records.map((record) => record.unixSeconds)).toEqual([
+            1700000000 + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC,
+            1700000000 + gap + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC,
+        ]);
+    });
+
+    it.each(["", "   ", "gSeekPos=42", exampleRow.replace(",A,", ",V,")])(
+        "looks past non-fix line %j when rejecting an isolated jump",
+        async (ignored) => {
+            const bad = exampleRow.replace("1700000000", "1763158400");
+            const next = exampleRow.replace("1700000000", "1700000002");
+            const result = await csv70maiPrimitive.parse(
+                makeVf("GPSData.txt", `$V02\n${exampleRow}\n${bad}\n${ignored}\n${next}\n`),
+            );
+            expect(result.skipped).toEqual([{ line: 3, raw: bad, reason: "isolated timestamp outlier" }]);
+            expect(result.records).toHaveLength(2);
+        },
+    );
+
+    it.each(["0", ""])("keeps a rollover burst with %j names after rejecting a clock jump", async (name) => {
+        const bad = exampleRow.replace("1700000000", "1763158400");
+        const orphans = [2, 3, 4].map((offset) =>
+            exampleRow.replace("1700000000", String(1700000000 + offset)).replace("NO20231114-221320F.mp4", name),
+        );
+        const voidRow = exampleRow.replace(",A,", ",V,");
+        // No later named fix is available to rescue the anchor at end of log.
+        const text = `$V02\n${exampleRow}\n${bad}\n \ngSeekPos=42\n${voidRow}\n${orphans.join("\n")}\n`;
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
+        expect(result.skipped).toEqual([{ line: 3, raw: bad, reason: "isolated timestamp outlier" }]);
+        expect(result.records.map((record) => record.unixSeconds)).toEqual(
+            [0, 2, 3, 4].map((offset) => 1700000000 + offset + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC),
+        );
+        expect(result.records.every((record) => record.mp4Filename === "NO20231114-221320F.mp4")).toBe(true);
+    });
+
     it.each([
         [0, 86_400, 86_401],
         [0, 63_158_400, 63_158_401],
         [63_158_400, 63_158_401, 63_158_402],
         [0, 63_158_400, 60],
+        [0, 63_158_400, 6],
+        [0, 63_158_400, -1],
+        [0, 63_158_400],
     ])("preserves pauses and sustained clock changes: %j", async (...offsets) => {
         const rows = offsets.map((offset) => exampleRow.replace("1700000000", String(1700000000 + offset)));
         const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${rows.join("\n")}\n`));
@@ -84,6 +127,20 @@ describe("csv70maiPrimitive.parse", () => {
         const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${rows.join("\n")}\n`));
         expect(result.skipped).toEqual([]);
         expect(result.records).toHaveLength(3);
+    });
+
+    it.each([
+        "$V02",
+        "gSeekPos=invalid",
+        exampleRow.replace("1700000000", "-28801"),
+        exampleRow.replace("NO20231114-221320F.mp4", "NO20231114-221420F.mp4"),
+    ])("stops clock lookahead at a boundary or unusable fix: %s", async (boundary) => {
+        const bad = exampleRow.replace("1700000000", "1763158400");
+        const next = exampleRow.replace("1700000000", "1700000002");
+        const text = `$V02\n${exampleRow}\n${bad}\n \ngSeekPos=42\n${boundary}\n${next}\n`;
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
+        expect(result.records.some((record) => record.unixSeconds === 1763158400 + 8 * 3600)).toBe(true);
+        expect(result.skipped.every((entry) => entry.reason !== "isolated timestamp outlier")).toBe(true);
     });
 
     it("ignores write-cursor metadata without resetting the current filename anchor", async () => {

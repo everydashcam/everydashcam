@@ -69,7 +69,8 @@ const MAX_ORPHAN_GAP_SEC = 300;
 
 // A single minutes-long clock excursion between nearby fixes of the same clip
 // is corrupt timing. Requiring the clock to return within five seconds keeps
-// real recording gaps and sustained clock changes out of this filter.
+// real recording gaps and sustained clock changes out of this filter. X800
+// logs include duplicate seconds, so corroborating fixes may share a timestamp.
 const MIN_ISOLATED_CLOCK_JUMP_SEC = 300;
 const MAX_CLOCK_NEIGHBOUR_GAP_SEC = 5;
 
@@ -214,7 +215,7 @@ function parseSingleLog(
         // V (void / no-fix) rows return { record: null }: drop silently and do
         // NOT update the anchor - they carry no usable file/time context.
         if (parsed.record !== null) {
-            if (isIsolatedClockJump(parsed.record, anchorMp4, anchorUnix, lines[i + 1])) {
+            if (isIsolatedClockJump(parsed.record, anchorMp4, anchorUnix, lines, i + 1)) {
                 skipped.push({ line: i + 1, raw, reason: "isolated timestamp outlier" });
                 continue;
             }
@@ -247,29 +248,40 @@ function isIsolatedClockJump(
     record: GpsRecord,
     previousFilename: string | null,
     previousUnix: number,
-    nextRaw: string | undefined,
+    lines: readonly string[],
+    nextIndex: number,
 ): boolean {
     if (
         record.timeUnsynced ||
         previousUnix < MIN_PLAUSIBLE_UNIX_SEC ||
         previousFilename !== record.mp4Filename ||
-        Math.abs(record.unixSeconds - previousUnix) <= MIN_ISOLATED_CLOCK_JUMP_SEC ||
-        nextRaw === undefined
+        Math.abs(record.unixSeconds - previousUnix) <= MIN_ISOLATED_CLOCK_JUMP_SEC
     ) {
         return false;
     }
-    // Probe only suspected jumps. A signature, broken row or different clip
-    // cannot corroborate timing across the boundary. The preceding anchor is
-    // reset at each session and is left untouched when this row is rejected.
-    const next = parseRow(nextRaw);
-    if (!("record" in next) || next.record === null || next.record.timeUnsynced) return false;
-    if (next.record.mp4Filename !== record.mp4Filename) return false;
-    const neighbourGap = next.record.unixSeconds - previousUnix;
-    return (
-        neighbourGap > 0 &&
-        neighbourGap <= MAX_CLOCK_NEIGHBOUR_GAP_SEC &&
-        Math.abs(record.unixSeconds - next.record.unixSeconds) > MIN_ISOLATED_CLOCK_JUMP_SEC
-    );
+    // Probe only suspected jumps, through the same metadata and void rows the
+    // main loop ignores. Stop at session boundaries, broken rows and other clips.
+    // A rollover orphan inherits this clip's name, so its time can corroborate
+    // the old anchor even when no more named fixes follow before end of log.
+    for (let i = nextIndex; i < lines.length; i++) {
+        const raw = lines[i]!;
+        const trimmed = raw.trim();
+        if (trimmed === "" || RX_SEEK_POSITION.test(trimmed)) continue;
+        if (trimmed.startsWith(EXPECTED_SIGNATURE_PREFIX)) return false;
+        const parsed = parseRow(raw);
+        if ("error" in parsed) return false;
+        const next = "orphan" in parsed ? parsed.orphan : parsed.record;
+        if (next === null) continue;
+        if (next.timeUnsynced) return false;
+        if ("record" in parsed && next.mp4Filename !== record.mp4Filename) return false;
+        const neighbourGap = next.unixSeconds - previousUnix;
+        return (
+            neighbourGap >= 0 &&
+            neighbourGap <= MAX_CLOCK_NEIGHBOUR_GAP_SEC &&
+            Math.abs(record.unixSeconds - next.unixSeconds) > MIN_ISOLATED_CLOCK_JUMP_SEC
+        );
+    }
+    return false;
 }
 
 // `record: null` = void row (no fix), intentionally dropped. `orphan` = a valid
