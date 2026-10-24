@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { mergeIntoGpsLog } from "../../parser.js";
 import { WrongFormatError, type VendorFile } from "../types.js";
 import { _internal, csv70maiPrimitive } from "./csv-70mai.js";
 
@@ -43,6 +44,102 @@ describe("csv70maiPrimitive.parse", () => {
     // firmware clock bias shifts the record by 8h - real UTC is
     // 1700000000 + 28800).
     const exampleRow = "1700000000,A,55.123,37.456,12000,1500,10,105,-3,NO20231114-221320F.mp4,,,";
+
+    it.each([63_158_400, -63_158_400])("rejects an isolated clock jump of %s seconds within one clip", async (jump) => {
+        const row = (offset: number) => exampleRow.replace("1700000000", String(1700000000 + offset));
+        const bad = row(jump);
+        const result = await csv70maiPrimitive.parse(
+            makeVf("GPSData.txt", `$V02\n${row(0)}\n${bad}\n${row(2)}\n${row(3)}\n`),
+        );
+        expect(result.skipped).toEqual([{ line: 3, raw: bad, reason: "isolated timestamp outlier" }]);
+        expect(result.records.map((record) => record.unixSeconds)).toEqual(
+            [0, 2, 3].map((offset) => 1700000000 + offset + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC),
+        );
+    });
+
+    it.each([
+        [0, 86_400, 86_401],
+        [0, 63_158_400, 63_158_401],
+        [63_158_400, 63_158_401, 63_158_402],
+        [0, 63_158_400, 60],
+    ])("preserves pauses and sustained clock changes: %j", async (...offsets) => {
+        const rows = offsets.map((offset) => exampleRow.replace("1700000000", String(1700000000 + offset)));
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${rows.join("\n")}\n`));
+        expect(result.skipped).toEqual([]);
+        expect(result.records).toHaveLength(rows.length);
+    });
+
+    it.each(["before", "after"])("does not compare clocks across a session boundary %s the jump", async (boundary) => {
+        const bad = exampleRow.replace("1700000000", "1763158400");
+        const next = exampleRow.replace("1700000000", "1700000002");
+        const rows = boundary === "before" ? [exampleRow, "$V02", bad, next] : [exampleRow, bad, "$V02", next];
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${rows.join("\n")}\n`));
+        expect(result.skipped).toEqual([]);
+        expect(result.records).toHaveLength(3);
+    });
+
+    it.each([0, 1, 2])("does not compare different clips when row %s changes its name", async (index) => {
+        const rows = [0, 63_158_400, 2].map((offset) => exampleRow.replace("1700000000", String(1700000000 + offset)));
+        rows[index] = rows[index]!.replace("NO20231114-221320F.mp4", "NO20231114-221420F.mp4");
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${rows.join("\n")}\n`));
+        expect(result.skipped).toEqual([]);
+        expect(result.records).toHaveLength(3);
+    });
+
+    it("ignores write-cursor metadata without resetting the current filename anchor", async () => {
+        const orphan = exampleRow.replace("1700000000", "1700000001").replace("NO20231114-221320F.mp4", "0");
+        const text = `$V02\ngSeekPos=    3362790\n${exampleRow}\ngSeekPos=42\n${orphan}\n`;
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
+        expect(result.skipped).toEqual([]);
+        expect(result.records).toHaveLength(2);
+        expect(result.records.every((record) => record.mp4Filename === "NO20231114-221320F.mp4")).toBe(true);
+    });
+
+    it("keeps the last record without a newline before preallocated space padding", async () => {
+        const text = `$V02\ngSeekPos=    3362790\n   \n${exampleRow}${" ".repeat(1024)}`;
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
+        expect(result.skipped).toEqual([]);
+        expect(result.records).toHaveLength(1);
+        expect(result.records[0]!.mp4Filename).toBe("NO20231114-221320F.mp4");
+    });
+
+    it("reports malformed cursor metadata instead of hiding arbitrary lines", async () => {
+        const text = `$V02\ngSeekPos=invalid\n${exampleRow}\n`;
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
+        expect(result.skipped).toEqual([{ line: 2, raw: "gSeekPos=invalid", reason: "expected 13 fields, got 1" }]);
+        expect(result.records).toHaveLength(1);
+    });
+
+    it("keeps complete records around a torn row and sorts out-of-order sessions by clip", async () => {
+        const row = (offset: number) => exampleRow.replace("1700000000", String(1700000000 + offset));
+        const torn = "1700000000,A,55.0";
+        const text = `$V02\ngSeekPos=100\n${row(2)}\n${row(3)}\n${torn}\n$V02\n${row(0)}\n${row(1)}`;
+        const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", text));
+        expect(result.skipped).toEqual([{ line: 5, raw: torn, reason: "expected 13 fields, got 3" }]);
+        expect(result.records).toHaveLength(4);
+        const log = mergeIntoGpsLog(null, { ...result, appliedExtractors: [csv70maiPrimitive.id] });
+        expect(log.byFilename.get("NO20231114-221320F.mp4")!.map((record) => record.unixSeconds)).toEqual(
+            [0, 1, 2, 3].map((offset) => 1700000000 + offset + _internal.GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC),
+        );
+    });
+
+    it.each(["NO20261023-112530-000609F", "EV20261023-112530-000609F"])(
+        "restores the omitted MP4 extension in %s",
+        async (name) => {
+            const row = exampleRow.replace("NO20231114-221320F.mp4", name);
+            const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${row}\n`));
+            expect(result.records[0]!.mp4Filename).toBe(`${name}.MP4`);
+        },
+    );
+
+    it.each(["NO20231114-221320F.mp4", "NO20231114-221320F.MP4G4", "clip", "clip.mov"])(
+        "preserves an existing extension or an unrecognized name: %s",
+        async (name) => {
+            const row = exampleRow.replace("NO20231114-221320F.mp4", name);
+            const result = await csv70maiPrimitive.parse(makeVf("GPSData.txt", `$V02\n${row}\n`));
+            expect(result.records[0]!.mp4Filename).toBe(name);
+        },
+    );
 
     it("applies the correct 8-hour firmware bias", async () => {
         const text = `$V02\n${exampleRow}\n`;

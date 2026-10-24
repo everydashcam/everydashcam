@@ -1,6 +1,7 @@
 // 70mai $V02 CSV-log parser. Sits next to MP4 files, named `GPSData*.txt`.
-// 13-field CSV row; field[9] usually names the front-MP4. A500S sessions leave
-// it at "0", so those UTC records wait for directory-scoped time association.
+// 13-field CSV row; field[9] usually names the front MP4, with or without its
+// extension. A500S sessions leave it at "0", so those UTC records wait for
+// directory-scoped time association.
 //
 // 70mai firmware quirks (live here, not in a generic layer):
 //   - 8-hour firmware bias on field[0] (timestamp) - known 70mai firmware
@@ -22,6 +23,7 @@
 //     subtitle-embedded accel formats use.
 
 import { createLogger } from "../../log.js";
+import { RX_70MAI } from "../filename/_patterns.js";
 import { subtractAxisMean } from "../internal/accel-baseline.js";
 import { isCoordinateInRange } from "../internal/ddmm.js";
 import { type GpsRecord, type ParsedRecords, type SkippedLine, type VendorFile, WrongFormatError } from "../types.js";
@@ -39,6 +41,7 @@ const EXPECTED_SIGNATURE_PREFIX = "$V";
 const SUPPORTED_VERSION = "V02";
 const FIELDS_PER_ROW = 13;
 const GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC = 8 * 3600;
+const RX_SEEK_POSITION = /^gSeekPos=\s*\d+$/;
 
 // Plausibility floor for a row timestamp (after the firmware offset). 70mai
 // firmware quirk: right after a power-up / GPS-module reset (a fresh `$V02`
@@ -63,6 +66,12 @@ const MIN_PLAUSIBLE_UNIX_SEC = 1262304000; // 2010-01-01 UTC
 // resumed-after-stop gap. Only applied when both timestamps are synced - see the
 // orphan branch in parseSingleLog.
 const MAX_ORPHAN_GAP_SEC = 300;
+
+// A single minutes-long clock excursion between nearby fixes of the same clip
+// is corrupt timing. Requiring the clock to return within five seconds keeps
+// real recording gaps and sustained clock changes out of this filter.
+const MIN_ISOLATED_CLOCK_JUMP_SEC = 300;
+const MAX_CLOCK_NEIGHBOUR_GAP_SEC = 5;
 
 // How many bytes to read for the marker check. ~512 covers the first line
 // even with CRLF and BOM. parseSingleLog then re-reads the file in full via
@@ -167,8 +176,11 @@ function parseSingleLog(
 
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i]!;
-        if (raw === "") continue;
-        if (raw.trim().startsWith(EXPECTED_SIGNATURE_PREFIX)) {
+        const trimmed = raw.trim();
+        // Preallocated logs carry a write cursor and space padding. The cursor
+        // is metadata, not a GPS row or a new session; keep the filename anchor.
+        if (trimmed === "" || RX_SEEK_POSITION.test(trimmed)) continue;
+        if (trimmed.startsWith(EXPECTED_SIGNATURE_PREFIX)) {
             flushOrphans(anchorMp4 !== null);
             anchorMp4 = null;
             sessionIndex++;
@@ -202,6 +214,10 @@ function parseSingleLog(
         // V (void / no-fix) rows return { record: null }: drop silently and do
         // NOT update the anchor - they carry no usable file/time context.
         if (parsed.record !== null) {
+            if (isIsolatedClockJump(parsed.record, anchorMp4, anchorUnix, lines[i + 1])) {
+                skipped.push({ line: i + 1, raw, reason: "isolated timestamp outlier" });
+                continue;
+            }
             flushOrphans(true);
             anchorMp4 = parsed.record.mp4Filename;
             anchorUnix = parsed.record.unixSeconds;
@@ -225,6 +241,35 @@ function parseSingleLog(
     }
 
     return { records, skipped };
+}
+
+function isIsolatedClockJump(
+    record: GpsRecord,
+    previousFilename: string | null,
+    previousUnix: number,
+    nextRaw: string | undefined,
+): boolean {
+    if (
+        record.timeUnsynced ||
+        previousUnix < MIN_PLAUSIBLE_UNIX_SEC ||
+        previousFilename !== record.mp4Filename ||
+        Math.abs(record.unixSeconds - previousUnix) <= MIN_ISOLATED_CLOCK_JUMP_SEC ||
+        nextRaw === undefined
+    ) {
+        return false;
+    }
+    // Probe only suspected jumps. A signature, broken row or different clip
+    // cannot corroborate timing across the boundary. The preceding anchor is
+    // reset at each session and is left untouched when this row is rejected.
+    const next = parseRow(nextRaw);
+    if (!("record" in next) || next.record === null || next.record.timeUnsynced) return false;
+    if (next.record.mp4Filename !== record.mp4Filename) return false;
+    const neighbourGap = next.record.unixSeconds - previousUnix;
+    return (
+        neighbourGap > 0 &&
+        neighbourGap <= MAX_CLOCK_NEIGHBOUR_GAP_SEC &&
+        Math.abs(record.unixSeconds - next.record.unixSeconds) > MIN_ISOLATED_CLOCK_JUMP_SEC
+    );
 }
 
 // `record: null` = void row (no fix), intentionally dropped. `orphan` = a valid
@@ -271,7 +316,10 @@ function parseRow(raw: string): RowResult {
     if (speedMs < 0) return { error: "bad speed" };
 
     // field[9] = front-MP4 name, the key a record binds to in byFilename.
-    const mp4Filename = (parts[9] ?? "").trim();
+    const rawFilename = (parts[9] ?? "").trim();
+    // Some $V02 firmware writes only the clip stem. Restore its extension
+    // before source-scoped association, which joins on the full MP4 basename.
+    const mp4Filename = RX_70MAI.test(`${rawFilename}.MP4`) ? `${rawFilename}.MP4` : rawFilename;
 
     const record: GpsRecord = {
         unixSeconds,

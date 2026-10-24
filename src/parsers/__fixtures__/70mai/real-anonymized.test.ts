@@ -4,6 +4,7 @@
 // accel axis is model-dependent (x800 on ay/field 7, A810 on ax/field 6), yet
 // gravity must be removed without a hard-coded axis. A500S has no video
 // filenames at all and retains its UTC fixes for scoped time association.
+// Another firmware variant stores clip stems without the MP4 extension.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -11,6 +12,10 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { associateRecordsWithVideos, recordsForVideo } from "../../../gps-association.js";
+import { mergeIntoGpsLog } from "../../../parser.js";
+import { deriveStartUtc } from "../../../trips.js";
+import { vendorFileKey } from "../../../vendor-file-key.js";
 import {
     matchFilenameChannel,
     matchFilenameMode,
@@ -79,7 +84,13 @@ describe("70mai real-anonymized fixtures", () => {
         expect(Math.abs(raw.y)).toBeLessThan(0.3);
     });
 
-    it.each(["real-anonymized-x800.txt", "real-anonymized-a810.txt", "real-anonymized-a500s.txt"])(
+    it.each([
+        "real-anonymized-x800.txt",
+        "real-anonymized-a810.txt",
+        "real-anonymized-a500s.txt",
+        "real-anonymized-extensionless.txt",
+        "real-anonymized-clock-jump.txt",
+    ])(
         "%s: parses into plausible, anonymized records with gravity removed",
         async (name) => {
             const { result } = await parseFixture(name);
@@ -106,6 +117,83 @@ describe("70mai real-anonymized fixtures", () => {
             expect(Math.abs(mean((r) => r.accelZg))).toBeLessThan(0.02);
         },
     );
+
+    it("binds extensionless log references to MP4 files on the same card", async () => {
+        const text = readFileSync(resolve(FIXTURES_DIR, "real-anonymized-extensionless.txt"), "utf8");
+        const source = makeVendorFile("GPSData000001.txt", text);
+        source.relativePath = "card/GPSData000001.txt";
+        source.sourceKey = "card";
+        expect(text.split(/\r?\n/)[1]).toBe("gSeekPos=    3362790");
+        const rows = text
+            .split(/\r?\n/)
+            .map((line) => line.split(","))
+            .filter((row) => row.length === 13 && row[1] === "A");
+        const names = [...new Set(rows.map((row) => `${row[9]}.MP4`))];
+        const videos = ["card", "other-card"].flatMap((sourceKey) =>
+            names.map((name) => ({
+                ...makeVendorFile(name, ""),
+                relativePath: `${sourceKey}/Normal/Front/${name}`,
+                sourceKey,
+            })),
+        );
+
+        expect(await csv70maiPrimitive.marker(source)).toBe(true);
+        const parsed = await csv70maiPrimitive.parse(source);
+        expect(parsed.skipped).toEqual([]);
+        expect(parsed.records).toHaveLength(rows.length);
+        associateRecordsWithVideos(parsed.records, source, videos);
+        const log = mergeIntoGpsLog(null, { ...parsed, appliedExtractors: [csv70maiPrimitive.id] });
+
+        for (const video of videos) {
+            const expected =
+                video.sourceKey === "card"
+                    ? rows.filter((row) => `${row[9]}.MP4` === video.file.name).length
+                    : 0;
+            const records = recordsForVideo(log, video, videos);
+            expect(records).toHaveLength(expected);
+            for (const record of records) expect(record.videoKey).toBe(vendorFileKey(video));
+        }
+        for (let i = 0; i < parsed.records.length; i++) {
+            const record = parsed.records[i]!;
+            expect(record.mp4Filename).toBe(`${rows[i]![9]}.MP4`);
+            expect(record.unixSeconds).toBe(Number(rows[i]![0]) + 8 * 3600);
+            expect(record.speedMs).toBeCloseTo(Number(rows[i]![5]) / 100, 6);
+            expect(record.timeUnsynced).toBeUndefined();
+            if (i > 0) expect(record.unixSeconds).toBeGreaterThan(parsed.records[i - 1]!.unixSeconds);
+        }
+    });
+
+    it("keeps the real two-year clock jump out of the clip's GPS window", async () => {
+        const { text, result } = await parseFixture("real-anonymized-clock-jump.txt");
+        const lines = text.trim().split(/\r?\n/);
+        const badIndex = lines.findIndex((line) => line.startsWith("1855639710,"));
+        expect(badIndex).toBeGreaterThan(0);
+        expect(result.skipped).toEqual([
+            { line: badIndex + 1, raw: lines[badIndex], reason: "isolated timestamp outlier" },
+        ]);
+        expect(result.records).toHaveLength(49);
+        for (let i = 1; i < result.records.length; i++) {
+            expect(result.records[i]!.unixSeconds).toBeGreaterThan(result.records[i - 1]!.unixSeconds);
+            expect(result.records[i]!.unixSeconds - result.records[i - 1]!.unixSeconds).toBeLessThanOrEqual(2);
+        }
+        const log = mergeIntoGpsLog(null, { ...result, appliedExtractors: [csv70maiPrimitive.id] });
+        const name = "NO20261020-172736-000339F.MP4";
+        const anchor = deriveStartUtc({
+            file: makeVendorFile(name, ""),
+            fingerprint: "70mai",
+            createdUtc: null,
+            durationSec: 60,
+            records: log.byFilename.get(name)!,
+            fingerprintTz: null,
+            parseFilenameLocalTime: (file) => matchFilenameTime(file)?.value ?? null,
+            preciseFilenameOffsetSec: 7200,
+            embeddedStartUtcHint: null,
+            isTimelapse: false,
+            wallDurationSec: null,
+        });
+        expect(anchor.source).toBe("name");
+        expect(anchor.startUtc).toBe(Date.parse("2026-10-20T15:27:36Z") / 1000);
+    });
 
     it("a500s: preserves 50 unnamed UTC fixes with their original cadence", async () => {
         const name = "real-anonymized-a500s.txt";

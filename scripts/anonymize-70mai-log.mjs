@@ -52,6 +52,8 @@ const GPS_TIMESTAMP_FIRMWARE_OFFSET_SEC = 8 * 3600;
 // Rounds one log's records to whole-degree coordinates, keeping the first
 // MAX_LINES well-formed rows after the optional UTC boundary. Session
 // separators remain intact so an unnamed log keeps its recording boundaries.
+// Preserve the optional write-cursor header as metadata. Its original byte
+// offset describes the source log, not this shortened fixture.
 // Malformed rows are covered by synthetic-edge.txt, not the real fixture.
 function anonymizeLog(text, fromUtcSec = -Infinity) {
     const lines = text.split(/\r?\n/);
@@ -59,6 +61,7 @@ function anonymizeLog(text, fromUtcSec = -Infinity) {
     let signature = null;
     let session = 0;
     let writtenSession = -1;
+    let seekPosition = null;
 
     let kept = 0;
     for (let i = 0; i < lines.length && kept < MAX_LINES; i++) {
@@ -67,6 +70,10 @@ function anonymizeLog(text, fromUtcSec = -Infinity) {
         if (/^\$V\d{2}$/.test(raw)) {
             signature = raw;
             session++;
+            continue;
+        }
+        if (/^gSeekPos=\s*\d+$/.test(raw)) {
+            seekPosition = raw;
             continue;
         }
         const parts = raw.split(",");
@@ -88,7 +95,9 @@ function anonymizeLog(text, fromUtcSec = -Infinity) {
         const lat = Math.round(latitude).toFixed(6);
         const lon = Math.round(longitude).toFixed(6);
         if (session !== writtenSession) {
+            const isFirstSession = out.length === 0;
             out.push(signature);
+            if (isFirstSession && seekPosition !== null) out.push(seekPosition);
             writtenSession = session;
         }
 
