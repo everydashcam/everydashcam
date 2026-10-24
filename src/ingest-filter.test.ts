@@ -26,6 +26,33 @@ describe("isIgnoredPath", () => {
         expect(isIgnoredPath(".s_Back/NO20260101-120000-000001R.MP4")).toBe(true);
     });
 
+    it("keeps 70mai logs in the hidden GPS directory", () => {
+        const keep = [
+            ".GPS/GPSData000001.txt",
+            "SD/.gps/GPSData000001.txt",
+            "SD/.Gps/GPSData000001.txt",
+            "SD\\.GPS\\GPSData000001.txt",
+        ];
+        for (const path of keep) {
+            expect(isIgnoredPath(path), path).toBe(false);
+        }
+    });
+
+    it("still drops junk within and around the GPS directory", () => {
+        const drop = [
+            "SD/.GPS/.DS_Store",
+            "SD/.GPS/.hidden/GPSData000001.txt",
+            "SD/.GPS/System Volume Information/file.txt",
+            "SD/.GPS/.s_Front/clip.mp4",
+            "SD/.backup/.GPS/GPSData000001.txt",
+            "SD/.GPS-backup/GPSData000001.txt",
+            "SD\\.GPS\\._GPSData000001.txt",
+        ];
+        for (const path of drop) {
+            expect(isIgnoredPath(path), path).toBe(true);
+        }
+    });
+
     it("drops Z60 small previews even without their full-size files", () => {
         const preview = "disk/DCIM/200video/front/small/20260817190140_0060_S.mp4";
         expect(isIgnoredPath(preview)).toBe(true);

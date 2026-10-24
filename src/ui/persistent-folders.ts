@@ -179,11 +179,10 @@ async function openFolderHandle(
         notify({ severity: "warn", messageKey: "status.dropReadFailed" });
     }
     if (files.files.length === 0) {
-        // ingestFiles([]) shows its own "no files" toast but does not retract
-        // the pre-ingest overlay - same contract as the classic paths.
+        // The structural snapshot still reaches ingest when no files survived.
         endPreIngestReading();
     }
-    await ingestFiles(files.files, { handle, folderId: folder?.id ?? "" });
+    await ingestFiles(files.files, { handle, folderId: folder?.id ?? "" }, files.structure);
     return files.files;
 }
 

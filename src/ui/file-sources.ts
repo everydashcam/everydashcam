@@ -3,11 +3,12 @@
 // converge into ingestFiles(VendorFile[]).
 
 import { identifyBrowser } from "../capabilities.js";
-import { isIgnoredSegment } from "../ingest-filter.js";
+import type { IngestStructureEntry } from "../ingest-structure.js";
 import { createLogger } from "../log.js";
 import type { VendorFile } from "../parsers/types.js";
 
 import { dom } from "./dom.js";
+import { collectFilesFromDataTransfer } from "./file-source-entries.js";
 import { beginPreIngestReading, endPreIngestReading } from "./ingest-overlay.js";
 import { ingestFiles } from "./ingest.js";
 import { toVendorFiles } from "./ingest-core.js";
@@ -17,13 +18,6 @@ import { canUseDirectoryPicker, openViaDirectoryPicker } from "./persistent-fold
 import { shouldShowUploadWarning, showUploadWarning } from "./upload-warning-modal.js";
 
 const log = createLogger("file-sources");
-
-/** Result of collecting dragged files: what we could read, plus how many
- *  entries failed (rejected file()/readEntries()) so the caller can warn. */
-interface CollectResult {
-    files: VendorFile[];
-    readErrors: number;
-}
 
 /**
  * Whether a DataTransfer contains files (not text/url/anything else). Used to
@@ -70,86 +64,6 @@ function hideDropOverlay(): void {
             dom.dropOverlay.hidden = true;
         }
     }, 160);
-}
-
-/**
- * Extracts all files from a DataTransfer, recursively traversing dragged
- * folders via the File and Directory Entries API. Also collects relativePath
- * from FileSystemEntry.fullPath so plugins can inspect the directory structure
- * (important for multi-channel cameras and vendors that place logs in
- * subdirectories).
- *
- * When the user dragged individual files (not a folder), dt.items yields a flat
- * list with fullPath = "/<filename>". Strip the leading slash so relativePath
- * is "<filename>", matching the webkitRelativePath format from <input>.
- */
-async function collectFilesFromDataTransfer(dt: DataTransfer | null): Promise<CollectResult> {
-    if (!dt) return { files: [], readErrors: 0 };
-    const entries: FileSystemEntry[] = [];
-    if (dt.items && dt.items.length > 0 && typeof dt.items[0]!.webkitGetAsEntry === "function") {
-        for (let i = 0; i < dt.items.length; i++) {
-            const e = dt.items[i]!.webkitGetAsEntry?.();
-            if (e) entries.push(e);
-        }
-    }
-    if (entries.length === 0) {
-        return { files: toVendorFiles(Array.from(dt.files || [])), readErrors: 0 };
-    }
-    const out: VendorFile[] = [];
-    const errors = { count: 0 };
-    for (const entry of entries) {
-        await walkEntry(entry, out, errors);
-    }
-    return { files: out, readErrors: errors.count };
-}
-
-// Recursively collects files into `out`. Per-entry failures (a file removed
-// from the SD card mid-read, a revoked permission, an IO error on a slow card)
-// are caught, counted in `errors`, and skipped rather than rejecting the whole
-// traversal - one unreadable file must not silently abort the entire drop (the
-// overlay is already gone, so the user would see nothing happen at all).
-async function walkEntry(entry: FileSystemEntry, out: VendorFile[], errors: { count: number }): Promise<void> {
-    if (entry.isFile) {
-        const fileEntry = entry as FileSystemFileEntry;
-        let f: File;
-        try {
-            f = await new Promise<File>((res, rej) => fileEntry.file(res, rej));
-        } catch (err) {
-            errors.count++;
-            log.warn("dnd: failed to read file entry", { name: entry.name, err: String(err) });
-            return;
-        }
-        // FileSystemEntry.fullPath starts with "/" - strip it to get a path
-        // relative to the dnd session root. Outside dnd we use
-        // webkitRelativePath, which has no leading slash.
-        const path = entry.fullPath.startsWith("/") ? entry.fullPath.slice(1) : entry.fullPath;
-        out.push({ file: f, relativePath: path || f.name });
-        return;
-    }
-    if (entry.isDirectory) {
-        const dirEntry = entry as FileSystemDirectoryEntry;
-        const reader = dirEntry.createReader();
-        while (true) {
-            let batch: FileSystemEntry[];
-            try {
-                batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
-            } catch (err) {
-                errors.count++;
-                log.warn("dnd: failed to read directory entries", { name: entry.name, err: String(err) });
-                break;
-            }
-            if (batch.length === 0) break;
-            for (const child of batch) {
-                // Same pruning as the FSA walker (persist/folders.ts): OS
-                // metadata directories deny reads and would count as read
-                // errors. Only children are pruned - an explicitly dropped
-                // junk folder still walks, so the chokepoint's junk-root
-                // diagnostic can name it.
-                if (isIgnoredSegment(child.name)) continue;
-                await walkEntry(child, out, errors);
-            }
-        }
-    }
 }
 
 export function initFileSources(): void {
@@ -300,8 +214,8 @@ export function initFileSources(): void {
         hideDropOverlay();
 
         // Raise the overlay BEFORE walking the dropped tree:
-        // collectFilesFromDataTransfer recurses the directory (readEntries +
-        // file() per entry) and can take seconds on a large card, during which
+        // collectFilesFromDataTransfer enumerates the tree and opens eligible
+        // file handles. This can take seconds on a large card, during which
         // the drop overlay is already gone and the real ingest has not started.
         // No-op when an ingest is already running (the second drop queues and
         // that overlay stays - see beginPreIngestReading).
@@ -309,8 +223,9 @@ export function initFileSources(): void {
 
         let files: VendorFile[];
         let readErrors: number;
+        let structure: IngestStructureEntry[];
         try {
-            ({ files, readErrors } = await collectFilesFromDataTransfer(e.dataTransfer));
+            ({ files, readErrors, structure } = await collectFilesFromDataTransfer(e.dataTransfer));
         } catch (err) {
             // Defensive net: walkEntry swallows per-entry errors, so this only
             // fires on an unexpected failure of the whole traversal. Without it
@@ -322,23 +237,21 @@ export function initFileSources(): void {
         }
 
         if (files.length === 0) {
-            // Nothing to ingest: retract the overlay (ingestFiles([]) only warns
-            // and returns, so it would not hide it for us).
+            // Release the traversal overlay before passing diagnostic names
+            // to ingest; there are no file handles to process.
             endPreIngestReading();
-            // Read errors with nothing salvaged: tell the user the read failed.
-            // Otherwise fall through to ingestFiles([]), which shows the normal
-            // "no files selected" toast.
+            // Preserve the structure even when nothing is eligible or readable.
+            // Ingest owns the report snapshot; a failed drop still has names.
             if (readErrors > 0) {
                 notify({ severity: "error", messageKey: "status.dropReadFailed" });
-                return;
             }
-            ingestFiles(files);
+            ingestFiles(files, null, structure);
             return;
         }
 
         // Partial success: ingest what we read, but flag the skipped files.
         if (readErrors > 0) notify({ severity: "warn", messageKey: "status.dropReadFailed" });
-        ingestFiles(files);
+        ingestFiles(files, null, structure);
     });
 
     // Keyboard activation for label-based CTAs. sidebarCta is a focusable

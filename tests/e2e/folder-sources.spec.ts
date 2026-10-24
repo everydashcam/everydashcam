@@ -7,7 +7,14 @@
 // controls. The second half drives a fake directory picker (see
 // mockDirectoryPicker) - the only way to reach that code from a spec.
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
+import {
+    checkFeedbackStructureReport,
+    downloadFeedbackStructureReport,
+    writeFeedbackStructureCard,
+} from "./_feedback-structure.js";
 
 import {
     SAMPLE_70MAI,
@@ -20,6 +27,51 @@ import {
 } from "./_fixtures.js";
 
 const sourceRow = "#folder-sources .folder-source";
+
+test("file-system picker includes excluded directory contents in the feedback report", async ({ page }, info) => {
+    const directory = info.outputPath("card");
+    writeFeedbackStructureCard(directory);
+    const excludedOnly = info.outputPath("excluded-only");
+    mkdirSync(join(excludedOnly, ".diagnostic-only"), { recursive: true });
+    writeFileSync(join(excludedOnly, ".diagnostic-only", "trace.dat"), "excluded file content");
+    await presetLocalStorage(page);
+    await mockDirectoryPicker(page, [
+        { label: "EXCLUDED", dir: excludedOnly },
+        { label: "CARD", dir: directory },
+    ]);
+    await gotoApp(page, "en");
+    await page.locator("#landing-cta").click();
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const { state } = window.__everydashcam;
+                return {
+                    finished: state.ingestController === null,
+                    trips: state.trips.length,
+                    files: state.lastIngestFiles?.length,
+                    observedExcludedFile: state.lastIngestStructure?.some((entry) =>
+                        entry.relativePath.endsWith(".diagnostic-only/trace.dat"),
+                    ),
+                };
+            }),
+        )
+        .toEqual({ finished: true, trips: 0, files: 0, observedExcludedFile: true });
+    const excludedReport = await downloadFeedbackStructureReport(page);
+    expect(excludedReport).toMatch(/\.diagnostic-only\/trace\.dat[^\n]*excluded: hidden path/);
+    await page.locator("#feedback-cancel").click();
+
+    // The helper seeds real OPFS handles. An empty directory cannot be expressed
+    // by its file listing, so add one before the app enumerates that same root.
+    await page.evaluate(async () => {
+        const picker = (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> })
+            .showDirectoryPicker;
+        const root = await picker();
+        await root.getDirectoryHandle(".empty-vendor", { create: true });
+    });
+    await page.locator("#landing-cta").click();
+    const report = await checkFeedbackStructureReport(page, true);
+    expect(report, "a new selection replaces the previous folder snapshot").not.toContain(".diagnostic-only");
+});
 
 test.describe("folder sources, classic picker", () => {
     test.beforeEach(async ({ page }) => {

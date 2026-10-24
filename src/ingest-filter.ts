@@ -1,10 +1,6 @@
 // Pre-ingest path filter: drops hidden/system files and known low-resolution
-// previews before they reach classify/index/dedup. Runs at the single
-// ingest chokepoint (ui/ingest.ts), so junk never costs an SD seek. The FSA
-// and drag-and-drop walkers additionally prune the same names during
-// enumeration (via isIgnoredSegment) - OS metadata directories like
-// .Spotlight-V100 are unreadable and would otherwise surface as read-error
-// warnings for a perfectly healthy card.
+// previews before they reach classify/index/dedup. Directory walkers retain
+// excluded names for the structure report without opening their file handles.
 //
 // Hidden directories cover 70mai `.s_Front` / `.s_Back` previews. DDPai Z60
 // writes its low-resolution previews to a visible `small/` directory instead.
@@ -23,17 +19,27 @@ const JUNK_DIR_NAMES = new Set<string>([
 // Windows chkdsk recovery folders: FOUND.000, FOUND.001, ...
 const FOUND_DIR_RE = /^found\.\d{3}$/;
 
+// WinMp4Extract's author reports .GPS logs for some 70mai models:
+// https://mail.amicus.ba/index.php/programi/397-winmp4extract-program
+// This is a supported layout, not a claim that every card uses it. Our hidden
+// layout fixtures relocate an existing log to exercise the import filter.
+const ALLOWED_HIDDEN_SEGMENTS: ReadonlySet<string> = new Set([".gps"]);
+
+export type IngestIgnoreReason = "hidden path" | "system path" | "preview recording";
+
 /**
  * Whether a single path segment is a hidden or junk directory/file name.
- * Hidden = starts with ".", which on every dashcam SD we have seen means
- * proxy/thumbnail/system content, never a primary recording.
+ * Explicitly allowed telemetry paths remain readable.
  */
 export function isIgnoredSegment(segment: string): boolean {
-    if (segment.startsWith(".")) return true;
+    return ignoredSegmentReason(segment) !== null;
+}
+
+export function ignoredSegmentReason(segment: string): IngestIgnoreReason | null {
     const lower = segment.toLowerCase();
-    if (JUNK_DIR_NAMES.has(lower)) return true;
-    if (FOUND_DIR_RE.test(lower)) return true;
-    return false;
+    if (segment.startsWith(".") && !ALLOWED_HIDDEN_SEGMENTS.has(lower)) return "hidden path";
+    if (JUNK_DIR_NAMES.has(lower) || FOUND_DIR_RE.test(lower)) return "system path";
+    return null;
 }
 
 /**
@@ -44,15 +50,21 @@ export function isIgnoredSegment(segment: string): boolean {
  * separators. An empty path is never ignored (treated as a bare filename).
  */
 export function isIgnoredPath(relativePath: string): boolean {
-    if (!relativePath) return false;
+    return ignoredPathReason(relativePath) !== null;
+}
+
+/** The same decision drives import filtering and its diagnostic annotation. */
+export function ignoredPathReason(relativePath: string): IngestIgnoreReason | null {
+    if (!relativePath) return null;
     const normalizedPath = relativePath.replaceAll("\\", "/");
-    if (RX_SMALL_PREVIEW_PATH.test(normalizedPath)) return true;
+    if (RX_SMALL_PREVIEW_PATH.test(normalizedPath)) return "preview recording";
     const segments = normalizedPath.split("/");
     for (const segment of segments) {
         if (segment.length === 0) continue; // leading slash, double slash
-        if (isIgnoredSegment(segment)) return true;
+        const reason = ignoredSegmentReason(segment);
+        if (reason) return reason;
     }
-    return false;
+    return null;
 }
 
 /**

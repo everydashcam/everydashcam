@@ -2,7 +2,14 @@
 // permission checks, dedupe via isSameEntry, recursive enumeration into
 // VendorFile[]. UI-free - ui/persistent-folders.ts owns the UX on top.
 
-import { isIgnoredSegment } from "../ingest-filter.js";
+import {
+    createExcludedTraversalBudget,
+    excludedDirectoryLimit,
+    type ExcludedTraversalBudget,
+    takeExcludedStructureEntry,
+} from "../excluded-traversal-budget.js";
+import { isIgnoredPath } from "../ingest-filter.js";
+import type { IngestStructureEntry } from "../ingest-structure.js";
 import { createLogger } from "../log.js";
 import type { VendorFile } from "../parsers/types.js";
 import { openPersistDb } from "./db.js";
@@ -166,8 +173,9 @@ export async function ensureFileReadwritePermission(handle: FileSystemFileHandle
 
 export interface FolderEnumeration {
     files: VendorFile[];
-    /** Entries that failed to read and were skipped - one unreadable file must
-     *  not abort the whole folder (mirrors the DnD traversal contract). */
+    structure: IngestStructureEntry[];
+    /** Eligible entries that failed to read; excluded directory failures stay
+     *  in the structure without warning about an otherwise healthy card. */
     readErrors: number;
 }
 
@@ -178,13 +186,25 @@ export interface FolderEnumeration {
  * cross-session cache identity rely on the two picker paths producing
  * identical paths for the same folder. Throws when the root itself cannot be
  * read (folder moved/unplugged/permission revoked - caller decides the UX);
- * per-child failures are counted and skipped.
+ * per-child failures remain in the structure and eligible failures are counted.
+ * Excluded names have a diagnostic traversal budget; marked partial listings
+ * never prevent eligible siblings from loading.
  */
 export async function enumerateFolder(handle: FileSystemDirectoryHandle): Promise<FolderEnumeration> {
     const out: VendorFile[] = [];
+    const root: IngestStructureEntry = { relativePath: handle.name, kind: "directory" };
+    const structure: IngestStructureEntry[] = [root];
     const errors = { count: 0 };
-    await walkDirectory(handle, handle.name, out, errors);
-    return { files: out, readErrors: errors.count };
+    await walkDirectory(
+        handle,
+        root,
+        out,
+        structure,
+        errors,
+        createExcludedTraversalBudget(),
+        isIgnoredPath(handle.name) ? 1 : 0,
+    );
+    return { files: out, structure, readErrors: errors.count };
 }
 
 // Iteration errors here propagate to the caller: for the root that is the
@@ -192,22 +212,41 @@ export async function enumerateFolder(handle: FileSystemDirectoryHandle): Promis
 // below catches them into the skip counter.
 async function walkDirectory(
     dir: FileSystemDirectoryHandle,
-    prefix: string,
+    parent: IngestStructureEntry,
     out: VendorFile[],
+    structure: IngestStructureEntry[],
     errors: { count: number },
+    budget: ExcludedTraversalBudget,
+    excludedDepth: number,
 ): Promise<void> {
+    const limit = excludedDirectoryLimit(budget, excludedDepth);
+    if (limit) {
+        parent.truncated = limit;
+        return;
+    }
     for await (const child of dir.values()) {
-        // Hidden/junk names are pruned here, not only at the ingest chokepoint:
-        // OS metadata directories (.Spotlight-V100, System Volume Information)
-        // deny reads, so descending would count them as read errors and warn
-        // the user about a perfectly healthy card. The picked root itself is
-        // never filtered - that stays the chokepoint's junk-root diagnostic.
-        if (isIgnoredSegment(child.name)) continue;
+        const relativePath = `${parent.relativePath}/${child.name}`;
+        const isIgnored = isIgnoredPath(relativePath);
+        if (isIgnored && !takeExcludedStructureEntry(budget)) {
+            parent.truncated = "entry limit";
+            // A normal parent must still reveal eligible siblings. Every child
+            // below an excluded parent is excluded, so release its iterator.
+            if (excludedDepth > 0) return;
+            continue;
+        }
+        const entry: IngestStructureEntry = { relativePath, kind: child.kind };
+        structure.push(entry);
         if (child.kind === "file") {
+            // Excluded files remain visible in diagnostics without opening
+            // them. Directory handles alone expose names, not file metadata.
+            if (isIgnored) continue;
             try {
                 const file = await child.getFile();
-                out.push({ file, relativePath: `${prefix}/${child.name}` });
+                entry.size = file.size;
+                entry.lastModified = file.lastModified;
+                out.push({ file, relativePath });
             } catch (err) {
+                entry.unreadable = true;
                 errors.count++;
                 log.warn("fsa: failed to read file entry", {
                     name: child.name,
@@ -216,8 +255,12 @@ async function walkDirectory(
             }
         } else {
             try {
-                await walkDirectory(child, `${prefix}/${child.name}`, out, errors);
+                await walkDirectory(child, entry, out, structure, errors, budget, isIgnored ? excludedDepth + 1 : 0);
             } catch (err) {
+                entry.unreadable = true;
+                // OS metadata folders often deny enumeration. Preserve that
+                // fact in the report without warning about a healthy card.
+                if (isIgnored) continue;
                 errors.count++;
                 log.warn("fsa: failed to read directory", {
                     name: child.name,

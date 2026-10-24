@@ -1,6 +1,7 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
+import { write70maiHiddenGpsCard } from "./_70mai-card.js";
 import { DESKTOP, expect, MOBILE, pausePlayback, REPO_ROOT, SAMPLE_GOPRO, SAMPLE_NOGPS } from "./_fixtures.js";
 
 const RECORDING_NAME = "NO20261020-162549-000239F.MP4";
@@ -75,6 +76,34 @@ async function openRecordingTrip(page: Page, name: string): Promise<void> {
         .toBe(true);
     await pausePlayback(page);
     await expect(page.locator("#trip-analysis-status")).toBeHidden();
+}
+
+/** A synthetic hidden telemetry layout survives the folder ingest filter. */
+export async function check70maiHiddenGps(page: Page, directory: string): Promise<void> {
+    write70maiHiddenGpsCard(directory);
+    await page.locator("#folder-input").setInputFiles(directory);
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const recordings = new Set(
+                    window.__everydashcam.state.trips.flatMap((trip) =>
+                        trip.frames.flatMap((frame) => Object.values(frame.channels)),
+                    ),
+                );
+                return [...recordings]
+                    .filter((recording) => recording.channel === "front")
+                    .map((recording) => ({
+                        name: recording.file.name,
+                        points: recording.records.length,
+                        extractors: recording.appliedExtractors,
+                    }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            }),
+        )
+        .toEqual([
+            { name: "NO20260101-120000-000001F.MP4", points: 3, extractors: ["csv-70mai"] },
+            { name: "NO20260101-120002-000002F.MP4", points: 3, extractors: ["csv-70mai"] },
+        ]);
 }
 
 /** Root logs pass through the real parser worker on hosted and file origins. */

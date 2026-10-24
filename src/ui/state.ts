@@ -12,6 +12,7 @@ import { recordsHaveGps } from "../parser.js";
 import type { ParsedLog } from "../parser.js";
 import type { ClassifiedFile } from "../parsers/registry.js";
 import type { Channel, VendorFile } from "../parsers/types.js";
+import type { IngestStructureEntry } from "../ingest-structure.js";
 import type { PerFileMseBackend } from "../per-file-mse.js";
 import type { RecordingAnalysisProgress } from "../recording-analysis-progress.js";
 import type { TripFilters } from "../trip-filters.js";
@@ -36,6 +37,7 @@ export interface IngestOrigin {
 export interface QueuedIngest {
     files: VendorFile[];
     origin: IngestOrigin | null;
+    structure?: IngestStructureEntry[];
 }
 
 export type TripSortKey = "date" | "distance" | "duration" | "size";
@@ -189,12 +191,12 @@ export interface AppState {
     // Each entry keeps the batch's origin folder next to its files - a drop
     // that waited here must still be attributable to the folder it came from.
     ingestQueue: QueuedIngest[];
-    // Snapshot of the raw file list of the LAST ingest (path/size/mtime only -
-    // File refs, no content read). Kept so the "help add my camera" flow can
-    // build its folder-structure report after an unrecognised-camera ingest,
-    // which otherwise discards the tree (trips=0 -> no candidates to walk).
-    // Overwritten each drop, not accumulated. See src/report-structure.ts.
+    // Available File objects from the last ingest before path filtering, used
+    // for report metadata and recognition help. Walkers omit excluded file
+    // handles; their names remain in lastIngestStructure. Replaced each drop.
     lastIngestFiles: VendorFile[] | null;
+    // Full observed structure, including excluded and empty/unreadable entries.
+    lastIngestStructure: IngestStructureEntry[] | null;
     // True while the worker transcode/transcodeSplit is active. Map rAF-loop
     // and chart-render are skipped - the main thread must not spin UI updates
     // during export, otherwise the worker stalls waiting for FSA-write acks
@@ -475,6 +477,7 @@ export const state: AppState = {
     ingestController: null,
     ingestQueue: [],
     lastIngestFiles: null,
+    lastIngestStructure: null,
     transcodeInProgress: false,
     pendingHeavyEmbeddedGps: new Map(),
     inflightEmbeddedGps: new Map(),

@@ -140,6 +140,31 @@ async function openDeferredGpsTrip(page: Page, includeBackgroundClips = false): 
         .toBe(true);
 }
 
+async function dropExcludedEntry(page: Page): Promise<void> {
+    await page.evaluate(() => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(["excluded diagnostic data"], "trace.dat"));
+        // The browser Entries API supplies names before file bytes. The real
+        // walker must retain this path without requesting the excluded File.
+        Object.defineProperty(transfer, "items", {
+            value: [
+                {
+                    webkitGetAsEntry: () => ({
+                        name: "trace.dat",
+                        fullPath: "/.diagnostic-only/trace.dat",
+                        isFile: true,
+                        isDirectory: false,
+                        file: () => {
+                            throw new Error("excluded file must not be opened");
+                        },
+                    }),
+                },
+            ],
+        });
+        window.dispatchEvent(new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }));
+    });
+}
+
 test.describe("progressive ingest", () => {
     let releaseViewerDownload: (() => void) | undefined;
     let viewerDownloadRequested = false;
@@ -156,6 +181,11 @@ test.describe("progressive ingest", () => {
     });
 
     test.beforeEach(async ({ page }, testInfo) => {
+        if (testInfo.title.includes("ignored-only classic selection")) {
+            await page.addInitScript(() => {
+                Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: undefined });
+            });
+        }
         if (testInfo.title.includes("auxiliary classifier worker crashes")) {
             await page.addInitScript(() => {
                 const NativeWorker = window.Worker;
@@ -540,6 +570,180 @@ test.describe("progressive ingest", () => {
         expect(result.pendingGps, "the active trip has no deferred GPS tail").toBe(0);
         expect(result.inflightGps, "the active trip has no in-flight GPS tail").toBe(0);
         expect(result.startedEarly, "playback never becomes active before GPS resolves").toBe(false);
+    });
+
+    for (const source of ["structure-only drop", "ignored-only classic selection"] as const) {
+        test(`keeps selected-trip GPS running after a ${source} during viewer download`, async ({ page }) => {
+            await openDeferredGpsTrip(page);
+            await expect(page.locator("#ingest-overlay")).toBeHidden();
+            await expect(page.locator("#trip-preparation")).toBeVisible();
+            await page.evaluate(() => {
+                const status = document.getElementById("ingest-overlay-status")!;
+                new MutationObserver(() => {
+                    if (status.textContent === "Sorting through files...") {
+                        (
+                            window as typeof window & { __emptySelectionClassified?: boolean }
+                        ).__emptySelectionClassified = true;
+                    }
+                }).observe(status, { childList: true, characterData: true, subtree: true });
+            });
+
+            if (source === "structure-only drop") {
+                await dropExcludedEntry(page);
+            } else {
+                const directory = makeTemporaryDirectory("everydashcam-ignored-selection-");
+                writeFileSync(path.join(directory, ".DS_Store"), "excluded file");
+                const chooserPromise = page.waitForEvent("filechooser");
+                // Exercise the picker ownership path while the trip's separate
+                // preparation surface is visible. Native selection is supplied
+                // through the real directory input's change event.
+                await page.locator("#sidebar-cta").evaluate((element: HTMLElement) => element.click());
+                const chooser = await chooserPromise;
+                await expect(page.locator("#ingest-overlay")).toBeVisible();
+                await chooser.setFiles(directory);
+            }
+            await expect
+                .poll(() =>
+                    page.evaluate(() => {
+                        const { state, dumpLog } = window.__everydashcam;
+                        return {
+                            finished: state.ingestController === null,
+                            diagnosticFiles: state.lastIngestStructure?.filter((entry) => entry.kind === "file").length,
+                            reported: dumpLog().some(
+                                (entry) => entry.msg === "selection contained no primary recordings",
+                            ),
+                        };
+                    }),
+                )
+                .toEqual({
+                    finished: true,
+                    diagnosticFiles: 1,
+                    reported: true,
+                });
+            await expect(page.locator("#ingest-overlay")).toBeHidden();
+            await expect(page.locator("#trip-preparation")).toBeVisible();
+            expect(
+                await page.evaluate(() => ({
+                    classified:
+                        (window as typeof window & { __emptySelectionClassified?: boolean })
+                            .__emptySelectionClassified ?? false,
+                    inflightGps: window.__everydashcam.state.inflightEmbeddedGps.size,
+                    cancelled: window.__everydashcam.dumpLog().some((entry) => entry.msg === "deferred gps cancelled"),
+                })),
+            ).toEqual({ classified: false, inflightGps: 1, cancelled: false });
+            if (source === "structure-only drop") {
+                expect(
+                    await page.evaluate(
+                        () =>
+                            window.__everydashcam
+                                .dumpLog()
+                                .filter((entry) => entry.msg === "selection contained no primary recordings")
+                                .at(-1)?.ctx,
+                    ),
+                ).toEqual({ total: 1, junkRoots: [".diagnostic-only"] });
+                expect(await page.evaluate(() => window.__everydashcam.state.lastIngestFiles)).toEqual([]);
+            }
+
+            await page.evaluate(() => {
+                (window as typeof window & { __releaseGpsResponses?: () => void }).__releaseGpsResponses?.();
+            });
+            releaseViewerDownload?.();
+            await expect(page.locator("#player-wrap")).toBeVisible();
+            await expect
+                .poll(() =>
+                    page.evaluate(() => {
+                        const { state } = window.__everydashcam;
+                        return state.active ? (state.trips[state.active.trip]?.records.length ?? 0) : 0;
+                    }),
+                )
+                .toBeGreaterThan(0);
+            expect(await page.evaluate(() => window.__everydashcam.state.pendingHeavyEmbeddedGps.size)).toBe(0);
+        });
+    }
+
+    test("drains a structure-only queued selection before the following recording import", async ({ page }) => {
+        await page.evaluate(() => {
+            const send = Worker.prototype.postMessage;
+            let held = false;
+            Worker.prototype.postMessage = function (
+                message: unknown,
+                transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
+            ): void {
+                const deliver = () =>
+                    send.call(
+                        this,
+                        message,
+                        Array.isArray(transferOrOptions) ? { transfer: transferOrOptions } : transferOrOptions,
+                    );
+                if (
+                    !held &&
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "classify-batch"
+                ) {
+                    held = true;
+                    (window as typeof window & { __releaseClassification?: () => void }).__releaseClassification =
+                        deliver;
+                    return;
+                }
+                deliver();
+            };
+        });
+        await page.locator("#file-input").setInputFiles([
+            {
+                name: "NO20200101-120000-000001F.MP4",
+                mimeType: "video/mp4",
+                buffer: withMvhdCreationTime(path.join(SAMPLE_NOGPS, "clip-no-gps.mp4"), "2020-01-01T12:00:00.000Z"),
+            },
+            { name: "readme.txt", mimeType: "text/plain", buffer: Buffer.from("card information") },
+        ]);
+        await expect
+            .poll(() =>
+                page.evaluate(
+                    () =>
+                        typeof (window as typeof window & { __releaseClassification?: () => void })
+                            .__releaseClassification,
+                ),
+            )
+            .toBe("function");
+        await dropExcludedEntry(page);
+        await expect.poll(() => page.evaluate(() => window.__everydashcam.state.ingestQueue.length)).toBe(1);
+        await page.locator("#file-input").setInputFiles({
+            name: "NO20200102-120000-000001F.MP4",
+            mimeType: "video/mp4",
+            buffer: withMvhdCreationTime(path.join(SAMPLE_NOGPS, "clip-no-gps.mp4"), "2020-01-02T12:00:00.000Z"),
+        });
+        expect(await page.evaluate(() => window.__everydashcam.state.ingestQueue.length)).toBe(2);
+        await page.evaluate(() => {
+            (window as typeof window & { __releaseClassification?: () => void }).__releaseClassification?.();
+        });
+        await expect
+            .poll(() =>
+                page.evaluate(() => {
+                    const { state } = window.__everydashcam;
+                    return {
+                        idle: state.ingestController === null,
+                        queued: state.ingestQueue.length,
+                        lastFiles: state.lastIngestFiles?.map((vf) => vf.file.name),
+                        trips: state.trips.length,
+                    };
+                }),
+            )
+            .toEqual({ idle: true, queued: 0, lastFiles: ["NO20200102-120000-000001F.MP4"], trips: 2 });
+        expect(
+            await page.evaluate(() =>
+                window.__everydashcam
+                    .dumpLog()
+                    .filter(
+                        (entry) =>
+                            entry.ns === "ingest" &&
+                            ["ingest started", "selection contained no primary recordings"].includes(entry.msg),
+                    )
+                    .map((entry) => entry.msg),
+            ),
+            "the diagnostic selection runs in FIFO order and cannot strand the final import",
+        ).toEqual(["ingest started", "selection contained no primary recordings", "ingest started"]);
     });
 
     test.describe("viewer download failure", () => {

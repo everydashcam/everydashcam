@@ -1,8 +1,14 @@
-import { check70maiSessionGps } from "../e2e/_70mai-session-gps.js";
+import { check70maiHiddenGps, check70maiSessionGps } from "../e2e/_70mai-session-gps.js";
 import { presetLocalStorage } from "../e2e/_fixtures.js";
 import { openPortable, test } from "./_fixtures.js";
 
 test.use({ timezoneId: "Europe/Moscow" });
+
+test("file-origin import reads a 70mai log from the supported .GPS layout", async ({ page }, info) => {
+    await presetLocalStorage(page);
+    await openPortable(page, info.outputPath("viewer"));
+    await check70maiHiddenGps(page, info.outputPath("card"));
+});
 
 for (const withGps of [true, false]) {
     test(`70mai A500S file-origin card ${withGps ? "uses its root session log" : "plays without a GPS log"}`, async ({

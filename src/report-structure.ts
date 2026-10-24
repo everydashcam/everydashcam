@@ -15,6 +15,8 @@ import {
     matchFilenameTime,
 } from "./parsers/filename/index.js";
 import type { VendorFile } from "./parsers/types.js";
+import { ignoredPathReason, type IngestIgnoreReason } from "./ingest-filter.js";
+import { type IngestStructureEntry, snapshotIngestStructure } from "./ingest-structure.js";
 import { APP_VERSION } from "./version.js";
 
 // Extensions that look like a dashcam recording. Used only to decide whether a
@@ -48,7 +50,8 @@ export function looksLikeRecordings(files: readonly VendorFile[]): boolean {
 /** Lowercased extension with leading dot, or "" when the name has none. */
 function extOf(name: string): string {
     const dot = name.lastIndexOf(".");
-    return dot < 0 ? "" : name.slice(dot).toLowerCase();
+    const slash = Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\"));
+    return dot <= slash ? "" : name.slice(dot).toLowerCase();
 }
 
 /** Basename without the trailing extension, lowercased - the pairing key that
@@ -80,11 +83,11 @@ function fmtMtime(ms: number): string {
     return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
 }
 
-// Cap the per-file listing so a card with thousands of clips does not produce a
-// multi-MB text file. The extension histogram and the technique summary already
-// carry the shape; the raw list is for spotting naming patterns, and a few
-// thousand lines is plenty. Truncation is announced in the file.
-const MAX_LISTED_FILES = 3000;
+// Separate budgets keep excluded paths and directory names visible even when
+// thousands of normal recordings fill their own section.
+const MAX_LISTED_PATHS = 3000;
+const MAX_LISTED_EXTENSIONS = 100;
+const MAX_LISTED_SIDECARS = 30;
 
 /** Fields the filename techniques resolve, aggregated across the whole drop:
  *  the top matching technique id per field and how many files it covered. */
@@ -123,47 +126,78 @@ function renderFieldLine(s: FieldSummary): string {
 }
 
 /**
- * Builds the full report text from a snapshot of the ingested files.
- *
- * Sections: header (app version, counts), extension histogram, the filename
- * technique summary (which of time/channel/mode/sequence/camera-key have a
- * matching technique - the "is this just a filename gap?" triage), likely
- * basename sidecars, and the file listing (path, size, modified time).
- *
- * `files` is the pre-filter ingest snapshot (state.lastIngestFiles). Hidden
- * proxy dirs (e.g. 70mai `.s_Front`) are useful onboarding signal and appear
- * when the source path carries them - the classic <input webkitdirectory>
- * listing does; the FSA and DnD walkers prune hidden/junk names during
- * enumeration.
+ * Builds a byte-free report of every observed file and directory before path
+ * filtering. Enumeration entries preserve paths even when no File could be
+ * read; available File objects supply metadata and filename-technique evidence.
+ * Each listing section has its own announced cap, while counts cover the full
+ * snapshot. Unreadable directories make file counts and byte totals incomplete.
  */
-export function buildStructureReport(files: readonly VendorFile[]): string {
+export function buildStructureReport(
+    files: readonly VendorFile[],
+    structure?: readonly IngestStructureEntry[],
+): string {
+    return buildStructureReportFromSnapshot(files, snapshotIngestStructure(files, structure));
+}
+
+/** Renders the prepared ingest snapshot without repeating normalization or
+ * metadata merging. File objects are used only for filename-technique evidence. */
+export function buildStructureReportFromSnapshot(
+    files: readonly VendorFile[],
+    entries: readonly IngestStructureEntry[],
+): string {
+    const fileEntries = entries.filter((entry) => entry.kind === "file");
+    const directories = entries.filter((entry) => entry.kind === "directory");
+    const knownSizeFiles = fileEntries.filter(hasKnownSize);
+    const unreadableDirectories = directories.filter((entry) => entry.unreadable).length;
+    const truncatedDirectories = directories.filter((entry) => entry.truncated).length;
     const now = new Date();
-    const totalBytes = files.reduce((s, f) => s + f.file.size, 0);
+    const totalBytes = knownSizeFiles.reduce((sum, entry) => sum + entry.size, 0);
+    const hasCompleteSizes =
+        knownSizeFiles.length === fileEntries.length && unreadableDirectories === 0 && truncatedDirectories === 0;
     const lines: string[] = [];
 
     lines.push("everydashcam camera report");
     lines.push(`app ${APP_VERSION}  ·  generated ${now.toISOString()}`);
-    lines.push(`files: ${files.length}  ·  total: ${humanSize(totalBytes)}`);
+    lines.push(`files: ${fileEntries.length}  ·  directories: ${directories.length}`);
+    lines.push(
+        hasCompleteSizes
+            ? `total: ${humanSize(totalBytes)}`
+            : `known file sizes: ${humanSize(totalBytes)} (${knownSizeFiles.length}/${fileEntries.length} observed files)`,
+    );
+    if (unreadableDirectories > 0) {
+        lines.push(`Unreadable directories: ${unreadableDirectories}; file counts and sizes are incomplete.`);
+    }
+    if (truncatedDirectories > 0) {
+        lines.push(
+            `Truncated directories: ${truncatedDirectories}; file and directory counts and sizes are incomplete.`,
+        );
+    }
     lines.push("");
-    lines.push("This lists only file names, sizes and dates from the card.");
+    lines.push("This lists observed file and directory names, available sizes and dates before filtering.");
+    lines.push("Kept/excluded describes the path filter, not whether a file was parsed successfully.");
     lines.push("No video, no GPS coordinates.");
     lines.push("");
 
     // Extension histogram, most common first.
     const byExt = new Map<string, number>();
-    for (const f of files) {
-        const e = extOf(f.file.name) || "(no ext)";
+    for (const entry of fileEntries) {
+        const e = extOf(entry.relativePath) || "(no ext)";
         byExt.set(e, (byExt.get(e) ?? 0) + 1);
     }
-    lines.push("== extensions ==");
-    for (const [e, n] of [...byExt.entries()].sort((a, b) => b[1] - a[1])) {
+    lines.push("== extensions (all observed files, including excluded) ==");
+    const extensions = [...byExt.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    for (const [e, n] of extensions.slice(0, MAX_LISTED_EXTENSIONS)) {
         lines.push(`  ${e.padEnd(10)} ${n}`);
+    }
+    if (extensions.length > MAX_LISTED_EXTENSIONS) {
+        lines.push(`  ... and ${extensions.length - MAX_LISTED_EXTENSIONS} more extensions (list truncated)`);
     }
     lines.push("");
 
     // Filename technique triage - the key signal for the developer: which
     // fields already have a matching technique and which are missing.
     lines.push("== filename techniques ==");
+    lines.push(`  based on ${files.length} available File objects; enumeration-only entries are not classified`);
     lines.push(renderFieldLine(summarizeField("time", files, matchFilenameTime)));
     lines.push(renderFieldLine(summarizeField("channel", files, matchFilenameChannel)));
     lines.push(renderFieldLine(summarizeField("mode", files, matchFilenameMode)));
@@ -180,9 +214,9 @@ export function buildStructureReport(files: readonly VendorFile[]): string {
     // Likely basename sidecars: a stem carried by both a video and a non-video
     // file usually means the GPS lives in that companion file.
     const stems = new Map<string, { videos: Set<string>; others: Set<string> }>();
-    for (const f of files) {
-        const stem = stemOf(f.file.name);
-        const e = extOf(f.file.name);
+    for (const file of fileEntries) {
+        const stem = stemOf(file.relativePath);
+        const e = extOf(file.relativePath);
         let entry = stems.get(stem);
         if (!entry) {
             entry = { videos: new Set(), others: new Set() };
@@ -196,25 +230,62 @@ export function buildStructureReport(files: readonly VendorFile[]): string {
         if (entry.videos.size > 0 && entry.others.size > 0) {
             sidecarPairs.push(`  ${stem}: ${[...entry.videos].join("/")} + ${[...entry.others].join("/")}`);
         }
-        if (sidecarPairs.length >= 30) break;
     }
     lines.push("== possible sidecars (same name, video + companion file) ==");
-    lines.push(...(sidecarPairs.length ? sidecarPairs : ["  none found"]));
+    lines.push(...(sidecarPairs.length ? sidecarPairs.slice(0, MAX_LISTED_SIDECARS) : ["  none found"]));
+    if (sidecarPairs.length > MAX_LISTED_SIDECARS) {
+        lines.push(`  ... and ${sidecarPairs.length - MAX_LISTED_SIDECARS} more pairs (list truncated)`);
+    }
     lines.push("");
 
-    // Full listing, path-sorted, capped.
-    lines.push("== files ==");
-    const sorted = [...files].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-    const shown = sorted.slice(0, MAX_LISTED_FILES);
-    for (const f of shown) {
-        const size = humanSize(f.file.size).padStart(9);
-        const mtime = fmtMtime(f.file.lastModified);
-        lines.push(`  ${f.relativePath}  ${size}  ${mtime}`);
+    const excludedDirectories: ReportEntry[] = [];
+    const excludedFiles: ReportEntry[] = [];
+    const keptDirectories: ReportEntry[] = [];
+    const keptFiles: ReportEntry[] = [];
+    for (const entry of entries) {
+        const reason = ignoredPathReason(entry.relativePath);
+        if (entry.kind === "directory") {
+            (reason === null ? keptDirectories : excludedDirectories).push({ entry, reason });
+        } else {
+            (reason === null ? keptFiles : excludedFiles).push({ entry, reason });
+        }
     }
-    if (sorted.length > shown.length) {
-        lines.push(`  ... and ${sorted.length - shown.length} more (list truncated)`);
-    }
-    lines.push("");
+    appendStructureSection(lines, "excluded directories", excludedDirectories);
+    appendStructureSection(lines, "excluded files", excludedFiles);
+    appendStructureSection(lines, "kept directories", keptDirectories);
+    appendStructureSection(lines, "kept files", keptFiles);
 
     return lines.join("\n");
+}
+
+function hasKnownSize(entry: IngestStructureEntry): entry is IngestStructureEntry & { size: number } {
+    return entry.size !== undefined && Number.isFinite(entry.size) && entry.size >= 0;
+}
+
+interface ReportEntry {
+    entry: IngestStructureEntry;
+    reason: IngestIgnoreReason | null;
+}
+
+function appendStructureSection(lines: string[], title: string, entries: readonly ReportEntry[]): void {
+    lines.push(`== ${title} (${entries.length}) ==`);
+    const sorted = [...entries].sort((a, b) => a.entry.relativePath.localeCompare(b.entry.relativePath));
+    for (const { entry, reason } of sorted.slice(0, MAX_LISTED_PATHS)) {
+        const status = reason === null ? "kept" : `excluded: ${reason}`;
+        if (entry.kind === "directory") {
+            const unavailable = entry.unreadable ? "; contents unavailable" : "";
+            const truncated = entry.truncated ? `; traversal truncated: ${entry.truncated}` : "";
+            lines.push(`  ${entry.relativePath}/  [directory; ${status}${unavailable}${truncated}]`);
+        } else {
+            const size = hasKnownSize(entry) ? humanSize(entry.size) : "size unavailable";
+            const mtime = entry.lastModified === undefined ? "date unavailable" : fmtMtime(entry.lastModified);
+            const unavailable = entry.unreadable ? "; file metadata unavailable" : "";
+            lines.push(`  ${entry.relativePath}  ${size}  ${mtime}  [${status}${unavailable}]`);
+        }
+    }
+    if (sorted.length > MAX_LISTED_PATHS) {
+        lines.push(`  ... and ${sorted.length - MAX_LISTED_PATHS} more (list truncated)`);
+    }
+    if (entries.length === 0) lines.push("  none");
+    lines.push("");
 }

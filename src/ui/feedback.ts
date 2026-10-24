@@ -6,7 +6,7 @@ import { collectDiagnostics, serializeDiagnosticsText, utcTimestampSlug } from "
 import { downloadBlob } from "../download.js";
 import { getDateLocale, t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
-import { buildStructureReport } from "../report-structure.js";
+import { buildStructureReport, buildStructureReportFromSnapshot } from "../report-structure.js";
 import { captureSentryException } from "../sentry.js";
 import { displayClockDate, frameMediaOffset, tripAllCandidates, wallToContentSec } from "../trips.js";
 import { formatDistanceFromKm } from "../units-pref.js";
@@ -83,7 +83,7 @@ function showStep(step: Step): void {
 /** True once any memory card has been loaded this session (even a zero-trips
  *  drop) - i.e. the report can carry a folder layout. */
 function hasLoadedCard(): boolean {
-    return (state.lastIngestFiles?.length ?? 0) > 0;
+    return (state.lastIngestStructure?.length ?? 0) > 0 || (state.lastIngestFiles?.length ?? 0) > 0;
 }
 
 /**
@@ -92,9 +92,11 @@ function hasLoadedCard(): boolean {
  * covers files that failed to become trips (the unrecognised-camera case).
  */
 function cameraStructure(): string | null {
-    const files = state.lastIngestFiles;
-    if (!files || files.length === 0) return null;
-    return buildStructureReport(files);
+    if (!hasLoadedCard()) return null;
+    const files = state.lastIngestFiles ?? [];
+    return state.lastIngestStructure
+        ? buildStructureReportFromSnapshot(files, state.lastIngestStructure)
+        : buildStructureReport(files);
 }
 
 /** "Open my card": leaves the modal and triggers the normal ingest picker (the

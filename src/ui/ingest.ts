@@ -15,6 +15,7 @@ import {
 import { dropDuplicateFiles } from "../ingest-dedup.js";
 import { mergeRecordingCopies } from "../recording-copies.js";
 import { ignoredRootSegments, isIgnoredPath } from "../ingest-filter.js";
+import { snapshotIngestStructure, type IngestStructureEntry } from "../ingest-structure.js";
 import { partitionByIndexCache } from "./ingest-cache.js";
 import { createLogger } from "../log.js";
 import { captureSentryException } from "../sentry.js";
@@ -36,6 +37,7 @@ import type { Trip, TzSample, VideoCandidate } from "../trips.js";
 import { registerIngestSource } from "./folder-sources.js";
 import { isNotesBackupName, mergeNotesFilesFromBatch } from "./annotations-sidecar.js";
 import {
+    endPreIngestReading,
     hideIngestOverlay,
     hideIngestProgress,
     setIngestStage,
@@ -77,8 +79,9 @@ function nextPaint(): Promise<void> {
 }
 
 /**
- * Public entry point: shows the blocking overlay, manages the AbortController and the drop queue,
- * and (after finally) starts the next queued item.
+ * Public entry point: manages the AbortController and FIFO drop queue, showing
+ * the blocking overlay only when a batch has eligible files. Diagnostic-only
+ * selections replace the report snapshot without interrupting recording work.
  *
  * If an ingest is already running, the files go into state.ingestQueue and are started sequentially
  * after the current ingest finishes (success / cancel / error). No drop is ever lost.
@@ -86,14 +89,18 @@ function nextPaint(): Promise<void> {
  * `origin` names the folder the batch was picked from - only the FSA path can
  * (see folder-sources.ts); it travels with the queued batch so a drop that
  * waited behind another ingest still knows where it came from.
+ * Optional `structure` preserves names observed before filtering, including
+ * excluded files and unreadable entries that have no corresponding VendorFile.
  */
-export async function ingestFiles(vfiles: VendorFile[], origin: IngestOrigin | null = null): Promise<void> {
-    // Empty drop (a DnD that yielded nothing) - not a real ingest; warn and bail
-    // without opening the overlay. The hidden/junk-path filter, which may also
-    // empty the list, runs later (ingestFilesInternal, after the overlay paints)
-    // so this entry point stays O(1) and the modal appears immediately on a large
-    // mobile card instead of after a multi-pass main-thread stall.
-    if (vfiles.length === 0) {
+export async function ingestFiles(
+    vfiles: VendorFile[],
+    origin: IngestOrigin | null = null,
+    structure?: IngestStructureEntry[],
+): Promise<void> {
+    // A gesture with neither files nor observed names has nothing to retain.
+    // Structure-only selections still enter the queue so snapshots follow the
+    // same order as imports, including batches waiting behind this selection.
+    if (vfiles.length === 0 && !structure?.length) {
         notify({ severity: "warn", messageKey: "status.filesNotSelected" });
         return;
     }
@@ -105,22 +112,27 @@ export async function ingestFiles(vfiles: VendorFile[], origin: IngestOrigin | n
     if (state.ingestController !== null) {
         // Queue the raw (unfiltered) list - it is filtered when this wrapper
         // re-runs on it at dequeue, so no junk slips through.
-        state.ingestQueue.push({ files: vfiles, origin });
+        state.ingestQueue.push({ files: vfiles, origin, structure });
         syncIngestQueueIndicator();
         return;
     }
 
     const controller = new AbortController();
     state.ingestController = controller;
-    showIngestOverlay();
-    setIngestStage(t("ingestOverlay.stage.classifying"));
-    showIngestProgress();
-    syncIngestQueueIndicator();
+    // Stop at the first eligible path so normal cards show the overlay before
+    // full-list passes. Excluded-only selections need no classification phase.
+    const hasEligibleFiles = vfiles.some((vf) => !isIgnoredPath(vf.relativePath));
+    if (hasEligibleFiles) {
+        showIngestOverlay();
+        setIngestStage(t("ingestOverlay.stage.classifying"));
+        showIngestProgress();
+        syncIngestQueueIndicator();
+    }
 
     let cancelled = false;
     let failed = false;
     try {
-        await ingestFilesInternal(vfiles, controller.signal, origin);
+        await ingestFilesInternal(vfiles, controller.signal, origin, hasEligibleFiles, structure);
     } catch (err) {
         // AbortError means the user clicked Cancel; partial state stays in the sidebar.
         if (err instanceof Error && err.name === "AbortError") {
@@ -140,11 +152,18 @@ export async function ingestFiles(vfiles: VendorFile[], origin: IngestOrigin | n
         }
     } finally {
         state.ingestController = null;
-        hideIngestOverlay();
-        hideIngestProgress();
+        if (hasEligibleFiles) {
+            hideIngestOverlay();
+            hideIngestProgress();
+        } else if (vfiles.length > 0) {
+            // Classic inputs can supply only excluded Files after raising the
+            // picker overlay. Empty source walkers already release their claim;
+            // do not consume a different walk's remaining claim a second time.
+            endPreIngestReading();
+        }
         // An interrupted ingest may have carried pending trips from an earlier
         // batch. Resume them here; successful runs already own their scheduler.
-        if (cancelled || failed) resumeProgressiveIngest();
+        if (hasEligibleFiles && (cancelled || failed)) resumeProgressiveIngest();
     }
 
     // Start the next queued item after the current ingest fully finishes (the controller is null above,
@@ -154,7 +173,7 @@ export async function ingestFiles(vfiles: VendorFile[], origin: IngestOrigin | n
         // No await - to not keep the first ingest session's promise chain alive.
         // void + .catch prevents the unhandled rejection from the next ingest from polluting the global uncaught handler.
         // ingestFiles already logs errors internally, so this catch is just a suppressor.
-        void ingestFiles(next.files, next.origin).catch(() => {
+        void ingestFiles(next.files, next.origin, next.structure).catch(() => {
             /* already logged inside ingestFiles */
         });
     }
@@ -164,17 +183,13 @@ async function ingestFilesInternal(
     vfiles: VendorFile[],
     signal: AbortSignal,
     origin: IngestOrigin | null,
+    hasEligibleFiles: boolean,
+    structure?: IngestStructureEntry[],
 ): Promise<void> {
     // Wall-clock origin for both list-ready and full-completion diagnostics.
     // Start before the paint yield so the UX metric includes every delay the
     // user experiences after committing the folder.
     const ingestStart = performance.now();
-    // Stop progressive work before this drop can replace positional trip state;
-    // stale sessions must never write through indices owned by the next run.
-    cancelProgressiveIngest();
-    // Stop deferred full-file GPS reads so a new drop gets storage priority.
-    // Unfinished files return to the identity-keyed pending map.
-    cancelDeferredGpsLoad();
     // Let the just-shown overlay paint before any O(n) main-thread pass. On a
     // clean all-video drop nothing below hits a real async barrier until MP4
     // indexing, so the path filter + dedup fingerprinting + classify + the
@@ -182,40 +197,49 @@ async function ingestFilesInternal(
     // regex) would otherwise all run before the modal ever appears - hundreds of
     // ms on a large mobile card. One forced frame here moves the whole stall
     // behind the visible "Classifying..." overlay.
-    await nextPaint();
+    if (hasEligibleFiles) await nextPaint();
 
-    // Snapshot the raw drop (path/size/mtime via File refs, no content read) for
-    // the "help add my camera" report. Kept even when this ingest yields zero
-    // trips - the case that otherwise discards the tree. Taken before the
-    // hidden/junk filter on purpose: proxy dirs (.s_Front, DCIM quirks) are
-    // useful onboarding signal where the source still carries them - the classic
-    // <input webkitdirectory> listing does; the FSA and DnD walkers prune
-    // hidden/junk names during enumeration. Overwritten each drop, not
-    // accumulated.
+    // Keep the observed structure even when every entry is excluded or unreadable.
+    // Walkers supply names without opening excluded files; classic inputs supply
+    // File metadata and inferred parent directories. Each batch replaces both snapshots.
     state.lastIngestFiles = [...vfiles];
+    state.lastIngestStructure = snapshotIngestStructure(vfiles, structure);
 
     // Drop hidden/junk files and known preview recordings
     // before anything touches them. Single chokepoint for both the picker and DnD
-    // paths, so junk never costs an SD seek and never collides on basename with a
+    // paths, so excluded files never reach parsers or collide on basename with a
     // real recording. One summary log so a "my files did not load" report can be
     // traced to a path we skipped.
-    const totalDropped = vfiles.length;
+    // Walkers retain excluded names without File handles, so diagnostics count
+    // the observed structure rather than only the readable import candidates.
+    const observedFiles = state.lastIngestStructure.filter((entry) => entry.kind === "file");
+    const totalDropped = observedFiles.length;
     const kept = vfiles.filter((vf) => !isIgnoredPath(vf.relativePath));
-    if (kept.length < totalDropped) {
-        log.debug("ignored non-recording paths", { ignored: totalDropped - kept.length, total: totalDropped });
+    const ignored = observedFiles.filter((entry) => isIgnoredPath(entry.relativePath)).length;
+    if (ignored > 0) {
+        log.debug("ignored non-recording paths", { ignored, total: totalDropped });
     }
     if (kept.length === 0) {
-        // The filter emptied a non-empty selection. Give a dedicated hint
-        // instead of claiming no files were selected.
+        // Names were observed, even if all files were excluded or unreadable.
+        // Give a dedicated hint instead of claiming no files were selected.
         log.info("selection contained no primary recordings", {
             total: totalDropped,
-            junkRoots: ignoredRootSegments(vfiles.map((vf) => vf.relativePath)),
+            junkRoots: ignoredRootSegments(state.lastIngestStructure.map((entry) => entry.relativePath)),
         });
-        notify({ severity: "warn", messageKey: "status.noRecordingsFound" });
-        // This early return still has to resume any carried pending recordings.
-        resumeProgressiveIngest();
+        // Source readers already report read failures. An unreadable selection
+        // still supplies diagnostic names, but must not also look like an empty card.
+        const hasUnreadableInput =
+            vfiles.length === 0 && structure?.some((entry) => entry.unreadable && !isIgnoredPath(entry.relativePath));
+        if (!hasUnreadableInput) notify({ severity: "warn", messageKey: "status.noRecordingsFound" });
+        // No trip state changes: leave metadata, previews and an in-flight
+        // trip-open/GPS scan running. The wrapper still drains the next batch.
         return;
     }
+
+    // Stop positional work only once this batch can change recordings. An
+    // excluded or unreadable selection owns diagnostics, not playback priority.
+    cancelProgressiveIngest();
+    cancelDeferredGpsLoad();
 
     // A notes file in the opened folder takes priority over the last-used
     // fallback. Discovery is read-only; a later user edit owns any file prompt.

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import { DESKTOP, MOBILE, expect, gotoApp, loadTrip, presetLocalStorage, shot, test } from "./_fixtures.js";
+import { checkFeedbackStructureReport, writeFeedbackStructureCard } from "./_feedback-structure.js";
 
 async function captureMailto(page: Page): Promise<void> {
     await page.addInitScript(() => {
@@ -33,6 +34,14 @@ test.describe("contextual feedback", () => {
         await presetLocalStorage(page);
         await page.setViewportSize(DESKTOP);
         await captureMailto(page);
+    });
+
+    test("folder input reports excluded paths while loading hidden GPS telemetry", async ({ page }, info) => {
+        const directory = info.outputPath("card");
+        writeFeedbackStructureCard(directory);
+        await gotoApp(page, "en");
+        await page.locator("#folder-input").setInputFiles(directory);
+        await checkFeedbackStructureReport(page);
     });
 
     test("GPS help offers immediate email and an optional report without asking for recordings first", async ({
@@ -134,6 +143,7 @@ test.describe("contextual feedback", () => {
             const { state } = window.__everydashcam;
             state.active = null;
             state.lastIngestFiles = [];
+            state.lastIngestStructure = [];
         });
 
         await page.locator("#feedback-report-mail").click();
