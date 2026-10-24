@@ -14,7 +14,7 @@ export { RECORDING_METADATA_CACHE_REVISION } from "./cache-revisions.generated.j
  * GPS artifact; container metadata has its own revision. Derived candidate
  * fields and external sidecars are never persisted.
  */
-export const INDEX_CACHE_FORMAT = 2;
+export const INDEX_CACHE_FORMAT = 3;
 
 /**
  * Cheap cross-session identity of a file inside a picked folder, matchable
