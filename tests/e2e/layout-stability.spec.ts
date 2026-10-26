@@ -1,7 +1,8 @@
-// Layout-instability regressions at the two async seams that analytics sees:
-// startup hydration and the first folder ingest. The raw score intentionally
-// includes shifts with recent input; a fast CI ingest can finish inside CLS's
-// 500ms input exclusion while the same folder on a real SD card does not.
+// Layout-instability regressions at the async seams that analytics sees:
+// startup hydration, the first folder ingest and a late-loading lightbox image.
+// The raw score intentionally includes shifts with recent input; a fast CI
+// ingest can finish inside CLS's 500ms input exclusion while the same folder on
+// a real SD card does not.
 
 import type { Page } from "@playwright/test";
 
@@ -88,6 +89,18 @@ async function readLayoutShiftReport(page: Page): Promise<LayoutShiftReport> {
 
 function rawLayoutShiftScore(report: LayoutShiftReport): number {
     return report.records.reduce((total, record) => total + record.value, 0);
+}
+
+/** Drops the shifts recorded so far so the next report covers only the step under test. */
+async function resetLayoutShiftRecords(page: Page): Promise<void> {
+    await page.evaluate(() => {
+        const shiftWindow = window as Window & {
+            __layoutShiftObserver?: PerformanceObserver;
+            __layoutShiftRecords?: LayoutShiftRecord[];
+        };
+        shiftWindow.__layoutShiftObserver?.takeRecords();
+        shiftWindow.__layoutShiftRecords = [];
+    });
 }
 
 test.describe("layout stability", () => {
@@ -184,6 +197,65 @@ test.describe("layout stability", () => {
             0.02,
         );
     });
+
+    test("keeps the hero-shot lightbox box fixed while the full-size shot arrives", async ({ page }) => {
+        // Hold the full-size file so it lands well past CLS's 500ms input
+        // exclusion after the click, as on a slow connection.
+        let releaseFullShot = (): void => {};
+        const fullShotGate = new Promise<void>((resolve) => {
+            releaseFullShot = resolve;
+        });
+        await page.route("**/landing/app-desktop-2480.webp", async (route) => {
+            await fullShotGate;
+            await route.continue();
+        });
+        await installLayoutShiftObserver(page);
+        await gotoApp(page, "en");
+
+        const thumb = page.locator(".landing-hero-shot-desktop");
+        await expect
+            .poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+            .toBe(true);
+        const thumbSrc = await thumb.evaluate((img: HTMLImageElement) => img.currentSrc);
+        expect(thumbSrc, "a 1x desktop viewport picks the smaller hero file").toMatch(/app-desktop-1240\.webp$/);
+
+        await page.locator("#landing-shot-open").click();
+        const shot = page.locator(".landing-shot-lightbox-desktop");
+        await expect(shot).toBeVisible();
+        // offset* ignore the opening scale animation, unlike boundingBox().
+        const readGeometry = () =>
+            shot.evaluate((img: HTMLImageElement) => ({
+                left: img.offsetLeft,
+                top: img.offsetTop,
+                width: img.offsetWidth,
+                height: img.offsetHeight,
+            }));
+        await expect.poll(() => shot.evaluate((img: HTMLImageElement) => img.currentSrc)).toBe(thumbSrc);
+        const loadingGeometry = await readGeometry();
+        expect(loadingGeometry.width, "the box is reserved before the full-size file arrives").toBeGreaterThan(
+            DESKTOP.width / 2,
+        );
+        expect(loadingGeometry.width / loadingGeometry.height, "the reserved box keeps the shot ratio").toBeCloseTo(
+            2480 / 1378,
+            1,
+        );
+
+        await resetLayoutShiftRecords(page);
+        releaseFullShot();
+        await expect
+            .poll(() => shot.evaluate((img: HTMLImageElement) => img.currentSrc))
+            .toMatch(/app-desktop-2480\.webp$/);
+        expect(await shot.evaluate((img: HTMLImageElement) => img.naturalWidth), "the full-size file is shown").toBe(
+            2480,
+        );
+        expect(await readGeometry(), "the swap keeps the reserved box").toEqual(loadingGeometry);
+
+        const report = await readLayoutShiftReport(page);
+        expect(report.supported, "Chromium exposes layout-shift performance entries").toBe(true);
+        expect(rawLayoutShiftScore(report), `raw layout shifts: ${JSON.stringify(report.records)}`).toBeLessThanOrEqual(
+            0.001,
+        );
+    });
 });
 
 test.describe("mobile offline layout stability", () => {
@@ -201,14 +273,7 @@ test.describe("mobile offline layout stability", () => {
             `mobile startup layout shifts: ${JSON.stringify(startupReport.records)}`,
         ).toBeLessThanOrEqual(0.02);
         // Measure the offline transition after startup and font layout settle.
-        await page.evaluate(() => {
-            const shiftWindow = window as Window & {
-                __layoutShiftObserver?: PerformanceObserver;
-                __layoutShiftRecords?: LayoutShiftRecord[];
-            };
-            shiftWindow.__layoutShiftObserver?.takeRecords();
-            shiftWindow.__layoutShiftRecords = [];
-        });
+        await resetLayoutShiftRecords(page);
 
         const mainBefore = await page.locator("main.layout").boundingBox();
         expect(mainBefore, "main has settled mobile geometry").not.toBeNull();

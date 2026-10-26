@@ -429,14 +429,23 @@ body.no-trips .viewer {
 .landing-shot-lightbox.is-open {
     display: flex;
 }
+/* Each variant reserves its box before its file arrives. With auto width and
+   height an unloaded <img> lays out as its bare border and then jumps to full
+   size, a layout shift outside CLS's input window on slow links. The width is
+   the largest that fits both axes at the shot's ratio (the ratios mirror the
+   width/height attributes in index.html, which also give the auto height);
+   the 2px is the content-box border. */
 .landing-shot-lightbox img {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
     height: auto;
     border: 1px solid var(--border-strong);
     border-radius: var(--dc-radius-lg);
     box-shadow: var(--dc-shadow-popup);
+}
+.landing-shot-lightbox-desktop {
+    width: min(2480px, 100% - 2px, (100dvh - 2 * var(--dc-space-5) - 2px) * 2480 / 1378);
+}
+.landing-shot-lightbox-phone {
+    width: min(600px, 100% - 2px, (100dvh - 2 * var(--dc-space-5) - 2px) * 600 / 1298);
 }
 @media (prefers-reduced-motion: no-preference) {
     .landing-shot-lightbox.is-open img {
