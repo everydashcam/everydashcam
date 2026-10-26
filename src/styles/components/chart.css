@@ -42,6 +42,8 @@
 .player-chart-hover-cursor {
     position: absolute;
     top: 0;
+    /* Anchored at the origin; setHoverCursorRelSec moves it with transform. */
+    left: 0;
     bottom: var(--chart-zoom-row-h);
     width: 1px;
     background: rgba(255, 255, 255, 0.35);

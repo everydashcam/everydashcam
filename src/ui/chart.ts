@@ -2071,7 +2071,9 @@ export function setHoverCursorRelSec(relSec: number | null): void {
         el.hidden = true;
         return;
     }
-    el.style.left = `${x - 0.5}px`;
+    // transform, not left: pointer movement is not recent input for CLS, so a
+    // left-driven move would count as a layout shift.
+    el.style.transform = `translateX(${x - 0.5}px)`;
     el.hidden = false;
 }
 
@@ -2469,9 +2471,12 @@ function renderHasTrackTooltip(e: MouseEvent, trip: Trip, x: number): void {
 }
 
 /**
- * Positions the tooltip in viewport coords (position: fixed) - right of the cursor,
- * shifted left/up when it would go off-screen. position:fixed avoids clipping by
- * .player-wrap overflow:hidden and z-index conflicts with the map.
+ * Positions the tooltip in viewport coords - right of the cursor, shifted
+ * left/up when it would go off-screen. The element lives on body (see
+ * ensureChartTooltipElement) to avoid clipping by .player-wrap overflow:hidden
+ * and z-index conflicts with the map. It moves with transform, not left/top:
+ * pointer movement is not recent input for CLS, so every left/top move would
+ * count as a layout shift.
  *
  * Uses cached dimensions (lastTooltipW/H) valid until lastTooltipKey changes.
  * Without the cache every mouse move would call offsetWidth/Height = forced reflow.
@@ -2484,8 +2489,7 @@ function positionTooltip(el: HTMLDivElement, e: MouseEvent): void {
     if (posX + w > window.innerWidth) posX = e.clientX - w - offset;
     let posY = e.clientY - h - offset;
     if (posY < 0) posY = e.clientY + offset;
-    el.style.left = `${posX}px`;
-    el.style.top = `${posY}px`;
+    el.style.transform = `translate(${posX}px, ${posY}px)`;
 }
 
 /**
@@ -2592,8 +2596,8 @@ function ensureChartTooltipElement(): HTMLDivElement {
     body.className = "track-popup-body";
     el.appendChild(body);
     // Appended to body (not .player-chart) to avoid clipping by .player-wrap
-    // overflow:hidden and z-index conflicts with the map. Positioned via
-    // position:fixed + viewport coords.
+    // overflow:hidden and z-index conflicts with the map. Positioned by
+    // positionTooltip.
     document.body.appendChild(el);
     state.chartTooltipEl = el;
     return el;

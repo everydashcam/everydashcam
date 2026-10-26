@@ -1,8 +1,8 @@
 // Layout-instability regressions at the async seams that analytics sees:
-// startup hydration, the first folder ingest and a late-loading lightbox image.
-// The raw score intentionally includes shifts with recent input; a fast CI
-// ingest can finish inside CLS's 500ms input exclusion while the same folder on
-// a real SD card does not.
+// startup hydration, the first folder ingest, a late-loading lightbox image and
+// the pointer-driven chart tooltip. The raw score intentionally includes shifts
+// with recent input; a fast CI ingest can finish inside CLS's 500ms input
+// exclusion while the same folder on a real SD card does not.
 
 import type { Page } from "@playwright/test";
 
@@ -12,6 +12,7 @@ import {
     SAMPLE_70MAI,
     expect,
     gotoApp,
+    loadTrip,
     mockDirectoryPicker,
     persistentTest as test,
     presetLocalStorage,
@@ -249,6 +250,37 @@ test.describe("layout stability", () => {
             2480,
         );
         expect(await readGeometry(), "the swap keeps the reserved box").toEqual(loadingGeometry);
+
+        const report = await readLayoutShiftReport(page);
+        expect(report.supported, "Chromium exposes layout-shift performance entries").toBe(true);
+        expect(rawLayoutShiftScore(report), `raw layout shifts: ${JSON.stringify(report.records)}`).toBeLessThanOrEqual(
+            0.001,
+        );
+    });
+
+    test("moves the chart tooltip with the cursor without layout shifts", async ({ page }) => {
+        await installLayoutShiftObserver(page);
+        await gotoApp(page, "en");
+        await loadTrip(page);
+
+        const chart = page.locator("#player-chart-canvas");
+        await expect(chart).toBeVisible();
+        const chartBox = await chart.boundingBox();
+        expect(chartBox, "the chart has hover geometry").not.toBeNull();
+        const hoverY = chartBox!.y + chartBox!.height / 2;
+        await page.mouse.move(chartBox!.x + chartBox!.width * 0.2, hoverY);
+        const tooltip = page.locator(".ez-chart-tooltip");
+        await expect(tooltip).toHaveCSS("opacity", "1");
+        const tooltipBefore = await tooltip.boundingBox();
+        expect(tooltipBefore, "the tooltip has initial geometry").not.toBeNull();
+
+        // Pointer movement is not recent input for CLS, so every tooltip move
+        // that changes layout position counts against the page.
+        await resetLayoutShiftRecords(page);
+        await page.mouse.move(chartBox!.x + chartBox!.width * 0.6, hoverY, { steps: 12 });
+        await expect
+            .poll(async () => (await tooltip.boundingBox())?.x ?? 0, { message: "the tooltip follows the cursor" })
+            .toBeGreaterThan(tooltipBefore!.x + chartBox!.width * 0.3);
 
         const report = await readLayoutShiftReport(page);
         expect(report.supported, "Chromium exposes layout-shift performance entries").toBe(true);

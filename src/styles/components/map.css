@@ -829,6 +829,9 @@ body.map-unavailable #player-map {
 
 .ez-chart-tooltip {
     position: absolute;
+    /* Anchored at the origin; positionTooltip moves it with transform. */
+    left: 0;
+    top: 0;
     pointer-events: none;
     z-index: 7;
     transition: opacity var(--dc-dur-fast) var(--dc-ease);
