@@ -358,7 +358,7 @@
    a background-image, text overlaid on top of a bottom gradient darkening.
    If has-preview isn't set, the background stays a placeholder (bg-elev-2)
    and the gradient gets absorbed, text reads fine on the dark fill.
-   ::before renders the gradient, ::after is unused (reserved). */
+   ::before renders the gradient, ::after carries hover/press feedback. */
 .trip-header {
     position: relative;
     /* width:100% is required: without it the header takes its intrinsic
@@ -379,7 +379,6 @@
     /* The card is a tappable nav target, not selectable text - block the iOS
        long-press selection loupe from hijacking a press/scroll. */
     user-select: none;
-    transition: filter var(--dc-dur-fast) var(--dc-ease);
 }
 .trip-header.has-preview::before {
     content: "";
@@ -395,13 +394,42 @@
     pointer-events: none;
     z-index: 0;
 }
-.trip-header:hover {
-    filter: brightness(1.08);
+/* Paint feedback separately so hover never filters the controls or changes
+   their stacking context. This layer never participates in hit testing. */
+.trip-header::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--dc-white);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 0;
 }
-/* Pressed feedback for the primary mobile nav target (reuses the declared filter
-   transition). Excludes the non-interactive unindexed card. */
-.trip:not(.unindexed-note) .trip-header:active {
-    filter: brightness(1.14);
+@media (prefers-reduced-motion: no-preference) {
+    .trip-header::after {
+        transition: opacity var(--dc-dur-fast) var(--dc-ease);
+    }
+}
+/* Without a preview the card is a flat theme surface, where a white veil is
+   invisible on the light theme; lean toward the text color instead. */
+.trip-header:not(.has-preview)::after {
+    background: var(--fg);
+}
+/* :hover/:active bubble up from the corner buttons; a press there belongs to
+   the button, so the card must not light up as if it were about to open. */
+.trip:not(.unindexed-note, .trip--opening) .trip-header:hover:not(:has(button:hover))::after {
+    opacity: 0.04;
+}
+.trip:not(.unindexed-note, .trip--opening) .trip-header:active:not(:has(button:active))::after {
+    opacity: 0.08;
+}
+
+/* The native button owns its full target, including the decorative glyph. */
+.trip-header button {
+    pointer-events: auto;
+}
+.trip-header button > * {
+    pointer-events: none;
 }
 
 /* Trip title - white over the gradient/placeholder, text-shadow for
@@ -627,6 +655,13 @@
     background: var(--err);
     color: var(--dc-white);
 }
+/* Must match the hover rules' specificity and follow them: a pressed chip is
+   always hovered too. Color only - a transform would shrink the chip under a
+   pointer pressed at its edge and hand the release to the play-trip header. */
+.trip-header > .trip-event-chip:active,
+.trip-header:not(.has-preview) > .trip-event-chip:active {
+    background: color-mix(in srgb, var(--err) 85%, var(--dc-black));
+}
 /* Deferred GPS stays explicit on the affected card without another animation;
    ordinary recording work is explained once by the shared status above the list. */
 .trip-meta .trip-meta-text.load-gps-pending,
@@ -639,10 +674,9 @@
    dim appears on its card - instant acknowledgement that the click registered,
    held until playback takes over (clearOpeningTrip, from playFrame). Independent
    of how long recording analysis takes, so a fast backend (where in-player progress never
-   crosses its threshold) still gives visible feedback. */
-.trip--opening .trip-header {
-    filter: brightness(0.82);
-}
+   crosses its threshold) still gives visible feedback. The dim lives on the
+   spinner layer, which leaves in one step: on the shared ::after its opacity
+   would fade out through the hover color as a bright flash. */
 .trip-opening-spinner {
     position: absolute;
     inset: 0;
@@ -651,6 +685,7 @@
     justify-content: center;
     z-index: 2;
     pointer-events: none;
+    background: color-mix(in srgb, var(--dc-black) 18%, transparent);
 }
 .trip-opening-spinner::after {
     content: "";
@@ -959,15 +994,11 @@
     flex-shrink: 0;
     transition:
         background var(--dc-dur-fast) var(--dc-ease),
-        color var(--dc-dur-fast) var(--dc-ease),
-        transform var(--dc-dur-fast) var(--dc-ease);
+        color var(--dc-dur-fast) var(--dc-ease);
 }
 .trip-event-chip:hover {
     background: var(--err);
     color: var(--dc-white);
-}
-.trip-event-chip:active {
-    transform: scale(0.94);
 }
 .trip-event-chip:focus-visible {
     outline: 2px solid var(--err);

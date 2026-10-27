@@ -6,8 +6,6 @@
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
-    /* The corner slot around it is inert so its chips do not eat card clicks. */
-    pointer-events: auto;
 }
 
 /* Same disc as the chevron in the opposite corner: the top of a hero preview
