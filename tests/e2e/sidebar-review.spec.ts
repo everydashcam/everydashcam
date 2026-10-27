@@ -1,5 +1,3 @@
-import type { Page } from "@playwright/test";
-
 import {
     DESKTOP,
     MOBILE,
@@ -12,28 +10,8 @@ import {
     openExport,
     persistentTest as test,
     presetLocalStorage,
+    waitForMetadata,
 } from "./_fixtures.js";
-
-async function waitForMetadata(page: Page): Promise<void> {
-    await expect
-        .poll(() =>
-            page.evaluate(() => {
-                const state = window.__everydashcam.state;
-                return (
-                    state.ingestController === null &&
-                    state.recordingAnalysisProgress === null &&
-                    state.inflightEmbeddedGps.size === 0 &&
-                    state.pendingHeavyEmbeddedGps.size === 0 &&
-                    state.trips.every((trip) =>
-                        trip.frames.every((frame) =>
-                            Object.values(frame.channels).every((file) => file?.metadataReady === true),
-                        ),
-                    )
-                );
-            }),
-        )
-        .toBe(true);
-}
 
 test("sidebar keyboard resizing follows the visible edge and reports its size", async ({ page }) => {
     await presetLocalStorage(page);

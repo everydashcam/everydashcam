@@ -323,6 +323,32 @@ export async function clearOnboarding(page: Page, ids: OnboardTourId[] = ONBOARD
 }
 
 /**
+ * Waits until ingest, recording analysis and deferred GPS are all finished and
+ * every clip's metadata is read. Before that a late pass can regroup trips and
+ * replace the Trip objects a test mutates through `window.__everydashcam`.
+ */
+export async function waitForMetadata(page: Page): Promise<void> {
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const state = window.__everydashcam.state;
+                return (
+                    state.ingestController === null &&
+                    state.recordingAnalysisProgress === null &&
+                    state.inflightEmbeddedGps.size === 0 &&
+                    state.pendingHeavyEmbeddedGps.size === 0 &&
+                    state.trips.every((trip) =>
+                        trip.frames.every((frame) =>
+                            Object.values(frame.channels).every((file) => file?.metadataReady === true),
+                        ),
+                    )
+                );
+            }),
+        )
+        .toBe(true);
+}
+
+/**
  * Pick the sample folder and activate its first trip. Resolves only once the
  * active trip is actually playable (chart rendered, or - on layouts that hide
  * the chart - the total-time readout has advanced past 0:00). Fails loudly
