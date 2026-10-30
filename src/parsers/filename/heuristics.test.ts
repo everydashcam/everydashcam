@@ -219,7 +219,7 @@ describe("filename family boundaries", () => {
         expect(shouldTryEmbeddedGps(file, true)).toBe(false);
     });
 
-    it("preserves TS counter-width semantics and unknown MP4 shapes", () => {
+    it("preserves TS counter-width semantics and treats MP4 channel mnemonics as guesses", () => {
         const fitcamx = vf("20260101120000_000001F.ts");
         const trailer = vf("20260101120000_0000001F.ts");
         const unknown = vf("20260101120000_0000001F.mp4");
@@ -228,8 +228,8 @@ describe("filename family boundaries", () => {
         expect(shouldTryEmbeddedGps(fitcamx, false)).toBe(false);
         expect(classifyFilenameChannel(trailer)?.channel).toBe("front");
         expect(classifyGpsSource(trailer)).toBe("embedded");
-        expect(classifyFilenameChannel(unknown)).toBeNull();
-        expect(classifyGpsSource(unknown)).toBe("unknown");
+        expect(classifyFilenameChannel(unknown)).toEqual({ channel: "front", confident: false });
+        expect(classifyGpsSource(unknown)).toBe("embedded");
         expect(shouldTryEmbeddedGps(unknown, false)).toBe(true);
     });
 

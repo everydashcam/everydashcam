@@ -250,6 +250,13 @@ export const RX_NAVITEL = /^FILE(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-(\d{
 // unknown, the default embedded probe stays on.
 export const RX_MOV_SEQ_FRI = /^(\d{14})_(\d{7})([A-Z])\.(?:mov|ts)$/i;
 
+// MP4 variant with A/C channel indices (WonVon W4K): the published sample
+// pair identifies A as front and C as rear, with different seven-digit
+// counters at the same timestamp. No recording-mode marker is established.
+// Keep separate from MOV/TS mnemonic channels and six-digit RedTiger names.
+// Other letters still identify this shape; channel confidence is separate.
+export const RX_MP4_SEQ_AC = /^(\d{14})_(\d{7})([A-Z])\.mp4$/i;
+
 // LigoGPS-trailer MPEG-TS family: 14-digit local timestamp, an opaque
 // two-digit token, then an underscored channel letter. The front
 // spelling and VIDEO_F folder are real-sample validated; R/I keep the

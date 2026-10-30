@@ -75,7 +75,7 @@ carried as explicit caveats in the tables - never silently picked and forgotten.
 | Format | Real sample | Notes |
 |---|---|---|
 | Novatek freeGPS Type-3 (float DDmm) | 2E-Drive 730 Magnet, SilverStone F1 A80-GPS Sky, VIOFO A119, A329, A329S, T130 (seq-less `_PR`/`_PF` parking names), A119M Pro / A119 Mini 2 (14+6-digit names) | datetime@44 default layout. Newer VIOFO firmwares (A119M Pro/A119 Mini 2) use the 14-digit+counter naming, not the classic `YYYY_MMDD_...` shape. A119 Mini 2 stamps records with the camera zone baked in (local-as-UTC) while its pre-fix RTC blocks (status `' 00'`/`'V00'`, no valid signature) run UTC - the cold-start clock jump is measured and subtracted to restore true UTC (`coldStartClockJumpSec` in `internal/freegps.ts`, `applyLocalClockCorrections` in `trips.ts`) |
-| freeGPS Type 1 - Azdome/EEEkit XOR-0xAA ASCII (`variantAzdomeXor`) | Roadgid Tube (14+7-digit names) | ONE record format, THREE carriers (this freeGPS block, the Lamax S9 `gps0` atom, the Rove Stealth `gpmd` track) sharing `internal/xor-ascii-gps.ts` - this row is the only one of the three with a real sample, so it is what keeps the shared decoder honest. Accel triple (/100 g) is gravity-INCLUDED in the raw block - the `freegps` primitive subtracts the per-file axis-mean baseline after the parse pass (zeroed at <2 accel records; no-accel records untouched); timestamps assumed UTC; EEEkit 3-digit speed fallback; the +/-4-digit altitude field never emitted (no GpsRecord field); post-XOR Azdome (M27/M550 Pro) will NOT match - expected, see "Not supported" |
+| freeGPS Type 1 - Azdome/EEEkit XOR-0xAA ASCII (`variantAzdomeXor`) | Roadgid Tube (14+7-digit names); WonVon W4K (GPS and speed) | ONE record format, THREE carriers (this freeGPS block, the Lamax S9 `gps0` atom, the Rove Stealth `gpmd` track) sharing `internal/xor-ascii-gps.ts` - this row is the only one of the three with a real sample, so it is what keeps the shared decoder honest. Accel triple (/100 g) is gravity-INCLUDED in the raw block - the `freegps` primitive subtracts the per-file axis-mean baseline after the parse pass (zeroed at <2 accel records; no-accel records untouched); timestamps assumed UTC; EEEkit 3-digit speed fallback; the +/-4-digit altitude field never emitted (no GpsRecord field); post-XOR Azdome (M27/M550 Pro) will NOT match - expected, see "Not supported" |
 | Vantrue NMEA-in-freeGPS | Vantrue N2X | RMC string inside the block (`variantVantrueNmea`) |
 | 70mai embedded freeGPS (ddmm×1e5) | 70mai A510, A810, M500 | int32×1e5 NMEA ddmm.mmmm coords (NOT decimal degrees; ExifTool's A810 branch - QuickTimeStream.pl GPSType 19 - reads the same offsets as /1e5 + minutes conversion), heading@+35, speed@+39 is km/h and is the emitted speed source (verified against the trajectory on a real A810 clip: matches to tenths on normal ~1 Hz fixes, 0 at a standstill, stays live through position-freeze gaps - where a dt=1s trajectory reconstruction produced 2-4x spikes), **no per-record timestamp** (only a constant 8h-shifted file-start unix) -> records emitted `timeUnsynced` and re-anchored onto the video window. Coordinates verified against the on-video OSD stamp (digit-exact) and ExifTool's independent decode. Layout: `freegps-70mai.ts`. A510 confirmed (incl. its `LA`/`PA` parking-mode filename prefixes; rear `B` clips carry no GPS - front only). Likely also Omni/X200 |
 | 70mai Pro `GPS `-box (direct 36-byte records) | public sample | THIRD 70mai GPS generation (2019-2021 Pro, Midrive D02/D03): top-level `GPS ` box (uppercase 4cc, distinct from the 4K models' lowercase `gps ` index) holding 36-byte records: `has_gps`, a per-record `seconds` offset, speed in metres/hour, DD MM.mmm-packed int32 coords. Real speed field (no trajectory guess); records `timeUnsynced` but the per-record `seconds` offset IS honored via `relStartSeconds` (accurate across a cold-start / mid-file GPS gap). Cross-checked vs freezer52000 `maigps.c` + mzdun `70mai.cc`; validated on a real public GPS box (Warsaw, 105 km/h, haversine/speed ratio 1.00). Committed fixture is synthetic. `Mp4Index.maiGpsBox` + `classifyEmbeddedGpsKind` gate the dispatch |
@@ -147,6 +147,18 @@ The supplied XEGA AU4G suffix remains unconfirmed: the manufacturer's
 [XG-37-EU4G page](https://de.xegatech.com/products/xega-2k-4g-lte-dashcam-auto-vorne-hinten-mit-sim-karte-dashcam-mit-parkuberwachung-app-zugriff-2-wege-talk-bewegungserkennung-nachtsicht-gps-privater-modus)
 does not establish that the regional variants are identical. Model attribution
 and successful decoding are separate evidence.
+
+The WonVon W4K GPS check uses the reviewer's
+[original front recording](https://dashcamtalk.com/forum/threads/wonvon-w4k.43180/),
+with a public-safe fixture in `src/parsers/__fixtures__/xor-ascii/`. Its encrypted
+257-byte records match the shared Azdome/EEEkit decoder. The sample has no
+recognized ASCII accelerometer triple, so acceleration remains zero; no
+calibrated G-force or plaintext-W4K compatibility is claimed.
+
+The separate iZEEKER ASXT freeGPS layout is documented in the
+[ASXT format reference](format-freegps-asxt.md), including its byte layout,
+clock handling and sensor units. It uses the shared freeGPS extractor and is
+distinct from the iD300 KTRX track layout.
 
 ## Implemented from foreign source (awaiting first real sample)
 

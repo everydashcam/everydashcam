@@ -13,6 +13,7 @@ import {
     RX_FITCAMX_MP4,
     RX_MAH_SEQUENCE,
     RX_MOV_SEQ_FRI,
+    RX_MP4_SEQ_AC,
     RX_NAVITEL,
     RX_NEOLINE,
     RX_NEXTBASE,
@@ -103,6 +104,14 @@ const movSeqFriSequence: FilenameSequenceTechnique = {
     id: "mov-seq-fri-sequence",
     extract(file: VendorFile): number | null {
         const m = file.file.name.match(RX_MOV_SEQ_FRI);
+        return m ? Number(m[2]) : null;
+    },
+};
+
+const mp4SeqAcSequence: FilenameSequenceTechnique = {
+    id: "mp4-seq-ac-sequence",
+    extract(file: VendorFile): number | null {
+        const m = file.file.name.match(RX_MP4_SEQ_AC);
         return m ? Number(m[2]) : null;
     },
 };
@@ -207,6 +216,7 @@ export const FILENAME_SEQUENCE: readonly FilenameSequenceTechnique[] = [
     fitcamxSequence,
     sectionedNmeaSequence,
     movSeqFriSequence,
+    mp4SeqAcSequence,
     navitelSequence,
     neolineSequence,
     nextbaseSequence,

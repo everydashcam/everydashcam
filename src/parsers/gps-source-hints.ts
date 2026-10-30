@@ -40,6 +40,7 @@ import {
     RX_MIVUE,
     RX_MIVUE_DUAL_PATH,
     RX_MOV_SEQ_FRI,
+    RX_MP4_SEQ_AC,
     RX_NAVITEL,
     RX_NEOLINE,
     RX_NEXTBASE,
@@ -279,6 +280,12 @@ const GPS_SOURCE_HINTS: readonly GpsSourceHint[] = [
     {
         id: "seq-fri-ts",
         matches: (f) => RX_MOV_SEQ_FRI.test(f.file.name) && /\.ts$/i.test(f.file.name),
+        source: "embedded",
+    },
+    // WonVon W4K: XOR-0xAA ASCII records in indexed freeGPS blocks.
+    {
+        id: "mp4-seq-ac",
+        matches: (f) => RX_MP4_SEQ_AC.test(f.file.name),
         source: "embedded",
     },
     // LigoGPS plaintext table after the last whole TS packet. The two-digit

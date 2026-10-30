@@ -22,6 +22,16 @@ function vf(name: string, relativePath: string = name): VendorFile {
 }
 
 describe("classifyGpsSource", () => {
+    it.each(["20200927182649_0000015A.MP4", "20200927182649_0000016C.MP4"])(
+        "probes the embedded freeGPS records in the A/C sample %s",
+        (name) => {
+            const file = vf(name);
+            expect(classifyGpsSource(file)).toBe("embedded");
+            expect(shouldTryEmbeddedGps(file, false)).toBe(true);
+            expect(shouldTryEmbeddedGps(file, true)).toBe(false);
+        },
+    );
+
     it.each(["F", "R"])("probes embedded GPS in INNOVV K3 channel %s", (suffix) => {
         const name = `20260101_120000_${suffix}.MP4`;
         for (const file of [vf(name), vf(name, `card/VIDEO/${name}`)]) {

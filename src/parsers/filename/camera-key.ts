@@ -45,6 +45,7 @@ import {
     RX_JUSCAR,
     RX_LIGOGPS_TRAILER_TS,
     RX_MOV_SEQ_FRI,
+    RX_MP4_SEQ_AC,
     RX_NAVITEL,
     RX_NEOLINE,
     RX_NEXTBASE,
@@ -472,6 +473,17 @@ const movSeqFriCameraKey: FilenameCameraKeyTechnique = {
     },
 };
 
+const mp4SeqAcCameraKey: FilenameCameraKeyTechnique = {
+    id: "mp4-seq-ac-camera-key",
+    extract(file: VendorFile): string | null {
+        const m = file.file.name.match(RX_MP4_SEQ_AC);
+        if (!m) return null;
+        const masked = maskNameWithTrailingLetterStripped(file.file.name, m[3]!);
+        const dir = strippedParentDir(file.relativePath, []);
+        return `mp4-seq-ac|${dir}|${masked}`;
+    },
+};
+
 const ligoGpsTrailerTsCameraKey: FilenameCameraKeyTechnique = {
     id: "ligogps-trailer-ts-camera-key",
     extract(file: VendorFile): string | null {
@@ -741,6 +753,7 @@ export const FILENAME_CAMERA_KEY: readonly FilenameCameraKeyTechnique[] = [
     juscarCameraKey,
     ligoGpsTrailerTsCameraKey,
     movSeqFriCameraKey,
+    mp4SeqAcCameraKey,
     navitelCameraKey,
     neolineCameraKey,
     nextbaseCameraKey,

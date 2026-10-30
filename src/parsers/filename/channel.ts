@@ -42,6 +42,7 @@ import {
     RX_JUSCAR_PATH_REAR,
     RX_LIGOGPS_TRAILER_TS,
     RX_MOV_SEQ_FRI,
+    RX_MP4_SEQ_AC,
     RX_NAVITEL,
     RX_NEOLINE,
     RX_NEXTBASE,
@@ -461,6 +462,29 @@ const movSeqFriChannel: FilenameChannelTechnique = {
     },
 };
 
+const mp4SeqAcChannel: FilenameChannelTechnique = {
+    id: "mp4-seq-ac-channel",
+    extract(file: VendorFile): ChannelMatch | null {
+        const m = file.file.name.match(RX_MP4_SEQ_AC);
+        if (!m) return null;
+        // The sample author labels the A/C pair front/rear explicitly.
+        switch (m[3]!.toUpperCase()) {
+            case "A":
+                return sure("front");
+            case "C":
+                return sure("rear");
+            case "F":
+                return guess("front");
+            case "R":
+                return guess("rear");
+            case "I":
+                return guess("interior");
+            default:
+                return guess("side");
+        }
+    },
+};
+
 const novatekViofoChannel: FilenameChannelTechnique = {
     id: "novatek-viofo-channel",
     extract(file: VendorFile): ChannelMatch | null {
@@ -615,6 +639,7 @@ export const FILENAME_CHANNEL: readonly FilenameChannelTechnique[] = [
     iboxChannel,
     juscarChannel,
     movSeqFriChannel,
+    mp4SeqAcChannel,
     navitelChannel,
     nextbaseChannel,
     redtigerChannel,

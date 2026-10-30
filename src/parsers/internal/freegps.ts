@@ -35,6 +35,7 @@ import { type GpsRecord, KMH_TO_MS, KNOTS_TO_MS, type ParsedRecords, type Skippe
 import { utcMillisecondsFromParts } from "./calendar.js";
 import { findByteSequence } from "./byte-search.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
+import { hasAsxtFreeGpsSignature, parseAsxtFreeGps, readAsxtWallClock } from "./freegps-asxt.js";
 import { decodeXorAsciiGpsText, decryptXorAscii } from "./xor-ascii-gps.js";
 import type { Mp4Index } from "./mp4-index.js";
 import { parseNmeaText } from "./nmea.js";
@@ -2018,7 +2019,16 @@ const variantXbht: FreeGpsVariant = {
     },
 };
 
+// The status/receiver-clock geometry overlaps Type 3, but ASXT coordinates
+// are encoded doubles. Own the header even when the record has no valid fix.
+const variantAsxt: FreeGpsVariant = {
+    name: "ASXT freeGPS",
+    matches: hasAsxtFreeGpsSignature,
+    parse: parseAsxtFreeGps,
+};
+
 const FREE_GPS_VARIANTS: readonly FreeGpsVariant[] = [
+    variantAsxt,
     variantAtc,
     variantInnovv,
     variantXbht,
@@ -2250,6 +2260,12 @@ const CLOCK_JUMP_RESIDUAL_MAX_SEC = 90;
 export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOptions = {}): FreeGpsFileBlockParser {
     let pendingAnchor: number | null = null;
     let pinnedAnchor: number | null = null;
+    // The first timed ASXT block can precede satellite lock. Preserve its
+    // offset to later fixes, including gaps and stationary positions, before
+    // downstream deduplication. This wall clock does not establish UTC or
+    // prove that the first block is exactly at video time zero.
+    let asxtStartWallClock: number | null = null;
+    let asxtLastEmittedWallClock: number | null = null;
     // Claim tracking for claimedVariantName. A variant "claims" the file only
     // when it EMITS records: a match that decodes to nothing (void fix,
     // no-GPS block) says nothing about which format owns the file's records.
@@ -2285,6 +2301,24 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
         for (const variant of FREE_GPS_VARIANTS) {
             if (variant.matches(payload)) {
                 const records = variant.parse(payload, mp4Filename, options, boxSizeDword);
+                if (variant === variantAsxt) {
+                    const wallClock = readAsxtWallClock(payload);
+                    if (wallClock !== null) {
+                        asxtStartWallClock ??= wallClock;
+                        // A regressing clock cannot establish a new origin
+                        // without independent timing. Only emitted fixes
+                        // advance the guard, so a corrupt no-fix timestamp
+                        // cannot suppress later valid positions.
+                        if (
+                            wallClock < asxtStartWallClock ||
+                            (asxtLastEmittedWallClock !== null && wallClock < asxtLastEmittedWallClock)
+                        ) {
+                            return [];
+                        }
+                        for (const record of records) record.relStartSeconds = wallClock - asxtStartWallClock;
+                        if (records.length > 0) asxtLastEmittedWallClock = wallClock;
+                    }
+                }
                 if (records.length > 0) {
                     if (claimedName === null) claimedName = variant.name;
                     else if (claimedName !== variant.name) mixedClaims = true;

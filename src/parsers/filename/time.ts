@@ -28,6 +28,7 @@ import {
     RX_JUSCAR,
     RX_LIGOGPS_TRAILER_TS,
     RX_MIVUE,
+    RX_MP4_SEQ_AC,
     RX_NAVITEL,
     RX_NEOLINE,
     RX_NEXTBASE,
@@ -104,6 +105,16 @@ const novatekVantrueTime: FilenameTimeTechnique = {
         const m = file.file.name.match(RX_NOVATEK_VANTRUE);
         if (!m) return null;
         return ymdHmsFromSplit(m[1]!, m[2]!);
+    },
+};
+
+const mp4SeqAcTime: FilenameTimeTechnique = {
+    id: "mp4-seq-ac-time",
+    extract(file: VendorFile): Date | null {
+        const m = file.file.name.match(RX_MP4_SEQ_AC);
+        if (!m) return null;
+        const ts = m[1]!;
+        return ymdHmsFromSplit(ts.slice(0, 8), ts.slice(8));
     },
 };
 
@@ -417,6 +428,7 @@ export const FILENAME_TIME: readonly FilenameTimeTechnique[] = [
     iboxTime,
     juscarTime,
     mivueTime,
+    mp4SeqAcTime,
     navitelTime,
     neolineTime,
     nextbaseTime,
