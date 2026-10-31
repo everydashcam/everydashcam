@@ -86,12 +86,14 @@ for (const viewport of [DESKTOP, MOBILE, { width: 360, height: 800 }, { width: 8
     });
 }
 
-test("trip metadata counts every camera file and mobile cameras start collapsed", async ({ page }) => {
+test("trip meta counts camera files without a camera count; mobile cameras start collapsed", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(MOBILE);
     await gotoApp(page);
     await loadTrip(page, SAMPLE_70MAI);
-    await expect(page.locator(".trip-meta-text").first()).toContainText("6 files · 3 cameras");
+    const meta = page.locator(".trip-meta-text").first();
+    await expect(meta).toContainText("6 files");
+    await expect(meta).not.toContainText("camera");
     await expect(page.locator("#top-panel-controls")).not.toHaveAttribute("open");
     await page.locator("#top-panel-controls-summary").click();
     await expect(page.locator(".top-panel__channel-include").first()).toHaveAccessibleName(/preview and saved video/);

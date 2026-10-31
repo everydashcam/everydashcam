@@ -185,9 +185,10 @@ export function formatTripMeta(trip: Trip, loading: TripLoadingState = "loaded")
     // count so the user knows the footage is not one continuous run.
     const pausesPart =
         trip.timeline.gaps.length > 0 ? ` · ${t("plurals.pause", { n: trip.timeline.gaps.length })}` : "";
+    // Camera count is left out: the player shows the cameras once a trip opens,
+    // and on a list of trips from one dashcam it repeats the same number.
     const filesPart = t("plurals.file", { n: tripAllCandidates(trip).length });
-    const camerasPart = t("plurals.camera", { n: tripChannels(trip).length });
-    return `${dur} · ${filesPart} · ${camerasPart}${pausesPart}\n${sizePart}${distStr}`;
+    return `${dur} · ${filesPart}${pausesPart}\n${sizePart}${distStr}`;
 }
 
 export function formatFileMeta(video: VideoCandidate, tripStartUtc: number, gpsPending = false): string {
