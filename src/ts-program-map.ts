@@ -8,7 +8,7 @@
 // (0x06). Real DTS must remain available for stream-copy export even when the
 // browser cannot decode it.
 
-import { pesBodyExtent, TS_SIZE, TS_SYNC } from "./parsers/internal/ts-walk.js";
+import { pesBodyExtent, TS_SIZE, walkTsPackets } from "./parsers/internal/ts-walk.js";
 
 const PAT_PID = 0;
 const PAT_TABLE_ID = 0x00;
@@ -73,8 +73,7 @@ function firstProgramMapPid(bytes: Uint8Array, sectionStart: number, sectionEnd:
  */
 function locateFirstProgramMap(bytes: Uint8Array): ProgramMapSection | null {
     let programMapPid: number | null = null;
-    for (let packet = 0; packet + TS_SIZE <= bytes.length; packet += TS_SIZE) {
-        if (bytes[packet] !== TS_SYNC) return null;
+    for (const packet of walkTsPackets(bytes)) {
         const flags = bytes[packet + 1]!;
         if ((flags & 0x40) === 0) continue;
         const pid = ((flags & 0x1f) << 8) | bytes[packet + 2]!;
@@ -132,8 +131,8 @@ export function readFirstProgramMap(head: Uint8Array): ProgramMapStream[] | null
 function ligoGpsPids(head: Uint8Array, streams: ProgramMapStream[]): Set<number> {
     const candidates = new Set(streams.filter((stream) => DTS_STREAM_TYPES.has(stream.streamType)).map((s) => s.pid));
     const found = new Set<number>();
-    for (let packet = 0; packet + TS_SIZE <= head.length && candidates.size > 0; packet += TS_SIZE) {
-        if (head[packet] !== TS_SYNC) break;
+    for (const packet of walkTsPackets(head)) {
+        if (candidates.size === 0) break;
         const flags = head[packet + 1]!;
         if ((flags & 0x40) === 0) continue;
         const pid = ((flags & 0x1f) << 8) | head[packet + 2]!;

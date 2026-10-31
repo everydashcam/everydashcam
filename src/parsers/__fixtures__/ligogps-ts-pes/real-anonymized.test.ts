@@ -43,6 +43,19 @@ function ligoChunkOffsets(bytes: Uint8Array): number[] {
 }
 
 describe("real-anonymized enciphered LigoGPS PES fixture", () => {
+    it("recovers the PMT and GPS after a damaged head with a false payload sync", async () => {
+        const bytes = Buffer.from(FIXTURE);
+        // SDT is expendable; PAT, PMT and every GPS PES remain intact.
+        bytes[0] = 0;
+        bytes.set([0x47, 0x41, 0, 0x10], 32);
+        const { vf, index } = await indexed(bytes, "renamed.ts");
+        expect(index.hasLigoGpsMarker).toBe(true);
+        expect(await ligoGpsTsPesPrimitive.marker(vf, index)).toBe(true);
+        const result = await ligoGpsTsPesPrimitive.parse(vf, index);
+        expect(result.records.map((record) => record.unixSeconds - FIRST_UNIX)).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(result.skipped).toEqual([]);
+    });
+
     it("claims the stream and unfuzzes every record onto the anonymized whole-degree fix", async () => {
         const { vf, index } = await indexed(FIXTURE);
         expect(await ligoGpsTsPesPrimitive.marker(vf, index)).toBe(true);

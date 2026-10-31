@@ -38,8 +38,9 @@ export const novatekTsPrimitive: Primitive = {
         // probeMarkers fills headerBytes with min(4 MB, fileSize), so a short
         // buffer means a short file - a re-read would return the same bytes.
         if (headerBytes) return looksLikeMpegTs(headerBytes);
-        // headerBytes absent (marker probe skipped or failed): one 376-byte read.
-        const head = new Uint8Array(await file.file.slice(0, 2 * TS_SIZE).arrayBuffer());
+        // Bounded fallback: five headers can confirm TS even if packet zero
+        // is damaged. Normal indexing supplies the larger marker probe above.
+        const head = new Uint8Array(await file.file.slice(0, 6 * TS_SIZE).arrayBuffer());
         return looksLikeMpegTs(head);
     },
 

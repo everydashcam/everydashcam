@@ -9,6 +9,8 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractTsPesGps, findTsPesGpsStream } from "./ts-pes-gps.js";
 import { findNovatekTsGpsPid } from "./novatek-ts-extract.js";
+import { buildMp4Index } from "./mp4-index.js";
+import { tsPesGpsPrimitive } from "../primitives/ts-pes-gps.js";
 import { dispatchParseVideoEmbeddedGps } from "../registry.js";
 import { KNOTS_TO_MS, type VendorFile } from "../types.js";
 
@@ -120,6 +122,18 @@ function innovvVoid(): Uint8Array {
 }
 
 describe("INNOVV in MPEG-TS", () => {
+    it("detects a renamed recording after a damaged prefix with a false payload sync", async () => {
+        const gps = extendedHeaderPesStream([innovvRecord(), innovvRecord("S", "W")]);
+        const stream = new Uint8Array(TS_SIZE + gps.length);
+        stream.set([0x47, 0x42, 0, 0x10], 32);
+        stream.set(gps, TS_SIZE);
+        const vf = vendorFile(stream, "renamed.ts");
+        const index = await buildMp4Index(vf.file);
+        expect(findTsPesGpsStream(stream)).toEqual({ pid: PID, dialect: "innovv" });
+        expect(await tsPesGpsPrimitive.marker(vf, index)).toBe(true);
+        expect((await tsPesGpsPrimitive.parse(vf, index)).records).toHaveLength(2);
+    });
+
     it("detects the stream and decodes its records", async () => {
         const body = new Uint8Array(64);
         body.set(innovvRecord(), 0);

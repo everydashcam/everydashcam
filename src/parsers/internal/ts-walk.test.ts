@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { createTsPesScanPlanner, TS_SIZE, TS_SYNC, type TsPesScanPlanner } from "./ts-walk.js";
+import {
+    createTsPesScanPlanner,
+    looksLikeMpegTs,
+    walkTsPackets,
+    TS_SIZE,
+    TS_SYNC,
+    type TsPesScanPlanner,
+} from "./ts-walk.js";
 
 const GPS_PID = 0x300;
 const VIDEO_PID = 0x100;
@@ -73,28 +80,25 @@ interface Driven {
  * GPS PID, stops in front of a PES whose body would run past the buffer when
  * `packetsPerPes` is given, and reports where it stopped.
  */
-async function drive(planner: TsPesScanPlanner, packetsPerPes = 1): Promise<Driven> {
+async function drive(file: File, planner: TsPesScanPlanner, packetsPerPes = 1): Promise<Driven> {
     const starts: number[] = [];
     const ranges: Array<[number, number]> = [];
     let consumed = 0;
     for (let range = await planner.next(0); range !== null; range = await planner.next(consumed)) {
         const { start, buf } = range;
-        let off = 0;
-        while (off + TS_SIZE <= buf.length) {
-            if (buf[off] !== TS_SYNC) {
-                off++;
-                continue;
-            }
+        const packets = walkTsPackets(buf, start + buf.length >= file.size);
+        let packet = packets.next();
+        for (; !packet.done; packet = packets.next()) {
+            const off = packet.value;
             const b1 = buf[off + 1]!;
             const pid = ((b1 & 0x1f) << 8) | buf[off + 2]!;
             if ((b1 & 0x40) !== 0 && pid === GPS_PID) {
                 if (off + packetsPerPes * TS_SIZE > buf.length) break;
                 starts.push(start + off);
             }
-            off += TS_SIZE;
         }
         ranges.push([start, start + buf.length]);
-        consumed = start + off;
+        consumed = start + packet.value;
     }
     return { starts, ranges };
 }
@@ -123,11 +127,109 @@ function expectStrictlyIncreasing(values: number[]): void {
     }
 }
 
+describe("looksLikeMpegTs", () => {
+    it("rejects an accidental pair that is enough for recovery inside a known TS", () => {
+        const bytes = new Uint8Array(20 * TS_SIZE);
+        writePacket(bytes, 8 * TS_SIZE + 19, VIDEO_PID, true, 0);
+        writePacket(bytes, 9 * TS_SIZE + 19, VIDEO_PID, true, 1);
+        expect([...walkTsPackets(bytes)]).toHaveLength(2);
+        expect(looksLikeMpegTs(bytes)).toBe(false);
+    });
+
+    it("finds five consecutive packets after a long damaged prefix", () => {
+        const start = 100 * TS_SIZE + 17;
+        const bytes = new Uint8Array(start + 5 * TS_SIZE);
+        for (let i = 0; i < 5; i++) writePacket(bytes, start + i * TS_SIZE, VIDEO_PID, true, i);
+        expect(looksLikeMpegTs(bytes)).toBe(true);
+    });
+
+    it("requires two complete packets even in a short stream", () => {
+        const bytes = new Uint8Array(2 * TS_SIZE);
+        writePacket(bytes, 0, VIDEO_PID, true, 0);
+        writePacket(bytes, TS_SIZE, VIDEO_PID, true, 1);
+        expect(looksLikeMpegTs(bytes)).toBe(true);
+        expect(looksLikeMpegTs(bytes.subarray(0, TS_SIZE))).toBe(false);
+    });
+});
+
+describe("walkTsPackets", () => {
+    it("rejects an isolated header-shaped sync at byte zero and in a damaged payload", () => {
+        const bytes = new Uint8Array(5 * TS_SIZE + 32);
+        bytes.set([TS_SYNC, 0x40, 0, 0x10], 0);
+        writePacket(bytes, 32, GPS_PID, true, 0);
+        writePacket(bytes, 32 + TS_SIZE, VIDEO_PID, true, 0);
+        writePacket(bytes, 32 + 2 * TS_SIZE, VIDEO_PID, true, 1);
+        // Lose the video sync and leave a plausible header in its payload.
+        bytes[32 + 2 * TS_SIZE] = 0;
+        bytes.set([TS_SYNC, 0x40, 0, 0x10], 64 + 2 * TS_SIZE);
+        writePacket(bytes, 32 + 3 * TS_SIZE, GPS_PID, true, 1);
+        writePacket(bytes, 32 + 4 * TS_SIZE, GPS_PID, true, 2);
+        expect([...walkTsPackets(bytes)]).toEqual([32, 32 + TS_SIZE, 32 + 3 * TS_SIZE, 32 + 4 * TS_SIZE]);
+    });
+
+    it("retains a complete unconfirmed packet until the following header arrives", () => {
+        const bytes = new Uint8Array(3 * TS_SIZE);
+        writePacket(bytes, TS_SIZE, GPS_PID, true, 0);
+        writePacket(bytes, 2 * TS_SIZE, GPS_PID, true, 1);
+        const first = walkTsPackets(bytes.subarray(0, 2 * TS_SIZE), false).next();
+        expect(first).toEqual({ done: true, value: TS_SIZE });
+        expect([...walkTsPackets(bytes.subarray(first.value))]).toEqual([0, TS_SIZE]);
+    });
+
+    it.each([0, 1, 4])("keeps a final recovered packet before %i trailing bytes", (tail) => {
+        const bytes = new Uint8Array(2 * TS_SIZE + tail);
+        writePacket(bytes, TS_SIZE, GPS_PID, true, 0);
+        expect([...walkTsPackets(bytes)]).toEqual([TS_SIZE]);
+    });
+});
+
 describe("createTsPesScanPlanner", () => {
+    it("resumes after a sync-free region spanning buffers without assuming packet alignment", async () => {
+        const nextGps = 4 * 1024 * 1024 + 17;
+        const bytes = new Uint8Array(nextGps + 2 * TS_SIZE);
+        writePacket(bytes, 0, GPS_PID, true, 0);
+        writePacket(bytes, TS_SIZE, GPS_PID, true, 1);
+        writePacket(bytes, nextGps, GPS_PID, true, 2);
+        writePacket(bytes, nextGps + TS_SIZE, GPS_PID, true, 2);
+        const { file } = recordedFile(bytes);
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }));
+        expect(driven.starts).toEqual([0, TS_SIZE, nextGps, nextGps + TS_SIZE]);
+        expect(driven.ranges).toHaveLength(2);
+        expect(driven.ranges[1]![0]).toBe(driven.ranges[0]![1]);
+    });
+
+    it.each([1, TS_SIZE - 1])("re-serves a recovered packet with only %i bytes in the prefix", async (partialBytes) => {
+        const prefixLength = 4 * 1024 * 1024;
+        const nextGps = prefixLength - partialBytes;
+        const bytes = new Uint8Array(nextGps + 2 * TS_SIZE);
+        writePacket(bytes, 0, GPS_PID, true, 0);
+        writePacket(bytes, TS_SIZE, GPS_PID, true, 1);
+        // A lost region; the next sync is in the prefix's partial tail.
+        writePacket(bytes, nextGps, GPS_PID, true, 1);
+        writePacket(bytes, nextGps + TS_SIZE, GPS_PID, true, 2);
+        const prefix = bytes.subarray(0, prefixLength);
+        const { file } = recordedFile(bytes);
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID, prefix }));
+        expect(driven.starts).toEqual([0, TS_SIZE, nextGps, nextGps + TS_SIZE]);
+        expect(driven.ranges).toHaveLength(2);
+        expect(driven.ranges[1]![0]).toBe(nextGps);
+    });
+
+    it("stops at an incomplete recovered packet at end of file", async () => {
+        const bytes = new Uint8Array(4 * TS_SIZE);
+        writePacket(bytes, 0, GPS_PID, true, 0);
+        writePacket(bytes, TS_SIZE, GPS_PID, true, 1);
+        writePacket(bytes, 3 * TS_SIZE, GPS_PID, true, 2);
+        const { file } = recordedFile(bytes.subarray(0, bytes.length - 1));
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }));
+        expect(driven.starts).toEqual([0, TS_SIZE]);
+        expect(driven.ranges).toHaveLength(1);
+    });
+
     it("visits every PES start of a steady stream while reading a fraction of it", async () => {
         const stream = buildStream({ seconds: 40, fillerPackets: jittered(5800, 600) });
         const { file, bytesRead } = recordedFile(stream.bytes);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }));
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }));
         expect(driven.starts).toEqual(stream.gpsStarts);
         expectStrictlyIncreasing(driven.starts);
         expect(bytesRead(), "bytes read").toBeLessThan(file.size * 0.6);
@@ -142,7 +244,7 @@ describe("createTsPesScanPlanner", () => {
             fillerPackets: (second) => (second === 20 ? 18_000 : jittered(5800, 600)(second)),
         });
         const { file } = recordedFile(stream.bytes);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }));
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }));
         expect(driven.starts).toEqual(stream.gpsStarts);
         expectStrictlyIncreasing(driven.starts);
     });
@@ -155,7 +257,7 @@ describe("createTsPesScanPlanner", () => {
             fillerPackets: (second) => (second % 2 === 0 ? 300 : jittered(5800, 400)(second)),
         });
         const { file, bytesRead } = recordedFile(stream.bytes);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }));
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }));
         expect(driven.starts).toEqual(stream.gpsStarts);
         expect(bytesRead(), "bytes read").toBeLessThan(file.size * 0.7);
     });
@@ -163,7 +265,7 @@ describe("createTsPesScanPlanner", () => {
     it("falls back to linear reading when the counter never advances", async () => {
         const stream = buildStream({ seconds: 30, fillerPackets: jittered(5800, 600), isCounterFrozen: true });
         const { file, bytesRead } = recordedFile(stream.bytes);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }));
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }));
         expect(driven.starts).toEqual(stream.gpsStarts);
         expect(bytesRead(), "bytes read").toBe(file.size);
     });
@@ -171,7 +273,7 @@ describe("createTsPesScanPlanner", () => {
     it("re-serves an unfinished PES body contiguously and reads a multi-packet PES once", async () => {
         const stream = buildStream({ seconds: 30, fillerPackets: jittered(5800, 600), packetsPerPes: 6 });
         const { file } = recordedFile(stream.bytes);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }), 6);
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }), 6);
         expect(driven.starts).toEqual(stream.gpsStarts);
         for (let i = 1; i < driven.ranges.length; i++) {
             const [previousStart, previousEnd] = driven.ranges[i - 1]!;
@@ -197,7 +299,7 @@ describe("createTsPesScanPlanner", () => {
                 fillerPackets: (second) => (second === 20 ? fillerBeforeSkipped : second === 21 ? 1043 : 5800),
             });
             const { file } = recordedFile(stream.bytes);
-            const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }), 6);
+            const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }), 6);
             expect(driven.starts, `filler ${fillerBeforeSkipped}`).toEqual(stream.gpsStarts);
         }
     });
@@ -212,7 +314,7 @@ describe("createTsPesScanPlanner", () => {
             fillerPackets: (second) => (second === 20 || second === 21 ? 100 : second === 22 ? 5584 : 5800),
         });
         const { file, bytesRead } = recordedFile(stream.bytes);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID }), 8);
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID }), 8);
         expect(driven.starts).toEqual(stream.gpsStarts);
         expect(bytesRead(), "bytes read").toBe(file.size);
     });
@@ -221,7 +323,7 @@ describe("createTsPesScanPlanner", () => {
         const stream = buildStream({ seconds: 30, fillerPackets: jittered(5800, 600) });
         const { file, reads } = recordedFile(stream.bytes);
         const prefix = stream.bytes.subarray(0, 4 * 1024 * 1024);
-        const driven = await drive(createTsPesScanPlanner(file, { pid: GPS_PID, prefix }));
+        const driven = await drive(file, createTsPesScanPlanner(file, { pid: GPS_PID, prefix }));
         expect(driven.starts).toEqual(stream.gpsStarts);
         expect(
             reads.every(([start]) => start >= prefix.length),

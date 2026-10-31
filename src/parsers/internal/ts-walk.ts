@@ -1,30 +1,84 @@
 import { throwIfCancelled } from "../../abort-signals.js";
-// Shared MPEG-TS packet/PES plumbing. Three GPS formats ride private PES
-// streams in TS containers (novatek-ts, juscar-ts, ts-pes-gps) and all of them
-// need to step packets and locate the PES body; the two whose records outgrow
-// a single packet also reassemble here. Keeping one copy of the PES header math
-// is the point - the body-length rule in particular is easy to get wrong in a
-// way that silently drops a whole dialect.
+// Shared MPEG-TS packet/PES plumbing: packet alignment, body boundaries and
+// reassembly for GPS records that span packets. The common body-length rule
+// keeps the probes and extractors from silently truncating an entire dialect.
 //
-// Dashcam TS quirk that shapes all of this: the GPS PES is NOT advertised in
-// the PMT, so PSI parsing cannot find it. Detection is content-based and the
-// PID is auto-detected, which means these helpers get run over video and audio
-// packets too and must reject them cheaply.
+// Some dashcams omit GPS from the PMT, so PID detection also checks content.
+// These helpers therefore visit video and audio packets too and must reject
+// non-GPS payloads cheaply.
 
 export const TS_SIZE = 188;
 export const TS_SYNC = 0x47;
 
+// H.222.0 2.4.3.2-2.4.3.5: AFC=0 is reserved; an adaptation field must
+// fit inside its 188-byte packet. TEI/scrambling do not change packet framing.
+function hasTsHeader(bytes: Uint8Array, offset: number): boolean {
+    if (offset + 4 > bytes.length || bytes[offset] !== TS_SYNC) return false;
+    const control = (bytes[offset + 3]! >> 4) & 3;
+    if (control === 1) return true;
+    if (control === 0 || offset + 5 > bytes.length) return false;
+    const length = bytes[offset + 4]!;
+    return control === 2 ? length === 183 : length <= 182;
+}
+
+/** Walks complete TS packets, confirming each new alignment at a 188-byte
+ * interval to reject isolated 0x47 bytes in payloads. The yielded
+ * offset stays unconsumed until next() resumes; breaking for an incomplete
+ * PES therefore leaves its start available for the planner. The final return
+ * value is the first unconsumed byte, including a trailing packet or a sync
+ * candidate that needs the next buffer to confirm its alignment. */
+export function* walkTsPackets(bytes: Uint8Array, isFinalBuffer = true): Generator<number, number> {
+    let offset = 0;
+    let aligned = false;
+    while (offset < bytes.length) {
+        if (!aligned || !hasTsHeader(bytes, offset)) {
+            aligned = false;
+            const candidate = bytes.indexOf(TS_SYNC, offset);
+            if (candidate < 0) return bytes.length;
+            offset = candidate;
+            if (offset + TS_SIZE > bytes.length) return offset;
+            if (!hasTsHeader(bytes, offset)) {
+                offset++;
+                continue;
+            }
+            const next = offset + TS_SIZE;
+            if (next + 5 > bytes.length) {
+                if (!isFinalBuffer) return offset;
+                // A complete final packet can precede a truncated header.
+            } else if (!hasTsHeader(bytes, next)) {
+                offset++;
+                continue;
+            }
+            aligned = true;
+        }
+        if (offset + TS_SIZE > bytes.length) return offset;
+        yield offset;
+        offset += TS_SIZE;
+    }
+    return offset;
+}
+
 /** PID of a payload-unit-start packet, or null for a continuation. The caller
- * has already checked packet bounds and sync using its own resync policy. */
+ * has already checked packet bounds and sync. */
 export function pesStartPid(bytes: Uint8Array, offset: number): number | null {
     const flags = bytes[offset + 1]!;
     return (flags & 0x40) === 0 ? null : ((flags & 0x1f) << 8) | bytes[offset + 2]!;
 }
 
-/** Cheap container gate: two aligned sync bytes reject non-TS carriers while
- * keeping detection independent of the filename and extension. */
+/** Container detection needs stronger evidence than recovery inside a known
+ * TS: five consecutive headers, as recommended for sync acquisition by
+ * ETSI TR 101 290. Short streams with fewer than five packets still need two.
+ * The search can recover after a damaged prefix of any length in the buffer. */
 export function looksLikeMpegTs(bytes: Uint8Array): boolean {
-    return bytes.length >= 2 * TS_SIZE && bytes[0] === TS_SYNC && bytes[TS_SIZE] === TS_SYNC;
+    const required = bytes.length < 5 * TS_SIZE ? 2 : 5;
+    let previous = -TS_SIZE;
+    let consecutive = 0;
+    for (const offset of walkTsPackets(bytes)) {
+        consecutive = offset === previous + TS_SIZE ? consecutive + 1 : 1;
+        if (consecutive >= required) return true;
+        previous = offset;
+    }
+    return false;
 }
 
 /** Where the PES body of one packet starts and how many bytes of it the PES promises. */
@@ -206,21 +260,12 @@ function alignDownToPacket(offset: number): number {
 }
 
 /** PES-start packets on `pid` inside `buf`, as absolute offsets with their counters. */
-function findPesStarts(buf: Uint8Array, start: number, pid: number): PesStartHit[] {
+function findPesStarts(buf: Uint8Array, start: number, pid: number, isFinalBuffer: boolean): PesStartHit[] {
     const found: PesStartHit[] = [];
-    let off = 0;
-    let desyncRun = 0;
-    while (off + TS_SIZE <= buf.length) {
-        if (buf[off] !== TS_SYNC) {
-            desyncRun++;
-            off += desyncRun >= TS_SIZE ? TS_SIZE : 1;
-            continue;
-        }
-        desyncRun = 0;
+    for (const off of walkTsPackets(buf, isFinalBuffer)) {
         if (pesStartPid(buf, off) === pid) {
             found.push({ abs: start + off, cc: buf[off + 3]! & 0x0f });
         }
-        off += TS_SIZE;
     }
     return found;
 }
@@ -263,7 +308,7 @@ export function createTsPesScanPlanner(
     // previous hits, and learns the counter step from them.
     const collect = (range: TsScanRange): void => {
         if (pid === null) return;
-        for (const hit of findPesStarts(range.buf, range.start, pid)) {
+        for (const hit of findPesStarts(range.buf, range.start, pid, range.start + range.buf.length >= fileSize)) {
             const last = hits[hits.length - 1];
             if (last !== undefined && hit.abs <= last.abs) continue;
             if (last !== undefined) {
@@ -384,7 +429,7 @@ export function createTsPesScanPlanner(
                     return contiguous(windowEnd);
                 }
                 const window: TsScanRange = { start: windowStart, buf: await read(windowStart, windowEnd) };
-                const first = findPesStarts(window.buf, windowStart, pid!)[0];
+                const first = findPesStarts(window.buf, windowStart, pid!, windowEnd >= fileSize)[0];
                 if (first === undefined) continue;
                 if (first.cc === ((lastHit.cc + packetsPerPes!) & 0x0f)) {
                     consecutiveMisses = 0;

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import type { Mp4Index } from "../internal/mp4-index.js";
+import { buildMp4Index } from "../internal/mp4-index.js";
 import { KNOTS_TO_MS, WrongFormatError, type VendorFile } from "../types.js";
 import { novatekTsPrimitive } from "./novatek-ts.js";
 
@@ -78,9 +79,51 @@ describe("novatekTsPrimitive.marker", () => {
         };
         expect(await novatekTsPrimitive.marker(junkVf, undefined)).toBe(false);
     });
+
+    it("confirms the bounded filename fallback after a damaged first packet", async () => {
+        const bytes = fixtureBytes("synthetic-wrong-format.TS");
+        bytes[0] = 0;
+        const vf: VendorFile = {
+            file: new File([bytes as BlobPart], CANONICAL_NAME),
+            relativePath: CANONICAL_NAME,
+        };
+        expect(await novatekTsPrimitive.marker(vf, undefined)).toBe(true);
+    });
 });
 
 describe("novatekTsPrimitive.parse", () => {
+    it.each([2, 13])(
+        "recovers detection and GPS after a false payload sync in video packet %i",
+        async (packetIndex) => {
+            const bytes = fixtureBytes("synthetic-happy.TS");
+            const offset = packetIndex * 188;
+            expect(((bytes[offset + 1]! & 0x1f) << 8) | bytes[offset + 2]!).toBe(0x200);
+            bytes[offset] = 0;
+            bytes.set([0x47, 0x42, 0x00, 0x10], offset + 32);
+            const vf: VendorFile = { file: new File([bytes as BlobPart], "renamed.ts"), relativePath: "renamed.ts" };
+            const index = await buildMp4Index(vf.file);
+            expect(await novatekTsPrimitive.marker(vf, index)).toBe(true);
+            const result = await novatekTsPrimitive.parse(vf, index);
+            expect(result.records.map((record) => record.relStartSeconds)).toEqual([0, 1, 2, 3, 4, 5]);
+            expect(result.skipped).toHaveLength(0);
+        },
+    );
+
+    it.each([1, 188])("keeps every GPS record after %i damaged bytes in a video packet", async (damagedBytes) => {
+        const bytes = fixtureBytes("synthetic-happy.TS");
+        // The first video packet after the first GPS PES; no GPS bytes change.
+        const offset = 11 * 188;
+        expect(((bytes[offset + 1]! & 0x1f) << 8) | bytes[offset + 2]!).toBe(0x200);
+        bytes.fill(0, offset, offset + damagedBytes);
+        const vf: VendorFile = {
+            file: new File([bytes as BlobPart], CANONICAL_NAME),
+            relativePath: CANONICAL_NAME,
+        };
+        const result = await novatekTsPrimitive.parse(vf, makeIndex(bytes));
+        expect(result.records.map((record) => record.relStartSeconds)).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(result.skipped).toHaveLength(0);
+    });
+
     it("happy path: 6 records, local-clock quarantine, knots conversion", async () => {
         const vf = loadVf(resolve(FIXTURES, "synthetic-happy.TS"), CANONICAL_NAME);
         const result = await novatekTsPrimitive.parse(vf, makeIndex(fixtureBytes("synthetic-happy.TS")));

@@ -32,9 +32,9 @@ import {
     collectPesBody,
     createTsPesScanPlanner,
     looksLikeMpegTs,
+    walkTsPackets,
     pesBodyExtent,
     TS_SIZE,
-    TS_SYNC,
 } from "./ts-walk.js";
 
 const LIGO_PES_STREAM_TYPE = 0x82;
@@ -76,8 +76,7 @@ export function findLigoGpsTsPesPid(headerBytes: Uint8Array): number | null {
             .map((stream) => stream.pid),
     );
     if (candidates.size === 0) return null;
-    for (let off = 0; off + TS_SIZE <= headerBytes.length; off += TS_SIZE) {
-        if (headerBytes[off] !== TS_SYNC) return null;
+    for (const off of walkTsPackets(headerBytes)) {
         const pid = pesStartPid(headerBytes, off);
         if (pid === null) continue;
         if (!candidates.has(pid)) continue;
@@ -119,28 +118,20 @@ export async function extractLigoGpsTsPes(
     let range = await planner.next(0);
     while (range !== null) {
         const { start, buf } = range;
-        let off = 0;
-        let desyncRun = 0;
-        while (off + TS_SIZE <= buf.length) {
-            if (buf[off] !== TS_SYNC) {
-                desyncRun++;
-                off += desyncRun >= TS_SIZE ? TS_SIZE : 1;
-                continue;
-            }
-            desyncRun = 0;
+        const packets = walkTsPackets(buf, start + buf.length >= file.file.size);
+        let packet = packets.next();
+        for (; !packet.done; packet = packets.next()) {
+            const off = packet.value;
             if (pesStartPid(buf, off) !== pid) {
-                off += TS_SIZE;
                 continue;
             }
             const extent = pesBodyExtent(buf, off);
             if (extent === null) {
-                off += TS_SIZE;
                 continue;
             }
             const assembled = collectPesBody(buf, off, extent.bodyOff, pid, Math.min(extent.bodyLen, MAX_PES_BODY));
             // Ran out of buffer mid-PES: re-try this packet with the next buffer.
             if (assembled === "incomplete") break;
-            off += TS_SIZE;
             pesIndex++;
             if (assembled === "unavailable") {
                 skip("ligogps pes body unavailable", "");
@@ -173,7 +164,7 @@ export async function extractLigoGpsTsPes(
             }
             if (record.lat !== 0 || record.lon !== 0) records.push(record);
         }
-        range = await planner.next(start + off);
+        range = await planner.next(start + packet.value);
     }
 
     removeGravityBaselineInUnknownUnits(records);

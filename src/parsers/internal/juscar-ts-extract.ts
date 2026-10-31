@@ -36,7 +36,14 @@ import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types
 import { KMH_TO_MS, WrongFormatError } from "../types.js";
 import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import type { Mp4Index } from "./mp4-index.js";
-import { pesStartPid, createTsPesScanPlanner, pesBodyExtent, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import {
+    pesStartPid,
+    createTsPesScanPlanner,
+    walkTsPackets,
+    pesBodyExtent,
+    pesBodyOffset,
+    TS_SIZE,
+} from "./ts-walk.js";
 
 // PID seen in our only sample. Used as a fallback if the probe could not
 // find the real PID (e.g. on a heavily truncated file).
@@ -86,22 +93,16 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
     let range = await planner.next(0);
     while (range !== null) {
         const { start, buf } = range;
-        let off = 0;
-        while (off + TS_SIZE <= buf.length) {
-            if (buf[off] !== TS_SYNC) {
-                // Desync - back off by 1 byte. Happens on a corrupt dump /
-                // damaged MPE2 frame. Normally never fires.
-                off++;
-                continue;
-            }
+        const packets = walkTsPackets(buf, start + buf.length >= file.file.size);
+        let packet = packets.next();
+        for (; !packet.done; packet = packets.next()) {
+            const off = packet.value;
             // This dialect fits in one PES-start packet; continuations carry no records.
             if (pesStartPid(buf, off) !== gpsPid) {
-                off += TS_SIZE;
                 continue;
             }
             const extent = pesBodyExtent(buf, off);
             if (extent === null) {
-                off += TS_SIZE;
                 continue;
             }
             const { bodyOff } = extent;
@@ -109,7 +110,6 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
             // reaches past the packet - clamp instead of reassembling.
             const tsPacketEnd = off + TS_SIZE;
             if (bodyOff >= tsPacketEnd) {
-                off += TS_SIZE;
                 continue;
             }
             const bodyEnd = Math.min(bodyOff + extent.bodyLen, tsPacketEnd);
@@ -117,14 +117,12 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
             // The ENC variant starts with "LIGOGPSINFO" - its data is
             // duplicated in plaintext, so we parse only the plaintext form.
             if (buf[bodyOff] === 0x4c /* 'L' */) {
-                off += TS_SIZE;
                 continue;
             }
             // Plaintext: <lowercase letters>:<digit>...
             // Cheap pre-filter: the first byte is a lowercase ASCII letter.
             const first = buf[bodyOff]!;
             if (first < 0x61 /* 'a' */ || first > 0x7a /* 'z' */) {
-                off += TS_SIZE;
                 continue;
             }
 
@@ -140,10 +138,9 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
                     reason: "juscar plaintext regex did not match",
                 });
             }
-            off += TS_SIZE;
         }
 
-        range = await planner.next(start + off);
+        range = await planner.next(start + packet.value);
     }
 
     if (records.length === 0) {
@@ -163,13 +160,7 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
  * content, not by type.
  */
 function findGpsPidByProbe(headerBytes: Uint8Array): number | null {
-    const limit = headerBytes.length - TS_SIZE;
-    for (let off = 0; off <= limit; off += TS_SIZE) {
-        if (headerBytes[off] !== TS_SYNC) {
-            // If the first byte is not sync, this is unlikely to be a TS file.
-            // We do not resync byte-by-byte in the probe, it is too expensive.
-            return null;
-        }
+    for (const off of walkTsPackets(headerBytes)) {
         const pid = pesStartPid(headerBytes, off);
         if (pid === null) continue;
         // Offset only: the probe reads a fixed-size signature, so an odd or

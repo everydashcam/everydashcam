@@ -53,7 +53,14 @@ import { KMH_TO_MS, KNOTS_TO_MS, WrongFormatError } from "../types.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 import { isDashcamYear, utcSecondsFromYmdhms } from "./calendar.js";
 import type { Mp4Index } from "./mp4-index.js";
-import { pesStartPid, collectPesBody, createTsPesScanPlanner, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import {
+    pesStartPid,
+    collectPesBody,
+    createTsPesScanPlanner,
+    walkTsPackets,
+    pesBodyOffset,
+    TS_SIZE,
+} from "./ts-walk.js";
 
 const RECORD_SIZE = 44;
 
@@ -73,21 +80,17 @@ const B4K_PREFIX_BYTES = 164;
 const PID_LOCK_LIMIT_BYTES = 64 * 1024 * 1024;
 
 /**
- * Content probe: scans TS packets (188-byte stride, no byte-level resync) for
+ * Content probe: walks TS packets, recovering alignment after corruption, for
  * the first PUSI packet whose PES body starts with a valid Novatek GPS record
  * and returns its PID, or null when none is found in `bytes`.
  *
  * Used three ways: by the primitive's marker over Mp4Index.headerBytes, by
  * the classify gate in registry.ts (wired by the orchestrator), and by the
- * extractor below to lock the PID early. Returns null immediately when the
- * buffer does not start with a TS sync byte - O(1) rejection for MP4/MOV
- * files, so the gate can call this unconditionally.
+ * extractor below to lock the PID early. No confirmed packet alignment or
+ * matching record signature means the probe rejects the buffer.
  */
 export function findNovatekTsGpsPid(bytes: Uint8Array): number | null {
-    if (bytes.length < TS_SIZE || bytes[0] !== TS_SYNC) return null;
-    const limit = bytes.length - TS_SIZE;
-    for (let off = 0; off <= limit; off += TS_SIZE) {
-        if (bytes[off] !== TS_SYNC) return null;
+    for (const off of walkTsPackets(bytes)) {
         const pid = pesStartPid(bytes, off);
         if (pid === null) continue;
         const bodyOff = pesBodyOffset(bytes, off);
@@ -313,28 +316,16 @@ export async function extractNovatekTsGps(
     while (range !== null) {
         throwIfCancelled(signal, "novatek-ts scan aborted");
         const { start, buf } = range;
-        let off = 0;
-        // Consecutive non-sync bytes seen while resyncing (see below).
-        let desyncRun = 0;
-        while (off + TS_SIZE <= buf.length) {
-            if (buf[off] !== TS_SYNC) {
-                // Desync (corrupt dump) - a 1-byte backoff re-finds alignment
-                // fast, but a long syncless region must not degrade the scan
-                // to a byte-wise crawl of the whole file: after a full packet
-                // length without a sync byte, step by whole packets.
-                desyncRun++;
-                off += desyncRun >= TS_SIZE ? TS_SIZE : 1;
-                continue;
-            }
-            desyncRun = 0;
+        const packets = walkTsPackets(buf, start + buf.length >= file.file.size);
+        let packet = packets.next();
+        for (; !packet.done; packet = packets.next()) {
+            const off = packet.value;
             const pid = pesStartPid(buf, off);
             if (pid === null || (gpsPid !== null && pid !== gpsPid)) {
-                off += TS_SIZE;
                 continue;
             }
             const bodyOff = pesBodyOffset(buf, off);
             if (bodyOff === null) {
-                off += TS_SIZE;
                 continue;
             }
             // Two dialects share this PES. The bare struct at body offset 0
@@ -372,7 +363,6 @@ export async function extractNovatekTsGps(
                         reason: "novatek-ts signature mismatch on gps pid",
                     });
                 }
-                off += TS_SIZE;
                 continue;
             }
             if (gpsPid === null) {
@@ -391,7 +381,6 @@ export async function extractNovatekTsGps(
                     reason: outcome.skipReason,
                 });
             }
-            off += TS_SIZE;
         }
 
         // Bound on bytes covered, like the chunk end of a plain linear pass.
@@ -400,7 +389,7 @@ export async function extractNovatekTsGps(
                 `novatek-ts: no gps pes signature in the leading ${PID_LOCK_LIMIT_BYTES >> 20} mib of the stream`,
             );
         }
-        range = await planner.next(start + off);
+        range = await planner.next(start + packet.value);
     }
 
     if (records.length === 0) {

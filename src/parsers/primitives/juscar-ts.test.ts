@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 import type { Mp4Index } from "../internal/mp4-index.js";
+import { buildMp4Index } from "../internal/mp4-index.js";
 import type { VendorFile } from "../types.js";
 import { juscarTsPrimitive } from "./juscar-ts.js";
 
@@ -15,6 +17,8 @@ function makeIndex(hasLigoGpsMarker: boolean): Mp4Index {
     const headerBytes = new Uint8Array(2 * 188);
     headerBytes[0] = 0x47;
     headerBytes[188] = 0x47;
+    headerBytes[3] = 0x10;
+    headerBytes[191] = 0x10;
     return {
         headerBytes,
         headerView: new DataView(headerBytes.buffer),
@@ -32,6 +36,47 @@ function makeIndex(hasLigoGpsMarker: boolean): Mp4Index {
 }
 
 describe("juscarTsPrimitive.marker", () => {
+    it("rejects an MP4 with LigoGPS metadata and accidental TS-like headers in its video payload", async () => {
+        const bytes = readFileSync(new URL("../__fixtures__/ligogps-trailer/real-anonymized.mp4", import.meta.url));
+        const file = new File([bytes], "renamed.mp4");
+        const vf = { file, relativePath: file.name };
+        const index = await buildMp4Index(file);
+        expect(index.hasLigoGpsMarker).toBe(true);
+        expect(await juscarTsPrimitive.marker(vf, index)).toBe(false);
+    });
+
+    it("recovers the actual GPS PID after a damaged head with a false payload sync", async () => {
+        const original = readFileSync(new URL("../__fixtures__/juscar/real-anonymized.TS", import.meta.url));
+        const referenceFile = new File([original], "renamed.ts");
+        const reference = await juscarTsPrimitive.parse(
+            { file: referenceFile, relativePath: referenceFile.name },
+            await buildMp4Index(referenceFile),
+        );
+        const bytes = Buffer.from(original);
+        const firstBody = bytes.indexOf("LIGOGPSINFO");
+        expect(firstBody).toBeGreaterThan(0);
+        const firstPacket = Math.floor(firstBody / 188) * 188;
+        const originalPid = ((bytes[firstPacket + 1]! & 0x1f) << 8) | bytes[firstPacket + 2]!;
+        let changedPackets = 0;
+        // Renumber GPS independently of the fixture and the legacy fallback.
+        for (let offset = 0; offset + 188 <= bytes.length; offset += 188) {
+            if ((((bytes[offset + 1]! & 0x1f) << 8) | bytes[offset + 2]!) === originalPid) {
+                bytes[offset + 1] = (bytes[offset + 1]! & 0xe0) | 0x03;
+                bytes[offset + 2] = 0x21;
+                changedPackets++;
+            }
+        }
+        expect(changedPackets).toBeGreaterThan(0);
+        bytes[0] = 0;
+        bytes.set([0x47, 0x41, 0, 0x10], 32);
+        const file = new File([bytes], referenceFile.name);
+        const vf = { file, relativePath: file.name };
+        const index = await buildMp4Index(file);
+        expect(index.hasLigoGpsMarker).toBe(true);
+        expect(await juscarTsPrimitive.marker(vf, index)).toBe(true);
+        expect((await juscarTsPrimitive.parse(vf, index)).records).toEqual(reference.records);
+    });
+
     it("positive on matching name + hasLigoGpsMarker", async () => {
         const vf = makeVf("20260429_182640F.ts");
         expect(await juscarTsPrimitive.marker(vf, makeIndex(true))).toBe(true);

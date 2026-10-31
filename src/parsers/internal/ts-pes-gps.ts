@@ -16,7 +16,7 @@ import { type GpsRecord, type ParsedRecords, type SkippedLine, type VendorFile, 
 import { hasViidureBody, parseViidureBody } from "./viidure.js";
 import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { hasInnovvRecordSignature, parseInnovvRecord } from "./freegps.js";
-import { pesStartPid, collectPesBody, createTsPesScanPlanner, pesBodyExtent, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import { pesStartPid, collectPesBody, createTsPesScanPlanner, walkTsPackets, pesBodyExtent } from "./ts-walk.js";
 
 type Dialect = "innovv" | "dod" | "viidure";
 
@@ -160,10 +160,7 @@ function i32be(bytes: Uint8Array, off: number): number {
  * the PID before the full scan.
  */
 export function findTsPesGpsStream(bytes: Uint8Array): { pid: number; dialect: Dialect } | null {
-    if (bytes.length < TS_SIZE || bytes[0] !== TS_SYNC) return null;
-    const limit = bytes.length - TS_SIZE;
-    for (let off = 0; off <= limit; off += TS_SIZE) {
-        if (bytes[off] !== TS_SYNC) return null;
+    for (const off of walkTsPackets(bytes)) {
         const pid = pesStartPid(bytes, off);
         if (pid === null) continue;
         const body = bodyAt(bytes, off, pid);
@@ -213,24 +210,17 @@ export async function extractTsPesGps(
     while (range !== null) {
         throwIfCancelled(signal, "ts-pes-gps scan aborted");
         const { start, buf } = range;
-        let off = 0;
-        let desyncRun = 0;
-        while (off + TS_SIZE <= buf.length) {
-            if (buf[off] !== TS_SYNC) {
-                desyncRun++;
-                off += desyncRun >= TS_SIZE ? TS_SIZE : 1;
-                continue;
-            }
-            desyncRun = 0;
+        const packets = walkTsPackets(buf, start + buf.length >= file.file.size);
+        let packet = packets.next();
+        for (; !packet.done; packet = packets.next()) {
+            const off = packet.value;
             const packetPid = pesStartPid(buf, off);
             if (packetPid === null || (pid !== null && packetPid !== pid)) {
-                off += TS_SIZE;
                 continue;
             }
 
             const extent = pesBodyExtent(buf, off);
             if (extent === null) {
-                off += TS_SIZE;
                 continue;
             }
             const assembled = collectPesBody(
@@ -243,7 +233,6 @@ export async function extractTsPesGps(
             // Ran out of buffer mid-PES: re-try this packet with the next buffer.
             if (assembled === "incomplete") break;
             if (assembled === "unavailable") {
-                off += TS_SIZE;
                 continue;
             }
 
@@ -280,7 +269,6 @@ export async function extractTsPesGps(
                         reason: "invalid viidure gps record",
                     });
             }
-            off += TS_SIZE;
         }
 
         // Bound on bytes covered, like the chunk end of a plain linear pass.
@@ -289,7 +277,7 @@ export async function extractTsPesGps(
                 `ts-pes-gps: no supported gps pes signature in the leading ${SIGNATURE_LIMIT_BYTES >> 20} mib`,
             );
         }
-        range = await planner.next(start + off);
+        range = await planner.next(start + packet.value);
     }
 
     if (records.length === 0) throw new WrongFormatError("ts-pes-gps: no gps records found in ts stream");
