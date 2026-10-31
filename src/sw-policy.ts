@@ -12,18 +12,24 @@ export function isCacheableAssetResponse(response: Response): boolean {
     return isCacheableResponse(response) && !isHtmlResponse(response);
 }
 
-/** The isolation pair of the global rule in public/_headers. */
-export const CROSS_ORIGIN_ISOLATION_HEADERS = {
-    "cross-origin-opener-policy": "same-origin",
-    "cross-origin-embedder-policy": "require-corp",
-} as const;
+/** The embedder policy of the global rule in public/_headers. */
+export const CROSS_ORIGIN_EMBEDDER_POLICY = "require-corp";
 
 /**
- * Gives a response handed to the page the hosted isolation headers. Cache
+ * Gives a response handed to the page the hosted embedder policy. Cache
  * Storage keeps the headers of the deployment that stored an entry, and Workbox
- * reuses unchanged precache entries across updates. An isolated document
- * refuses a worker script without COEP (ERR_BLOCKED_BY_RESPONSE), and a shell
- * served from cache needs both headers to stay isolated.
+ * reuses unchanged precache entries across updates, so entries stored before
+ * the app sent COEP lack it. An isolated document refuses a worker script
+ * without COEP (ERR_BLOCKED_BY_RESPONSE), and a cached shell without it would
+ * not be isolated.
+ *
+ * The opener policy stays the server's. Hosting has always sent COOP
+ * same-origin, so stored entries already carry it. Adding it here would isolate
+ * cached documents on a server that sends neither header while its network
+ * documents stay unisolated; with documents alternating like that, Chromium
+ * served a new tab the previous release after an update (the rollback case in
+ * tests/e2e/sw-updates.spec.ts). Without server COOP the app stays unisolated
+ * and runs ORT on one thread.
  *
  * Status-0 responses pass through: `new Response` cannot recreate them. Routes
  * only handle same-origin requests, so these are a navigation's opaqueredirect,
@@ -34,12 +40,11 @@ export const CROSS_ORIGIN_ISOLATION_HEADERS = {
  * from the network with the server's headers. The body streams into the copy
  * without being read.
  */
-export function withCrossOriginIsolation(response: Response): Response {
+export function withEmbedderPolicy(response: Response): Response {
     if (response.status === 0 || response.redirected) return response;
-    const required = Object.entries(CROSS_ORIGIN_ISOLATION_HEADERS);
-    if (required.every(([name, value]) => response.headers.get(name) === value)) return response;
+    if (response.headers.get("cross-origin-embedder-policy") === CROSS_ORIGIN_EMBEDDER_POLICY) return response;
     const headers = new Headers(response.headers);
-    for (const [name, value] of required) headers.set(name, value);
+    headers.set("cross-origin-embedder-policy", CROSS_ORIGIN_EMBEDDER_POLICY);
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 

@@ -4,12 +4,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { offlineResponse } from "./sw-offline.js";
 import {
-    CROSS_ORIGIN_ISOLATION_HEADERS,
+    CROSS_ORIGIN_EMBEDDER_POLICY,
     isHtmlResponse,
     precacheRequest,
     trackerCacheUrl,
     validatePrecacheResponse,
-    withCrossOriginIsolation,
+    withEmbedderPolicy,
 } from "./sw-policy.js";
 
 const marker = "0123456789abcdef";
@@ -87,37 +87,33 @@ describe("service worker integrity policy", () => {
     });
 });
 
-describe("service worker isolation headers", () => {
-    const isolationOf = (response: Response) => ({
-        opener: response.headers.get("cross-origin-opener-policy"),
-        embedder: response.headers.get("cross-origin-embedder-policy"),
-    });
-    const isolated = { opener: "same-origin", embedder: "require-corp" };
+describe("service worker embedder policy", () => {
+    const embedderOf = (response: Response) => response.headers.get("cross-origin-embedder-policy");
 
-    it("sets the isolation pair of the global rule in public/_headers", () => {
+    it("matches the global rule in public/_headers, which also sends the opener policy", () => {
         const source = readFileSync(new URL("../public/_headers", import.meta.url), "utf8");
         const global = source.split(/^\/\*$/m)[1]!.split(/^\/\S/m)[0]!;
-        const declared = Object.fromEntries(
-            [...global.matchAll(/^[ \t]+(Cross-Origin-(?:Opener|Embedder)-Policy):[ \t]*(\S+)[ \t]*$/gm)].map(
-                ([, name, value]) => [name!.toLowerCase(), value],
-            ),
-        );
-        expect(declared).toEqual(CROSS_ORIGIN_ISOLATION_HEADERS);
+        const declared = (name: string) => global.match(new RegExp(`^[ \\t]+${name}:[ \\t]*(\\S+)[ \\t]*$`, "m"))?.[1];
+        expect(declared("Cross-Origin-Embedder-Policy")).toBe(CROSS_ORIGIN_EMBEDDER_POLICY);
+        // The worker leaves COOP to the server; isolation needs both.
+        expect(declared("Cross-Origin-Opener-Policy")).toBe("same-origin");
     });
 
-    it("adds both headers to a stored response and keeps its status, headers and body", async () => {
-        // A precache entry stored before isolation, or with a weaker policy.
+    it("adds the embedder policy to a stored response and keeps its status, headers and body", async () => {
+        // A precache entry stored before the app sent COEP, or with a weaker policy.
         const stored = new Response("postMessage('ready')", {
             status: 200,
             statusText: "OK",
             headers: {
                 "content-type": "text/javascript",
                 "x-content-type-options": "nosniff",
+                "cross-origin-opener-policy": "same-origin",
                 "cross-origin-embedder-policy": "unsafe-none",
             },
         });
-        const served = withCrossOriginIsolation(stored);
-        expect(isolationOf(served)).toEqual(isolated);
+        const served = withEmbedderPolicy(stored);
+        expect(embedderOf(served)).toBe("require-corp");
+        expect(served.headers.get("cross-origin-opener-policy")).toBe("same-origin");
         expect(served.status).toBe(200);
         expect(served.statusText).toBe("OK");
         expect(served.headers.get("content-type")).toBe("text/javascript");
@@ -125,9 +121,15 @@ describe("service worker isolation headers", () => {
         expect(await served.text()).toBe("postMessage('ready')");
     });
 
-    it("adds both headers to the offline fallback page", async () => {
-        const served = withCrossOriginIsolation(offlineResponse());
-        expect(isolationOf(served)).toEqual(isolated);
+    it("never adds an opener policy the server did not send", () => {
+        const served = withEmbedderPolicy(new Response("<html></html>", { headers: { "content-type": "text/html" } }));
+        expect(embedderOf(served)).toBe("require-corp");
+        expect(served.headers.has("cross-origin-opener-policy")).toBe(false);
+    });
+
+    it("adds the embedder policy to the offline fallback page", async () => {
+        const served = withEmbedderPolicy(offlineResponse());
+        expect(embedderOf(served)).toBe("require-corp");
         expect(served.status).toBe(503);
         expect(served.headers.get("content-type")).toBe("text/html; charset=utf-8");
         expect(await served.text()).toMatch(/^<!doctype html>/);
@@ -138,19 +140,19 @@ describe("service worker isolation headers", () => {
         const stored = new Response(new ReadableStream<Uint8Array>({ pull() {} }), {
             headers: { "content-type": "application/wasm" },
         });
-        const served = withCrossOriginIsolation(stored);
-        expect(served, "a copy carries the added headers").not.toBe(stored);
+        const served = withEmbedderPolicy(stored);
+        expect(served, "a copy carries the added header").not.toBe(stored);
         expect(served.body, "the copy owns the original stream").toBe(stored.body);
         expect(stored.bodyUsed).toBe(false);
-        expect(isolationOf(served)).toEqual(isolated);
+        expect(embedderOf(served)).toBe("require-corp");
     });
 
     it("keeps statuses that have no body", () => {
-        const served = withCrossOriginIsolation(new Response(null, { status: 304, statusText: "Not Modified" }));
+        const served = withEmbedderPolicy(new Response(null, { status: 304, statusText: "Not Modified" }));
         expect(served.status).toBe(304);
         expect(served.statusText).toBe("Not Modified");
         expect(served.body).toBeNull();
-        expect(isolationOf(served)).toEqual(isolated);
+        expect(embedderOf(served)).toBe("require-corp");
     });
 
     it("passes status-0 responses through unchanged", () => {
@@ -158,17 +160,13 @@ describe("service worker isolation headers", () => {
         // opaqueredirect responses cannot be constructed outside a fetch.
         const failure = Response.error();
         expect(failure.status).toBe(0);
-        expect(withCrossOriginIsolation(failure)).toBe(failure);
+        expect(withEmbedderPolicy(failure)).toBe(failure);
     });
 
-    it("passes a response that already carries both headers through unchanged", () => {
+    it("passes a response that already carries the embedder policy through unchanged", () => {
         const network = new Response("<html></html>", {
-            headers: {
-                "content-type": "text/html",
-                "cross-origin-opener-policy": "same-origin",
-                "cross-origin-embedder-policy": "require-corp",
-            },
+            headers: { "content-type": "text/html", "cross-origin-embedder-policy": "require-corp" },
         });
-        expect(withCrossOriginIsolation(network)).toBe(network);
+        expect(withEmbedderPolicy(network)).toBe(network);
     });
 });

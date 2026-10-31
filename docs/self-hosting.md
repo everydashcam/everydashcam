@@ -276,10 +276,10 @@ Your server needs these rules:
   their contents do.
 - Send `Cross-Origin-Opener-Policy: same-origin` and
   `Cross-Origin-Embedder-Policy: require-corp` with every response, as
-  everydashcam.app does. The app's offline service worker adds both to the
-  responses it serves, but the first visit and browsers that do not run it rely
-  on the server. In nginx, repeat them in every `location` that has its own
-  `add_header`.
+  everydashcam.app does. The app's offline service worker adds COEP to the
+  responses it serves but never COOP, so without server COOP the app stays
+  unisolated and blur tracking runs on one thread. In nginx, repeat them in
+  every `location` that has its own `add_header`.
 
 The committed `docker/nginx.conf` is the complete reference for rewrites,
 cache and isolation headers and the 404 page. `public/_headers` contains the

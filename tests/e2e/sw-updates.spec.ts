@@ -422,7 +422,8 @@ test("isolates a new tab and its workers when an update reuses files cached with
     // leaves is: Workbox stores network responses unchanged and keeps entries
     // whose URL and revision did not change. Only the worker changes between
     // these deployments, as when a release changes nothing but sw.js and
-    // headers, so the shell and the worker script keep pre-isolation headers.
+    // headers, so the shell and the worker script keep pre-isolation headers:
+    // COOP, which hosting always sent, without COEP.
     const shellRevision = hash("isolation");
     const files = new Map([
         [
@@ -455,10 +456,10 @@ test("isolates a new tab and its workers when an update reuses files cached with
         if (isOffline) return response.destroy();
         const path = new URL(request.url!, "http://localhost").pathname;
         response.setHeader("cache-control", "no-store");
-        if (isIsolated) {
-            response.setHeader("cross-origin-opener-policy", "same-origin");
-            response.setHeader("cross-origin-embedder-policy", "require-corp");
-        }
+        // Hosting sent COOP before isolation too; COEP is what the isolated
+        // deployment adds, and what the worker adds to entries cached without it.
+        response.setHeader("cross-origin-opener-policy", "same-origin");
+        if (isIsolated) response.setHeader("cross-origin-embedder-policy", "require-corp");
         if (path === "/sw.js") {
             response.setHeader("content-type", "text/javascript");
             return response.end(published);
@@ -512,7 +513,8 @@ test("isolates a new tab and its workers when an update reuses files cached with
 
         const navigation = await current.goto(`${origin}/en/`);
         expect(navigation?.fromServiceWorker(), "the updated worker serves the shell").toBe(true);
-        // crossOriginIsolated needs both headers on the document.
+        // crossOriginIsolated needs both headers on the document: the stored COOP
+        // and the COEP the worker adds.
         expect(await isolationOf(current, "/assets/isolation-worker.js")).toEqual({ document: true, worker: true });
         expect(await storedEmbedderPolicies(current), "the update reused the pre-isolation entries").toEqual({
             ...preIsolation,

@@ -215,7 +215,7 @@ version. The API existing does not mean a codec decodes - always probe.
   `'wasm-unsafe-eval'` in `script-src`; JavaScript evaluation remains blocked.
   Runtime modules and weights are self-hosted. The hosted app is cross-origin
   isolated (COOP `same-origin`, COEP `require-corp`; the service worker adds
-  both to its responses), which WASM threads require. Third-party resources
+  COEP to its responses), which WASM threads require. Third-party resources
   must load through CORS or send CORP. Without isolation the tracker falls back
   to one thread; the thread count and its build requirement are documented at
   `threadCount` in `src/tracking/ort-runtime.ts`. Portable runs from `file://`,

@@ -78,8 +78,8 @@
   # COEP require-corp blocks cross-origin resources that are neither CORS nor
   # marked with CORP: map tiles, glyphs and styles load through CORS fetch,
   # Sentry uses fetch, and the Cloudflare beacon sends CORP cross-origin.
-  # The service worker adds both headers to every response it serves
-  # (src/sw-policy.ts), so entries cached before a header change stay usable.
+  # The service worker adds COEP to every response it serves (src/sw-policy.ts),
+  # so entries cached before COEP was sent stay usable; COOP comes only from here.
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
 

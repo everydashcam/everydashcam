@@ -13,7 +13,7 @@ import {
     precacheRequest,
     trackerCacheUrl,
     validatePrecacheResponse,
-    withCrossOriginIsolation,
+    withEmbedderPolicy,
 } from "./sw-policy.js";
 import { offlineResponse } from "./sw-offline.js";
 import { migrateLegacyTrackerCache, TRACKER_MAX_ENTRIES } from "./sw-tracker-cache.js";
@@ -291,11 +291,11 @@ router.setCatchHandler(async ({ request }) => {
     }
 });
 
-// Same as Router.addFetchListener, plus the isolation headers on whatever the
+// Same as Router.addFetchListener, plus the embedder policy on whatever the
 // page receives: precache and runtime hits, network responses and fallbacks.
 // Requests that no route handles (cross-origin, Range, downloads) bypass the
 // worker and keep the server's headers.
 self.addEventListener("fetch", (event) => {
     const response = router.handleRequest({ request: event.request, event });
-    if (response) event.respondWith(response.then(withCrossOriginIsolation));
+    if (response) event.respondWith(response.then(withEmbedderPolicy));
 });
