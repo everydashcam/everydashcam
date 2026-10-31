@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { combineAbortSignals } from "./abort-signals.js";
+import { combineAbortSignals, throwIfCancelled } from "./abort-signals.js";
 
 const nativeAny = Object.getOwnPropertyDescriptor(AbortSignal, "any")!;
 
@@ -80,5 +80,27 @@ describe("fallback subscriptions", () => {
         expect(lifetime.signal.aborted).toBe(false);
         user.abort();
         expect(combined.signal.aborted).toBe(false);
+    });
+});
+
+describe("normalized cancellation checkpoints", () => {
+    it("keeps legacy AbortError contracts even when the reason is a timeout", () => {
+        const controller = new AbortController();
+        const reason = new DOMException("download stalled", "TimeoutError");
+        controller.abort(reason);
+        expect(() => throwIfCancelled(controller.signal, "ingest aborted")).toThrowError(
+            new DOMException("ingest aborted", "AbortError"),
+        );
+        // Reason-preserving paths deliberately keep the native method.
+        expect(() => controller.signal.throwIfAborted()).toThrow(reason);
+    });
+
+    it("normalizes an arbitrary reason and ignores absent or live signals", () => {
+        const controller = new AbortController();
+        expect(() => throwIfCancelled()).not.toThrow();
+        expect(() => throwIfCancelled(controller.signal)).not.toThrow();
+        controller.abort("user stopped");
+        expect(() => throwIfCancelled(controller.signal)).toThrowError(new DOMException("aborted", "AbortError"));
+        expect(controller.signal.reason).toBe("user stopped");
     });
 });
