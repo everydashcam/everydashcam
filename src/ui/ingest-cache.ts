@@ -3,6 +3,7 @@
 // Filename classification, external inputs, clocks, and trip grouping always
 // run under the current code after a hit.
 
+import { extendArray } from "../array-extend.js";
 import { recordsForVideo, type VideoAssociationIndex } from "../gps-association.js";
 import { createLogger } from "../log.js";
 import { cameraFingerprint } from "../parsers/camera-fingerprint.js";
@@ -512,11 +513,12 @@ export async function partitionByIndexCache(
             hitKeys.push(identityKey);
             continue;
         }
+        // Only hydration may fail over to a miss. Publishing the hit stays
+        // outside the try: a throw after cachedCandidates.push would leave the
+        // same file both restored and queued for re-indexing.
+        let restored: ReturnType<typeof hydrateCandidate>;
         try {
-            const restored = hydrateCandidate(file, entry, externalRecords, external.extractorByFileKey);
-            cachedCandidates.push(restored.candidate);
-            restoredEmbeddedRecords.push(...restored.embeddedRecords);
-            if (restored.accel) restoredEmbeddedAccelByFileKey.set(vendorFileKey(file.file), restored.accel);
+            restored = hydrateCandidate(file, entry, externalRecords, external.extractorByFileKey);
         } catch (err) {
             log.warn("invalid index cache entry, re-indexing file", {
                 file: file.file.file.name,
@@ -525,6 +527,10 @@ export async function partitionByIndexCache(
             misses.push(file);
             continue;
         }
+        cachedCandidates.push(restored.candidate);
+        // A whole-card log restores past the engine's spread-argument ceiling.
+        extendArray(restoredEmbeddedRecords, restored.embeddedRecords);
+        if (restored.accel) restoredEmbeddedAccelByFileKey.set(vendorFileKey(file.file), restored.accel);
         hitKeys.push(identityKey);
     }
     if (hitKeys.length > 0) {

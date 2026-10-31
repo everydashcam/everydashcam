@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildVideoAssociationIndex } from "../gps-association.js";
 import { embeddedGpsDispatchRevision, noEmbeddedGpsDispatchRevision } from "../parsers/primitives/cache-revisions.js";
@@ -21,13 +21,33 @@ import {
     isIndexCacheEntryCompatible,
     isCurrentRecordingMetadata,
     isRecordingMetadataApplicableToFile,
+    partitionByIndexCache,
     registerCandidateMetadata,
     releaseIndexCacheSnapshots,
     releaseIndexCacheWriteBlocks,
 } from "./ingest-cache.js";
 import { vendorFileKey } from "./ingest-candidate.js";
 
-beforeEach(_resetForTests);
+// IndexedDB is a browser-only store; partitionByIndexCache reads it through
+// this one handle, so an in-memory entry map keeps the partition logic itself
+// under test in Node.
+const persistDb = vi.hoisted(() => ({ entries: new Map<string, unknown>() }));
+vi.mock("../persist/db.js", () => ({
+    openPersistDb: async () => ({
+        transaction: () => ({
+            store: {
+                get: async (key: string) => persistDb.entries.get(key),
+                index: () => ({ getAllKeys: async () => [] }),
+            },
+            done: Promise.resolve(),
+        }),
+    }),
+}));
+
+beforeEach(() => {
+    _resetForTests();
+    persistDb.entries.clear();
+});
 
 function classified(
     path: string,
@@ -472,6 +492,46 @@ describe("hydrateCandidate", () => {
         expect(restored.candidate.appliedExtractors).toEqual(["gpx"]);
         expect(restored.candidate.embeddedStartUtcHint).toBeNull();
         expect(restored.embeddedRecords).toEqual([]);
+    });
+});
+
+describe("partitionByIndexCache", () => {
+    it("restores a whole-card hit past the spread-argument ceiling without also queueing it", async () => {
+        // Above V8's ~125k spread-argument limit, where `push(...records)` throws.
+        const recordCount = 200_000;
+        const target = classified("CARD/clip.mp4", "video");
+        const identity = fileIdentityKey(fileIdentityOf(target.file.file, target.file.relativePath));
+        persistDb.entries.set(
+            identity,
+            buildCacheEntry(identity, metadata(), {
+                status: "parsed",
+                dispatchRevision: embeddedGpsDispatchRevision("freegps")!,
+                extractorId: "freegps",
+                sourceIdentityKey: identity,
+                records: Array.from({ length: recordCount }, (_, index) => ({
+                    unixSeconds: 100 + index,
+                    active: true,
+                    lat: 1,
+                    lon: 2,
+                    bearingDeg: 3,
+                    speedMs: 4,
+                    accelXg: 0,
+                    accelYg: 0,
+                    accelZg: 0,
+                    mp4Filename: "clip.mp4",
+                })),
+            }),
+        );
+
+        const partition = await partitionByIndexCache([target], [target], buildVideoAssociationIndex([target.file]), {
+            gpsLog: null,
+            extractorByFileKey: [],
+            areValid: true,
+        });
+
+        expect(partition.misses).toEqual([]);
+        expect(partition.cachedCandidates).toHaveLength(1);
+        expect(partition.restoredEmbeddedRecords).toHaveLength(recordCount);
     });
 });
 
