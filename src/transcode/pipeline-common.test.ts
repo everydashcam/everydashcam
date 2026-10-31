@@ -114,6 +114,21 @@ describe("nextTolerant", () => {
         await expect(nextTolerant(fakeIterator([], err), { ...progress(), ...fields })).rejects.toBe(err);
     });
 
+    it("extends the tolerated tail by the spacing of a sparse decode", async () => {
+        // 2.5 s missing exceeds the 2 s bound, but a sparse decode one second
+        // apart never wanted the frames up to its next selected one.
+        const sparse = { ...progress(), lastSampleEnd: 57.5, sparseSpacingSec: 1 };
+        await expect(nextTolerant(fakeIterator([], decodeError()), sparse)).resolves.toMatchObject({
+            done: true,
+            truncated: true,
+        });
+        const err = decodeError();
+        await expect(
+            nextTolerant(fakeIterator([], err), { ...progress(), lastSampleEnd: 57.5 }),
+            "a dense decode keeps the plain bound",
+        ).rejects.toBe(err);
+    });
+
     it("uses the same timestamp origin for source samples and file end", async () => {
         const state: DecodeProgress = {
             startTimestamp: 120,

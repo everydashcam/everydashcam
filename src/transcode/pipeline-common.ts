@@ -548,6 +548,12 @@ export interface DecodeProgress {
     lastSampleEnd: number | null;
     segmentIndex?: number;
     slot?: number;
+    /** Source seconds between consecutive yielded samples when the iterator
+     *  decodes only selected frames (timelapse, see timelapse-decode.ts). A
+     *  dense decode would have reached up to this much further before the
+     *  same failure, all of it frames the selection drops anyway, so the
+     *  tolerated tail grows by it. Absent for a dense decode. */
+    sparseSpacingSec?: number;
 }
 
 // Bound tolerated loss; a decoder error alone does not prove a damaged GOP.
@@ -569,7 +575,9 @@ export async function nextTolerant<T extends { timestamp: number; duration: numb
         if (isSourceReadError(err)) throw err;
         const lastEnd = progress.lastSampleEnd;
         const remaining = lastEnd === null ? Infinity : progress.fileEndTimestamp - lastEnd;
-        const maxLoss = Math.min(MAX_DECODE_TAIL_LOSS_SEC, (progress.endTimestamp - progress.startTimestamp) * 0.1);
+        const maxLoss =
+            Math.min(MAX_DECODE_TAIL_LOSS_SEC, (progress.endTimestamp - progress.startTimestamp) * 0.1) +
+            (progress.sparseSpacingSec ?? 0);
         const isDecodeError = err instanceof Error && err.name === "EncodingError";
         const isSmallTail =
             lastEnd !== null &&

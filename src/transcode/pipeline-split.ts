@@ -77,6 +77,12 @@ import { createReusingMapSnapshotter } from "./map-snapshot-camera.js";
 import { drawTelemetryOverlays } from "./telemetry-overlays.js";
 import { createVideoSourceResolver } from "./normalize-degenerate-video.js";
 import { locateMonotonicSegment } from "./segment-locator.js";
+import {
+    decodeSelectedFrames,
+    planSparseSplitSlot,
+    SPLIT_FRAME_LOOKAHEAD_SEC,
+    type SparseDecodePlan,
+} from "./timelapse-decode.js";
 import type { OverlayPipelineArgs } from "./types.js";
 
 const log = createLogger("transcode:split");
@@ -447,13 +453,44 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         const reportProgress = createTranscodeProgressReporter(framesTotal, onProgress);
 
         const frameDur = 1 / outputFps;
+        // Each output tick advances the source clock by speedFactor frames, so
+        // the same trip range is covered in framesTotal/speedFactor ticks.
+        const srcStep = frameDur * speedFactor;
+        // Slot segments that decoded only the frames they show (timelapse-decode.ts),
+        // reported once at the end like pipeline.ts.
+        let timelapseSparseSegments = 0;
 
         /**
-         * Prepares the slot for reading samples around tripTimeSec: on a segment
-         * change closes the old Input/iter and opens a new one, pre-fetching the
-         * first sample. After swap rt.iter is active and rt.next holds the lookahead.
+         * The ticks from `firstTick` on during which slot `slotIdx` stays on
+         * segment `activeIdx` (same cursor walk as ensureSlotForTripTime), as
+         * source-file times, and whether the slot then holds that segment's last
+         * frame through a gap or past its last file.
          */
-        const ensureSlotForTripTime = async (slotIdx: number, tripTimeSec: number): Promise<void> => {
+        const slotSegmentStay = (
+            slotIdx: number,
+            activeIdx: number,
+            firstTick: number,
+        ): { tickLocalTimes: number[]; holdsLastFrame: boolean } => {
+            const segs = slotSegments[slotIdx]!;
+            const rt = slotRuntimes[slotIdx]!;
+            const cursor = { locatorSegmentIdx: rt.locatorSegmentIdx };
+            const tickLocalTimes: number[] = [];
+            for (let tick = firstTick; tick < framesTotal; tick++) {
+                const tickTripSec = source.startTripSec + tick * srcStep;
+                const idx = locateMonotonicSegment(segs, tickTripSec, cursor);
+                if (idx !== activeIdx) return { tickLocalTimes, holdsLastFrame: idx < 0 };
+                tickLocalTimes.push(tickTripSec - rt.segTripStart + rt.timeOrigin);
+            }
+            return { tickLocalTimes, holdsLastFrame: false };
+        };
+
+        /**
+         * Prepares the slot for reading samples around tripTimeSec (output tick
+         * `tick`): on a segment change closes the old Input/iter and opens a new
+         * one, pre-fetching the first sample. After swap rt.iter is active and
+         * rt.next holds the lookahead.
+         */
+        const ensureSlotForTripTime = async (slotIdx: number, tripTimeSec: number, tick: number): Promise<void> => {
             const segs = slotSegments[slotIdx]!;
             const rt = slotRuntimes[slotIdx]!;
 
@@ -503,20 +540,43 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             rt.input = input;
             rt.timeOrigin = await getInputTimeOrigin(input);
             rt.sink = new VideoSampleSink(videoTrack);
-            // Async iterator from mediabunny - pipelines decode in parallel with the consumer.
-            rt.iter = rt.sink
-                .samples(seg.startInFile + rt.timeOrigin, seg.endInFile + rt.timeOrigin)
-                [Symbol.asyncIterator]();
             rt.iterDone = false;
             rt.currentSegmentIdx = activeIdx;
             rt.segTripStart = seg.tripStart;
+            const startTimestamp = seg.startInFile + rt.timeOrigin;
+            const endTimestamp = seg.endInFile + rt.timeOrigin;
+            // Timelapse: when the frames this slot shows are at least a GOP apart,
+            // decode only their GOPs (timelapse-decode.ts). The sparse iterator
+            // yields exactly the frames the walk in getSlotSampleForFrame would
+            // settle on, so every tick shows the same picture; null stays dense.
+            let sparsePlan: SparseDecodePlan | null = null;
+            if (speedFactor > 1) {
+                const stay = slotSegmentStay(slotIdx, activeIdx, tick);
+                sparsePlan = await planSparseSplitSlot(
+                    input,
+                    videoTrack,
+                    startTimestamp,
+                    endTimestamp,
+                    stay.tickLocalTimes,
+                    stay.holdsLastFrame,
+                    signal,
+                );
+                if (sparsePlan) timelapseSparseSegments++;
+            }
+            // Async iterator from mediabunny - pipelines decode in parallel with the consumer.
+            rt.iter = (
+                sparsePlan
+                    ? decodeSelectedFrames(rt.sink, sparsePlan.frames)
+                    : rt.sink.samples(startTimestamp, endTimestamp)
+            )[Symbol.asyncIterator]();
             rt.decodeProgress = {
-                startTimestamp: seg.startInFile + rt.timeOrigin,
-                endTimestamp: seg.endInFile + rt.timeOrigin,
+                startTimestamp,
+                endTimestamp,
                 fileEndTimestamp: seg.fileDurationSec + rt.timeOrigin,
                 lastSampleEnd: null,
                 segmentIndex: activeIdx,
                 slot: slotIdx,
+                ...(sparsePlan ? { sparseSpacingSec: sparsePlan.spacingSec } : {}),
             };
             // Pre-fetch the first sample into rt.next.
             await advanceSlotIter(slotIdx);
@@ -558,8 +618,12 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
          * reused by the next frame if source fps > output fps. Closed on segment swap
          * or disposeAll.
          */
-        const getSlotSampleForFrame = async (slotIdx: number, tripTimeSec: number): Promise<VideoSample | null> => {
-            await ensureSlotForTripTime(slotIdx, tripTimeSec);
+        const getSlotSampleForFrame = async (
+            slotIdx: number,
+            tripTimeSec: number,
+            tick: number,
+        ): Promise<VideoSample | null> => {
+            await ensureSlotForTripTime(slotIdx, tripTimeSec, tick);
             const rt = slotRuntimes[slotIdx]!;
             if (!rt.sink) return rt.current;
             // localTime is source-file time; the active segment's samples are read in
@@ -568,7 +632,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             const localTime = tripTimeSec - rt.segTripStart + rt.timeOrigin;
             // Advance next → current until next passes localTime. One advance =
             // one decoded source packet from the iter (pipelined).
-            while (rt.next && rt.next.timestamp <= localTime + 1e-6) {
+            while (rt.next && rt.next.timestamp <= localTime + SPLIT_FRAME_LOOKAHEAD_SEC) {
                 if (rt.current) {
                     try {
                         rt.current.close();
@@ -590,11 +654,9 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             // at split-4, the concurrent audio pass and the encoder the peak is 7
             // resources simultaneously, which is safe. Add throttling if expanding
             // further.
-            // Each output tick advances the source clock by speedFactor frames, so
-            // the same trip range is covered in framesTotal/speedFactor ticks. outTs
-            // is the (compressed) muxer timestamp; tripTimeSec is the real source
-            // time used to fetch slot samples and interpolate GPS overlays.
-            const srcStep = frameDur * speedFactor;
+            // outTs is the (compressed) muxer timestamp; tripTimeSec is the real
+            // source time (srcStep apart) used to fetch slot samples and
+            // interpolate GPS overlays.
             const runVideoTicks = async (): Promise<void> => {
                 for (let f = 0; f < framesTotal; f++) {
                     throwIfCancelled(signal);
@@ -635,7 +697,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                     // A slot decode / abort throwing here leaves the in-flight
                     // snapshot unconsumed; the reusing snapshotter owns its bitmap.
                     const samples = await joinAllOrThrowFirst(
-                        source.slotChannels.map((_, slotIdx) => getSlotSampleForFrame(slotIdx, tripTimeSec)),
+                        source.slotChannels.map((_, slotIdx) => getSlotSampleForFrame(slotIdx, tripTimeSec, f)),
                     );
 
                     // Compose split-screen directly into the final output canvas.
@@ -852,6 +914,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             ...encoderDiagnostics.summarize(),
             elapsedMs: Math.round(performance.now() - startMs),
             ...(mapSnapshots ? { mapSnapshots: mapSnapshots.stats() } : {}),
+            timelapseSparseSegments,
             mapOverlayDropped: mapOverlayFailed,
             decodeTruncated,
             audioDroppedHeterogeneous,

@@ -85,6 +85,7 @@ import {
 import { drawMapPlaceholder } from "./map-overlay.js";
 import { createReusingMapSnapshotter } from "./map-snapshot-camera.js";
 import { drawTelemetryOverlays } from "./telemetry-overlays.js";
+import { decodeSelectedFrames, planSparseTimelapseSegment, PRE_ROLL_TOLERANCE_SEC } from "./timelapse-decode.js";
 
 const log = createLogger("transcode");
 
@@ -318,6 +319,10 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
         // frame-drop: keep one every speedFactor frames. Global across segments so
         // the cadence does not reset at file boundaries.
         let inRangeFrameIdx = -1;
+        // Segments that decoded only their kept frames (timelapse-decode.ts).
+        // Reported once at the end so a timelapse speed report can tell whether
+        // the sparse path engaged at all.
+        let timelapseSparseSegments = 0;
         // Latched after the first map-snapshot failure. We prefer saving the file
         // without the map overlay over aborting the whole export: speed/coords text
         // and the video itself are still useful. Logged exactly once to avoid
@@ -484,6 +489,35 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                     // the output axis. Captured before either starts so neither reads
                     // it mid-advance (the loop bumps it only after both finish).
                     const segBaseOutSec = videoAccumOutSec;
+                    // Timelapse: when the kept frames are at least a GOP apart, decode
+                    // only their GOPs instead of every frame (timelapse-decode.ts). The
+                    // plan picks the same frames under the same numbering as the dense
+                    // walk's keep/skip below; null keeps the dense walk.
+                    const sparsePlan =
+                        speedFactor > 1
+                            ? await planSparseTimelapseSegment(
+                                  input,
+                                  videoTrack,
+                                  seg.startInFile + timeOrigin,
+                                  seg.endInFile + timeOrigin,
+                                  {
+                                      segBaseOutSec,
+                                      timeOrigin,
+                                      startInFile: seg.startInFile,
+                                      previousFrameIndex: inRangeFrameIdx,
+                                      speedFactor,
+                                  },
+                                  signal,
+                              )
+                            : null;
+                    if (sparsePlan) {
+                        timelapseSparseSegments++;
+                        log.debug("timelapse segment decodes selected frames only", {
+                            segmentIndex: segIdx,
+                            frames: sparsePlan.frames.length,
+                            spacingSec: round2(sparsePlan.spacingSec),
+                        });
+                    }
 
                     const runSegmentVideo = async (): Promise<void> => {
                         // Only the bounded tail policy may tolerate a decoder failure;
@@ -494,14 +528,31 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                             fileEndTimestamp: seg.fileDurationSec + timeOrigin,
                             lastSampleEnd: null,
                             segmentIndex: segIdx,
+                            ...(sparsePlan ? { sparseSpacingSec: sparsePlan.spacingSec } : {}),
                         };
-                        const sampleIter = videoSink
-                            .samples(seg.startInFile + timeOrigin, seg.endInFile + timeOrigin)
-                            [Symbol.asyncIterator]();
+                        const sampleIter = (
+                            sparsePlan
+                                ? decodeSelectedFrames(videoSink, sparsePlan.frames)
+                                : videoSink.samples(seg.startInFile + timeOrigin, seg.endInFile + timeOrigin)
+                        )[Symbol.asyncIterator]();
+                        // Sparse frames decoded so far; places the global counter after
+                        // a tolerated damaged tail cut the segment short.
+                        let sparseFramesYielded = 0;
                         try {
                             for (;;) {
                                 const pull = await nextTolerant(sampleIter, decodeProgress);
                                 if (pull.done) {
+                                    if (sparsePlan) {
+                                        // The dense walk counts every in-range frame, kept or
+                                        // not; catch the counter up to where it would stand.
+                                        // After a damaged tail the dense count stops at the
+                                        // failing frame, which a sparse decode cannot see -
+                                        // the last delivered frame's index is the closest bound.
+                                        inRangeFrameIdx = pull.truncated
+                                            ? (sparsePlan.selection.frameIndices[sparseFramesYielded - 1] ??
+                                              inRangeFrameIdx)
+                                            : sparsePlan.selection.lastFrameIndex;
+                                    }
                                     if (pull.truncated) {
                                         decodeTruncated = true;
                                         log.warn("decode stopped early", {
@@ -535,17 +586,22 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                                     // ts would reach the muxer. Computed before any compositing
                                     // so dropped/skipped frames are never drawn (wasted work).
                                     const srcRelTs = segBaseOutSec + (sample.timestamp - timeOrigin - seg.startInFile);
-                                    if (srcRelTs < -1e-3) {
+                                    if (srcRelTs < -PRE_ROLL_TOLERANCE_SEC) {
                                         continue;
                                     }
 
                                     // Timelapse frame-drop: keep one frame every speedFactor.
                                     // At 1x this keeps every frame. Skipped frames still decode
                                     // (inter-frame deps) but are not drawn or encoded, and never
-                                    // enter the decode-ahead pipeline.
-                                    inRangeFrameIdx++;
-                                    if (speedFactor > 1 && inRangeFrameIdx % speedFactor !== 0) {
-                                        continue;
+                                    // enter the decode-ahead pipeline. A sparse decode yields
+                                    // only the frames this rule keeps (the plan applied it).
+                                    if (sparsePlan) {
+                                        sparseFramesYielded++;
+                                    } else {
+                                        inRangeFrameIdx++;
+                                        if (speedFactor > 1 && inRangeFrameIdx % speedFactor !== 0) {
+                                            continue;
+                                        }
                                     }
 
                                     // Output (muxer) timestamp: compress by speedFactor. Clamp
@@ -733,6 +789,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
         log.info("transcode done", {
             framesEncoded: framesDone,
             framesDirect,
+            timelapseSparseSegments,
             durationSec: round2(outputDurationSec),
             sizeBytes: outputSession.bytesWritten,
             // The file rate includes audio and container overhead; packet statistics isolate video.
