@@ -57,7 +57,7 @@ import { activeFrame, activeTrip, state } from "./state.js";
 import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
-import { formatSpeedFromMs } from "../units-pref.js";
+import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref.js";
 import { currentMapTheme, mapThemeColors, themeColors } from "./theme.js";
 import type { MapStyleId, MapTheme } from "./theme.js";
 import { applyViewerLabelPrefs } from "./map-label-scale.js";
@@ -848,11 +848,10 @@ export function ensureMap(): maplibregl.Map | null {
     );
     guardMapCompass(map);
 
-    // Scale bar. ScaleControl.setUnit switches the unit SYSTEM
-    // (metric/imperial/nautical) but not the label language - the "m"/"km" text
-    // is Latin textContent with no setLocale API. All 10 locales use metric, so
-    // the Latin defaults stand and the translation value is low.
-    map.addControl(new mlg!.ScaleControl({ maxWidth: 120, unit: "metric" }), "bottom-left");
+    const scaleControl = new mlg!.ScaleControl({ maxWidth: 120, unit: getUnits() });
+    map.addControl(scaleControl, "bottom-left");
+    const unsubscribeScaleUnits = subscribeUnitsChange((unit) => scaleControl.setUnit(unit));
+    map.once("remove", unsubscribeScaleUnits);
 
     // Custom attribution stays visible in the bottom-right. Replaces the
     // default AttributionControl (see attributionControl:false above).

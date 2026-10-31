@@ -33,6 +33,28 @@ test.beforeEach(async ({ page }) => {
     await gotoApp(page, "en");
 });
 
+test("map scale uses the saved unit system and updates when settings change", async ({ page }) => {
+    await page.locator("#settings-btn").click();
+    await page.locator("#settings-units-select").selectOption("imperial");
+    await page.locator("#settings-modal-close").click();
+    await loadTrip(page);
+    await pausePlayback(page);
+    await page.locator(".mini-map").click();
+    const scale = page.locator(".map-wrap .maplibregl-ctrl-scale");
+    await expect(scale).toBeVisible();
+    await expect(scale).toHaveText(/\b(?:ft|mi)$/);
+
+    await page.locator("#settings-btn").click();
+    await page.locator("#settings-units-select").selectOption("metric");
+    await page.locator("#settings-modal-close").click();
+    await expect(scale).toHaveText(/\b(?:m|km)$/);
+
+    await page.locator("#settings-btn").click();
+    await page.locator("#settings-units-select").selectOption("imperial");
+    await page.locator("#settings-modal-close").click();
+    await expect(scale).toHaveText(/\b(?:ft|mi)$/);
+});
+
 test("vehicle markers use overhead art on flat maps and preserve the chase perspective", async ({ page }) => {
     await loadTrip(page);
     await pausePlayback(page);
