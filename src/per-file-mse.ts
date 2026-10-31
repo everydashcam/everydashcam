@@ -916,9 +916,8 @@ export class PerFileMseBackend {
      * ManagedSourceBuffer memory cleanup). Keyframes inside removed ranges stop
      * being trim anchors. Media lost ahead of currentTime is never re-fed - the
      * worker has already moved past it - so playback would stall at the hole;
-     * refeed from the playhead instead. The only own removal reaching past
-     * currentTime is seekTo's full clear, which completes while its seek is
-     * still in flight.
+     * refeed from the playhead instead. A seek's own full clear can finish
+     * after the worker has already acknowledged its new feed.
      */
     private onManagedBufferedChange(event: Event): void {
         if (this.disposed || this.failed) return;
@@ -929,6 +928,12 @@ export class PerFileMseBackend {
         const ct = this.video.currentTime || 0;
         const removedTo = removed.end(removed.length - 1);
         if (removedTo <= ct + EVICTION_AHEAD_TOLERANCE_SEC) return;
+        // WebKit queues a remove's bufferedchange before its updateend. Keep
+        // recognizing that operation even after the worker's seek-done and
+        // after updating becomes false. Only ignore ranges covered by our
+        // remove: a behind trim must not hide a real eviction ahead.
+        const removal = this.lastSubmittedOp;
+        if (removal?.type === "remove" && removed.start(0) >= removal.from && removedTo <= removal.to) return;
         this.logger.info("managed source evicted media ahead of playback, refeeding", {
             file: this._file.name,
             currentTime: ct,
