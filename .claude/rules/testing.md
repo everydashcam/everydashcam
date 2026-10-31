@@ -52,6 +52,15 @@ Verification gates live in [CLAUDE.md](../../CLAUDE.md).
   Read [the e2e guide](../../tests/e2e/README.md) for fixtures and browser setup.
 - Use the build-and-test npm scripts from `package.json`; do not run bare
   Playwright against stale build output.
+- On macOS, launch browser tests outside a restricted agent sandbox from the
+  first run (Codex: `sandbox_permissions: "require_escalated"`). This includes
+  hosted, portable, VRT, encoder tests and ad-hoc browser harnesses. A blocked
+  browser launch can produce a system crash dialog for every test. If the
+  browser fails before test execution with a sandbox/permission error or
+  repeated immediate `SIGABRT`, stop the entire run immediately. Correct the
+  launch permissions before retrying; if launching remains blocked, use CI.
+  Do not let the suite keep launching browsers or reinstall them to work
+  around a confirmed sandbox restriction.
 - Concurrent Playwright suites need disjoint `--output` directories: the hosted
   default clears `tests/test-results/`, including a running portable suite's
   traces. Do not rebuild `dist/` while another suite is using it.
