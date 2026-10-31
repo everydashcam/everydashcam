@@ -46,7 +46,7 @@ import { scheduleRecognitionHelp } from "./recognition-help.js";
 import { focusTripFilterStart, initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
 import { tripSearchText } from "./trip-search.js";
 import { readTripDensity, writeTripDensity } from "./trip-density-pref.js";
-import { dayStripSegments, foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
+import { foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
 
 interface SidebarCallbacks {
@@ -318,15 +318,10 @@ function buildBandSection(
     entries: readonly { trip: Trip; idx: number }[],
     appendCards: AppendCards,
 ): HTMLLIElement {
-    const { section, list } = buildGroupSection(
-        key,
-        "trip-month",
-        [
-            textSpan("trip-group-toggle__label", label),
-            textSpan("trip-group-toggle__stats", tripsSummaryText(entries.map((entry) => entry.trip))),
-        ],
-        null,
-    );
+    const { section, list } = buildGroupSection(key, "trip-month", [
+        textSpan("trip-group-toggle__label", label),
+        textSpan("trip-group-toggle__stats", tripsSummaryText(entries.map((entry) => entry.trip))),
+    ]);
     appendCards(entries, list, false);
     return section;
 }
@@ -347,7 +342,6 @@ function buildGroupSection(
     key: string,
     className: string,
     toggleContent: readonly Node[],
-    headerExtra: Node | null,
 ): { section: HTMLLIElement; list: HTMLUListElement } {
     const section = document.createElement("li");
     section.className = `trip-group ${className}`;
@@ -365,7 +359,6 @@ function buildGroupSection(
     toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
     toggle.append(cloneIcon(CARET_ICON), ...toggleContent);
     header.appendChild(toggle);
-    if (headerExtra) header.appendChild(headerExtra);
     const list = document.createElement("ul");
     list.className = "trip-group__list";
     list.id = listId;
@@ -394,15 +387,10 @@ function rememberGroupCollapsed(key: string, collapsed: boolean): void {
 
 function buildMonthSection(month: TripListMonth, appendCards: AppendCards): HTMLLIElement {
     const trips = month.days.flatMap((day) => nodeTrips(day.nodes));
-    const { section, list } = buildGroupSection(
-        month.key,
-        "trip-month",
-        [
-            textSpan("trip-group-toggle__label", formatMonthHeading(month.year, month.month)),
-            textSpan("trip-group-toggle__stats", tripsSummaryText(trips)),
-        ],
-        null,
-    );
+    const { section, list } = buildGroupSection(month.key, "trip-month", [
+        textSpan("trip-group-toggle__label", formatMonthHeading(month.year, month.month)),
+        textSpan("trip-group-toggle__stats", tripsSummaryText(trips)),
+    ]);
     for (const day of month.days) list.appendChild(buildDaySection(day, appendCards));
     return section;
 }
@@ -412,7 +400,7 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
     const content: Node[] = [textSpan("trip-group-toggle__label", heading.relative ?? heading.date)];
     if (heading.relative) content.push(textSpan("trip-group-toggle__date", heading.date));
     content.push(buildDayStats(day));
-    const { section, list } = buildGroupSection(day.key, "trip-day", content, buildDayStrip(day));
+    const { section, list } = buildGroupSection(day.key, "trip-day", content);
     for (const node of day.nodes) {
         if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list, true);
         else list.appendChild(buildParkingRun(node, appendCards));
@@ -496,38 +484,13 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): H
     text.className = "trip-parking-run__text";
     text.append(title, meta);
 
-    const { section, list } = buildGroupSection(node.key, "trip-parking-run", [thumb, text], null);
+    const { section, list } = buildGroupSection(node.key, "trip-parking-run", [thumb, text]);
     appendCards(
         node.entries.map((entry) => ({ trip: entry.trip, idx: entry.tripIdx })),
         list,
         true,
     );
     return section;
-}
-
-/**
- * The day's 24-hour overview under its heading: footage spans and event ticks.
- * Decorative - the same trips are listed right below it.
- */
-function buildDayStrip(day: TripListDay): HTMLElement {
-    const strip = document.createElement("div");
-    strip.className = "trip-day__strip";
-    strip.setAttribute("aria-hidden", "true");
-    const { segments, events } = dayStripSegments(day);
-    for (const segment of segments) {
-        const span = document.createElement("span");
-        span.className = segment.isParking ? "trip-day__span is-parking" : "trip-day__span";
-        span.style.left = `${segment.from * 100}%`;
-        span.style.width = `${(segment.to - segment.from) * 100}%`;
-        strip.appendChild(span);
-    }
-    for (const position of events) {
-        const tick = document.createElement("span");
-        tick.className = "trip-day__event";
-        tick.style.left = `${position * 100}%`;
-        strip.appendChild(tick);
-    }
-    return strip;
 }
 
 /**
@@ -756,6 +719,15 @@ function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): H
     if (asRow) {
         previewHost.appendChild(actions);
         flagSlot.className = "trip-row-flags";
+        // A favorite row says so with a gold star among its flags; the star
+        // button itself only shows over the preview on hover or focus.
+        if (tripMeta?.isFavorite) {
+            const star = document.createElement("span");
+            star.className = "trip-row-fav";
+            star.setAttribute("aria-hidden", "true");
+            star.appendChild(cloneIcon(STAR_ICON));
+            flagSlot.appendChild(star);
+        }
         for (const chip of badgeChips) flagSlot.appendChild(chip);
         header.appendChild(flagSlot);
     } else {

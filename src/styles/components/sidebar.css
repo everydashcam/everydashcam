@@ -603,40 +603,6 @@
     font-weight: 400;
     font-variant-numeric: tabular-nums;
 }
-/* The day's 24-hour overview: footage spans and event ticks, with faint marks
-   every six hours. Stays visible while the day is collapsed. It starts under
-   the day label (past the caret) so it reads as part of the heading, not as a
-   progress bar across the list. */
-.trip-day__strip {
-    position: relative;
-    height: 4px;
-    margin: 0 var(--dc-space-1) 0 calc(var(--dc-space-1) * 2 + 12px);
-    overflow: hidden;
-    border-radius: 2px;
-    background:
-        repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), var(--border) 0 25%),
-        color-mix(in srgb, var(--fg) 7%, transparent);
-}
-.trip-day__span {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    min-width: 2px;
-    border-radius: 1px;
-    background: var(--accent);
-}
-/* Parking in the road-sign blue of the card's "P" chip. */
-.trip-day__span.is-parking {
-    background: color-mix(in srgb, var(--dc-blue) 70%, transparent);
-}
-.trip-day__event {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--err);
-}
 @media (pointer: coarse) {
     .trip-list {
         --trip-month-header-h: 44px;
@@ -1588,8 +1554,8 @@
    duration, the title over a muted meta line, quiet flags and a chevron.
    No frame or fill - a hover background, and the active row marked by a tint
    and an accent edge. The star and pencil sit over the preview and show on
-   hover, keyboard focus or an expanded row (touch); a favorite's star always
-   shows.
+   hover, keyboard focus or an expanded row (touch); a favorite is marked by a
+   gold star among the flags.
    ========================================================================= */
 .trip-list.is-rows {
     --trip-thumb-w: 64px;
@@ -1706,6 +1672,13 @@
     align-items: center;
     gap: var(--dc-space-1);
 }
+.trip-row-fav {
+    display: inline-flex;
+    color: var(--accent);
+}
+.trip-row-fav svg {
+    fill: currentColor;
+}
 /* Row flags: the event count as a red pill, parking as a small dark "P". */
 .trip-row-flags .trip-event-chip {
     height: 18px;
@@ -1761,7 +1734,6 @@
     width: 12px;
     height: 12px;
 }
-.trip-thumb .trip-fav.is-on,
 .trip-list.is-rows .trip:hover .trip-card-actions,
 .trip-list.is-rows .trip:focus-within .trip-card-actions,
 .trip-list.is-rows .trip.expanded .trip-card-actions {

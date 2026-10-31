@@ -48,8 +48,6 @@ export interface TripListDay {
     /** 0-based, like Date. */
     readonly month: number;
     readonly day: number;
-    /** The day's midnight on the display clock, in the frame displayClockDate returns. */
-    readonly startSec: number;
     readonly nodes: TripListNode[];
 }
 
@@ -142,60 +140,11 @@ export function groupByMonthDay(nodes: readonly TripListNode[]): TripListMonth[]
         const dayKey = `d:${year}-${pad2(month + 1)}-${pad2(day)}`;
         let dayGroup = daysByKey.get(dayKey);
         if (!dayGroup) {
-            dayGroup = { key: dayKey, year, month, day, startSec: Date.UTC(year, month, day) / 1000, nodes: [] };
+            dayGroup = { key: dayKey, year, month, day, nodes: [] };
             daysByKey.set(dayKey, dayGroup);
             monthGroup.days.push(dayGroup);
         }
         dayGroup.nodes.push(node);
     }
     return months;
-}
-
-/** A segment of the 24-hour day strip, as fractions of the day in [0, 1]. */
-export interface DayStripSegment {
-    readonly from: number;
-    readonly to: number;
-    readonly isParking: boolean;
-}
-
-const DAY_SEC = 86_400;
-
-/** Projects an instant onto the day as a fraction; values outside [0, 1] fall on other days. */
-function dayFraction(unixSec: number, trip: Trip, day: TripListDay): number {
-    return (displayClockDate(unixSec, trip.cameraTzSec).getTime() / 1000 - day.startSec) / DAY_SEC;
-}
-
-const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
-
-/**
- * Footage and event positions for a day's 24-hour strip. A parking run is one
- * span from its first start to its last end - the car stood there between the
- * clips too. Spans that run past midnight are clipped to the day; event
- * instants outside the day are dropped.
- */
-export function dayStripSegments(day: TripListDay): { segments: DayStripSegment[]; events: number[] } {
-    const segments: DayStripSegment[] = [];
-    const events: number[] = [];
-    const pushSpan = (startUtc: number, endUtc: number, trip: Trip, isParking: boolean): void => {
-        const from = clamp01(dayFraction(startUtc, trip, day));
-        const to = clamp01(dayFraction(endUtc, trip, day));
-        if (to > from || (to === from && from > 0 && from < 1)) segments.push({ from, to, isParking });
-    };
-    for (const node of day.nodes) {
-        const entries = nodeEntries(node);
-        if (node.kind === "parking") {
-            const first = earliestEntry(entries).trip;
-            const lastEnd = Math.max(...entries.map((entry) => entry.trip.endUtc));
-            pushSpan(first.startUtc, lastEnd, first, true);
-        } else {
-            pushSpan(node.entry.trip.startUtc, node.entry.trip.endUtc, node.entry.trip, node.entry.trip.isParking);
-        }
-        for (const { trip } of entries) {
-            for (const event of trip.events) {
-                const at = dayFraction(event.unixSeconds, trip, day);
-                if (at >= 0 && at <= 1) events.push(at);
-            }
-        }
-    }
-    return { segments, events };
 }

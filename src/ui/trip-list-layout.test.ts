@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Trip } from "../trips.js";
-import {
-    PARKING_RUN_MAX_GAP_SEC,
-    dayStripSegments,
-    foldParkingRuns,
-    groupByMonthDay,
-    type TripListNode,
-} from "./trip-list-layout.js";
+import { PARKING_RUN_MAX_GAP_SEC, foldParkingRuns, groupByMonthDay, type TripListNode } from "./trip-list-layout.js";
 
 interface TripFacts {
     start: number;
@@ -64,32 +58,6 @@ describe("groupByMonthDay", () => {
     });
 });
 
-describe("dayStripSegments", () => {
-    it("places footage and events as fractions of the day", () => {
-        const [month] = groupByMonthDay(
-            nodes([trip({ start: at(5, 15, 6), end: at(5, 15, 12), events: [at(5, 15, 9)] })]),
-        );
-        const { segments, events } = dayStripSegments(month!.days[0]!);
-        expect(segments).toHaveLength(1);
-        expect(segments[0]!.from).toBeCloseTo(0.25);
-        expect(segments[0]!.to).toBeCloseTo(0.5);
-        expect(segments[0]!.isParking).toBe(false);
-        expect(events).toHaveLength(1);
-        expect(events[0]).toBeCloseTo(0.375);
-    });
-
-    it("clips a trip that runs past midnight and drops events on the next day", () => {
-        const [month] = groupByMonthDay(
-            nodes([trip({ start: at(5, 15, 22), end: at(5, 16, 2), parking: true, events: [at(5, 16, 1)] })]),
-        );
-        const { segments, events } = dayStripSegments(month!.days[0]!);
-        expect(segments[0]!.from).toBeCloseTo(22 / 24);
-        expect(segments[0]!.to).toBe(1);
-        expect(segments[0]!.isParking).toBe(true);
-        expect(events).toEqual([]);
-    });
-});
-
 const entries = (trips: Trip[]) => trips.map((t, tripIdx) => ({ trip: t, tripIdx }));
 const identity = (t: Trip): string => `id${t.startUtc}`;
 
@@ -135,24 +103,5 @@ describe("foldParkingRuns", () => {
             ),
         );
         expect(months.map((m) => m.days.map((d) => d.key))).toEqual([["d:2026-10-31"]]);
-    });
-});
-
-describe("dayStripSegments with a parking run", () => {
-    it("draws the run as one span from its first start to its last end", () => {
-        const months = groupByMonthDay(
-            foldParkingRuns(
-                entries([
-                    trip({ start: at(5, 15, 20), parking: true }),
-                    trip({ start: at(5, 15, 14), end: at(5, 15, 14, 1), parking: true }),
-                ]),
-                identity,
-            ),
-        );
-        const { segments } = dayStripSegments(months[0]!.days[0]!);
-        expect(segments).toHaveLength(1);
-        expect(segments[0]!.from).toBeCloseTo(14 / 24);
-        expect(segments[0]!.to).toBeCloseTo((20 * 60 + 1) / 1440);
-        expect(segments[0]!.isParking).toBe(true);
     });
 });
