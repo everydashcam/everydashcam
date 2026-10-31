@@ -373,7 +373,15 @@
 .trip-day {
     scroll-margin-top: calc(var(--trip-sticky-top) + var(--trip-month-header-h));
 }
+/* Months read as chapters: a filled caps band with air above it. Days are
+   plain lines inside, so the two levels never look alike. */
 .trip-month:not(:first-child) {
+    margin-top: var(--dc-space-4);
+}
+.trip-month > .trip-group__list {
+    padding-top: var(--dc-space-1);
+}
+.trip-day:not(:first-child) {
     margin-top: var(--dc-space-2);
 }
 .trip-group-toggle {
@@ -395,10 +403,19 @@
 }
 .trip-month__header .trip-group-toggle {
     height: var(--trip-month-header-h);
-    border-bottom: 1px solid var(--border);
+    padding: 0 var(--dc-space-2);
+    border-radius: var(--dc-radius-sm);
+    background: var(--bg-elev-2);
     color: var(--fg);
     font-family: var(--dc-font-heavy);
-    font-weight: 700;
+    font-size: var(--dc-text-2xs);
+    font-weight: 800;
+    letter-spacing: var(--dc-tracking-caps);
+    text-transform: uppercase;
+}
+.trip-month__header .trip-group-toggle__stats {
+    letter-spacing: normal;
+    text-transform: none;
 }
 .trip-group-toggle:hover {
     color: var(--fg);
@@ -431,6 +448,7 @@
 }
 .trip-day__header .trip-group-toggle__label {
     color: var(--fg);
+    font-size: var(--dc-text-sm);
     font-weight: 600;
 }
 .trip-group-toggle__date {
