@@ -10,7 +10,7 @@
 //      Three time-separated trips on one day exercise trip splitting, channel
 //      pairing and the speed-colored track end to end; each trip has its own
 //      front scene so the sidebar card previews visibly differ.
-//   2. Spawns `vite preview` against the EXISTING dist/ (never rebuilds) and
+//   2. Starts Vite preview against the EXISTING dist/ (never rebuilds) and
 //      drives it with headless Chromium (Playwright), pre-seeding localStorage
 //      exactly like tests/e2e/_fixtures.ts so no onboarding overlay is in
 //      frame, EN locale, dark theme.
@@ -54,12 +54,13 @@
 // CLI diagnostics go through console.* - this is a scripts/ CLI, not src/ (the
 // no-console rule is a src/ rule; sibling scripts print the same way).
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { preview } from "vite";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
@@ -459,29 +460,9 @@ function buildFixture(root, baseDay) {
 
 // --- server + browser bootstrap -------------------------------------------
 
-// Spawns `vite preview` against dist/ and resolves once /en/ answers 200.
-async function startPreview() {
-    const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-        cwd: REPO_ROOT,
-        stdio: ["ignore", "pipe", "pipe"],
-    });
-    server.stderr.on("data", (b) => {
-        const s = String(b);
-        if (/error/i.test(s)) console.error(`[vite] ${s.trim()}`);
-    });
-
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
-        try {
-            const res = await fetch(`${BASE_URL}/en/`);
-            if (res.ok) return server;
-        } catch {
-            /* not up yet */
-        }
-        await sleep(300);
-    }
-    server.kill("SIGTERM");
-    throw new Error("vite preview did not become ready within 30s");
+// Vite resolves only once the configured preview server is listening.
+function startPreview() {
+    return preview({ root: REPO_ROOT, preview: { port: PORT, strictPort: true } });
 }
 
 // Launches Chromium, installing the browser once if it is missing.
@@ -497,8 +478,6 @@ async function launchBrowser() {
         throw err;
     }
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Mirrors tests/e2e/_fixtures.ts presetLocalStorage: seed BEFORE app code runs so
 // no upload-warning / PWA toast / onboarding overlay is ever in frame.
@@ -927,7 +906,7 @@ async function main() {
         );
     } finally {
         if (browser) await browser.close().catch(() => {});
-        if (server) server.kill("SIGTERM");
+        if (server) await server.close();
         if (tempRoot) rmSync(tempRoot, { recursive: true, force: true });
     }
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseArgs } from "node:util";
 // Trims an MP4 to the first N seconds via ffmpeg stream-copy. Unlike
 // scripts/anonymize-mp4.mjs (which rewrites the container from scratch via
 // testsrc2 + sine), trim-mp4 KEEPS all original tracks including custom
@@ -27,7 +28,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { argv, exit } from "node:process";
+import { exit } from "node:process";
 
 function usage() {
     console.error("usage: node scripts/trim-mp4.mjs <input> <output> [duration_sec=2]");
@@ -43,24 +44,16 @@ function ensureBinary(name) {
 }
 
 function main() {
-    const args = argv.slice(2);
-    if (args.length < 2) usage();
-
-    const input = resolve(args[0]);
-    const output = resolve(args[1]);
-    let duration = 2;
-    let keepDataTag = null;
-    for (let i = 2; i < args.length; i++) {
-        if (args[i] === "--keep-data-tag" && args[i + 1]) {
-            keepDataTag = args[i + 1];
-            i++;
-        } else if (!Number.isNaN(Number(args[i]))) {
-            duration = Number(args[i]);
-        } else {
-            console.error(`unknown argument: ${args[i]}`);
-            usage();
-        }
-    }
+    const { values, positionals } = parseArgs({
+        allowPositionals: true,
+        options: {
+            "keep-data-tag": { type: "string" },
+        },
+    });
+    if (positionals.length < 2 || positionals.length > 3) usage();
+    const [input, output] = positionals.slice(0, 2).map((path) => resolve(path));
+    const duration = Number(positionals[2] ?? 2);
+    const keepDataTag = values["keep-data-tag"] ?? null;
     if (!Number.isFinite(duration) || duration <= 0) usage();
 
     if (!existsSync(input)) {
@@ -74,12 +67,11 @@ function main() {
     // Find the index of the data stream with the requested codec_tag via ffprobe.
     let dataStreamIndex = null;
     if (keepDataTag) {
-        const r = spawnSync("ffprobe", [
-            "-v", "error",
-            "-show_entries", "stream=index,codec_tag_string",
-            "-of", "json",
-            input,
-        ], { encoding: "utf8" });
+        const r = spawnSync(
+            "ffprobe",
+            ["-v", "error", "-show_entries", "stream=index,codec_tag_string", "-of", "json", input],
+            { encoding: "utf8" },
+        );
         if (r.status !== 0) {
             console.error("ffprobe failed:", r.stderr);
             exit(1);
@@ -106,11 +98,15 @@ function main() {
     }
     const ffArgs = [
         "-y",
-        "-i", input,
-        "-t", String(duration),
+        "-i",
+        input,
+        "-t",
+        String(duration),
         ...mapArgs,
-        "-c", "copy",
-        "-movflags", "+faststart",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
         output,
     ];
     const r = spawnSync("ffmpeg", ffArgs, { stdio: "inherit" });

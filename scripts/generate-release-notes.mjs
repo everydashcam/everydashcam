@@ -13,26 +13,31 @@
 // in the clone (CI checks out with fetch-depth: 0).
 
 import { writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 
 import { loadChangelogEntries, renderEntryBullet } from "./_changelog-render.mjs";
 import { ENTRIES_PATH, entryIdsAt, previousReleaseTag } from "./_release-tags.mjs";
 import { compareReleaseTags, isReleaseTag } from "../src/portable/release-tags.mjs";
 
-function arg(name) {
-    const i = process.argv.indexOf(name);
-    return i >= 0 ? process.argv[i + 1] : undefined;
-}
+const { values } = parseArgs({
+    options: {
+        tag: { type: "string" },
+        repo: { type: "string" },
+        "previous-tag": { type: "string" },
+        out: { type: "string" },
+    },
+});
 
-const tag = arg("--tag") ?? process.env.GITHUB_REF_NAME;
+const tag = values.tag ?? process.env.GITHUB_REF_NAME;
 if (!tag?.startsWith("v")) {
     console.error("usage: generate-release-notes.mjs --tag v<yyyy>.<mm>.<dd>[.<n>] [--out FILE]");
     process.exit(1);
 }
 // Repo slug for the compare link; empty means "skip the link" (local preview
 // outside CI without --repo).
-const repo = arg("--repo") ?? process.env.GITHUB_REPOSITORY ?? "";
+const repo = values.repo ?? process.env.GITHUB_REPOSITORY ?? "";
 
-const previousTag = arg("--previous-tag") ?? previousReleaseTag(tag);
+const previousTag = values["previous-tag"] ?? previousReleaseTag(tag);
 if (previousTag && (!isReleaseTag(previousTag) || compareReleaseTags(previousTag, tag) >= 0)) {
     throw new Error(`previous release tag ${previousTag} must precede ${tag}`);
 }
@@ -68,7 +73,7 @@ if (previousTag && repo) {
 }
 
 const notes = `${lines.join("\n").trimEnd()}\n`;
-const out = arg("--out");
+const out = values.out;
 if (out) {
     writeFileSync(out, notes);
     console.error(`wrote ${out} (${fresh.length} new entries since ${previousTag ?? "the beginning"})`);

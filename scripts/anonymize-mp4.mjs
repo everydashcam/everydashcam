@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseArgs } from "node:util";
 // Anonymizes an MP4 file from any dashcam for use as a test fixture. Goal:
 // keep the structural properties the parser depends on (codec, resolution,
 // fps, ISOBMFF container, overall MP4 structure), and strip location, time,
@@ -35,7 +36,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { argv, exit } from "node:process";
+import { exit } from "node:process";
 
 const FIXTURE_DURATION_SEC = 2;
 const AUDIO_FREQ_HZ = 1000;
@@ -51,7 +52,9 @@ function usage() {
 function ensureBinary(name) {
     const r = spawnSync(name, ["-version"], { stdio: "ignore" });
     if (r.error || r.status !== 0) {
-        console.error(`${name} not found in PATH. install via "brew install ffmpeg" (macOS) or distro package manager.`);
+        console.error(
+            `${name} not found in PATH. install via "brew install ffmpeg" (macOS) or distro package manager.`,
+        );
         exit(1);
     }
 }
@@ -59,13 +62,21 @@ function ensureBinary(name) {
 // Returns video properties plus the non-sensitive container creation time.
 // fps as a number (rounded to an integer if ffprobe returns a fraction like 30000/1001).
 function probeVideo(input) {
-    const r = spawnSync("ffprobe", [
-        "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format_tags=creation_time",
-        "-of", "json",
-        input,
-    ], { encoding: "utf8" });
+    const r = spawnSync(
+        "ffprobe",
+        [
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name,width,height,r_frame_rate:format_tags=creation_time",
+            "-of",
+            "json",
+            input,
+        ],
+        { encoding: "utf8" },
+    );
     if (r.status !== 0) {
         console.error("ffprobe failed:", r.stderr);
         exit(1);
@@ -78,8 +89,7 @@ function probeVideo(input) {
     }
     const [num, den] = (stream.r_frame_rate || "30/1").split("/").map(Number);
     const fps = den ? num / den : 30;
-    const creationTime =
-        typeof data.format?.tags?.creation_time === "string" ? data.format.tags.creation_time : null;
+    const creationTime = typeof data.format?.tags?.creation_time === "string" ? data.format.tags.creation_time : null;
     return {
         codec: stream.codec_name,
         width: stream.width,
@@ -93,9 +103,12 @@ function probeVideo(input) {
 // show up in dashcam recorders.
 function pickEncoder(codecName) {
     switch (codecName) {
-        case "h264": return "libx264";
-        case "hevc": return "libx265";
-        case "mpeg4": return "mpeg4";
+        case "h264":
+            return "libx264";
+        case "hevc":
+            return "libx265";
+        case "mpeg4":
+            return "mpeg4";
         default:
             console.error(`unsupported source codec ${codecName}. add mapping in pickEncoder.`);
             exit(1);
@@ -110,48 +123,47 @@ function buildFfmpegArgs(probe, output, crf) {
         "-y",
         // Video source: testsrc2 gives color bars + a running frame counter -
         // unambiguously identifiable as a test signal.
-        "-f", "lavfi",
-        "-i", `testsrc2=size=${probe.width}x${probe.height}:rate=${probe.fps}:duration=${FIXTURE_DURATION_SEC}`,
+        "-f",
+        "lavfi",
+        "-i",
+        `testsrc2=size=${probe.width}x${probe.height}:rate=${probe.fps}:duration=${FIXTURE_DURATION_SEC}`,
         // Audio source: 1kHz sine. -20dB so whoever accidentally opens the
         // fixture doesn't blow their speakers.
-        "-f", "lavfi",
-        "-i", `sine=frequency=${AUDIO_FREQ_HZ}:sample_rate=48000:duration=${FIXTURE_DURATION_SEC}`,
-        "-filter:a", `volume=${AUDIO_VOLUME_DB}dB`,
-        "-c:v", encoder,
+        "-f",
+        "lavfi",
+        "-i",
+        `sine=frequency=${AUDIO_FREQ_HZ}:sample_rate=48000:duration=${FIXTURE_DURATION_SEC}`,
+        "-filter:a",
+        `volume=${AUDIO_VOLUME_DB}dB`,
+        "-c:v",
+        encoder,
         ...quality,
-        "-preset", "ultrafast",
-        "-c:a", "aac",
-        "-b:a", "64k",
-        "-t", String(FIXTURE_DURATION_SEC),
+        "-preset",
+        "ultrafast",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "64k",
+        "-t",
+        String(FIXTURE_DURATION_SEC),
         ...(probe.creationTime ? ["-metadata", `creation_time=${probe.creationTime}`] : []),
         output,
     ];
 }
 
 async function main() {
-    const args = argv.slice(2);
-    if (args.length < 2) usage();
-
-    const input = resolve(args[0]);
-    const output = resolve(args[1]);
-
-    let embeddedGpsHandler = null;
-    let crf = null;
-    for (let i = 2; i < args.length; i++) {
-        if (args[i] === "--embedded-gps-handler" && args[i + 1]) {
-            embeddedGpsHandler = resolve(args[i + 1]);
-            i++;
-        } else if (args[i] === "--crf" && args[i + 1]) {
-            // Fixture-size knob for high-resolution sources: default x264/x265
-            // rate control on a 1440p+ testsrc2 pattern busts the 5 MB fixture
-            // budget; callers pass a high CRF to stay under it.
-            crf = Number(args[i + 1]);
-            i++;
-        } else {
-            console.error(`unknown argument: ${args[i]}`);
-            usage();
-        }
-    }
+    const { values, positionals } = parseArgs({
+        allowPositionals: true,
+        options: {
+            "embedded-gps-handler": { type: "string" },
+            crf: { type: "string" },
+        },
+    });
+    if (positionals.length !== 2) usage();
+    const [input, output] = positionals.map((path) => resolve(path));
+    const embeddedGpsHandler = values["embedded-gps-handler"] ? resolve(values["embedded-gps-handler"]) : null;
+    // High-resolution synthetic fixtures may need a higher CRF to fit the fixture budget.
+    const crf = values.crf === undefined ? null : Number(values.crf);
 
     if (!existsSync(input)) {
         console.error(`input not found: ${input}`);
