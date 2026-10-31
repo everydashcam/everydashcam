@@ -427,7 +427,11 @@ async function inspectTrimmedPlayback(page: Page, sources: number[][]) {
 test.describe("export run (the destination goes away)", () => {
     // The failure is injected on purpose, and the flow logs the raw cause to the
     // ring buffer (which mirrors to console.error) exactly as designed.
-    test.use({ tolerateConsole: [/the destination is gone/] });
+    // Firefox renders DOMException arguments as opaque handles. The stream-copy
+    // case also verifies the actual logged exception, independently of that text.
+    test.use({
+        tolerateConsole: [/the destination is gone|^\[export-flow\] export failed JSHandle@object$/],
+    });
 
     const setup = async (page: Page, failure: ExportSinkFailure): Promise<void> => {
         await presetLocalStorage(page);
@@ -446,6 +450,10 @@ test.describe("export run (the destination goes away)", () => {
     test("stream-copy: names the real cause and offers a way to report it", async ({ page }) => {
         await setup(page, { afterBytes: 0, errorName: "NotFoundError" });
 
+        const loggedFailure = page.waitForEvent("console", {
+            predicate: (message) =>
+                message.type() === "error" && message.text().startsWith("[export-flow] export failed "),
+        });
         await page.locator("#export-panel-save-btn").click();
 
         const status = page.locator(".export-panel__error-status");
@@ -454,6 +462,15 @@ test.describe("export run (the destination goes away)", () => {
         await expect(status, "a lost destination must not read as the generic failure").toContainText(
             "the file being written is gone",
         );
+        const loggedCause = (await loggedFailure).args()[1]!;
+        expect(
+            await loggedCause.evaluate((cause: unknown) => {
+                if (!(cause instanceof Error) && !(cause instanceof DOMException)) {
+                    throw new Error("expected an export exception");
+                }
+                return { name: cause.name, message: cause.message };
+            }),
+        ).toEqual({ name: "NotFoundError", message: "the destination is gone" });
 
         // The report entry point: a failed export is where the ring buffer still
         // holds the run that died.
