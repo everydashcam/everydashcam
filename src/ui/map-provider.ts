@@ -1,6 +1,8 @@
 // The viewer shares a persisted preference and one page-scoped fallback chain.
 // Export overlays have isolated sessions so viewer choices cannot enter a video.
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
+import { createSubscribers } from "../subscribers.js";
 import { createLogger } from "../log.js";
 import { isYandexMapAvailable, yandexMapTileTemplate } from "./yandex-map.js";
 
@@ -46,7 +48,7 @@ export type OverlayMapProviderSession = MapProviderSession<OverlayMapProvider>;
 
 let preferredProvider: MapProviderPreference | null = null;
 let viewerSession: MutableMapProviderSession<MapProvider> | null = null;
-const preferenceListeners = new Set<PreferenceListener>();
+const preferenceListeners = createSubscribers<Parameters<PreferenceListener>>("map-provider-preference");
 
 function overlayProviderOrder(preference: OverlayMapProviderPreference): OverlayMapProvider[] {
     if (preference === "route-only") return ["route-only"];
@@ -73,11 +75,7 @@ function availablePreference(value: string | null | undefined): MapProviderPrefe
 export function getMapProviderPreference(): MapProviderPreference {
     if (preferredProvider !== null) return preferredProvider;
     const defaultProvider = availablePreference(import.meta.env.VITE_DEFAULT_MAP_PROVIDER) ?? "openfreemap";
-    try {
-        preferredProvider = availablePreference(localStorage.getItem(STORAGE_KEY)) ?? defaultProvider;
-    } catch {
-        preferredProvider = defaultProvider;
-    }
+    preferredProvider = availablePreference(readLocalStorage(STORAGE_KEY)) ?? defaultProvider;
     return preferredProvider;
 }
 
@@ -149,9 +147,7 @@ export function retryMapProvider(): Promise<boolean> {
 }
 
 export function subscribeMapProviderPreference(listener: PreferenceListener): () => void {
-    preferenceListeners.add(listener);
-    listener(getMapProviderPreference());
-    return () => preferenceListeners.delete(listener);
+    return preferenceListeners.subscribe(listener, [getMapProviderPreference()]);
 }
 
 function errorUrl(error: unknown): string | null {
@@ -210,7 +206,7 @@ function createProviderSession<Provider extends MapProvider>(
     let recoveryPromise: Promise<boolean> | null = null;
     let providerRevision = 0;
     let isDisposed = false;
-    const listeners = new Set<ProviderListener<Provider>>();
+    const listeners = createSubscribers<Parameters<ProviderListener<Provider>>>("map-provider-session");
 
     function switchProvider(next: Provider, shouldNotify = false): void {
         const previous = activeProvider;
@@ -219,7 +215,7 @@ function createProviderSession<Provider extends MapProvider>(
         failedTiles = new Map();
         if (next === previous && !shouldNotify) return;
         log.warn("map provider switched", { from: previous, to: next });
-        for (const listener of listeners) listener(next, previous);
+        listeners.emit(next, previous);
     }
 
     async function tryProviders(
@@ -254,9 +250,7 @@ function createProviderSession<Provider extends MapProvider>(
         getProvider: () => activeProvider,
         subscribe(listener): () => void {
             if (isDisposed) return () => {};
-            listeners.add(listener);
-            listener(activeProvider, null);
-            return () => listeners.delete(listener);
+            return listeners.subscribe(listener, [activeProvider, null]);
         },
         reportTileError(error, now = Date.now()): Promise<void> | null {
             if (isDisposed) return null;
@@ -347,13 +341,9 @@ export function setMapProviderPreference(provider: MapProviderPreference): void 
     if (provider === "yandex" && !isYandexMapAvailable()) throw new Error("yandex map key is not configured");
     const session = getViewerSession();
     preferredProvider = provider;
-    try {
-        localStorage.setItem(STORAGE_KEY, provider);
-    } catch {
-        // Storage may be blocked; the choice still works for this page.
-    }
+    writeLocalStorage(STORAGE_KEY, provider);
     session.reset(provider, viewerProviderOrder(provider));
-    for (const listener of preferenceListeners) listener(provider);
+    preferenceListeners.emit(provider);
 }
 
 /** Page-scoped DevTools override. A reload restores the saved preference. */

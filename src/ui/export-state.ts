@@ -9,6 +9,7 @@
 // preset, export-panel itself, range pull-tabs, watermark overlay) subscribe
 // here.
 
+import { createSubscribers } from "../subscribers.js";
 import type { BlurStyle } from "../blur-regions.js";
 import { createLogger } from "../log.js";
 import type { MapShape, OverlayStyleId, WatermarkAnchor } from "../transcode/types.js";
@@ -380,7 +381,7 @@ export const OVERLAY_STATE_ACCESSORS: ReadonlyArray<{
 ];
 
 type Listener = () => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("export-state");
 const log = createLogger("export-state");
 let prepareExportMode: (() => Promise<boolean> | null) | null = null;
 let pendingOpen: object | null = null;
@@ -394,14 +395,13 @@ export function setExportModePreparation(handler: (() => Promise<boolean> | null
 /** Subscribes to export-state changes (open/close + panel field edits).
  *  Returns an unsubscribe function. */
 export function subscribeExportState(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 /** Notifies subscribers. Called by openExportMode/closeExportMode and by any
  *  UI module that batched a state change. */
 export function notifyExportStateChanged(): void {
-    for (const l of listeners) l();
+    listeners.emit();
     const current = currentOverlayPreferences();
     const key = overlayPreferencesKey(current);
     if (key === lastOverlayPreferencesKey) return;

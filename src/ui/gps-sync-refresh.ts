@@ -1,16 +1,16 @@
-// Dependency-free fan-out for live GPS calibration. The dialog requests a
+// Lightweight fan-out for live GPS calibration. The dialog requests a
 // refresh without importing the heavy player/map/chart graph into its module;
 // initialized viewer modules register repaint callbacks.
 
+import { createSubscribers } from "../subscribers.js";
 type RefreshListener = () => void;
 
-const listeners = new Set<RefreshListener>();
+const listeners = createSubscribers<Parameters<RefreshListener>>("gps-sync");
 
 export function registerGpsSyncRefreshListener(listener: RefreshListener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 export function requestGpsSyncSurfaceRefresh(): void {
-    for (const listener of listeners) listener();
+    listeners.emit();
 }

@@ -1,3 +1,4 @@
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { getCurrentLang } from "../i18n/index.js";
 
 type MigrationSource = "apex" | "ru";
@@ -64,22 +65,13 @@ export function initMigrationBanner(): void {
     if (!isSource(source)) return;
 
     const dismissedKey = DISMISSED_PREFIX + source;
-    let isDismissed = readSession(dismissedKey) === "1";
-    try {
-        isDismissed ||= localStorage.getItem(dismissedKey) === "1";
-    } catch {
-        // Session storage retains acknowledgment when persistent storage is blocked.
-    }
+    const isDismissed = readSession(dismissedKey) === "1" || readLocalStorage(dismissedKey) === "1";
     if (isDismissed) return;
 
     const dismiss = (): void => {
         banner.hidden = true;
         writeSession(dismissedKey, "1");
-        try {
-            localStorage.setItem(dismissedKey, "1");
-        } catch {
-            // Closing the notice must not depend on persistent storage.
-        }
+        writeLocalStorage(dismissedKey, "1");
     };
 
     if (location.hash === "#restore-notes") {

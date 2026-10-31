@@ -8,6 +8,7 @@
 // and keyframe times on the trip's content axis, so they stay valid for their
 // trip regardless of layout/crop/output changes.
 
+import { createSubscribers } from "../subscribers.js";
 import type { BlurRegion } from "../blur-regions.js";
 import { tripAllCandidates } from "../trips.js";
 import type { Trip } from "../trips.js";
@@ -19,19 +20,18 @@ let regionsByTrip = new WeakMap<Trip, BlurRegion[]>();
 let sourceByTrip = new WeakMap<Trip, BlurTripSource>();
 
 type Listener = () => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("blur-regions");
 
 /** Subscribes to blur-region list/geometry changes. Returns unsubscribe. */
 export function subscribeBlurRegions(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 /** Wakes subscribers. Call after any region mutation (add/remove/keyframe/style
  *  edits) - mutations are in-place per the codebase convention, so subscribers
  *  re-read via activeBlurRegions(). */
 export function notifyBlurRegionsChanged(): void {
-    for (const l of listeners) l();
+    listeners.emit();
 }
 
 /** Blur regions of the active trip (live array - do not hold across trip
@@ -78,14 +78,13 @@ export function setDroppedRegionPassCanceller(fn: (regionId: string) => void): v
 }
 
 type RegroupListener = (oldTrips: readonly Trip[], newTrips: readonly Trip[], invalidatedRegionCount: number) => void;
-const regroupListeners = new Set<RegroupListener>();
+const regroupListeners = createSubscribers<Parameters<RegroupListener>>("blur-regroup");
 
 /** Shares the regroup boundary with detection and the lost-zone notice without
  * importing either UI lifecycle into ingest. Removed footage does not count as
  * invalidation: the notice applies only when source files still survive. */
 export function subscribeBlurTripRegroup(listener: RegroupListener): () => void {
-    regroupListeners.add(listener);
-    return () => regroupListeners.delete(listener);
+    return regroupListeners.subscribe(listener);
 }
 
 /**
@@ -146,7 +145,7 @@ export function carryBlurRegions(oldTrips: readonly Trip[], newTrips: readonly T
             if (!carriedRegionIds.has(region.id)) invalidatedRegionIds.add(region.id);
         }
     }
-    for (const listener of regroupListeners) listener(oldTrips, newTrips, invalidatedRegionIds.size);
+    regroupListeners.emit(oldTrips, newTrips, invalidatedRegionIds.size);
     // Old trips HAD regions, so the active list identity changed either way -
     // carried over or (on a merge/split) legitimately dropped. Listeners must
     // re-read via activeBlurRegions() in both cases, or the panel keeps

@@ -37,6 +37,7 @@
 // path the product asks for. A separate offered marker never suppresses a tour;
 // it only records that first-run guidance has actually reached the user.
 
+import { readLocalStorage, writeLocalStorage, removeLocalStorage } from "../local-storage.js";
 import { type I18nKey, t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
 import { tripChannels } from "../trips.js";
@@ -82,13 +83,7 @@ function offeredStorageKey(id: OnboardTourId): string {
 
 /** True if the user already completed or explicitly skipped this tour. */
 function isTourDone(id: OnboardTourId): boolean {
-    try {
-        return localStorage.getItem(storageKey(id)) === "1";
-    } catch {
-        // Private mode - treat as "not done"; the worst case is the tour shows
-        // again next session, which is harmless.
-        return false;
-    }
+    return readLocalStorage(storageKey(id)) === "1";
 }
 
 /** Marks a tour as seen-for-good (complete or skip). "Later" never calls this. */
@@ -102,19 +97,11 @@ function markTourDone(id: OnboardTourId): void {
 
 /** Remembers that this optional tour has actually reached the user. */
 function markTourOffered(id: OnboardTourId): void {
-    try {
-        localStorage.setItem(offeredStorageKey(id), "1");
-    } catch {
-        // The marker only coordinates optional UI; failure must stay invisible.
-    }
+    writeLocalStorage(offeredStorageKey(id), "1");
 }
 
 function wasTourOffered(id: OnboardTourId): boolean {
-    try {
-        return localStorage.getItem(offeredStorageKey(id)) === "1";
-    } catch {
-        return false;
-    }
+    return readLocalStorage(offeredStorageKey(id)) === "1";
 }
 
 // ---- tour definitions ----
@@ -761,12 +748,8 @@ export function isOnboardingSettledForSupportPrompt(): boolean {
 export function resetOnboarding(): void {
     if (active) finishTour("later");
     for (const id of ONBOARD_TOUR_IDS) {
-        try {
-            localStorage.removeItem(storageKey(id));
-            localStorage.removeItem(offeredStorageKey(id));
-        } catch {
-            // Private mode - nothing was persisted anyway.
-        }
+        removeLocalStorage(storageKey(id));
+        removeLocalStorage(offeredStorageKey(id));
     }
 }
 

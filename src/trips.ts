@@ -4,6 +4,7 @@
 // candidate.driftLeadSec, see channel-drift.ts) - it resets before measuring
 // and derives only from the candidates, so regrouping is idempotent.
 
+import { readLocalStorage, writeLocalStorage } from "./local-storage.js";
 import { applyChannelDriftLead } from "./channel-drift.js";
 import { detectEvents, type TripEvent } from "./events.js";
 import { detectInferredSegments, type InferredSegment } from "./inferred-events.js";
@@ -502,16 +503,11 @@ const STORAGE_KEY_TRIP_GAP = "everydashcam:trips:gapSec";
 
 /** Current gap threshold in seconds, or +Infinity for "never split into trips". */
 export function getTripGapSec(): number {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY_TRIP_GAP);
-        if (raw === null) return TRIP_GAP_THRESHOLD_SEC;
-        if (raw === "off") return Number.POSITIVE_INFINITY;
-        const n = Number(raw);
-        if (Number.isFinite(n) && n >= 0) return n;
-    } catch {
-        // private mode - fall through to default.
-    }
-    return TRIP_GAP_THRESHOLD_SEC;
+    const raw = readLocalStorage(STORAGE_KEY_TRIP_GAP);
+    if (raw === null) return TRIP_GAP_THRESHOLD_SEC;
+    if (raw === "off") return Number.POSITIVE_INFINITY;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : TRIP_GAP_THRESHOLD_SEC;
 }
 
 /**
@@ -521,15 +517,7 @@ export function getTripGapSec(): number {
  * we clamp the minimum to 1 second.
  */
 export function setTripGapSec(sec: number): void {
-    try {
-        if (!Number.isFinite(sec)) {
-            localStorage.setItem(STORAGE_KEY_TRIP_GAP, "off");
-        } else {
-            localStorage.setItem(STORAGE_KEY_TRIP_GAP, String(Math.max(1, Math.floor(sec))));
-        }
-    } catch {
-        // private mode - choice won't survive reload but works in this session.
-    }
+    writeLocalStorage(STORAGE_KEY_TRIP_GAP, Number.isFinite(sec) ? String(Math.max(1, Math.floor(sec))) : "off");
 }
 
 /**

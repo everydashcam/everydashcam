@@ -3,6 +3,7 @@
 // state, the slider popover above the mute button, and the slider 'input'
 // listener.
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { t } from "../i18n/index.js";
 import { dom } from "./dom.js";
 import { isCoarsePointer } from "./media-queries.js";
@@ -15,43 +16,23 @@ const VOLUME_STORAGE_KEY = "everydashcam:volume";
 const MUTED_STORAGE_KEY = "everydashcam:muted";
 
 function loadStoredVolume(): number | null {
-    try {
-        const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
-        if (raw === null) return null;
-        const v = Number(raw);
-        if (!Number.isFinite(v) || v < 0 || v > 1) return null;
-        return v;
-    } catch {
-        return null;
-    }
+    const raw = readLocalStorage(VOLUME_STORAGE_KEY);
+    if (raw === null) return null;
+    const v = Number(raw);
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
 }
 
 function loadStoredMuted(): boolean | null {
-    try {
-        const raw = localStorage.getItem(MUTED_STORAGE_KEY);
-        if (raw === "1") return true;
-        if (raw === "0") return false;
-        return null;
-    } catch {
-        return null;
-    }
+    const raw = readLocalStorage(MUTED_STORAGE_KEY);
+    return raw === "1" ? true : raw === "0" ? false : null;
 }
 
 export function persistVolume(v: number): void {
-    try {
-        localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
-    } catch {
-        // localStorage blocked (incognito quota) - preference survives the
-        // session but not a reload. Non-critical.
-    }
+    writeLocalStorage(VOLUME_STORAGE_KEY, String(v));
 }
 
 export function persistMuted(m: boolean): void {
-    try {
-        localStorage.setItem(MUTED_STORAGE_KEY, m ? "1" : "0");
-    } catch {
-        /* see persistVolume */
-    }
+    writeLocalStorage(MUTED_STORAGE_KEY, m ? "1" : "0");
 }
 
 /**

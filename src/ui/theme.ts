@@ -5,6 +5,8 @@
 // state.chart is touched here intentionally - refreshThemeColors rewrites scale/dataset colors
 // of the live chart. When chart moves to its own module, replace direct access with a callback or event.
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
+import { createSubscribers } from "../subscribers.js";
 import type { EventKind } from "../events.js";
 
 import { state } from "./state.js";
@@ -34,13 +36,8 @@ function isThemeChoice(s: string | null): s is ThemeChoice {
 
 /** Reads the stored theme choice from localStorage. Returns "auto" when nothing is stored or localStorage is unavailable. */
 export function loadStoredTheme(): ThemeChoice {
-    try {
-        const v = localStorage.getItem(THEME_STORAGE_KEY);
-        if (isThemeChoice(v)) return v;
-    } catch {
-        // localStorage blocked (incognito) - use default.
-    }
-    return "auto";
+    const v = readLocalStorage(THEME_STORAGE_KEY);
+    return isThemeChoice(v) ? v : "auto";
 }
 
 /**
@@ -50,11 +47,7 @@ export function loadStoredTheme(): ThemeChoice {
  */
 export function applyTheme(choice: ThemeChoice): void {
     userThemeChoice = choice;
-    try {
-        localStorage.setItem(THEME_STORAGE_KEY, choice);
-    } catch {
-        // localStorage blocked - theme works for the current session but won't survive reload.
-    }
+    writeLocalStorage(THEME_STORAGE_KEY, choice);
     if (typeof document !== "undefined") {
         const root = document.documentElement;
         root.classList.remove("dc-light", "dc-dark");
@@ -155,11 +148,10 @@ let _themeColors: ThemeColors | null = null;
  *  are updated. Used by canvas-based renderers that need to redraw with
  *  fresh colors on theme change - they cannot watch a CSS variable directly. */
 type ThemeChangeListener = () => void;
-const themeChangeListeners = new Set<ThemeChangeListener>();
+const themeChangeListeners = createSubscribers<Parameters<ThemeChangeListener>>("theme");
 
 export function subscribeThemeChange(handler: ThemeChangeListener): () => void {
-    themeChangeListeners.add(handler);
-    return () => themeChangeListeners.delete(handler);
+    return themeChangeListeners.subscribe(handler);
 }
 
 export function themeColors(): ThemeColors {
@@ -244,13 +236,7 @@ export function refreshThemeColors(): void {
     // Notify canvas-based renderers (inferred event strip, etc.) that
     // cached colors changed. Chart.js gets fresh colors via the block above;
     // standalone canvases redraw themselves from themeColors().
-    for (const listener of themeChangeListeners) {
-        try {
-            listener();
-        } catch {
-            // listener errors are not actionable here - swallow.
-        }
-    }
+    themeChangeListeners.emit();
 }
 
 /** Map polyline segment color by speed (km/h). Hotter color = faster, familiar from heat maps. */

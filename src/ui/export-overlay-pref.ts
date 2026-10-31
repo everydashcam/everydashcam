@@ -2,6 +2,7 @@
 // deliberately contains only overlay controls; trip range, output settings,
 // cameras and blur zones keep their existing per-trip/session lifecycles.
 
+import { readLocalStorageJson, removeLocalStorage, writeLocalStorageJson } from "../local-storage.js";
 import { MAP_MARKER_SHAPES, MAP_MARKER_SIZES, type MapMarkerAppearance } from "./map-marker-pref.js";
 import type { OverlayMapProviderPreference } from "./map-provider.js";
 import type { OverlayMapState, OverlayPreferences, OverlayTextState } from "./export-state.js";
@@ -122,28 +123,15 @@ export function overlayPreferencesKey(preferences: OverlayPreferences): string {
 }
 
 export function readStoredOverlayPreferences(defaults: OverlayPreferences): OverlayPreferences {
-    try {
-        if (typeof localStorage === "undefined") return cloneOverlayPreferences(defaults);
-        const raw = localStorage.getItem(OVERLAY_PREFERENCES_STORAGE_KEY);
-        return raw === null
-            ? cloneOverlayPreferences(defaults)
-            : normalizeOverlayPreferences(JSON.parse(raw), defaults);
-    } catch {
-        return cloneOverlayPreferences(defaults);
-    }
+    return normalizeOverlayPreferences(readLocalStorageJson(OVERLAY_PREFERENCES_STORAGE_KEY), defaults);
 }
 
 /** Default layouts need no storage entry. This also makes Reset remove the
  *  preference instead of leaving a redundant copy that could mask new defaults. */
 export function persistOverlayPreferences(current: OverlayPreferences, defaults: OverlayPreferences): void {
-    try {
-        if (typeof localStorage === "undefined") return;
-        if (overlayPreferencesKey(current) === overlayPreferencesKey(defaults)) {
-            localStorage.removeItem(OVERLAY_PREFERENCES_STORAGE_KEY);
-        } else {
-            localStorage.setItem(OVERLAY_PREFERENCES_STORAGE_KEY, overlayPreferencesKey(current));
-        }
-    } catch {
-        // Storage can be blocked or full; the layout still survives this session.
+    if (overlayPreferencesKey(current) === overlayPreferencesKey(defaults)) {
+        removeLocalStorage(OVERLAY_PREFERENCES_STORAGE_KEY);
+    } else {
+        writeLocalStorageJson(OVERLAY_PREFERENCES_STORAGE_KEY, current);
     }
 }

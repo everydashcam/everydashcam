@@ -14,6 +14,7 @@
 // exportPanelState. All UI inputs persist in exportPanelState; this module
 // only reads.
 
+import { createSubscribers } from "../subscribers.js";
 import { hasCameraFlip } from "../camera-flip.js";
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
 import { showSaveFilePicker } from "native-file-system-adapter";
@@ -415,14 +416,13 @@ let encodeCeiling: EncodeCeiling | null = null;
 // Key of the config a probe is currently in-flight for (or already cached), so
 // repeated syncExportPanel ticks with unchanged options do not re-probe.
 let encodeCeilingInFlightKey = "";
-const encodeCeilingListeners = new Set<() => void>();
+const encodeCeilingListeners = createSubscribers("encode-ceiling");
 
 /** Subscribes to device-encode-ceiling updates (fired when an async probe
  *  resolves). Returns an unsubscribe function. The panel re-renders the
  *  estimate + Save availability from this. */
 export function subscribeEncodeCeiling(listener: () => void): () => void {
-    encodeCeilingListeners.add(listener);
-    return () => encodeCeilingListeners.delete(listener);
+    return encodeCeilingListeners.subscribe(listener);
 }
 
 function ceilingKey(dims: OutputDims, desiredBitrate: number, frameRate: number): string {
@@ -464,7 +464,7 @@ export function refreshEncodeCeiling(): void {
             encodeCeiling = res
                 ? { key, desiredBitrate, bitrate: res.bitrate, degraded: res.degraded, blocked: false }
                 : { key, desiredBitrate, bitrate: desiredBitrate, degraded: false, blocked: true };
-            for (const listener of encodeCeilingListeners) listener();
+            encodeCeilingListeners.emit();
         });
 }
 

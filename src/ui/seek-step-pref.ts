@@ -4,6 +4,7 @@
 // Read by src/ui/player-hotkeys.ts on every keydown, written by the settings
 // modal. Toolbar labels subscribe to updates; hotkeys read on every keypress.
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 const STORAGE_KEY_ARROW = "everydashcam:hotkeys:seekStepSec";
 const STORAGE_KEY_SHIFT_ARROW = "everydashcam:hotkeys:seekStepShiftSec";
 
@@ -16,25 +17,16 @@ export const SEEK_STEP_MIN_SEC = 0.1;
 export const SEEK_STEP_MAX_SEC = 600;
 
 function readPositive(key: string, fallback: number): number {
-    try {
-        const raw = localStorage.getItem(key);
-        if (raw === null) return fallback;
-        const n = Number(raw);
-        if (Number.isFinite(n) && n > 0) return n;
-    } catch {
-        // private mode - fall through.
-    }
-    return fallback;
+    const raw = readLocalStorage(key);
+    if (raw === null) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function writePositive(key: string, sec: number): void {
     if (!Number.isFinite(sec) || sec <= 0) return;
     const clamped = Math.min(SEEK_STEP_MAX_SEC, Math.max(SEEK_STEP_MIN_SEC, sec));
-    try {
-        localStorage.setItem(key, String(clamped));
-    } catch {
-        // private mode - won't survive reload but works in this session.
-    }
+    writeLocalStorage(key, String(clamped));
 }
 
 /** Seek step for ArrowLeft / ArrowRight without Shift, in seconds. */

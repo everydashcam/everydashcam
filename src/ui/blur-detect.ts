@@ -1,3 +1,5 @@
+import { createSubscribers } from "../subscribers.js";
+import { lowerBoundBy, upperBoundBy } from "../sorted-search.js";
 // Main-thread client of the detection pass (the "blur all plates / faces"
 // checkboxes on the export panel). Owns the per-trip checkbox flags, the pass
 // result cache and the single running pass; the heavy work - native-res decode
@@ -16,7 +18,7 @@
 // edits re-trigger through a debounce so a trim-bar drag does not thrash
 // multi-minute passes.
 
-import { combineAbortSignals } from "../abort-signals.js";
+import { throwIfCancelled, combineAbortSignals } from "../abort-signals.js";
 import { cloneBlurRegions, type BlurRegion, type BlurStyle } from "../blur-regions.js";
 import { sliceTripChannelForRange } from "../export-range.js";
 import { groupDetectionFindings, type DetectionFinding } from "../tracking/detection-review.js";
@@ -214,16 +216,15 @@ subscribeBlurTripRegroup((oldTrips, newTrips) => {
 });
 
 type Listener = () => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("blur-detect");
 
 /** Subscribes to checkbox/pass/result changes (panel + preview re-render hook). */
 export function subscribeBlurDetect(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 function notifyDetectChanged(): void {
-    for (const l of listeners) l();
+    listeners.emit();
 }
 
 // Route this pass's progress off the shared worker's notification stream.
@@ -569,13 +570,13 @@ export async function ensureDetectRegionsForExport(
     const assetGroups = detectAssetGroups(params.kinds);
     if (!blurAssetsReady(assetGroups)) {
         const ok = await downloadBlurAssets(assetGroups, signal);
-        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         if (!ok) throw new Error("detect model download failed");
     }
     if (!matchesBlurTripSource(request.source, trip)) throw new Error("detect source changed after export started");
     const st = tripState(trip);
     for (;;) {
-        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         if (st.result && st.result.key === params.key) {
             // Return a detached export snapshot and force the style captured at
             // Save. A style edit after Save may legitimately update the cached
@@ -600,7 +601,7 @@ export async function ensureDetectRegionsForExport(
         });
         try {
             const ok = await run.promise;
-            if (signal.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             if (!ok) throw run.failure ?? new Error("detect pass failed");
         } finally {
             signal.removeEventListener("abort", onAbort);
@@ -623,13 +624,7 @@ function trackRegionSpan(
     let seekSec = s;
     const e = Math.min(endSec, track.endSec);
     if (e <= s) return null;
-    let lo = 0;
-    let hi = sourceFrames.length - 1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >>> 1;
-        if (sourceFrames[mid]!.contentSec <= s) lo = mid + 1;
-        else hi = mid - 1;
-    }
+    const hi = upperBoundBy(sourceFrames, s, (frame) => frame.contentSec) - 1;
     const frame = sourceFrames[hi];
     const frameEnd = frame
         ? Math.min(e, frame.contentSec + frame.durationSec, sourceFrames[hi + 1]?.contentSec ?? e)
@@ -658,16 +653,7 @@ function buildRegion(
     autoRegionCounter += 1;
     // HOLD needs only the predecessor of the first displayed frame and changes
     // before the exclusive end. A short trim must not clone a whole long track.
-    const lowerBound = (sec: number): number => {
-        let lo = 0;
-        let hi = track.keyframes.length;
-        while (lo < hi) {
-            const mid = (lo + hi) >>> 1;
-            if (track.keyframes[mid]!.contentSec < sec) lo = mid + 1;
-            else hi = mid;
-        }
-        return lo;
-    };
+    const lowerBound = (sec: number): number => lowerBoundBy(track.keyframes, sec, (frame) => frame.contentSec);
     const first = lowerBound(track.startSec);
     const from = track.keyframes[first]?.contentSec === track.startSec ? first : Math.max(0, first - 1);
     const to = Math.max(from + 1, lowerBound(track.endSec));

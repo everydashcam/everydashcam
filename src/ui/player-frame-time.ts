@@ -2,6 +2,7 @@
 // neighbour-file playback and held boundary frames. The timeline playhead is
 // intentionally separate: it may report a pending seek or another camera.
 
+import { createSubscribers } from "../subscribers.js";
 import { candidateContentStart } from "../export-range.js";
 import type { Channel } from "../parsers/types.js";
 import { tripCandidatesByChannel, type Trip, type VideoCandidate } from "../trips.js";
@@ -13,7 +14,7 @@ import { activeTrip } from "./state.js";
 let frames = new WeakMap<HTMLVideoElement, PlayerFrameObservation>();
 let pendingFrames = new WeakSet<HTMLVideoElement>();
 let candidates = new WeakMap<Trip, Map<Channel, Map<File, VideoCandidate>>>();
-const listeners = new Set<() => void>();
+const listeners = createSubscribers("player-frames");
 
 export interface PlayerFrameObservation extends Readonly<PresentedFrame> {
     readonly observedAtMs: number;
@@ -27,8 +28,7 @@ export interface ChannelPresentedFrame {
 }
 
 export function subscribePlayerFrames(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 /** Returns the cached physical-slot observation, unchanged until another
@@ -134,7 +134,7 @@ export function initPlayerFrameTimes(): void {
                 // guard still blocks edits until the media element settles.
                 // A repeated old PTS does not acknowledge the pending seek.
                 if (!video.seeking || previous?.mediaTime !== metadata.mediaTime) pendingFrames.delete(video);
-                for (const listener of listeners) listener();
+                listeners.emit();
                 arm();
             });
         };

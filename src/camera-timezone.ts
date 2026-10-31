@@ -1,3 +1,4 @@
+import { readLocalStorageJson, writeLocalStorageJson } from "./local-storage.js";
 import type { GpsRecord, ParsedLog, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import { fileIdentityKey } from "./persist/identity.js";
 import type { VideoCandidate } from "./trips.js";
@@ -142,46 +143,33 @@ function persistentKeys(file: VideoWithRecordingCopies, log: ParsedLog | null): 
 
 function loadEntries(): StoredTimezone[] {
     if (hasUnsavedEntries) return entries;
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw === null) return entries;
-        const parsed: unknown = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return entries;
-        entries = parsed
-            .filter((value): value is StoredTimezone => {
-                if (typeof value !== "object" || value === null) return false;
-                const item = value as Record<string, unknown>;
-                return (
-                    typeof item.key === "string" &&
-                    item.key.length > 0 &&
-                    (item.cohortKey === undefined ||
-                        (typeof item.cohortKey === "string" && item.cohortKey.length > 0)) &&
-                    (item.offsetSec === null || isCameraTimezoneOffset(item.offsetSec)) &&
-                    typeof item.updatedAt === "number" &&
-                    Number.isFinite(item.updatedAt) &&
-                    item.updatedAt >= 0
-                );
-            })
-            .slice(0, MAX_STORED_RECORDINGS)
-            .map((entry) => ({
-                ...entry,
-                cohortKey: entry.cohortKey ?? entry.key,
-            }));
-    } catch {
-        // Blocked or corrupt browser storage keeps the last usable session copy.
-    }
+    const parsed = readLocalStorageJson(STORAGE_KEY);
+    if (!Array.isArray(parsed)) return entries;
+    entries = parsed
+        .filter((value): value is StoredTimezone => {
+            if (typeof value !== "object" || value === null) return false;
+            const item = value as Record<string, unknown>;
+            return (
+                typeof item.key === "string" &&
+                item.key.length > 0 &&
+                (item.cohortKey === undefined || (typeof item.cohortKey === "string" && item.cohortKey.length > 0)) &&
+                (item.offsetSec === null || isCameraTimezoneOffset(item.offsetSec)) &&
+                typeof item.updatedAt === "number" &&
+                Number.isFinite(item.updatedAt) &&
+                item.updatedAt >= 0
+            );
+        })
+        .slice(0, MAX_STORED_RECORDINGS)
+        .map((entry) => ({
+            ...entry,
+            cohortKey: entry.cohortKey ?? entry.key,
+        }));
     return entries;
 }
 
 function saveEntries(next: StoredTimezone[]): void {
     entries = next.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_STORED_RECORDINGS);
-    hasUnsavedEntries = true;
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-        hasUnsavedEntries = false;
-    } catch {
-        // The current page can still use the selected zone.
-    }
+    hasUnsavedEntries = !writeLocalStorageJson(STORAGE_KEY, entries);
 }
 
 /** Expands the selected recordings to their source folders, including copy aliases. */

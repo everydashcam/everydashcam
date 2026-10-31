@@ -1,3 +1,5 @@
+import { createSubscribers } from "../subscribers.js";
+import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
 export const MAP_STYLE_PRESETS = ["classic", "road", "minimal"] as const;
 export type MapStylePreset = (typeof MAP_STYLE_PRESETS)[number];
 
@@ -18,7 +20,7 @@ const DEFAULT_PREFERENCES: Readonly<MapViewPreferences> = {
 const STORAGE_KEY = "everydashcam:mapView";
 let sessionPreferences: MapViewPreferences | null = null;
 type Listener = (preferences: MapViewPreferences) => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("map-view");
 
 function normalizePreferences(value: unknown): MapViewPreferences {
     if (typeof value !== "object" || value === null) return { ...DEFAULT_PREFERENCES };
@@ -32,12 +34,7 @@ function normalizePreferences(value: unknown): MapViewPreferences {
 }
 
 function readStoredPreferences(): MapViewPreferences {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw === null ? { ...DEFAULT_PREFERENCES } : normalizePreferences(JSON.parse(raw));
-    } catch {
-        return { ...DEFAULT_PREFERENCES };
-    }
+    return normalizePreferences(readLocalStorageJson(STORAGE_KEY));
 }
 
 export function getMapViewPreferences(): MapViewPreferences {
@@ -51,17 +48,12 @@ export function setMapViewPreferences(preferences: MapViewPreferences): void {
     if (current.style === next.style && current.theme === next.theme && current.buildings3d === next.buildings3d)
         return;
     sessionPreferences = next;
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-        // A blocked or full store must not prevent changing the current view.
-    }
-    for (const listener of listeners) listener({ ...next });
+    writeLocalStorageJson(STORAGE_KEY, next);
+    listeners.emitWith(() => [{ ...next }]);
 }
 
 export function subscribeMapViewPreferences(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 export function _resetForTests(): void {

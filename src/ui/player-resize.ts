@@ -7,6 +7,7 @@
 // breaking legibility. We freeze the panel at a sensible default in CSS
 // instead (see --chart-height in viewer.css).
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { dom } from "./dom.js";
 import { isMobileLayout } from "./media-queries.js";
 import { attachPointerDrag } from "./pointer-drag.js";
@@ -54,14 +55,7 @@ function setMapPct(pct: number): number {
 }
 
 function restoreResizeState(): void {
-    // try/catch like every other localStorage round-trip (player-volume etc.):
-    // blocked storage (incognito quota) must not break player init.
-    let raw: string | null = null;
-    try {
-        raw = localStorage.getItem(MAP_PCT_KEY);
-    } catch {
-        /* storage blocked - default proportions */
-    }
+    const raw = readLocalStorage(MAP_PCT_KEY);
     const savedMapPct = parseFloat(raw || "");
     if (Number.isFinite(savedMapPct) && savedMapPct >= MAP_PCT_MIN && savedMapPct <= MAP_PCT_MAX) {
         dom.playerWrap.style.setProperty("--map-width", `${savedMapPct}%`);
@@ -137,11 +131,7 @@ export function initPlayerResize(): void {
             const raw = getComputedStyle(dom.playerWrap).getPropertyValue("--map-width").trim();
             const cur = parseFloat(raw);
             if (Number.isFinite(cur)) {
-                try {
-                    localStorage.setItem(MAP_PCT_KEY, String(cur));
-                } catch {
-                    /* storage blocked - proportions survive the session only */
-                }
+                writeLocalStorage(MAP_PCT_KEY, String(cur));
             }
             resizeDragging = null;
             dom.videoMapResize.classList.remove("dragging");
@@ -176,11 +166,7 @@ export function initPlayerResize(): void {
             next = currentMapPct() + (isRight ? -step : step);
         }
         const applied = setMapPct(next);
-        try {
-            localStorage.setItem(MAP_PCT_KEY, String(applied));
-        } catch {
-            /* storage blocked - proportions survive the session only */
-        }
+        writeLocalStorage(MAP_PCT_KEY, String(applied));
         scheduleLiveResize();
     });
 

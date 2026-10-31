@@ -15,6 +15,7 @@
 // Each signal clears itself: the "online" event clears the nav flag, a tile that
 // loads again clears the limbo flag - so recovery works for both paths.
 
+import { createSubscribers } from "../subscribers.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("connectivity");
@@ -27,7 +28,7 @@ let navOffline = false;
 let tileOffline = false;
 
 type OfflineListener = (offline: boolean) => void;
-const listeners = new Set<OfflineListener>();
+const listeners = createSubscribers<Parameters<OfflineListener>>("connectivity");
 
 // Last value broadcast, so emit() notifies ONLY on a real transition (the map
 // tile-ok path can fire on every loaded tile).
@@ -41,7 +42,7 @@ function emit(): void {
     const next = effectiveOffline();
     if (next === lastBroadcast) return;
     lastBroadcast = next;
-    for (const listener of listeners) listener(next);
+    listeners.emit(next);
 }
 
 /** Current effective offline state. */
@@ -55,9 +56,7 @@ export function isOffline(): boolean {
  * every change. Returns an unsubscribe function.
  */
 export function subscribeConnectivity(handler: OfflineListener): () => void {
-    listeners.add(handler);
-    handler(effectiveOffline());
-    return () => listeners.delete(handler);
+    return listeners.subscribe(handler, [effectiveOffline()]);
 }
 
 /**

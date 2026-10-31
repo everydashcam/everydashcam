@@ -13,6 +13,7 @@
 // loaded, which is fine - a browser too old to even run the bundle is handled by
 // the static landing + splash watchdog (see docs/browser-support.md).
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import {
     type CapabilityId,
     type CapabilityReport,
@@ -298,17 +299,9 @@ function markWebglSurfaced(): void {
 }
 
 function alreadyAcked(setKey: string): boolean {
-    try {
-        return localStorage.getItem(DEGRADED_DISMISS_KEY) === setKey;
-    } catch {
-        return false; // localStorage blocked (private mode) - show it this session
-    }
+    return readLocalStorage(DEGRADED_DISMISS_KEY) === setKey;
 }
 
 function ackDismiss(setKey: string): void {
-    try {
-        localStorage.setItem(DEGRADED_DISMISS_KEY, setKey);
-    } catch {
-        // Not persistable (private mode) - it will simply show again next session.
-    }
+    writeLocalStorage(DEGRADED_DISMISS_KEY, setKey);
 }

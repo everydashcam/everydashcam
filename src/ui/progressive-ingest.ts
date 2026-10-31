@@ -13,6 +13,7 @@ import {
 import { bindRecordingLogs } from "../gps-time-association.js";
 import { applyStoredCameraTimezones } from "../camera-timezone.js";
 import { createLogger } from "../log.js";
+import { createSubscribers } from "../subscribers.js";
 import { captureSentryException, captureSentryMessage } from "../sentry.js";
 import { SLICE_COST_STREAM_ABOVE } from "../parsers/internal/mp4-walker.js";
 import { cameraFingerprint } from "../parsers/camera-fingerprint.js";
@@ -544,7 +545,7 @@ interface RecordingReadSession {
     candidatesByTrip: Map<number, VideoCandidate[]>;
     sourceFilesByTrip: Map<number, Set<File>>;
     processedSourceFiles: Set<File>;
-    progressListeners: Set<(file: File) => void>;
+    progressListeners: ReturnType<typeof createSubscribers<[File]>>;
     completion: Promise<void>;
     /** Trip-open callers awaiting selected-trip analysis, counted per trip so a
      *  newer click on another trip can preempt a shared background batch. */
@@ -667,7 +668,7 @@ function ensureRecordingReadSession(tripIndices: number[]): RecordingReadSession
         candidatesByTrip,
         sourceFilesByTrip,
         processedSourceFiles: new Set(),
-        progressListeners: new Set(),
+        progressListeners: createSubscribers<[File]>("recording-read-progress"),
         completion: Promise.resolve(),
         foregroundWaitersByTrip: new Map(),
         metadataReadFailed: false,
@@ -768,11 +769,12 @@ export async function prepareTripForPlayback(tripIdx: number, frameIdx?: number)
     };
     const progressDelay = schedulingPolicy.cadence === "idle" ? 0 : READ_PROGRESS_THRESHOLD_MS;
     let analysisSettled = false;
+    let unsubscribeProgress: (() => void) | undefined;
     const timer = setTimeout(() => {
         if (analysisSettled) return;
         progressShown = true;
         preparationToken = showTripPreparation(sourceFiles.size, () => session.controller.abort());
-        session.progressListeners.add(progressListener);
+        unsubscribeProgress = session.progressListeners.subscribe(progressListener);
         updateProgress();
     }, progressDelay);
     try {
@@ -783,7 +785,7 @@ export async function prepareTripForPlayback(tripIdx: number, frameIdx?: number)
         if (remainingWaiters > 0) session.foregroundWaitersByTrip.set(tripIdx, remainingWaiters);
         else session.foregroundWaitersByTrip.delete(tripIdx);
         clearTimeout(timer);
-        session.progressListeners.delete(progressListener);
+        unsubscribeProgress?.();
         if (progressShown) {
             hideTripPreparation(preparationToken);
         }
@@ -885,7 +887,7 @@ async function readRecordingData(
     const markSourceFileProcessed = (candidate: VideoCandidate, file: File): void => {
         if (session.processedSourceFiles.has(file)) return;
         session.processedSourceFiles.add(file);
-        for (const listener of session.progressListeners) listener(file);
+        session.progressListeners.emit(file);
         releaseCloneGroupMember(candidate);
         const tripIdx = tripByCandidate.get(candidate);
         if (tripIdx === undefined) return;

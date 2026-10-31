@@ -7,6 +7,7 @@
 // snapshotter reads the same cache and applies its own independent factor
 // (exportPanelState.overlayMap.labelScalePct).
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import type { StyleSpecification } from "maplibre-gl";
 
 import type { I18nKey } from "../i18n/keys.js";
@@ -27,27 +28,16 @@ function isMapLabelScale(value: number): value is MapLabelScale {
  *  the stored value is not one of the presets. */
 export function getMapLabelScale(): MapLabelScale {
     if (sessionLabelScale !== null) return sessionLabelScale;
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw !== null) {
-            const parsed = Number(raw);
-            if (isMapLabelScale(parsed)) return parsed;
-        }
-    } catch {
-        // private mode - fall through to the default.
-    }
-    return 1;
+    const raw = readLocalStorage(STORAGE_KEY);
+    const parsed = raw === null ? NaN : Number(raw);
+    return isMapLabelScale(parsed) ? parsed : 1;
 }
 
 /** Persists the label-scale preference. The caller re-applies the style to the
  *  live maps (reapplyMapLabelPrefs in map.ts) - there are no subscribers. */
 export function setMapLabelScale(scale: MapLabelScale): void {
     sessionLabelScale = scale;
-    try {
-        localStorage.setItem(STORAGE_KEY, String(scale));
-    } catch {
-        // private mode - won't survive reload but works in this session.
-    }
+    writeLocalStorage(STORAGE_KEY, String(scale));
 }
 
 /** Street-name visibility presets: how aggressively road names are shown. */
@@ -84,24 +74,15 @@ function isStreetLabelDensity(value: string): value is StreetLabelDensity {
  *  when unset or the stored value is not one of the presets. */
 export function getStreetLabelDensity(): StreetLabelDensity {
     if (sessionStreetLabelDensity !== null) return sessionStreetLabelDensity;
-    try {
-        const raw = localStorage.getItem(DENSITY_STORAGE_KEY);
-        if (raw !== null && isStreetLabelDensity(raw)) return raw;
-    } catch {
-        // private mode - fall through to the default.
-    }
-    return "standard";
+    const raw = readLocalStorage(DENSITY_STORAGE_KEY);
+    return raw !== null && isStreetLabelDensity(raw) ? raw : "standard";
 }
 
 /** Persists the street-name density preference. The caller re-applies the
  *  style to the live maps (reapplyMapLabelPrefs in map.ts). */
 export function setStreetLabelDensity(density: StreetLabelDensity): void {
     sessionStreetLabelDensity = density;
-    try {
-        localStorage.setItem(DENSITY_STORAGE_KEY, String(density));
-    } catch {
-        // private mode - won't survive reload but works in this session.
-    }
+    writeLocalStorage(DENSITY_STORAGE_KEY, density);
 }
 
 export function _resetForTests(): void {

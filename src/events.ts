@@ -4,6 +4,7 @@
 // Kept separate from UI code so detection rules and thresholds can be
 // unit tested and tuned without touching app.ts.
 
+import { readLocalStorage, writeLocalStorage } from "./local-storage.js";
 import type { GpsRecord } from "./parser.js";
 
 /**
@@ -60,16 +61,11 @@ const STORAGE_KEY_BRAKE_THRESHOLD = "everydashcam:events:brakeThresholdG";
 
 /** Current brake threshold in g, or +Infinity when detection is disabled. */
 export function getBrakeThresholdG(): number {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY_BRAKE_THRESHOLD);
-        if (raw === null) return DEFAULT_BRAKE_G_THRESHOLD;
-        if (raw === "off") return Number.POSITIVE_INFINITY;
-        const n = Number(raw);
-        if (Number.isFinite(n) && n > 0) return n;
-    } catch {
-        // private mode - fall through to default.
-    }
-    return DEFAULT_BRAKE_G_THRESHOLD;
+    const raw = readLocalStorage(STORAGE_KEY_BRAKE_THRESHOLD);
+    if (raw === null) return DEFAULT_BRAKE_G_THRESHOLD;
+    if (raw === "off") return Number.POSITIVE_INFINITY;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_BRAKE_G_THRESHOLD;
 }
 
 /**
@@ -78,16 +74,10 @@ export function getBrakeThresholdG(): number {
  * Out-of-range values are clamped to [BRAKE_G_THRESHOLD_MIN, BRAKE_G_THRESHOLD_MAX].
  */
 export function setBrakeThresholdG(g: number): void {
-    try {
-        if (!Number.isFinite(g)) {
-            localStorage.setItem(STORAGE_KEY_BRAKE_THRESHOLD, "off");
-            return;
-        }
-        const clamped = Math.min(BRAKE_G_THRESHOLD_MAX, Math.max(BRAKE_G_THRESHOLD_MIN, g));
-        localStorage.setItem(STORAGE_KEY_BRAKE_THRESHOLD, String(clamped));
-    } catch {
-        // private mode - choice won't survive reload but works in this session.
-    }
+    const value = Number.isFinite(g)
+        ? String(Math.min(BRAKE_G_THRESHOLD_MAX, Math.max(BRAKE_G_THRESHOLD_MIN, g)))
+        : "off";
+    writeLocalStorage(STORAGE_KEY_BRAKE_THRESHOLD, value);
 }
 
 /**

@@ -4,6 +4,7 @@
 // localStorage, anchored to a recording's stable file identity. The resolved
 // preference is applied to each freshly-derived Trip at the regroup boundary.
 
+import { readLocalStorageJson, writeLocalStorageJson } from "./local-storage.js";
 import { isValidGpsFix, recordsHaveGps } from "./parser.js";
 import { usableCandidateRecords } from "./stale-gps.js";
 import { fileIdentityKey } from "./persist/identity.js";
@@ -61,30 +62,18 @@ function isStoredEntry(value: unknown): value is StoredTripGpsSync {
 function loadEntries(): StoredTripGpsSync[] {
     // A readable stale copy must not undo a calibration whose write failed.
     if (hasUnsavedEntries) return memoryEntries;
-    try {
-        const raw = localStorage.getItem(TRIP_SYNC_STORAGE_KEY);
-        if (raw === null) return memoryEntries;
-        const parsed: unknown = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return memoryEntries;
-        memoryEntries = parsed.filter(isStoredEntry).map((entry) => ({
-            ...entry,
-            ...(entry.offsetSec !== undefined ? { offsetSec: normalizeGpsOffsetSec(entry.offsetSec) } : {}),
-        }));
-    } catch {
-        // Corrupt/blocked storage falls back to the last valid session copy.
-    }
+    const parsed = readLocalStorageJson(TRIP_SYNC_STORAGE_KEY);
+    if (!Array.isArray(parsed)) return memoryEntries;
+    memoryEntries = parsed.filter(isStoredEntry).map((entry) => ({
+        ...entry,
+        ...(entry.offsetSec !== undefined ? { offsetSec: normalizeGpsOffsetSec(entry.offsetSec) } : {}),
+    }));
     return memoryEntries;
 }
 
 function saveEntries(entries: StoredTripGpsSync[]): void {
     memoryEntries = [...entries].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_STORED_TRIPS);
-    hasUnsavedEntries = true;
-    try {
-        localStorage.setItem(TRIP_SYNC_STORAGE_KEY, JSON.stringify(memoryEntries));
-        hasUnsavedEntries = false;
-    } catch {
-        // Storage blocked: preferences remain in memory for this session.
-    }
+    hasUnsavedEntries = !writeLocalStorageJson(TRIP_SYNC_STORAGE_KEY, memoryEntries);
 }
 
 function candidateIdentityKey(trip: Trip): string[] {

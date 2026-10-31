@@ -10,6 +10,7 @@
 // changes - mirrors the existing langchange subscription pattern.
 
 import type { I18nKey } from "./i18n/keys.js";
+import { readLocalStorage, writeLocalStorage } from "./local-storage.js";
 
 export type Units = "metric" | "imperial";
 
@@ -41,14 +42,10 @@ function detectDefault(): Units {
 /** Current preference; reads localStorage once on first call, then in-memory. */
 export function getUnits(): Units {
     if (cached !== null) return cached;
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored === "metric" || stored === "imperial") {
-            cached = stored;
-            return stored;
-        }
-    } catch {
-        // private mode - fall through to autodetect.
+    const stored = readLocalStorage(STORAGE_KEY);
+    if (stored === "metric" || stored === "imperial") {
+        cached = stored;
+        return stored;
     }
     cached = detectDefault();
     return cached;
@@ -62,11 +59,7 @@ export function setUnits(u: Units): void {
     if (cached === null) cached = getUnits();
     if (cached === u) return;
     cached = u;
-    try {
-        localStorage.setItem(STORAGE_KEY, u);
-    } catch {
-        // private mode - choice won't survive reload but works in this session.
-    }
+    writeLocalStorage(STORAGE_KEY, u);
     eventTarget.dispatchEvent(new CustomEvent<Units>(UNITS_CHANGE_EVENT, { detail: u }));
 }
 

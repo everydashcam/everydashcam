@@ -6,6 +6,7 @@
 // for zero parallelism. Notifications fan out to whoever subscribed; each
 // client filters by its own message type.
 
+import { createSubscribers } from "../subscribers.js";
 import type { TrackerWorkerContract } from "../workers/tracker-protocol.js";
 import type { WorkerMessage, WorkerRequestArguments } from "../workers/_protocol/worker-contract.js";
 
@@ -21,14 +22,13 @@ let client: TypedWorkerClient<TrackerWorkerContract> | null = null;
 export type WorkerNotification = WorkerMessage<TrackerWorkerContract["events"]>;
 
 type NotificationListener = (msg: WorkerNotification) => void;
-const notificationListeners = new Set<NotificationListener>();
+const notificationListeners = createSubscribers<Parameters<NotificationListener>>("tracker-notifications");
 
 /** Subscribes to ALL notifications of the shared worker (filter by msg.type).
  *  Survives a worker crash/recreate - the fan-out is module-level, not bound to
  *  one Worker instance. Returns unsubscribe. */
 export function subscribeTrackerWorkerNotifications(listener: NotificationListener): () => void {
-    notificationListeners.add(listener);
-    return () => notificationListeners.delete(listener);
+    return notificationListeners.subscribe(listener);
 }
 
 /** The shared worker client, (re)created on demand (and after a crash). */
@@ -44,7 +44,7 @@ export function trackerWorkerClient(): TypedWorkerClient<TrackerWorkerContract> 
             client = null;
         },
         onNotification: (msg) => {
-            for (const l of notificationListeners) l(msg);
+            notificationListeners.emit(msg);
         },
     });
     return client;

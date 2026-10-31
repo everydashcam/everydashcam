@@ -1,3 +1,5 @@
+import { createSubscribers } from "../subscribers.js";
+import { readLocalStorageJson, writeLocalStorageJson, removeLocalStorage } from "../local-storage.js";
 export const MAP_MARKER_SHAPES = ["arrow", "sedan", "suv", "motorcycle", "van", "truck"] as const;
 
 export type MapMarkerShape = (typeof MAP_MARKER_SHAPES)[number];
@@ -29,7 +31,7 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 let sessionAppearance: MapMarkerAppearance | null = null;
 type Listener = (appearance: MapMarkerAppearance) => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("map-marker");
 
 function isMapMarkerShape(value: unknown): value is MapMarkerShape {
     return typeof value === "string" && (MAP_MARKER_SHAPES as readonly string[]).includes(value);
@@ -56,13 +58,7 @@ export function normalizeMapMarkerAppearance(value: unknown): MapMarkerAppearanc
 }
 
 function readStoredAppearance(): MapMarkerAppearance {
-    try {
-        if (typeof localStorage === "undefined") return { ...DEFAULT_MAP_MARKER_APPEARANCE };
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw === null ? { ...DEFAULT_MAP_MARKER_APPEARANCE } : normalizeMapMarkerAppearance(JSON.parse(raw));
-    } catch {
-        return { ...DEFAULT_MAP_MARKER_APPEARANCE };
-    }
+    return normalizeMapMarkerAppearance(readLocalStorageJson(STORAGE_KEY));
 }
 
 export function getMapMarkerAppearance(): MapMarkerAppearance {
@@ -75,19 +71,12 @@ export function setMapMarkerAppearance(appearance: MapMarkerAppearance): void {
     const current = getMapMarkerAppearance();
     if (current.shape === next.shape && current.color === next.color && current.size === next.size) return;
     sessionAppearance = next;
-    try {
-        if (typeof localStorage !== "undefined") {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        }
-    } catch {
-        // Storage may be unavailable; the choice still survives this session.
-    }
-    for (const listener of listeners) listener({ ...next });
+    writeLocalStorageJson(STORAGE_KEY, next);
+    listeners.emitWith(() => [{ ...next }]);
 }
 
 export function subscribeMapMarkerAppearance(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    return listeners.subscribe(listener);
 }
 
 export function mapMarkerAppearanceKey(appearance: MapMarkerAppearance): string {
@@ -101,10 +90,5 @@ export function mapMarkerSizeScale(size: MapMarkerSize): number {
 export function _resetForTests(): void {
     sessionAppearance = null;
     listeners.clear();
-    try {
-        if (typeof globalThis.localStorage?.removeItem === "function") globalThis.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-        // Node can expose an unusable localStorage shim; the in-memory reset is
-        // the part tests and non-browser consumers rely on.
-    }
+    removeLocalStorage(STORAGE_KEY);
 }

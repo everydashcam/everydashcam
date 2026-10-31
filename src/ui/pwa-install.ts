@@ -1,6 +1,7 @@
 // Installation state and native prompt for the offline-use chooser, plus the
 // one-shot post-export toast and the fallback installation guide.
 
+import { createSubscribers } from "../subscribers.js";
 import { t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
 import { buildLucideIcon, SVG_NS } from "./icons.js";
@@ -68,7 +69,7 @@ let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let initialized = false;
 let installRevision = 0;
 let lastEmittedState: PwaInstallState = "unsupported";
-const stateListeners = new Set<(state: PwaInstallState) => void>();
+const stateListeners = createSubscribers<Parameters<(state: PwaInstallState) => void>>("pwa-install");
 
 // Unknown results must not clear a stored installation signal.
 let relatedAppsCheckPromise: Promise<boolean | null> | null = null;
@@ -218,16 +219,14 @@ export function getPwaInstallState(): PwaInstallState {
 }
 
 export function subscribePwaInstallState(listener: (state: PwaInstallState) => void): () => void {
-    stateListeners.add(listener);
-    listener(getPwaInstallState());
-    return () => stateListeners.delete(listener);
+    return stateListeners.subscribe(listener, [getPwaInstallState()]);
 }
 
 function emitInstallState(): void {
     const state = getPwaInstallState();
     if (state === lastEmittedState) return;
     lastEmittedState = state;
-    for (const listener of stateListeners) listener(state);
+    stateListeners.emit(state);
 }
 
 // --- DOM helpers ---

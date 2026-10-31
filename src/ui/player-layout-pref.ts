@@ -8,6 +8,7 @@
 // a fallback for recorders with no fingerprint), so two trips from the same
 // camera rig share an arrangement while a different rig gets its own.
 
+import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
 import type { Channel } from "../parsers/types.js";
 import { createLogger } from "../log.js";
 import { type Trip, tripAllCandidates } from "../trips.js";
@@ -63,35 +64,21 @@ export function reconcileStoredLayout(stored: StoredLayout | null, playableChann
 }
 
 function loadEntries(): Entry[] {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        // Be defensive against corrupted storage: drop malformed entries. The
-        // layout/channel DOMAINS are reconciled downstream (reconcileStoredLayout
-        // drops unknown channels and falls back to the default layout when
-        // layoutSlotCount doesn't recognize the stored layout), so here we only
-        // need the shapes right.
-        return parsed.filter(
-            (e): e is Entry =>
-                e &&
-                typeof e.key === "string" &&
-                typeof e.layout === "string" &&
-                Array.isArray(e.channelOrder) &&
-                e.channelOrder.every((c: unknown) => typeof c === "string"),
-        );
-    } catch {
-        return [];
-    }
+    const parsed = readLocalStorageJson(STORAGE_KEY);
+    if (!Array.isArray(parsed)) return [];
+    // Layout/channel domains are reconciled downstream; only validate shapes here.
+    return parsed.filter(
+        (e): e is Entry =>
+            e &&
+            typeof e.key === "string" &&
+            typeof e.layout === "string" &&
+            Array.isArray(e.channelOrder) &&
+            e.channelOrder.every((c: unknown) => typeof c === "string"),
+    );
 }
 
 function saveEntries(entries: Entry[]): void {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
-    } catch {
-        // private mode / quota - persistence is best-effort.
-    }
+    writeLocalStorageJson(STORAGE_KEY, entries.slice(0, MAX_ENTRIES));
 }
 
 /** Playable fingerprints + channels of a trip, for the camera-set key. */

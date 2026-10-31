@@ -1,3 +1,4 @@
+import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
 import { type CameraFlip, NO_CAMERA_FLIP, hasCameraFlip } from "../camera-flip.js";
 import type { Channel } from "../parsers/types.js";
 import type { Trip } from "../trips.js";
@@ -15,27 +16,22 @@ let tripKeys = new WeakMap<Trip, Partial<Record<Channel, string>>>();
 
 function loadEntries(): Entry[] {
     if (entries) return entries;
-    entries = [];
-    try {
-        const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-        if (Array.isArray(parsed)) {
-            entries = parsed
-                .filter(
-                    (entry: unknown): entry is Entry =>
-                        typeof entry === "object" &&
-                        entry !== null &&
-                        "key" in entry &&
-                        typeof entry.key === "string" &&
-                        "horizontal" in entry &&
-                        typeof entry.horizontal === "boolean" &&
-                        "vertical" in entry &&
-                        typeof entry.vertical === "boolean",
-                )
-                .slice(0, MAX_ENTRIES);
-        }
-    } catch {
-        // Unavailable or malformed storage must not block playback.
-    }
+    const parsed = readLocalStorageJson(STORAGE_KEY);
+    entries = Array.isArray(parsed)
+        ? parsed
+              .filter(
+                  (entry: unknown): entry is Entry =>
+                      typeof entry === "object" &&
+                      entry !== null &&
+                      "key" in entry &&
+                      typeof entry.key === "string" &&
+                      "horizontal" in entry &&
+                      typeof entry.horizontal === "boolean" &&
+                      "vertical" in entry &&
+                      typeof entry.vertical === "boolean",
+              )
+              .slice(0, MAX_ENTRIES)
+        : [];
     return entries;
 }
 
@@ -68,11 +64,7 @@ export function saveCameraFlip(channel: Channel, flip: CameraFlip, trip = active
     if (!key) return;
     const remaining = loadEntries().filter((entry) => entry.key !== key);
     entries = (hasCameraFlip(flip) ? [{ key, ...flip }, ...remaining] : remaining).slice(0, MAX_ENTRIES);
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-    } catch {
-        // Keep the in-memory choice when browser storage is unavailable.
-    }
+    writeLocalStorageJson(STORAGE_KEY, entries);
 }
 
 export function _resetForTests(): void {

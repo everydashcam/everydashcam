@@ -16,6 +16,8 @@
 // checkbox later cost just the face model). Downloads are opt-in and
 // remembered per FILE in localStorage. No UI here - the panel subscribes.
 
+import { readLocalStorage, writeLocalStorage, removeLocalStorage } from "../local-storage.js";
+import { createSubscribers } from "../subscribers.js";
 import { createLogger } from "../log.js";
 import type { AssetPart } from "../tracking/ort-assets.js";
 import { TRACKER_ASSETS } from "../tracking/asset-manifest.js";
@@ -88,13 +90,13 @@ const cachedAssets = new Set<string>();
 let cacheCheck: Promise<void> | null = null;
 
 type Listener = () => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("blur-assets");
 
 /** Subscribes to readiness/progress changes (panel strip re-render hook). */
 export function subscribeBlurAssets(listener: Listener): () => void {
-    listeners.add(listener);
+    const unsubscribe = listeners.subscribe(listener);
     cacheCheck ??= checkCachedAssets();
-    return () => listeners.delete(listener);
+    return unsubscribe;
 }
 
 async function checkCachedAssets(): Promise<void> {
@@ -115,7 +117,7 @@ async function checkCachedAssets(): Promise<void> {
 }
 
 function emit(): void {
-    for (const l of listeners) l();
+    listeners.emit();
 }
 
 function setState(phase: BlurAssetsPhase, progress: number, activeGroups: BlurAssetsState["activeGroups"]): void {
@@ -147,31 +149,17 @@ function assetsOf(groups: readonly BlurAssetGroupId[]): AssetPart[] {
 }
 
 function everDownloaded(url: string): boolean {
-    try {
-        // Keyed by the cache-busted URL, so a device only counts a file as pulled
-        // when it pulled THAT exact version - an onnxruntime upgrade or a
-        // re-exported model lands a new URL and re-prompts, honoring consent.
-        return localStorage.getItem(ASSET_DOWNLOADED_KEY_PREFIX + url) === "1";
-    } catch {
-        return false;
-    }
+    // The versioned URL keeps consent scoped to the exact asset download.
+    return readLocalStorage(ASSET_DOWNLOADED_KEY_PREFIX + url) === "1";
 }
 
 function rememberDownloaded(url: string): void {
-    try {
-        localStorage.setItem(ASSET_DOWNLOADED_KEY_PREFIX + url, "1");
-    } catch {
-        // Private mode / storage disabled: harmless, we just re-prompt next time.
-    }
+    writeLocalStorage(ASSET_DOWNLOADED_KEY_PREFIX + url, "1");
 }
 
 function forgetDownloaded(url: string): void {
     cachedAssets.delete(url);
-    try {
-        localStorage.removeItem(ASSET_DOWNLOADED_KEY_PREFIX + url);
-    } catch {
-        // Storage may be disabled independently of Cache Storage.
-    }
+    removeLocalStorage(ASSET_DOWNLOADED_KEY_PREFIX + url);
 }
 
 /** True once every asset of `groups` is warmed this session - the pass can run

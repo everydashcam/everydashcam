@@ -5,6 +5,7 @@
 // segments, fires the request, and folds the resulting keyframes back into the
 // region (unpinned - user pins stay authoritative, replaceGeneratedKeyframes).
 
+import { createSubscribers } from "../subscribers.js";
 import { combineAbortSignals } from "../abort-signals.js";
 import type { BlurRegion } from "../blur-regions.js";
 import { applyTrackResult, followSeed } from "../blur-follow.js";
@@ -81,16 +82,15 @@ subscribeBlurTripRegroup((oldTrips, newTrips) => {
 
 let passCounter = 0;
 type Listener = () => void;
-const passListeners = new Set<Listener>();
+const passListeners = createSubscribers<Parameters<Listener>>("blur-track");
 
 /** Subscribes to pass lifecycle/progress changes (panel re-render hook). */
 export function subscribeTrackPasses(listener: Listener): () => void {
-    passListeners.add(listener);
-    return () => passListeners.delete(listener);
+    return passListeners.subscribe(listener);
 }
 
 function notifyPassChanged(): void {
-    for (const l of passListeners) l();
+    passListeners.emit();
 }
 
 /** Running pass state for a region, or null. */
