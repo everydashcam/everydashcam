@@ -145,6 +145,41 @@ interface PerFileMseBackendOptions {
     onError?: (reason: string, error?: unknown) => void;
 }
 
+// A buffered range lost this far past currentTime counts as an eviction
+// ahead of playback; trims and quota removals always end behind currentTime.
+const EVICTION_AHEAD_TOLERANCE_SEC = 0.25;
+
+/** The MSE constructor a browser exposes, and whether it is the managed form. */
+interface MediaSourceRuntime {
+    readonly ctor: typeof MediaSource;
+    readonly managed: boolean;
+}
+
+/** TypeScript's DOM lib has no ManagedMediaSource types yet. */
+interface BufferedChangeEventLike extends Event {
+    readonly removedRanges?: TimeRanges;
+}
+
+/**
+ * Picks the MSE constructor. iPhone Safari exposes only ManagedMediaSource
+ * (17.1+); everywhere else classic MediaSource keeps its established behavior.
+ * The managed form subclasses MediaSource, so isTypeSupported and the
+ * SourceBuffer API are inherited unchanged. Null when neither exists.
+ */
+export function resolveMediaSourceRuntime(): MediaSourceRuntime | null {
+    const scope = globalThis as { MediaSource?: typeof MediaSource; ManagedMediaSource?: typeof MediaSource };
+    if (typeof scope.MediaSource === "function") return { ctor: scope.MediaSource, managed: false };
+    if (typeof scope.ManagedMediaSource === "function") return { ctor: scope.ManagedMediaSource, managed: true };
+    return null;
+}
+
+function timeRangesContain(ranges: TimeRanges, time: number): boolean {
+    for (let i = 0; i < ranges.length; i++) {
+        if (time >= ranges.start(i) && time < ranges.end(i)) return true;
+    }
+    return false;
+}
+
 type AppendOp =
     | { type: "data"; bytes: Uint8Array; videoKeyframeTimestamps?: number[] }
     | { type: "remove"; from: number; to: number };
@@ -170,13 +205,18 @@ export class PerFileMseBackend {
     // Worker init reply. Set by ensureWorkerReady, whether attach() or an
     // earlier prewarm() ran it.
     private initResult: InitResult | null = null;
+    private readonly mediaSourceRuntime = resolveMediaSourceRuntime();
     private mediaSource: MediaSource | null = null;
     private blobUrl: string | null = null;
     private sourceBuffer: SourceBuffer | null = null;
     private video: HTMLVideoElement | null = null;
+    // The element's own value, restored on dispose: native clips played on the
+    // same <video> later must keep AirPlay.
+    private savedDisableRemotePlayback: boolean | null = null;
     private tickInterval: ReturnType<typeof setInterval> | null = null;
     private trimInterval: ReturnType<typeof setInterval> | null = null;
     private updateEndHandler: (() => void) | null = null;
+    private bufferedChangeHandler: ((event: Event) => void) | null = null;
     private appendQueue: AppendOp[] = [];
     // updating can become false before updateend is dispatched. Keep the op
     // until its event so a late completion cannot confirm the next append.
@@ -312,6 +352,11 @@ export class PerFileMseBackend {
     private async ensureWorkerReady(): Promise<InitResult | null> {
         if (this.disposed || this.failed) return null;
         if (this.initResult) return this.initResult;
+        const runtime = this.mediaSourceRuntime;
+        if (!runtime) {
+            this.fail("media-source-unavailable");
+            return null;
+        }
         try {
             const worker = new Worker(new URL("./workers/per-file-mse-worker.ts", import.meta.url), {
                 type: "module",
@@ -334,7 +379,7 @@ export class PerFileMseBackend {
                 // Opus-in-MP4. Safari reports Opus unsupported and keeps the
                 // AAC path added specifically for it.
                 const adpcmPlaybackCodecs = this.transcodeAdpcmAudio
-                    ? getMseAdpcmPlaybackCodecs((mime) => MediaSource.isTypeSupported(mime))
+                    ? getMseAdpcmPlaybackCodecs((mime) => runtime.ctor.isTypeSupported(mime))
                     : undefined;
                 const initReq: InitRequestData = {
                     file: this._file,
@@ -370,7 +415,8 @@ export class PerFileMseBackend {
         this.video = video;
         try {
             const initResult = await this.ensureWorkerReady();
-            if (!initResult || !this.client) return;
+            const runtime = this.mediaSourceRuntime;
+            if (!initResult || !this.client || !runtime) return;
             if (this.disposed) return;
             let hasAudio = initResult.hasAudio;
             // Pick the mime the SourceBuffer will actually use. The combined
@@ -380,8 +426,8 @@ export class PerFileMseBackend {
             // Audio support is independent of video support, including copied
             // tracks. Keep playable video and make the worker's track set match.
             let codecMime = initResult.codecMime;
-            if (!MediaSource.isTypeSupported(codecMime)) {
-                if (hasAudio && MediaSource.isTypeSupported(initResult.videoOnlyMime)) {
+            if (!runtime.ctor.isTypeSupported(codecMime)) {
+                if (hasAudio && runtime.ctor.isTypeSupported(initResult.videoOnlyMime)) {
                     this.logger.warn("audio codec not MSE-playable, dropping audio and keeping video", {
                         file: this._file.name,
                         rejected: codecMime,
@@ -396,8 +442,15 @@ export class PerFileMseBackend {
             }
 
             // Phase 2: MediaSource open + SourceBuffer add.
-            this.mediaSource = new MediaSource();
+            this.mediaSource = new runtime.ctor();
             this.blobUrl = URL.createObjectURL(this.mediaSource);
+            if (runtime.managed) {
+                // WebKit opens a ManagedMediaSource on iPhone only when remote
+                // playback is disabled or an AirPlay alternative source exists;
+                // a local file has no such alternative.
+                this.savedDisableRemotePlayback = video.disableRemotePlayback;
+                video.disableRemotePlayback = true;
+            }
             const sourceOpenPromise = new Promise<void>((resolve, reject) => {
                 const ms = this.mediaSource!;
                 const t = setTimeout(() => reject(new Error("sourceopen-timeout")), SOURCE_OPEN_TIMEOUT_MS);
@@ -463,6 +516,12 @@ export class PerFileMseBackend {
                 this.sendTick();
             };
             this.sourceBuffer.addEventListener("updateend", this.updateEndHandler);
+            if (runtime.managed) {
+                // The feed ignores the managed `streaming` hint: worker
+                // backpressure already bounds the ahead window to seconds.
+                this.bufferedChangeHandler = (event) => this.onManagedBufferedChange(event);
+                this.sourceBuffer.addEventListener("bufferedchange", this.bufferedChangeHandler);
+            }
 
             // Phase 3: ask the worker to start feeding.
             const startNtf: StartFeedNotificationData = { cycleId: this.currentCycleId, startSec: this.startSec };
@@ -698,6 +757,10 @@ export class PerFileMseBackend {
                 /* ignore */
             }
         }
+        if (sb && this.bufferedChangeHandler) {
+            sb.removeEventListener("bufferedchange", this.bufferedChangeHandler);
+            this.bufferedChangeHandler = null;
+        }
         if (sb) {
             try {
                 if (sb.updating) sb.abort();
@@ -741,6 +804,10 @@ export class PerFileMseBackend {
                 this.video.load();
             } catch {
                 /* ignore */
+            }
+            if (this.savedDisableRemotePlayback !== null) {
+                this.video.disableRemotePlayback = this.savedDisableRemotePlayback;
+                this.savedDisableRemotePlayback = null;
             }
         }
         this.sourceBuffer = null;
@@ -842,6 +909,33 @@ export class PerFileMseBackend {
         } catch (e) {
             this.logger.warn("onError callback threw", e);
         }
+    }
+
+    /**
+     * A ManagedMediaSource may evict buffered media at any time (MSE spec,
+     * ManagedSourceBuffer memory cleanup). Keyframes inside removed ranges stop
+     * being trim anchors. Media lost ahead of currentTime is never re-fed - the
+     * worker has already moved past it - so playback would stall at the hole;
+     * refeed from the playhead instead. The only own removal reaching past
+     * currentTime is seekTo's full clear, which completes while its seek is
+     * still in flight.
+     */
+    private onManagedBufferedChange(event: Event): void {
+        if (this.disposed || this.failed) return;
+        const removed = (event as BufferedChangeEventLike).removedRanges;
+        if (!removed || removed.length === 0) return;
+        this.bufferedVideoKeyframes = this.bufferedVideoKeyframes.filter((time) => !timeRangesContain(removed, time));
+        if (this.pendingSeekPromise !== null || this.seekDoneResolver !== null || !this.video) return;
+        const ct = this.video.currentTime || 0;
+        const removedTo = removed.end(removed.length - 1);
+        if (removedTo <= ct + EVICTION_AHEAD_TOLERANCE_SEC) return;
+        this.logger.info("managed source evicted media ahead of playback, refeeding", {
+            file: this._file.name,
+            currentTime: ct,
+            removedFrom: removed.start(0),
+            removedTo,
+        });
+        void this.seekTo(ct);
     }
 
     private sendTick(): void {

@@ -96,6 +96,10 @@ below).
   [`combineAbortSignals`](../src/abort-signals.ts) otherwise. The fallback
   preserves the first abort reason, including `TimeoutError`, and
   releases its subscriptions when the operation ends.
+- MSE playback uses classic `MediaSource` when present and
+  `ManagedMediaSource` otherwise (iPhone), with remote playback disabled
+  while it is attached as WebKit requires; see
+  [`resolveMediaSourceRuntime`](../src/per-file-mse.ts).
 - Camera settings use native Popover API when available. Without it,
   [`player-camera-flip.ts`](../src/ui/player-camera-flip.ts) uses a hidden menu
   with keyboard and outside-pointer dismissal, hosted outside the clipped

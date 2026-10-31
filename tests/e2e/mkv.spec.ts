@@ -67,6 +67,47 @@ test.describe("mkv (matroska) container", () => {
         await shot(page, "mkv-01-playing");
     });
 
+    test("plays through ManagedMediaSource when classic MediaSource is absent", async ({ page }) => {
+        // iPhone Safari exposes only ManagedMediaSource. Chromium lacks it, so
+        // the classic constructor stands in under the managed name; this covers
+        // constructor selection and the remote-playback opt-out, not WebKit's
+        // own eviction policy.
+        await page.addInitScript(() => {
+            const scope = window as unknown as Record<string, unknown>;
+            scope.ManagedMediaSource = scope.MediaSource;
+            delete scope.MediaSource;
+        });
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_MKV);
+        await expect
+            .poll(
+                () =>
+                    page.evaluate(() => {
+                        const v = document.getElementById("player") as HTMLVideoElement | null;
+                        return v?.src.startsWith("blob:") ? v.readyState : 0;
+                    }),
+                { timeout: 15_000 },
+            )
+            .toBeGreaterThanOrEqual(2);
+        expect(
+            await page.evaluate(() => (document.getElementById("player") as HTMLVideoElement).disableRemotePlayback),
+            "managed media source requires remote playback to be disabled",
+        ).toBe(true);
+        await pausePlayback(page);
+        await page.evaluate(() => {
+            (document.getElementById("player") as HTMLVideoElement).currentTime = 0;
+        });
+        await expect
+            .poll(() => page.evaluate(() => !(document.getElementById("player") as HTMLVideoElement).seeking))
+            .toBe(true);
+        await page.locator("#player-play").click();
+        await expect
+            .poll(() => page.evaluate(() => (document.getElementById("player") as HTMLVideoElement).currentTime), {
+                timeout: 8000,
+            })
+            .toBeGreaterThan(0.25);
+    });
+
     test("exports to a valid MP4 (stream-copy, audio preserved)", async ({ page }) => {
         await loadTrip(page, SAMPLE_MKV);
         await openExport(page);
