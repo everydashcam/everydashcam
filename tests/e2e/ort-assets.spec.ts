@@ -73,94 +73,108 @@ async function runInference(page: Page) {
     );
 }
 
-test("split asyncify WASM runs real inference offline and repairs incomplete or corrupt caches", {
-    tag: ["@golden-blur", "@golden-offline"],
-}, async ({ page, context }) => {
-    test.setTimeout(120_000);
-    if (!("parts" in runtime.wasm)) throw new Error("this regression requires a split runtime");
-    const parts = runtime.wasm.parts;
-    expect(parts.length).toBeGreaterThan(1);
-    await presetLocalStorage(page, { lang: "en" });
-    await context.route(/^https?:\/\//, async (route) => {
-        const url = new URL(route.request().url());
-        if (url.origin !== "http://localhost:4173") return route.abort();
-        if (url.pathname === harnessUrl) return route.fulfill({ contentType: "text/javascript", body: harness });
-        if (url.pathname === bundleUrl)
-            return route.fulfill({
-                contentType: "text/javascript",
-                body: readFileSync(resolve(REPO_ROOT, "node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs")),
-            });
-        return route.continue();
-    });
-    await page.goto("/en/");
-    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-    // Match the production consent gate: it warms the module and every piece
-    // from the controlled main thread before starting an inference worker.
-    await page.evaluate(
-        async (urls) => Promise.all(urls.map(async (url) => (await fetch(url)).arrayBuffer())),
-        [...parts.map((part) => part.url), runtime.moduleUrl, assets.models.tracker],
-    );
-    const online = await runInference(page);
-    expect(online.ok, online.error).toBe(true);
-    expect(online.binaryReleased).toBe(true);
-    expect(online.loadedBinaryBytes, "the runtime is assembled only once for both sessions").toBe(runtime.wasm.bytes);
-    expect(online.retainedBinaryBytes, "Emscripten's retained views must no longer hold the source binary").toBe(0);
-    expect(Object.keys(online.outputs!)).toEqual(["output1", "output2", "output3"]);
-    expect(Object.values(online.outputs!).every((output) => output.finite)).toBe(true);
-    expect(online.reusedOutputs, "a new session can infer after the source binary is released").toEqual(online.outputs);
-    await expect
-        .poll(() =>
-            page.evaluate(
-                async (urls) => {
-                    const cache = await caches.open("everydashcam-tracker-v3");
-                    return Promise.all(urls.map(async (url) => !!(await cache.match(url))));
-                },
-                parts.map((part) => part.url),
-            ),
-        )
-        .toEqual(parts.map(() => true));
-
-    const cachedUrls = [harnessUrl, bundleUrl, runtime.moduleUrl, assets.models.tracker];
-    await expect
-        .poll(() =>
-            page.evaluate(
-                async (urls) => Promise.all(urls.map(async (url) => !!(await caches.match(url, { ignoreVary: true })))),
-                cachedUrls,
-            ),
-        )
-        .toEqual(cachedUrls.map(() => true));
-
-    const blocked: string[] = [];
-    const blockNetwork = (route: import("@playwright/test").Route) => {
-        blocked.push(route.request().url());
-        return route.abort("internetdisconnected");
-    };
-    await context.route(/^https?:\/\//, blockNetwork);
-    const offline = await runInference(page);
-    expect(offline, `a fresh worker uses cached bytes; network misses: ${blocked.join(", ")}`).toEqual(online);
-
-    await page.evaluate(async (url) => (await caches.open("everydashcam-tracker-v3")).delete(url), parts[1]!.url);
-    const missing = await runInference(page);
-    expect(missing.ok, "partial cache must never count as a usable runtime").toBe(false);
-    await context.unroute(/^https?:\/\//, blockNetwork);
-    expect(await runInference(page), "reconnection repairs the missing piece").toEqual(online);
-
-    await page.evaluate(async (url) => {
-        const cache = await caches.open("everydashcam-tracker-v3");
-        await cache.put(
-            url,
-            new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "application/octet-stream" } }),
+for (const listed of [true, false]) {
+    test(`split asyncify WASM repairs caches and infers offline with ${listed ? "published" : "development"} asset routing`, {
+        tag: ["@golden-blur", "@golden-offline"],
+    }, async ({ page, context }) => {
+        test.setTimeout(120_000);
+        if (!("parts" in runtime.wasm)) throw new Error("this regression requires a split runtime");
+        const parts = runtime.wasm.parts;
+        expect(parts.length).toBeGreaterThan(1);
+        await presetLocalStorage(page, { lang: "en" });
+        await context.route(/^https?:\/\//, async (route) => {
+            const url = new URL(route.request().url());
+            if (url.origin !== "http://localhost:4173") return route.abort();
+            // The dev worker has no injected tracker manifest. Exercise that route
+            // with real cache bodies and the same runtime integrity repair.
+            if (!listed && url.pathname === "/sw.js")
+                return route.fulfill({
+                    contentType: "text/javascript",
+                    body: readFileSync(resolve(REPO_ROOT, "public/sw.js")),
+                });
+            if (url.pathname === harnessUrl) return route.fulfill({ contentType: "text/javascript", body: harness });
+            if (url.pathname === bundleUrl)
+                return route.fulfill({
+                    contentType: "text/javascript",
+                    body: readFileSync(resolve(REPO_ROOT, "node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs")),
+                });
+            return route.continue();
+        });
+        await page.goto("/en/");
+        await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+        // Match the production consent gate: it warms the module and every piece
+        // from the controlled main thread before starting an inference worker.
+        await page.evaluate(
+            async (urls) => Promise.all(urls.map(async (url) => (await fetch(url)).arrayBuffer())),
+            [...parts.map((part) => part.url), runtime.moduleUrl, assets.models.tracker],
         );
-    }, parts[0]!.url);
-    expect(await runInference(page), "checksum failure bypasses and repairs the poisoned cache").toEqual(online);
-    await expect
-        .poll(() =>
-            page.evaluate(async (url) => {
-                const cached = await (await caches.open("everydashcam-tracker-v3")).match(url);
-                return cached ? (await cached.arrayBuffer()).byteLength : 0;
-            }, parts[0]!.url),
-        )
-        .toBe(parts[0]!.bytes);
-    await context.route(/^https?:\/\//, blockNetwork);
-    expect(await runInference(page), "the repaired bytes remain usable offline").toEqual(online);
-});
+        const online = await runInference(page);
+        expect(online.ok, online.error).toBe(true);
+        expect(online.binaryReleased).toBe(true);
+        expect(online.loadedBinaryBytes, "the runtime is assembled only once for both sessions").toBe(
+            runtime.wasm.bytes,
+        );
+        expect(online.retainedBinaryBytes, "Emscripten's retained views must no longer hold the source binary").toBe(0);
+        expect(Object.keys(online.outputs!)).toEqual(["output1", "output2", "output3"]);
+        expect(Object.values(online.outputs!).every((output) => output.finite)).toBe(true);
+        expect(online.reusedOutputs, "a new session can infer after the source binary is released").toEqual(
+            online.outputs,
+        );
+        await expect
+            .poll(() =>
+                page.evaluate(
+                    async (urls) => {
+                        const cache = await caches.open("everydashcam-tracker-v3");
+                        return Promise.all(urls.map(async (url) => !!(await cache.match(url))));
+                    },
+                    parts.map((part) => part.url),
+                ),
+            )
+            .toEqual(parts.map(() => true));
+
+        const cachedUrls = [harnessUrl, bundleUrl, runtime.moduleUrl, assets.models.tracker];
+        await expect
+            .poll(() =>
+                page.evaluate(
+                    async (urls) =>
+                        Promise.all(urls.map(async (url) => !!(await caches.match(url, { ignoreVary: true })))),
+                    cachedUrls,
+                ),
+            )
+            .toEqual(cachedUrls.map(() => true));
+
+        const blocked: string[] = [];
+        const blockNetwork = (route: import("@playwright/test").Route) => {
+            blocked.push(route.request().url());
+            return route.abort("internetdisconnected");
+        };
+        await context.route(/^https?:\/\//, blockNetwork);
+        const offline = await runInference(page);
+        expect(offline, `a fresh worker uses cached bytes; network misses: ${blocked.join(", ")}`).toEqual(online);
+
+        await page.evaluate(async (url) => (await caches.open("everydashcam-tracker-v3")).delete(url), parts[1]!.url);
+        const missing = await runInference(page);
+        expect(missing.ok, "partial cache must never count as a usable runtime").toBe(false);
+        await context.unroute(/^https?:\/\//, blockNetwork);
+        expect(await runInference(page), "reconnection repairs the missing piece").toEqual(online);
+
+        await page.evaluate(async (url) => {
+            const cache = await caches.open("everydashcam-tracker-v3");
+            await cache.put(
+                url,
+                new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "application/octet-stream" } }),
+            );
+        }, parts[0]!.url);
+        expect(await runInference(page), "checksum failure bypasses and repairs the poisoned cache").toEqual(online);
+        await expect
+            .poll(() =>
+                page.evaluate(async (url) => {
+                    const cached = await (await caches.open("everydashcam-tracker-v3")).match(url);
+                    return cached ? (await cached.arrayBuffer()).byteLength : 0;
+                }, parts[0]!.url),
+            )
+            .toBe(parts[0]!.bytes);
+        await context.route(/^https?:\/\//, blockNetwork);
+        expect(await runInference(page), "the repaired bytes remain usable offline").toEqual(online);
+    });
+}

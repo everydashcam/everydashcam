@@ -699,19 +699,19 @@ describe("service worker cache routes", () => {
         expect(sw.fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("replaces a corrupt tracker part when its loader requests reload", async () => {
+    it.each([true, false])("replaces a corrupt tracker part on integrity repair (listed: %s)", async (listed) => {
         const url = "/ort/current.wasm.part-0.bin";
-        const sw = loadSw({ trackerUrls: [url], tr: { [url]: res("corrupt") } });
+        const sw = loadSw({ trackerUrls: listed ? [url] : [], tr: { [url]: res("corrupt") } });
         const result = await sw.dispatchFetch(url, { "x-everydashcam-wasm-repair": "1" }, "same-origin", "reload");
         await result.settled();
         expect(result.response?._tag).toBe("network");
         expect((await sw.tr.match(url))?._tag).toBe("network");
     });
 
-    it("removes a poisoned tracker part even when the repair download is offline", async () => {
+    it.each([true, false])("removes a poisoned tracker part when repair is offline (listed: %s)", async (listed) => {
         const url = "/ort/current.wasm.part-0.bin";
         const sw = loadSw({
-            trackerUrls: [url],
+            trackerUrls: listed ? [url] : [],
             tr: { [url]: res("corrupt") },
             fetch: async () => {
                 throw new Error("offline");

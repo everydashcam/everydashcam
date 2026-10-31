@@ -243,8 +243,12 @@ self.addEventListener("fetch", (evt) => {
     ) {
         evt.respondWith(cacheFirst(req, evt));
     } else if (url.pathname.startsWith("/ort/") || url.pathname.startsWith("/models/")) {
+        // Dev URLs and assets introduced by a newer app are not in this
+        // worker's manifest. Integrity repair must bypass their stale cache too.
         evt.respondWith(
-            TRACKER_URLS.has(url.href) ? trackerCacheFirst(req, evt) : staleWhileRevalidate(req, evt, TRACKER, false),
+            TRACKER_URLS.has(url.href) || req.headers.get("x-everydashcam-wasm-repair") === "1"
+                ? trackerCacheFirst(req, evt)
+                : staleWhileRevalidate(req, evt, TRACKER, false),
         );
     } else {
         evt.respondWith(staleWhileRevalidate(req, evt));
