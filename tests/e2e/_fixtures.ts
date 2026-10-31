@@ -258,32 +258,44 @@ export { expect };
  */
 export async function presetLocalStorage(
     page: Page,
-    opts?: { theme?: "dark" | "light"; lang?: string },
+    opts?: { theme?: "dark" | "light"; lang?: string; preferences?: Record<string, string> },
 ): Promise<void> {
     const theme = opts?.theme ?? "dark";
     const lang = opts?.lang;
     await page.addInitScript(
-        ({ theme, lang, tourIds }) => {
-            try {
-                const now = String(Date.now());
-                localStorage.setItem("dc-theme", theme);
-                localStorage.setItem("everydashcam:upload-warning-shown-at", now);
-                localStorage.setItem("everydashcam:pwa:toast:shown", "1");
-                localStorage.setItem("everydashcam:pwa:toast:dismissedAt", now);
-                localStorage.setItem("everydashcam:support:action-taken", "1");
-                // Suppress the onboarding tours by default: their full-screen
-                // overlay blocks interaction and would break every spec that
-                // loads a trip / opens export. The onboarding spec clears these
-                // selectively via clearOnboarding() to test the first-run path.
-                for (const id of tourIds) {
-                    localStorage.setItem(`everydashcam:onboarding:${id}`, "1");
+        ({ theme, lang, tourIds, preferences }) => {
+            function seed(): void {
+                try {
+                    const now = String(Date.now());
+                    localStorage.setItem("dc-theme", theme);
+                    localStorage.setItem("everydashcam:upload-warning-shown-at", now);
+                    localStorage.setItem("everydashcam:pwa:toast:shown", "1");
+                    localStorage.setItem("everydashcam:pwa:toast:dismissedAt", now);
+                    localStorage.setItem("everydashcam:support:action-taken", "1");
+                    // Suppress the onboarding tours by default: their full-screen
+                    // overlay blocks interaction and would break every spec that
+                    // loads a trip / opens export. The onboarding spec clears these
+                    // selectively via clearOnboarding() to test the first-run path.
+                    for (const id of tourIds) {
+                        localStorage.setItem(`everydashcam:onboarding:${id}`, "1");
+                    }
+                    if (lang) localStorage.setItem("everydashcam:lang", lang);
+                    for (const [key, value] of Object.entries(preferences)) localStorage.setItem(key, value);
+                } catch {
+                    /* private mode - ignore */
                 }
-                if (lang) localStorage.setItem("everydashcam:lang", lang);
-            } catch {
-                /* private mode - ignore */
+            }
+            // On file URLs, pre-commit storage access can leave Chromium with a
+            // disconnected cache: reads succeed but miss saved values on reload.
+            // Seed after parsing, before the compressed portable app starts.
+            // https://github.com/chromium/chromium/blob/156.0.8078.4/content/browser/dom_storage/dom_storage_context_wrapper.cc#L326-L330
+            if (location.protocol === "file:" && document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", seed, { once: true });
+            } else {
+                seed();
             }
         },
-        { theme, lang, tourIds: ONBOARD_TOUR_IDS },
+        { theme, lang, tourIds: ONBOARD_TOUR_IDS, preferences: opts?.preferences ?? {} },
     );
 }
 
@@ -358,7 +370,10 @@ export async function loadTrip(page: Page, sampleDir: string = SAMPLE_70MAI): Pr
     await page.locator("#folder-input").setInputFiles(sampleDir);
     const firstTrip = page.locator("li.trip:not(.unindexed-note)").first();
     await expect(firstTrip, "a trip card must appear after ingest").toBeVisible({ timeout: 30_000 });
-    await firstTrip.click();
+    // Metadata updates replace provisional cards and can interrupt a click.
+    // Deferred GPS may wait for activation, so only wait for recording metadata.
+    await expect(firstTrip).not.toHaveAttribute("aria-busy", "true");
+    await firstTrip.locator(".trip-title").click();
     await page.waitForFunction(
         () => {
             const c = document.getElementById("player-chart-canvas") as HTMLCanvasElement | null;

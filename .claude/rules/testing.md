@@ -48,6 +48,20 @@ Verification gates live in [CLAUDE.md](../../CLAUDE.md).
   Read [the e2e guide](../../tests/e2e/README.md) for fixtures and browser setup.
 - Use the build-and-test npm scripts from `package.json`; do not run bare
   Playwright against stale build output.
+- Concurrent Playwright suites need disjoint `--output` directories: the hosted
+  default clears `tests/test-results/`, including a running portable suite's
+  traces. Do not rebuild `dist/` while another suite is using it.
+- Seed file-origin preferences through `presetLocalStorage(page, { preferences })`;
+  its implementation documents the Chromium navigation race. Do not access
+  `localStorage` directly in a portable test's `addInitScript` callback.
+- On macOS, give Playwright Firefox a separate app-data directory before its
+  first launch: `CFFIXED_USER_HOME="$(mktemp -d)" PW_FIREFOX=1 npm run test:e2e -- --project=firefox`.
+  A temporary `-profile` alone is insufficient: Firefox also accesses its shared
+  app-data directory, which macOS may protect. This causes `Could not find profile
+  folder` before any test runs ([upstream issue](https://github.com/microsoft/playwright/issues/42768)).
+  Use this isolated launch rather than reinstalling Firefox or changing permissions
+  on the user's browser data. It fixes startup only; inspect subsequent test
+  failures normally.
 
 ## Pixel artifacts
 

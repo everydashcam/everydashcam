@@ -11,9 +11,8 @@ import { openPortable, test } from "./_fixtures.js";
 test.use({ reducedMotion: "reduce" });
 
 test.beforeEach(async ({ page }, info) => {
-    await presetLocalStorage(page);
+    await presetLocalStorage(page, { preferences: { "everydashcam:hotkeys:seekStepSec": "0.5" } });
     await page.addInitScript(() => {
-        localStorage.setItem("everydashcam:hotkeys:seekStepSec", "0.5");
         window.addEventListener("dc:ready", () => window.__everydashcam.setMapProvider("route-only"), { once: true });
     });
     await openPortable(page, info.outputPath("recording-copies"));

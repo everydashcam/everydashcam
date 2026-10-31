@@ -4,9 +4,8 @@ import { expect } from "@playwright/test";
 import { openPortable, test } from "./_fixtures.js";
 
 test("file playback keeps its context and remembers panels below the video after reload", async ({ page }, info) => {
-    await presetLocalStorage(page);
+    await presetLocalStorage(page, { preferences: { "everydashcam:hotkeys:seekStepSec": "0.5" } });
     await page.addInitScript(() => {
-        localStorage.setItem("everydashcam:hotkeys:seekStepSec", "0.5");
         Object.defineProperty(Element.prototype, "requestFullscreen", { configurable: true, value: undefined });
         Object.defineProperty(Document.prototype, "fullscreenEnabled", { configurable: true, get: () => false });
         window.addEventListener("dc:ready", () => window.__everydashcam.setMapProvider("route-only"), { once: true });

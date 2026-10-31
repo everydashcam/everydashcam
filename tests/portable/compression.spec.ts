@@ -41,7 +41,6 @@ test("restores the compressed application once in the original file document", a
     void requests;
     await presetLocalStorage(page, { lang: "en" });
     await page.addInitScript(() => {
-        localStorage.setItem("dc-theme", "dark");
         const state = { originalDocument: document, readyCount: 0 };
         Object.defineProperty(window, "__portableCompressionProbe", { value: state });
         addEventListener("dc:ready", () => state.readyCount++);

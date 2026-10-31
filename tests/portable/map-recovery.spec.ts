@@ -124,6 +124,7 @@ test("persists explicit route-only mode without tile requests or reconnect probe
     await page.clock.resume();
     await page.reload();
     await expect(page.locator("html")).not.toHaveClass(/is-loading/);
+    expect(await page.evaluate(() => localStorage.getItem("everydashcam:mapProvider"))).toBe("route-only");
     await expect(page.locator("#settings-map-provider-select")).toHaveValue("route-only");
     await loadTrip(page, SAMPLE_70MAI);
     await expectLocalRoute(page);
