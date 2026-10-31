@@ -264,6 +264,8 @@ export const zhDict = {
     "sidebar.sort.options.size": "大小",
     "sidebar.sort.dir.desc": "降序",
     "sidebar.sort.dir.asc": "升序",
+    "sidebar.density.label": "列表视图",
+    "sidebar.density.cards": "大预览",
     "sidebar.density.rows": "紧凑列表",
     "sidebar.collapse": "隐藏行程列表",
     "sidebar.expand": "显示行程列表",

@@ -350,6 +350,8 @@ export type I18nKey =
     | "sidebar.sort.options.size"
     | "sidebar.sort.dir.desc"
     | "sidebar.sort.dir.asc"
+    | "sidebar.density.label"
+    | "sidebar.density.cards"
     | "sidebar.density.rows"
     | "sidebar.collapse"
     | "sidebar.expand"

@@ -265,6 +265,8 @@ export const plDict = {
     "sidebar.sort.options.size": "Rozmiar",
     "sidebar.sort.dir.desc": "Malejąco",
     "sidebar.sort.dir.asc": "Rosnąco",
+    "sidebar.density.label": "Widok listy",
+    "sidebar.density.cards": "Duże podglądy",
     "sidebar.density.rows": "Lista kompaktowa",
     "sidebar.collapse": "Ukryj listę przejazdów",
     "sidebar.expand": "Pokaż listę przejazdów",

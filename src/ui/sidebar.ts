@@ -28,6 +28,7 @@ import {
     formatDayHeading,
     formatDuration,
     formatMonthHeading,
+    formatTime,
     formatTimeRange,
     formatTripClockTitle,
     formatTripRowMeta,
@@ -148,6 +149,9 @@ const expandedParkingRuns = new Set<string>();
 // Section key per rendered section <li>, kept off the DOM like recordingFocusKeys:
 // parking-run keys carry recording identities.
 const groupKeys = new WeakMap<Element, string>();
+// Preview stack of each rendered parking run, keyed by the run's top trip, so a
+// preview that arrives later paints the run too. Rebuilt on every render.
+const parkingRunThumbs = new Map<Trip, HTMLElement>();
 // Recording identity of the active trip the list last revealed (revealActiveTrip).
 let revealedActiveKey: string | null = null;
 // Section ids only need to be unique within the document for aria-controls.
@@ -172,6 +176,7 @@ export function renderTrips(): void {
     const cardHeights = captureCollapsedCardHeights();
 
     dom.list.innerHTML = "";
+    parkingRunThumbs.clear();
     dom.list.classList.toggle("is-rows", state.tripListDensity === "rows");
     // Empty-state must stay in sync with the trip list so the player shows exactly when the first trip appears in the sidebar.
     syncEmptyState();
@@ -248,11 +253,18 @@ export function renderTrips(): void {
     };
     // Click handling is delegated in initSidebar (see dom.list listener). data-action attributes on header/chevron/file-li are sufficient.
 
-    // The floated favorites always get their own labelled section - in every
-    // sort mode, or they read as trips mysteriously out of order.
+    // The floated favorites always get their own section - in every sort mode,
+    // or they read as trips mysteriously out of order. It looks and folds like
+    // a month, so the list speaks one heading language.
     if (favoriteCount > 0) {
-        dom.list.appendChild(buildListSeparator(t("sidebar.bucket.favorites")));
-        appendCards(displayed.slice(0, favoriteCount), dom.list, false);
+        dom.list.appendChild(
+            buildBandSection(
+                "f:favorites",
+                t("sidebar.bucket.favorites"),
+                displayed.slice(0, favoriteCount),
+                appendCards,
+            ),
+        );
     }
     const rest = displayed.slice(favoriteCount);
     if (state.tripSortKey === "date") {
@@ -265,9 +277,12 @@ export function renderTrips(): void {
             dom.list.appendChild(buildMonthSection(month, appendCards));
         }
     } else {
-        // Under other sorts a single "everything else" label closes the favorites group.
-        if (favoriteCount > 0 && rest.length > 0) dom.list.appendChild(buildListSeparator(t("sidebar.bucket.others")));
-        appendCards(rest, dom.list, false);
+        // Under other sorts a single "everything else" section follows the favorites.
+        if (favoriteCount > 0 && rest.length > 0) {
+            dom.list.appendChild(buildBandSection("o:others", t("sidebar.bucket.others"), rest, appendCards));
+        } else {
+            appendCards(rest, dom.list, false);
+        }
     }
 
     if (state.unindexed.size > 0) {
@@ -296,12 +311,24 @@ export function renderTrips(): void {
 /** Appends cards for `entries`; `underDayHeading` lets a row drop the date its day heading shows. */
 type AppendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element, underDayHeading: boolean) => void;
 
-/** A plain heading row between top-level groups (favorites / everything else). */
-function buildListSeparator(label: string): HTMLLIElement {
-    const sep = document.createElement("li");
-    sep.className = "trip-date-sep";
-    sep.textContent = label;
-    return sep;
+/** A top-level section outside the months (favorites, everything else) in the month band style. */
+function buildBandSection(
+    key: string,
+    label: string,
+    entries: readonly { trip: Trip; idx: number }[],
+    appendCards: AppendCards,
+): HTMLLIElement {
+    const { section, list } = buildGroupSection(
+        key,
+        "trip-month",
+        [
+            textSpan("trip-group-toggle__label", label),
+            textSpan("trip-group-toggle__stats", tripsSummaryText(entries.map((entry) => entry.trip))),
+        ],
+        null,
+    );
+    appendCards(entries, list, false);
+    return section;
 }
 
 function textSpan(className: string, text: string): HTMLSpanElement {
@@ -384,13 +411,36 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
     const heading = formatDayHeading(day.year, day.month, day.day);
     const content: Node[] = [textSpan("trip-group-toggle__label", heading.relative ?? heading.date)];
     if (heading.relative) content.push(textSpan("trip-group-toggle__date", heading.date));
-    content.push(textSpan("trip-group-toggle__stats", tripsSummaryText(nodeTrips(day.nodes))));
+    content.push(buildDayStats(day));
     const { section, list } = buildGroupSection(day.key, "trip-day", content, buildDayStrip(day));
     for (const node of day.nodes) {
         if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list, true);
         else list.appendChild(buildParkingRun(node, appendCards));
     }
     return section;
+}
+
+/**
+ * A day heading's totals with a red dot when the day holds events (detected or
+ * event recordings) and a "P" when it holds parking, so a folded day still
+ * says whether it is worth opening.
+ */
+function buildDayStats(day: TripListDay): HTMLElement {
+    const entries = day.nodes.flatMap((node) => nodeEntries(node));
+    const stats = document.createElement("span");
+    stats.className = "trip-group-toggle__stats";
+    if (entries.some(({ trip, tripIdx }) => trip.events.length > 0 || renderedFilterFacts.get(tripIdx)?.event)) {
+        const dot = textSpan("trip-day__event-dot", "");
+        dot.setAttribute("aria-hidden", "true");
+        stats.appendChild(dot);
+    }
+    stats.append(tripsSummaryText(entries.map((entry) => entry.trip)));
+    if (entries.some(({ trip }) => trip.isParking)) {
+        const parking = textSpan("trip-day__parking-mark", t("trip.chip.parking"));
+        parking.setAttribute("aria-label", recordingModeLabel("parking"));
+        stats.appendChild(parking);
+    }
+    return stats;
 }
 
 /**
@@ -410,26 +460,43 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): H
         bytes += trip.totalBytes;
         events += trip.events.length;
     }
-    const tile = textSpan("trip-parking-run__tile", t("trip.chip.parking"));
-    tile.setAttribute("aria-hidden", "true");
-    const text = document.createElement("span");
-    text.className = "trip-parking-run__text";
-    text.append(
+    // A stack of previews: the top one is the run's first trip in list order,
+    // painted when its preview arrives (see updateTripPreview).
+    const thumb = document.createElement("span");
+    thumb.className = "trip-parking-run__thumb";
+    thumb.setAttribute("aria-hidden", "true");
+    thumb.appendChild(textSpan("trip-parking-run__count", `×${trips.length}`));
+    const top = trips[0]!;
+    if (top.previewDataUrl) applyTripPreviewBackground(thumb, top.previewDataUrl);
+    parkingRunThumbs.set(top, thumb);
+
+    const title = document.createElement("span");
+    title.className = "trip-parking-run__title";
+    const badge = textSpan("trip-parking-run__badge", t("trip.chip.parking"));
+    badge.setAttribute("aria-hidden", "true");
+    title.append(
+        badge,
         textSpan(
-            "trip-parking-run__title",
+            "trip-parking-run__range",
             t("sidebar.parkingRun.title", { range: formatTimeRange(first.startUtc, endUtc, first.cameraTzSec) }),
         ),
-        textSpan("trip-parking-run__meta", `${t("plurals.trip", { n: trips.length })} · ${formatBytes(bytes)}`),
     );
-    const content: Node[] = [tile, text];
+    const meta = document.createElement("span");
+    meta.className = "trip-parking-run__meta";
+    meta.append(`${t("plurals.trip", { n: trips.length })} · `);
     if (events > 0) {
-        const chip = document.createElement("span");
-        chip.className = "trip-parking-run__events";
-        chip.setAttribute("aria-label", t("trip.events.chip.title", { n: events }));
-        chip.append(cloneIcon(ALERT_ICON), textSpan("num mono", String(events)));
-        content.push(chip);
+        const eventCount = document.createElement("span");
+        eventCount.className = "trip-parking-run__events";
+        eventCount.setAttribute("aria-label", `${t("player.nav.events")}: ${events}`);
+        eventCount.append(cloneIcon(ALERT_ICON), String(events));
+        meta.append(eventCount, " · ");
     }
-    const { section, list } = buildGroupSection(node.key, "trip-parking-run", content, null);
+    meta.append(formatBytes(bytes));
+    const text = document.createElement("span");
+    text.className = "trip-parking-run__text";
+    text.append(title, meta);
+
+    const { section, list } = buildGroupSection(node.key, "trip-parking-run", [thumb, text], null);
     appendCards(
         node.entries.map((entry) => ({ trip: entry.trip, idx: entry.tripIdx })),
         list,
@@ -615,6 +682,10 @@ function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): H
     if (asRow) {
         previewHost.className = "trip-thumb";
         header.appendChild(previewHost);
+        // The row's duration rides on its preview, like a video thumbnail.
+        if (!provisional) {
+            previewHost.appendChild(textSpan("trip-thumb__duration", formatTime(trip.timeline.contentDurationSec)));
+        }
     }
     if (hasPreview && trip.previewDataUrl) {
         applyTripPreviewBackground(previewHost, trip.previewDataUrl);
@@ -669,19 +740,13 @@ function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): H
         failChip.className = "trip-vendor-badge warn";
         failChip.textContent = t("trip.chip.readFailed");
         badgeChips.push(failChip);
-    } else if (!provisional && !gpsPending && !recordsHaveGps(trip.records)) {
+    }
+    // A row says "no GPS" in its meta line, where the distance would be.
+    const noGps = !readFailed && !provisional && !gpsPending && !recordsHaveGps(trip.records);
+    if (noGps && !asRow) {
         const noGpsChip = document.createElement("span");
         noGpsChip.className = "trip-vendor-badge warn";
-        if (asRow) {
-            // A row has no room for the word; the glyph keeps the label for AT and hover.
-            noGpsChip.classList.add("is-icon");
-            noGpsChip.setAttribute("role", "img");
-            noGpsChip.setAttribute("aria-label", t("trip.chip.noGps"));
-            noGpsChip.title = t("trip.chip.noGps");
-            noGpsChip.appendChild(cloneIcon(PIN_OFF_ICON));
-        } else {
-            noGpsChip.textContent = t("trip.chip.noGps");
-        }
+        noGpsChip.textContent = t("trip.chip.noGps");
         badgeChips.push(noGpsChip);
     }
     const actions = buildTripActions(tripIdx, tripMeta?.isFavorite === true);
@@ -724,6 +789,11 @@ function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): H
     metaText.className = "trip-meta-text";
     const loadingState = computeTripLoadingState(trip, tripIdx);
     metaText.textContent = asRow ? formatTripRowMeta(trip, loadingState) : formatTripMeta(trip, loadingState);
+    if (asRow && noGps) {
+        const noGpsNote = textSpan("trip-meta-nogps", t("trip.chip.noGps"));
+        noGpsNote.prepend(cloneIcon(PIN_OFF_ICON));
+        metaText.prepend(noGpsNote, " · ");
+    }
     if (loadingState === "gps-pending" || loadingState === "gps-inflight") {
         metaText.classList.add(`load-${loadingState}`);
     }
@@ -1265,6 +1335,8 @@ export function updateTripPreview(trip: Trip, dataUrl: string): void {
     // card now occupies that slot. A trip no longer in state.trips (orphaned
     // by a regroup) simply skips the paint; carryOverTripPreviews or the next
     // scheduled run covers its successor.
+    const runThumb = parkingRunThumbs.get(trip);
+    if (runThumb) applyTripPreviewBackground(runThumb, dataUrl);
     const tripIdx = state.trips.indexOf(trip);
     if (tripIdx < 0) return;
     const tripLi = dom.list.querySelector(`li.trip[data-trip-index="${tripIdx}"]`);
@@ -1341,7 +1413,9 @@ export function syncSortControls(): void {
 }
 
 function syncDensityControl(): void {
-    dom.tripDensity.setAttribute("aria-pressed", state.tripListDensity === "rows" ? "true" : "false");
+    for (const option of dom.tripDensity.querySelectorAll<HTMLButtonElement>("[data-density]")) {
+        option.setAttribute("aria-pressed", option.dataset.density === state.tripListDensity ? "true" : "false");
+    }
 }
 
 export function initSidebar(cb: SidebarCallbacks): void {
@@ -1349,8 +1423,11 @@ export function initSidebar(cb: SidebarCallbacks): void {
     initSidebarFilters(renderTrips);
     state.tripListDensity = readTripDensity();
     syncDensityControl();
-    dom.tripDensity.addEventListener("click", () => {
-        state.tripListDensity = state.tripListDensity === "rows" ? "cards" : "rows";
+    dom.tripDensity.addEventListener("click", (event) => {
+        const option = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-density]") : null;
+        const density = option?.dataset.density;
+        if ((density !== "cards" && density !== "rows") || density === state.tripListDensity) return;
+        state.tripListDensity = density;
         writeTripDensity(state.tripListDensity);
         syncDensityControl();
         renderTrips();

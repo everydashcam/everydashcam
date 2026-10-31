@@ -168,13 +168,13 @@ describe("compact row text", () => {
         expect(formatTripClockTitle(trip, false)).toBe("08:10");
     });
 
-    it("puts duration, distance and size on one line", () => {
+    it("puts distance and size on one line", () => {
         const trip = makeTrip(Date.UTC(2026, 9, 31, 8, 10) / 1000);
         (trip as { distanceKm: number }).distanceKm = 12;
         (trip as { totalBytes: number }).totalBytes = 300 * 1024 * 1024;
         const meta = formatTripRowMeta(trip);
         expect(meta).not.toContain("\n");
-        expect(meta.split(" · ")).toHaveLength(3);
+        expect(meta.split(" · ")).toHaveLength(2);
         expect(meta).toContain(formatTripDistance(12));
         expect(meta).toContain(formatBytes(300 * 1024 * 1024));
     });

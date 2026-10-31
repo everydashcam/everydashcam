@@ -274,6 +274,8 @@ export const koDict = {
     "sidebar.sort.options.size": "크기",
     "sidebar.sort.dir.desc": "내림차순",
     "sidebar.sort.dir.asc": "오름차순",
+    "sidebar.density.label": "목록 보기 방식",
+    "sidebar.density.cards": "큰 미리보기",
     "sidebar.density.rows": "간단히 보기",
     "sidebar.collapse": "주행 목록 숨기기",
     "sidebar.expand": "주행 목록 표시",

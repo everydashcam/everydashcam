@@ -769,16 +769,27 @@
                     <button id="trip-sort-dir" class="sort-btn" type="button"
                             data-i18n-attr="aria-label:sidebar.sort.dir.desc,title:sidebar.sort.dir.desc"
                             aria-label="Descending" title="Descending">↓</button>
-                    <!-- Compact rows instead of preview cards; pressed = rows. -->
-                    <button id="trip-density" class="sort-btn trip-density-btn" type="button" aria-pressed="false"
-                            data-i18n-attr="aria-label:sidebar.density.rows,title:sidebar.density.rows"
-                            aria-label="Compact list" title="Compact list">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <rect x="3" y="4" width="6" height="4" rx="1"/><rect x="3" y="10" width="6" height="4" rx="1"/>
-                            <rect x="3" y="16" width="6" height="4" rx="1"/><path d="M12 6h9"/><path d="M12 12h9"/><path d="M12 18h9"/>
-                        </svg>
-                    </button>
+                    <!-- List layout: preview cards or compact rows; the pressed one is in use. -->
+                    <div id="trip-density" class="density-toggle" role="group"
+                         data-i18n-attr="aria-label:sidebar.density.label" aria-label="List layout">
+                        <button class="density-toggle__option" type="button" data-density="cards" aria-pressed="true"
+                                data-i18n-attr="aria-label:sidebar.density.cards,title:sidebar.density.cards"
+                                aria-label="Large previews" title="Large previews">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/>
+                            </svg>
+                        </button>
+                        <button class="density-toggle__option" type="button" data-density="rows" aria-pressed="false"
+                                data-i18n-attr="aria-label:sidebar.density.rows,title:sidebar.density.rows"
+                                aria-label="Compact list" title="Compact list">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="4" width="6" height="4" rx="1"/><rect x="3" y="10" width="6" height="4" rx="1"/>
+                                <rect x="3" y="16" width="6" height="4" rx="1"/><path d="M12 6h9"/><path d="M12 12h9"/><path d="M12 18h9"/>
+                            </svg>
+                        </button>
+                    </div>
                     <!-- Collapse the whole trip list (desktop only; the mobile
                          drawer has the burger). Counterpart: #sidebar-expand,
                          the edge tab that brings the list back. -->

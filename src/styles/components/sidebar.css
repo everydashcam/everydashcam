@@ -330,11 +330,45 @@
     color: var(--fg);
     border-color: var(--accent);
 }
-/* A toggle among the sort controls (compact rows) shows its on state. */
-.sort-btn[aria-pressed="true"] {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent-ink);
+/* Cards / rows switch: two joined icon buttons, the one in use filled. */
+.density-toggle {
+    display: inline-flex;
+    flex-shrink: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-sm);
+}
+.density-toggle__option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    padding: 0 var(--dc-space-1);
+    border: 0;
+    background: transparent;
+    color: var(--fg-dim);
+    cursor: pointer;
+}
+.density-toggle__option + .density-toggle__option {
+    border-left: 1px solid var(--border);
+}
+.density-toggle__option:hover {
+    color: var(--fg);
+    background: var(--bg-hover);
+}
+.density-toggle__option[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--accent-contrast);
+}
+.density-toggle__option:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+@media (pointer: coarse) {
+    .density-toggle__option {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }
 /* Press feedback - :hover never fires on touch and base.css suppresses the OS
    tap flash, so without this the sort toggle reads as unresponsive on a phone. */
@@ -405,20 +439,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-.trip-date-sep {
-    color: var(--fg-mute);
-    font-family: var(--dc-font-heavy);
-    font-size: var(--dc-text-2xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: var(--dc-tracking-caps);
-    /* Extra top padding to set the date header apart from the card above. */
-    padding: var(--dc-space-2) var(--dc-space-1) var(--dc-space-1);
-}
-.trip-summary + .trip-date-sep {
-    margin-top: 0;
-}
-
 /* Date-sorted list: month and day sections (buildGroupSection in sidebar.ts).
    Both headers stick to the top of the sidebar while their section scrolls
    under them, the day header right below the month header. Each sticky header
@@ -461,8 +481,9 @@
 .trip-day {
     scroll-margin-top: calc(var(--trip-sticky-top) + var(--trip-month-header-h));
 }
-/* Months read as chapters: a filled caps band with air above it. Days are
-   plain lines inside, so the two levels never look alike. */
+/* Months (and the favorites / everything-else sections) are caps lines with a
+   rule under them and air above; days are plain bold lines inside, so the two
+   levels never look alike. */
 .trip-month:not(:first-child) {
     margin-top: var(--dc-space-4);
 }
@@ -470,7 +491,7 @@
     padding-top: var(--dc-space-1);
 }
 .trip-day:not(:first-child) {
-    margin-top: var(--dc-space-2);
+    margin-top: var(--dc-space-3);
 }
 .trip-group-toggle {
     display: flex;
@@ -491,13 +512,11 @@
 }
 .trip-month__header .trip-group-toggle {
     height: var(--trip-month-header-h);
-    padding: 0 var(--dc-space-2);
-    border-radius: var(--dc-radius-sm);
-    background: var(--bg-elev-2);
+    border-bottom: 1px solid var(--border);
     color: var(--fg);
     font-family: var(--dc-font-heavy);
     font-size: var(--dc-text-2xs);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: var(--dc-tracking-caps);
     text-transform: uppercase;
 }
@@ -541,7 +560,31 @@
 .trip-day__header .trip-group-toggle__label {
     color: var(--fg);
     font-size: var(--dc-text-sm);
-    font-weight: 600;
+    font-weight: 650;
+}
+/* Day totals markers: a red dot for events, a small "P" for parking. */
+.trip-day__event-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: var(--dc-space-1);
+    border-radius: 50%;
+    background: var(--err);
+    vertical-align: 1px;
+}
+.trip-day__parking-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 13px;
+    height: 13px;
+    margin-left: var(--dc-space-1);
+    border-radius: 2px;
+    background: var(--fg-dim);
+    color: var(--bg-elev);
+    font-family: var(--dc-font-ui);
+    font-size: 8.5px;
+    font-weight: 800;
+    vertical-align: -2px;
 }
 .trip-group-toggle__date {
     flex: 0 2 auto;
@@ -561,11 +604,13 @@
     font-variant-numeric: tabular-nums;
 }
 /* The day's 24-hour overview: footage spans and event ticks, with faint marks
-   every six hours. Stays visible while the day is collapsed. */
+   every six hours. Stays visible while the day is collapsed. It starts under
+   the day label (past the caret) so it reads as part of the heading, not as a
+   progress bar across the list. */
 .trip-day__strip {
     position: relative;
-    height: 6px;
-    margin: 0 var(--dc-space-1);
+    height: 4px;
+    margin: 0 var(--dc-space-1) 0 calc(var(--dc-space-1) * 2 + 12px);
     overflow: hidden;
     border-radius: 2px;
     background:
@@ -591,182 +636,6 @@
     width: 2px;
     margin-left: -1px;
     background: var(--err);
-}
-/* Compact rows (state.tripListDensity "rows"): the same card controls laid out
-   in one line - a small preview with the star/pencil over it, the title over
-   the meta, the flags and the chevron. The star and pencil show on hover or
-   keyboard focus, and on an expanded row for touch; a favorite's star always
-   shows. Each property here undoes the hero card's absolute layout. */
-.trip-list.is-rows .trip:not(.expanded, .unindexed-note) {
-    contain-intrinsic-block-size: auto 46px;
-}
-.trip-list.is-rows .trip-header {
-    display: grid;
-    grid-template-columns: var(--trip-thumb-w) minmax(0, 1fr) auto auto;
-    grid-template-areas:
-        "thumb title flags chevron"
-        "thumb meta flags chevron";
-    column-gap: var(--dc-space-2);
-    align-items: center;
-    aspect-ratio: auto;
-    min-height: 0;
-    padding: var(--dc-space-1);
-}
-.trip-list.is-rows {
-    --trip-thumb-w: 64px;
-    --trip-thumb-h: 36px;
-}
-.trip-thumb {
-    grid-area: thumb;
-    position: relative;
-    width: var(--trip-thumb-w);
-    height: var(--trip-thumb-h);
-    overflow: hidden;
-    border-radius: var(--dc-radius-sm);
-    background: var(--bg-hover) center / cover no-repeat;
-}
-.trip-thumb .trip-no-preview-icon svg {
-    width: 16px;
-    height: 16px;
-}
-.trip-list.is-rows .trip-title,
-.trip-list.is-rows .trip-meta {
-    position: static;
-    min-width: 0;
-    color: var(--fg);
-    text-shadow: none;
-}
-.trip-list.is-rows .trip-title {
-    grid-area: title;
-    align-self: end;
-    font-size: var(--dc-text-sm);
-}
-.trip-list.is-rows .trip-meta {
-    grid-area: meta;
-    align-self: start;
-    color: var(--fg-dim);
-}
-.trip-list.is-rows .trip-meta .trip-meta-text {
-    white-space: nowrap;
-}
-.trip-row-flags {
-    grid-area: flags;
-    display: flex;
-    align-items: center;
-    gap: var(--dc-space-1);
-}
-.trip-vendor-badge.is-icon {
-    display: inline-flex;
-    padding: 2px;
-}
-.trip-list.is-rows .trip-chevron {
-    grid-area: chevron;
-    position: static;
-}
-.trip-thumb .trip-card-actions {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    align-items: flex-start;
-    gap: 2px;
-    padding: 2px;
-    visibility: hidden;
-}
-.trip-thumb .trip-card-action {
-    width: 22px;
-    height: 22px;
-}
-.trip-thumb .trip-card-action svg {
-    width: 12px;
-    height: 12px;
-}
-.trip-thumb .trip-fav.is-on,
-.trip-list.is-rows .trip:hover .trip-card-actions,
-.trip-list.is-rows .trip:focus-within .trip-card-actions,
-.trip-list.is-rows .trip.expanded .trip-card-actions {
-    visibility: visible;
-}
-@media (pointer: coarse) {
-    .trip-list.is-rows {
-        --trip-thumb-w: 76px;
-        --trip-thumb-h: 44px;
-    }
-    .trip-thumb .trip-card-action {
-        width: 26px;
-        height: 26px;
-    }
-}
-
-/* A run of parking trips (buildParkingRun): a compact framed row inside the
-   day, not another sticky header. Unfolding lists the run's own cards. */
-.trip-parking-run {
-    border: 1px solid var(--border);
-    border-radius: var(--dc-radius-md);
-    background: var(--bg-elev-2);
-}
-.trip-parking-run__header {
-    position: static;
-    background: transparent;
-}
-.trip-parking-run__header .trip-group-toggle {
-    height: auto;
-    min-height: 44px;
-    padding: var(--dc-space-1) var(--dc-space-2);
-    gap: var(--dc-space-2);
-    border-radius: inherit;
-}
-.trip-parking-run__tile {
-    flex: none;
-    display: inline-grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border: 1px solid color-mix(in srgb, var(--dc-blue) 60%, transparent);
-    border-radius: var(--dc-radius-sm);
-    background: color-mix(in srgb, var(--dc-blue) 12%, transparent);
-    color: var(--info-ink);
-    font-family: var(--dc-font-heavy);
-    font-size: var(--dc-text-sm);
-    font-weight: 800;
-}
-.trip-parking-run__text {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-width: 0;
-}
-.trip-parking-run__title,
-.trip-parking-run__meta {
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.trip-parking-run__title {
-    color: var(--fg);
-    font-size: var(--dc-text-sm);
-    font-weight: 600;
-}
-.trip-parking-run__meta {
-    color: var(--fg-mute);
-    font-size: var(--dc-text-2xs);
-    font-variant-numeric: tabular-nums;
-}
-.trip-parking-run__events {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px var(--dc-space-1);
-    border: 1px solid var(--err);
-    border-radius: var(--dc-radius-sm);
-    color: var(--err-ink);
-    font-size: var(--dc-text-2xs);
-}
-/* Every trip in a parking run is parking; the run's own tile already says so. */
-.trip-parking-run .trip-vendor-badge.parking {
-    display: none;
-}
-.trip-parking-run > .trip-group__list {
-    padding: 0 var(--dc-space-1) var(--dc-space-1);
 }
 @media (pointer: coarse) {
     .trip-list {
@@ -1710,4 +1579,344 @@
 .trip-meta .trip-meta-text {
     white-space: pre-line;
     line-height: 1.4;
+}
+
+/* =========================================================================
+   COMPACT ROWS (state.tripListDensity "rows") and PARKING RUNS
+   Rows reuse the card's DOM and controls; these rules undo the hero card's
+   absolute layout. A row is a flat list item: a small preview with its
+   duration, the title over a muted meta line, quiet flags and a chevron.
+   No frame or fill - a hover background, and the active row marked by a tint
+   and an accent edge. The star and pencil sit over the preview and show on
+   hover, keyboard focus or an expanded row (touch); a favorite's star always
+   shows.
+   ========================================================================= */
+.trip-list.is-rows {
+    --trip-thumb-w: 64px;
+    --trip-thumb-h: 36px;
+}
+.trip-list.is-rows,
+.trip-list.is-rows .trip-group__list {
+    gap: 0;
+}
+.trip-list.is-rows .trip {
+    border-color: transparent;
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+}
+.trip-list.is-rows .trip:hover {
+    border-color: transparent;
+    background: var(--bg-hover);
+}
+.trip-list.is-rows .trip.active,
+.trip-list.is-rows .trip.active:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+.trip-list.is-rows .trip.expanded {
+    background: var(--bg-elev-2);
+}
+.trip-list.is-rows .trip:not(.expanded, .unindexed-note) {
+    contain-intrinsic-block-size: auto 48px;
+}
+.trip-list.is-rows .trip-header {
+    display: grid;
+    grid-template-columns: var(--trip-thumb-w) minmax(0, 1fr) auto auto;
+    grid-template-areas:
+        "thumb title flags chevron"
+        "thumb meta flags chevron";
+    column-gap: 10px;
+    align-items: center;
+    aspect-ratio: auto;
+    min-height: 0;
+    padding: 6px var(--dc-space-1);
+    background-color: transparent;
+}
+.trip-list.is-rows .trip-header::after {
+    display: none;
+}
+.trip-thumb {
+    grid-area: thumb;
+    position: relative;
+    width: var(--trip-thumb-w);
+    height: var(--trip-thumb-h);
+    overflow: hidden;
+    border-radius: 5px;
+    background: var(--bg-active) center / cover no-repeat;
+}
+.trip-thumb .trip-no-preview-icon svg {
+    width: 16px;
+    height: 16px;
+}
+.trip-thumb__duration {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.62);
+    color: var(--dc-white);
+    font-family: var(--dc-font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 13px;
+}
+.trip-list.is-rows .trip-title,
+.trip-list.is-rows .trip-meta {
+    position: static;
+    min-width: 0;
+    text-shadow: none;
+}
+.trip-list.is-rows .trip-title {
+    grid-area: title;
+    align-self: end;
+    color: var(--fg);
+    font-family: var(--dc-font-body);
+    font-size: var(--dc-text-md);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+.trip-list.is-rows .trip-meta {
+    grid-area: meta;
+    align-self: start;
+    color: var(--fg-mute);
+}
+.trip-list.is-rows .trip-meta .trip-meta-text {
+    white-space: nowrap;
+}
+.trip-meta-nogps {
+    color: var(--warn-ink);
+}
+.trip-meta-nogps svg {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    margin-right: 2px;
+    vertical-align: -1.5px;
+}
+.trip-list.is-rows .trip-note {
+    padding-left: calc(var(--trip-thumb-w) + 10px + var(--dc-space-1));
+    font-size: var(--dc-text-xs);
+    font-style: italic;
+}
+.trip-row-flags {
+    grid-area: flags;
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+}
+/* Row flags: the event count as a red pill, parking as a small dark "P". */
+.trip-row-flags .trip-event-chip {
+    height: 18px;
+    padding: 0 5px;
+    border-width: 1.5px;
+    border-radius: var(--dc-radius-pill);
+    font-size: var(--dc-text-2xs);
+    font-weight: 700;
+}
+.trip-list.is-rows .trip-header .trip-vendor-badge.parking {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--fg-dim);
+    color: var(--bg-elev);
+    font-size: var(--dc-text-2xs);
+    font-weight: 800;
+    letter-spacing: 0;
+}
+.trip-list.is-rows .trip-chevron,
+.trip-list.is-rows .trip-header:not(.has-preview) .trip-chevron {
+    grid-area: chevron;
+    position: static;
+    width: 24px;
+    height: 24px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--fg-mute);
+}
+.trip-list.is-rows .trip-chevron:hover,
+.trip-list.is-rows .trip-header:not(.has-preview) .trip-chevron:hover {
+    background: var(--bg-active);
+    color: var(--fg);
+}
+.trip-thumb .trip-card-actions {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 2px;
+    visibility: hidden;
+}
+.trip-thumb .trip-card-action {
+    width: 22px;
+    height: 22px;
+}
+.trip-thumb .trip-card-action svg {
+    width: 12px;
+    height: 12px;
+}
+.trip-thumb .trip-fav.is-on,
+.trip-list.is-rows .trip:hover .trip-card-actions,
+.trip-list.is-rows .trip:focus-within .trip-card-actions,
+.trip-list.is-rows .trip.expanded .trip-card-actions {
+    visibility: visible;
+}
+@media (pointer: coarse) {
+    .trip-list.is-rows {
+        --trip-thumb-w: 76px;
+        --trip-thumb-h: 44px;
+    }
+    .trip-thumb .trip-card-action {
+        width: 26px;
+        height: 26px;
+    }
+}
+
+/* A run of parking trips (buildParkingRun): a row with a stack of previews
+   and the count, "P Parked 23:04 → 06:20", and a chevron on the right that
+   turns down when open. On cards it is framed like a card; in rows it is a
+   flat row and the open run's trips hang off a guide line. */
+.trip-parking-run {
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-md);
+    background: var(--bg-elev-2);
+}
+.trip-list.is-rows .trip-parking-run {
+    border-color: transparent;
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+}
+.trip-parking-run__header {
+    position: static;
+    background: transparent;
+}
+.trip-parking-run__header .trip-group-toggle {
+    height: auto;
+    min-height: 48px;
+    padding: 6px var(--dc-space-1);
+    gap: 10px;
+    border-radius: inherit;
+    color: var(--fg);
+}
+.trip-parking-run__header .trip-group-toggle:hover {
+    background: var(--bg-hover);
+}
+.trip-parking-run .trip-group-toggle__caret {
+    order: 1;
+    width: 16px;
+    height: 16px;
+    margin-left: auto;
+}
+.trip-parking-run__thumb {
+    position: relative;
+    flex: none;
+    width: var(--trip-thumb-w, 64px);
+    height: var(--trip-thumb-h, 36px);
+    border-radius: 5px;
+    background: var(--bg-active) center / cover no-repeat;
+}
+/* Two offset copies behind the preview read as a stack. */
+.trip-parking-run__thumb::before,
+.trip-parking-run__thumb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border: 1px solid var(--bg-elev);
+    border-radius: inherit;
+    background: inherit;
+}
+.trip-parking-run__thumb::before {
+    opacity: 0.45;
+    transform: translate(5px, -4px);
+}
+.trip-parking-run__thumb::after {
+    opacity: 0.7;
+    transform: translate(2.5px, -2px);
+}
+.trip-parking-run__header .trip-group-toggle {
+    isolation: isolate;
+}
+.trip-parking-run__count {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.62);
+    color: var(--dc-white);
+    font-family: var(--dc-font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 13px;
+}
+.trip-parking-run__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+.trip-parking-run__title,
+.trip-parking-run__meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trip-parking-run__title {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--dc-text-md);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+.trip-parking-run__range {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trip-parking-run__badge {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--fg-dim);
+    color: var(--bg-elev);
+    font-size: var(--dc-text-2xs);
+    font-weight: 800;
+}
+.trip-parking-run__meta {
+    color: var(--fg-mute);
+    font-size: var(--dc-text-xs);
+    font-variant-numeric: tabular-nums;
+}
+.trip-parking-run__events {
+    color: var(--err-ink);
+}
+.trip-parking-run__events svg {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 2px;
+    vertical-align: -1px;
+}
+/* Every trip in a parking run is parking; the run's own badge already says so.
+   Outranks the row rule that turns the chip into a "P" square. */
+.trip-list .trip-parking-run .trip-header .trip-vendor-badge.parking {
+    display: none;
+}
+.trip-parking-run > .trip-group__list {
+    padding: 0 var(--dc-space-1) var(--dc-space-1);
+}
+.trip-list.is-rows .trip-parking-run > .trip-group__list {
+    margin-left: calc(var(--dc-space-1) + 10px);
+    padding: 0 0 0 var(--dc-space-1);
+    border-left: 2px solid var(--border);
 }

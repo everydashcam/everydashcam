@@ -99,11 +99,14 @@ test("switches to compact rows and keeps the choice after a reload", async ({ pa
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
     await addRecordings(page);
-    const density = page.locator("#trip-density");
-    await expect(density).toHaveAttribute("aria-pressed", "false");
+    const rows = page.locator('#trip-density [data-density="rows"]');
+    const cards = page.locator('#trip-density [data-density="cards"]');
+    await expect(cards).toHaveAttribute("aria-pressed", "true");
+    await expect(rows).toHaveAttribute("aria-pressed", "false");
 
-    await density.click();
-    await expect(density).toHaveAttribute("aria-pressed", "true");
+    await rows.click();
+    await expect(rows).toHaveAttribute("aria-pressed", "true");
+    await expect(cards).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#trip-list")).toHaveClass(/is-rows/);
     // Under date sort the day heading names the date, so a row shows the clock only.
     const october = page.locator(".trip-month").first();
@@ -113,7 +116,7 @@ test("switches to compact rows and keeps the choice after a reload", async ({ pa
     expect(box?.height ?? 0).toBeLessThan(60);
 
     await page.reload();
-    await expect(page.locator("#trip-density")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('#trip-density [data-density="rows"]')).toHaveAttribute("aria-pressed", "true");
 });
 
 test("searches trips by date and clears the search with the filters", async ({ page }) => {

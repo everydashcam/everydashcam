@@ -265,6 +265,8 @@ export const ptDict = {
     "sidebar.sort.options.size": "Tamanho",
     "sidebar.sort.dir.desc": "Decrescente",
     "sidebar.sort.dir.asc": "Crescente",
+    "sidebar.density.label": "Visualização da lista",
+    "sidebar.density.cards": "Pré-visualizações grandes",
     "sidebar.density.rows": "Lista compacta",
     "sidebar.collapse": "Ocultar a lista de viagens",
     "sidebar.expand": "Mostrar a lista de viagens",

@@ -198,14 +198,14 @@ export function formatTimeRange(startUtc: number, endUtc: number, cameraTzSec: n
 }
 
 /**
- * One-line meta for a compact trip row: duration, distance and size. While
- * durations are provisional it shows the file count instead, like the card.
+ * One-line meta for a compact trip row: distance and size - the duration sits
+ * on the row's preview. While durations are provisional it shows the file
+ * count instead, like the card.
  */
 export function formatTripRowMeta(trip: Trip, loading: TripLoadingState = "loaded"): string {
     const sizePart = formatBytes(trip.totalBytes);
     if (recordingsPending(loading)) return `${t("plurals.file", { n: tripAllCandidates(trip).length })} · ${sizePart}`;
-    const distance = tripDistancePart(trip, loading);
-    return [formatDuration(trip.timeline.contentDurationSec), distance, sizePart].filter(Boolean).join(" · ");
+    return [tripDistancePart(trip, loading), sizePart].filter(Boolean).join(" · ");
 }
 
 /**

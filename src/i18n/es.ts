@@ -265,6 +265,8 @@ export const esDict = {
     "sidebar.sort.options.size": "Tamaño",
     "sidebar.sort.dir.desc": "Descendente",
     "sidebar.sort.dir.asc": "Ascendente",
+    "sidebar.density.label": "Vista de la lista",
+    "sidebar.density.cards": "Vistas previas grandes",
     "sidebar.density.rows": "Lista compacta",
     "sidebar.collapse": "Ocultar la lista de trayectos",
     "sidebar.expand": "Mostrar la lista de trayectos",

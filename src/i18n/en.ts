@@ -266,6 +266,8 @@ export const enDict = {
     "sidebar.sort.options.size": "Size",
     "sidebar.sort.dir.desc": "Descending",
     "sidebar.sort.dir.asc": "Ascending",
+    "sidebar.density.label": "List layout",
+    "sidebar.density.cards": "Large previews",
     "sidebar.density.rows": "Compact list",
     "sidebar.collapse": "Hide the trip list",
     "sidebar.expand": "Show the trip list",
