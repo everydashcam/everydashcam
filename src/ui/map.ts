@@ -14,9 +14,8 @@ import { formatSpeedReading } from "../gps-telemetry.js";
 import { syncMobileViewNav } from "./mobile-view-nav.js";
 import type * as maplibregl from "maplibre-gl";
 // Worker entry URL, resolved at build time to a string - the lib itself stays
-// out of the eager graph. `?worker&url` (not plain `?url`): the dist worker
-// imports a sibling shared chunk, and `?url` would emit the file verbatim
-// without it, so the worker dies on its first import and no tile ever loads.
+// out of the eager graph. Keep `?worker&url` so Vite builds the worker and the
+// portable plugin can embed its classic IIFE for file origins.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 
 import { probeWebGL } from "../capabilities.js";
