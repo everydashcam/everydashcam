@@ -33,7 +33,7 @@ import { planReverseCohorts, planReverseFrameIndices } from "../tracking/reverse
 import { canSeedDetection, DETECTION_POLICIES, detectionPolicy } from "../tracking/detector-policy.js";
 import { type TimeInterval, totalIntervalSec, unionIntervals } from "../tracking/interval-set.js";
 import { createFaceDetector } from "../tracking/face-detector.js";
-import type { OrtAssets } from "../tracking/ort-assets.js";
+import { type OrtAssets, ortAssetKey } from "../tracking/ort-assets.js";
 import { type OrtRuntime } from "../tracking/ort-runtime.js";
 import { createPlateDetector, PLATE_SCORE_MIN } from "../tracking/plate-detector.js";
 import { boxVisibleFraction, EXIT_CONFIRM_SEC, EXIT_VISIBLE_FRACTION } from "../tracking/track-guards.js";
@@ -93,7 +93,7 @@ async function getTrackerSession(
     modelUrl: string,
     assets: OrtAssets,
 ): Promise<VitTrackerSession> {
-    const key = `${ortRuntime}|${assets.wasm.parts[0]!.url}|${modelUrl}`;
+    const key = `${ortRuntime}|${ortAssetKey(assets)}|${modelUrl}`;
     const cached = cachedSessions.get(key);
     if (cached) return cached;
     const session = await VitTrackerSession.create(ortRuntime, modelUrl, assets);
@@ -112,7 +112,7 @@ const detectorFactories = { plate: createPlateDetector, face: createFaceDetector
 const cachedDetectors = new Map<DetectKind, { key: string; detector: FrameDetector }>();
 
 async function getDetector(kind: DetectKind, modelUrl: string, assets: OrtAssets): Promise<FrameDetector> {
-    const key = `${assets.wasm.parts[0]!.url}|${modelUrl}`;
+    const key = `${ortAssetKey(assets)}|${modelUrl}`;
     const cached = cachedDetectors.get(kind);
     if (cached?.key === key) return cached.detector;
     const detector = await detectorFactories[kind]("webgpu", modelUrl, assets);

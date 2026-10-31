@@ -1,8 +1,8 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DetectionQuality } from "../../src/tracking/detection-sampling.js";
 import type { TimeInterval } from "../../src/tracking/interval-set.js";
-import type { WireRequest, WireResponse } from "../../src/workers/_protocol/wire.js";
 import type { DetectKind, DetectRequestData, DetectResult } from "../../src/workers/tracker-protocol.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import { expect, hasWebGpuAdapter, REPO_ROOT, test } from "./_fixtures.js";
@@ -96,50 +96,40 @@ for (const scenario of [
         );
         await page.goto("/detection-cache-harness.html");
         test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - detection is WebGPU-only");
+        await installWorkerRpc(page);
         const measurements = await page.evaluate(
             async ({ scenario, bytes, workerUrl, assets }) => {
                 const worker = new Worker(workerUrl, { type: "module" });
                 const file = new File([new Uint8Array(bytes)], scenario.filename, { type: "video/mp4" });
-                let id = 0;
-                const run = (bounds: TimeInterval, cached?: DetectResult, kinds: DetectKind[] = [scenario.kind]) =>
-                    new Promise<DetectResult>((resolve, reject) => {
-                        const requestId = ++id;
-                        worker.onerror = (event) => reject(new Error(event.message));
-                        worker.onmessage = (event: MessageEvent<Partial<WireResponse>>) => {
-                            const message = event.data;
-                            if (message.__k !== "res" || message.id !== requestId) return;
-                            if (message.ok === true) resolve(message.result as DetectResult);
-                            else if (message.ok === false)
-                                reject(new Error(message.error?.message ?? "detection failed"));
-                            else reject(new Error("invalid detection response"));
-                        };
-                        const contentBounds = {
-                            startSec: scenario.tripStart + bounds.startSec,
-                            endSec: scenario.tripStart + bounds.endSec,
-                        };
-                        const data: DetectRequestData = {
-                            segments: [
-                                {
-                                    file,
-                                    startInFile: bounds.startSec,
-                                    endInFile: bounds.endSec,
-                                    tripStart: scenario.tripStart,
-                                },
-                            ],
-                            startContentSec: contentBounds.startSec,
-                            endContentSec: contentBounds.endSec,
-                            kinds,
-                            quality: scenario.quality,
-                            thresholds: { [scenario.kind]: scenario.threshold },
-                            analyzeIntervalsByKind: Object.fromEntries(kinds.map((kind) => [kind, [contentBounds]])),
-                            cachedAnalysisByKind: cached?.analysisByKind,
-                            plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
-                            faceModelUrl: new URL(assets.models.face.url, location.origin).href,
-                            trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
-                            ortAssets: assets.ort.webgpu,
-                        };
-                        worker.postMessage({ __k: "req", id: requestId, type: "detect", data } satisfies WireRequest);
-                    });
+                const rpc = window.__workerRpc.connect(worker);
+                const run = (bounds: TimeInterval, cached?: DetectResult, kinds: DetectKind[] = [scenario.kind]) => {
+                    const contentBounds = {
+                        startSec: scenario.tripStart + bounds.startSec,
+                        endSec: scenario.tripStart + bounds.endSec,
+                    };
+                    const data: DetectRequestData = {
+                        segments: [
+                            {
+                                file,
+                                startInFile: bounds.startSec,
+                                endInFile: bounds.endSec,
+                                tripStart: scenario.tripStart,
+                            },
+                        ],
+                        startContentSec: contentBounds.startSec,
+                        endContentSec: contentBounds.endSec,
+                        kinds,
+                        quality: scenario.quality,
+                        thresholds: { [scenario.kind]: scenario.threshold },
+                        analyzeIntervalsByKind: Object.fromEntries(kinds.map((kind) => [kind, [contentBounds]])),
+                        cachedAnalysisByKind: cached?.analysisByKind,
+                        plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
+                        faceModelUrl: new URL(assets.models.face.url, location.origin).href,
+                        trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
+                        ortAssets: assets.ort.webgpu,
+                    };
+                    return rpc.request<DetectResult>("detect", data);
+                };
                 try {
                     let previous = await run({ startSec: scenario.startSec, endSec: scenario.endSec });
                     const results = [];
@@ -176,7 +166,7 @@ for (const scenario of [
                     }
                     return results;
                 } finally {
-                    worker.terminate();
+                    rpc.dispose();
                 }
             },
             {

@@ -2,15 +2,15 @@
     "$schema": "https://unpkg.com/knip@6/schema.json",
     "vite": true,
     "entry": [
-        "scripts/*.mjs",
+        "scripts/*.{mjs,mts}",
         "src/dev-entry.ts",
         "src/parsers/__fixtures__/**/build-*.mjs",
-        "public/sw.js"
+        "src/sw.ts"
     ],
     "project": [
         "src/**/*.ts",
         "vite-plugins/**/*.ts",
-        "scripts/*.mjs",
+        "scripts/*.{mjs,mts}",
         "src/parsers/__fixtures__/**/build-*.mjs"
     ],
     "ignoreExportsUsedInFile": true,

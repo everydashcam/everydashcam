@@ -13,7 +13,7 @@ export async function prepareDevPage(): Promise<boolean> {
     // User preferences, annotations and map caches are independent of code.
     try {
         for (const name of await caches.keys()) {
-            if (/^everydashcam-(?:precache|runtime|tracker|releases)-/.test(name)) await caches.delete(name);
+            if (/^everydashcam-(?:precache|runtime|tracker|releases)(?:-|$)/.test(name)) await caches.delete(name);
         }
     } catch {
         /* Development still works when storage is disabled. */

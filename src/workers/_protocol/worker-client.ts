@@ -1,202 +1,99 @@
-// Main-thread client over a Web Worker endpoint. Handles:
-//  - request/response correlation by numeric id (counter, single-process - no
-//    UUID needed);
-//  - AbortSignal forwarding via WireAbort (worker side cancels its handler);
-//  - error propagation with serialized Error (name + message + stack);
-//  - push notifications from worker (worker → main events);
-//  - structured worker-level error / messageerror with filename:lineno:colno
-//    diagnostics (Firefox often delivers ev.message empty on module-load fail);
-//    a script-load failure (plain Event, no ErrorEvent fields) is detected and
-//    reported separately from a runtime crash;
-//  - automatic installWorkerLogBridge so worker `createLogger("...")` entries
-//    land in the main ring buffer (fixes the bug where frame-extract and
-//    per-file-mse silently lost their logs);
-//  - dispose() rejects pending requests so callers do not hang forever.
-//
-// The pool layer (worker-pool.ts) sits on top and handles lazy slot spawn,
-// sharding, and crash respawn via the onCrash hook.
-
+// Worker lifetime around Comlink RPC: application cancellation, crashes and
+// teardown settle callers immediately, independently of the remote operation.
+import { expose, wrap, type Endpoint, type Remote } from "comlink";
 import { createLogger, installWorkerLogBridge } from "../../log.js";
 import { captureSentryException } from "../../sentry.js";
 import { workerUnavailableError } from "./worker-error.js";
-
 import {
-    type WireAbort,
-    type WireNotification,
-    type WireRequest,
-    type WireResponse,
-    deserializeError,
-    isWireMessage,
-} from "./wire.js";
+    closeTransferredResources,
+    transferValue,
+    type WorkerCallbacks,
+    type WorkerNotification,
+    type WorkerService,
+} from "./worker-rpc.js";
 
 const log = createLogger("worker-client");
 
-/** Options that callers of `request` can pass per call. */
 export interface RequestOptions {
-    /**
-     * Cancellation signal. When it fires we post WireAbort to the worker,
-     * remove the pending entry, and reject the returned promise with a
-     * DOMException("AbortError"). A late reply from a worker that ignored
-     * the abort and finished anyway lands in handleResponse but finds no
-     * matching pending entry, so it is dropped quietly - the caller has
-     * already moved on and no longer wants the result.
-     */
     signal?: AbortSignal;
-    /**
-     * Transferables for the request payload (ArrayBuffer, ImageBitmap,
-     * MessagePort, WritableStream, ...). The structured-clone algorithm moves
-     * ownership; after postMessage the main side must not touch them.
-     */
     transfer?: Transferable[];
 }
-
-/** Options for a fire-and-forget notification. */
 export interface NotifyOptions {
     transfer?: Transferable[];
 }
-
-/** Constructor options for createWorkerClient. */
 export interface WorkerClientOptions {
-    /**
-     * Short name for logging only. Vite's worker-name option is set separately
-     * via `new Worker(url, { name })` and is what shows up in DevTools.
-     */
     name: string;
-    /**
-     * Handler for push events from the worker (worker → main, no id).
-     * Optional - some shims only do request/response.
-     */
-    onNotification?: (msg: WireNotification) => void;
-    /** Releases transferred resources in successful replies arriving after cancellation. */
+    onNotification?: (message: WorkerNotification) => void;
+    /** Reverse RPC, such as a worker requesting a map snapshot from the page. */
+    onRequest?: (type: string, data: unknown) => unknown | Promise<unknown>;
     onDiscardedResult?: (result: unknown) => void;
-    /**
-     * Called when the worker fires an `error` event (uncaught exception in
-     * worker scope, module-load failure). After onCrash returns the client
-     * is in a poisoned state: all pending requests have been rejected, new
-     * requests reject immediately. The pool uses this to swap in a fresh
-     * worker for the slot.
-     */
-    onCrash?: (err: Error) => void;
-    /** False when onCrash forwards even idle crashes into a recovery boundary
-     * that owns reporting, such as playback's retry-or-fail decision. */
+    onCrash?: (error: Error) => void;
     reportIdleCrash?: boolean;
 }
-
-/** The handle returned by createWorkerClient. */
 export interface WorkerClient {
-    /**
-     * Send a typed request, await the matching response. Throws (rejects)
-     * with the worker-side Error (deserialized, preserves stack) or with
-     * AbortError if the caller's signal fires before the response arrives.
-     */
     request<TResult = unknown>(type: string, data?: unknown, opts?: RequestOptions): Promise<TResult>;
-    /**
-     * Push a fire-and-forget message to the worker. No reply expected.
-     * Used for cancel-like operations (`dispose`, `tick`, `cancel`).
-     */
     notify(type: string, data?: unknown, opts?: NotifyOptions): void;
-    /**
-     * Terminate the worker and reject all pending requests with the given
-     * reason. Idempotent. After dispose() further request()/notify() reject
-     * or no-op respectively.
-     */
-    dispose(reason?: string): void;
-    /** True after dispose() or crash. */
+    /** A string cancels intentional teardown; an Error preserves a shared failure. */
+    dispose(reason?: string | Error): void;
     readonly disposed: boolean;
 }
-
-/**
- * Worker-like endpoint. We accept any object satisfying this shape so tests
- * can pass a mock without spinning up a real Worker.
- */
 export interface WorkerEndpoint {
     postMessage(message: unknown, transfer?: Transferable[]): void;
-    addEventListener(type: "message", listener: (ev: MessageEvent) => void): void;
-    addEventListener(type: "messageerror", listener: (ev: MessageEvent) => void): void;
-    addEventListener(type: "error", listener: (ev: ErrorEvent) => void): void;
-    removeEventListener(type: "message", listener: (ev: MessageEvent) => void): void;
-    removeEventListener(type: "messageerror", listener: (ev: MessageEvent) => void): void;
-    removeEventListener(type: "error", listener: (ev: ErrorEvent) => void): void;
+    addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
+    addEventListener(type: "messageerror", listener: (event: MessageEvent) => void): void;
+    addEventListener(type: "error", listener: (event: ErrorEvent) => void): void;
+    removeEventListener(type: "message", listener: (event: MessageEvent) => void): void;
+    removeEventListener(type: "messageerror", listener: (event: MessageEvent) => void): void;
+    removeEventListener(type: "error", listener: (event: ErrorEvent) => void): void;
     terminate(): void;
 }
-
-interface PendingEntry {
-    resolve: (value: unknown) => void;
-    reject: (err: Error) => void;
-    signal: AbortSignal | undefined;
-    abortListener: (() => void) | undefined;
+interface PendingRequest {
+    reject(error: Error): void;
+    detachAbort(): void;
 }
 
-/**
- * Wraps a Worker endpoint in a typed request/notify/dispose API.
- *
- * Counter-based ids: single-process counter is fine; collisions are not
- * possible within one client instance, and ids never leave the client.
- *
- * Order of installation inside the constructor matters - installWorkerLogBridge
- * goes first so a log message arriving during the very first tick still lands
- * in the ring buffer, even if the user's message handler had not been wired
- * yet.
- */
 export function createWorkerClient(endpoint: WorkerEndpoint, opts: WorkerClientOptions): WorkerClient {
-    const pending = new Map<number, PendingEntry>();
-    let nextId = 1;
+    // These ids identify cancellable work on the server. Comlink owns response
+    // correlation and error/transfer serialization.
+    let nextOperation = 1;
     let disposed = false;
-
-    // Casts are needed because installWorkerLogBridge is typed for Worker, but
-    // we accept any WorkerEndpoint shape. The bridge only uses addEventListener
-    // which is present on every conforming endpoint.
+    const pending = new Map<number, PendingRequest>();
+    const rpcListeners = new Map<EventListenerOrEventListenerObject, (event: MessageEvent) => void>();
+    const rpcEndpoint: Endpoint = {
+        postMessage(message, transfers) {
+            if (disposed) closeTransferredResources(transfers);
+            else endpoint.postMessage(message, transfers);
+        },
+        addEventListener(_type, listener) {
+            const handle = (event: MessageEvent) =>
+                typeof listener === "function" ? listener(event) : listener.handleEvent(event);
+            rpcListeners.set(listener, handle);
+            endpoint.addEventListener("message", handle);
+        },
+        removeEventListener(_type, listener) {
+            const handle = rpcListeners.get(listener);
+            if (handle) endpoint.removeEventListener("message", handle);
+            rpcListeners.delete(listener);
+        },
+    };
+    // The adapter matches the log bridge's message endpoint without requiring
+    // a native Worker (portable builds and protocol tests supply equivalents).
     installWorkerLogBridge(endpoint as unknown as Worker);
-
-    const handleMessage = (ev: MessageEvent): void => {
-        const data = ev.data;
-        if (!isWireMessage(data)) {
-            // log-bridge messages (__type: __everydashcam:log) and any unknown
-            // shape land here. The log bridge handles its own messages on a
-            // separate listener; everything else is foreign noise we ignore
-            // silently (would-be-warnings would flood with one entry per log).
-            return;
-        }
-        if (data.__k === "res") {
-            handleResponse(data);
-        } else if (data.__k === "ntf") {
-            if (opts.onNotification) {
-                try {
-                    opts.onNotification(data);
-                } catch (err) {
-                    log.warn("onNotification handler threw", { worker: opts.name, err: String(err) });
-                }
+    let remote: Remote<WorkerService> | null = wrap<WorkerService>(rpcEndpoint);
+    const callbacks: WorkerCallbacks = {
+        notify(type, data) {
+            try {
+                opts.onNotification?.({ type, data });
+            } catch (error) {
+                log.warn("onNotification handler threw", { worker: opts.name, err: String(error) });
             }
-        }
-        // "req" and "abort" are server-bound; if the worker is misconfigured
-        // and emits them, we drop silently.
+        },
+        async request(type, data) {
+            if (!opts.onRequest) throw new Error(`no reverse request handler for ${type}`);
+            return opts.onRequest(type, data);
+        },
     };
-
-    const handleResponse = (msg: WireResponse): void => {
-        const entry = pending.get(msg.id);
-        if (!entry) {
-            // Cancellation can race a response already transferred by the worker.
-            if (msg.ok && opts.onDiscardedResult) {
-                try {
-                    opts.onDiscardedResult(msg.result);
-                } catch (err) {
-                    log.warn("discarded result cleanup failed", {
-                        worker: opts.name,
-                        err: err instanceof Error ? err.message : String(err),
-                    });
-                }
-            }
-            return;
-        }
-        pending.delete(msg.id);
-        detachAbort(entry);
-        if (msg.ok) {
-            entry.resolve(msg.result);
-        } else {
-            entry.reject(deserializeError(msg.error));
-        }
-    };
-
+    expose(callbacks, rpcEndpoint);
     const handleError = (ev: ErrorEvent): void => {
         // Two failure shapes arrive here (HTML spec "run a worker"):
         //  - a runtime uncaught exception fires an ErrorEvent - the fields are
@@ -275,126 +172,106 @@ export function createWorkerClient(endpoint: WorkerEndpoint, opts: WorkerClientO
         crash(err);
     };
 
-    endpoint.addEventListener("message", handleMessage);
     endpoint.addEventListener("messageerror", handleMessageError);
     endpoint.addEventListener("error", handleError);
 
-    function detachAbort(entry: PendingEntry): void {
-        if (entry.signal && entry.abortListener) {
-            entry.signal.removeEventListener("abort", entry.abortListener);
-        }
-    }
-
-    function rejectAll(err: Error): void {
+    function rejectAll(error: Error): void {
         for (const entry of pending.values()) {
-            detachAbort(entry);
-            entry.reject(err);
+            entry.detachAbort();
+            entry.reject(error);
         }
         pending.clear();
     }
-
-    function detachEndpointListeners(): void {
-        endpoint.removeEventListener("message", handleMessage);
+    function teardown(): void {
+        for (const listener of rpcListeners.values()) endpoint.removeEventListener("message", listener);
+        rpcListeners.clear();
         endpoint.removeEventListener("messageerror", handleMessageError);
         endpoint.removeEventListener("error", handleError);
-    }
-
-    function crash(err: Error): void {
-        if (disposed) return;
-        disposed = true;
-        rejectAll(workerUnavailableError(err));
-        // Mirror dispose's teardown: real Worker objects GC away with their
-        // listener registry after terminate(), but in tests with paired
-        // endpoints the listeners would leak otherwise.
-        detachEndpointListeners();
+        // A terminated worker cannot acknowledge releaseProxy. Drop our proxy
+        // and both owned Comlink listeners so outstanding calls can be collected.
+        remote = null;
         try {
             endpoint.terminate();
         } catch {
-            // Already terminated by the engine after the error event - ignore.
-        }
-        if (opts.onCrash) {
-            try {
-                opts.onCrash(err);
-            } catch (cbErr) {
-                log.warn("onCrash handler threw", { worker: opts.name, err: String(cbErr) });
-            }
+            /* Already terminated by the engine. */
         }
     }
-
+    function crash(error: Error): void {
+        if (disposed) return;
+        disposed = true;
+        rejectAll(workerUnavailableError(error));
+        teardown();
+        try {
+            opts.onCrash?.(error);
+        } catch (cause) {
+            log.warn("onCrash handler threw", { worker: opts.name, err: String(cause) });
+        }
+    }
     return {
-        request<TResult = unknown>(type: string, data?: unknown, reqOpts?: RequestOptions): Promise<TResult> {
-            if (disposed) {
-                return Promise.reject(new Error(`${opts.name} disposed`));
-            }
-            const signal = reqOpts?.signal;
-            if (signal?.aborted) {
-                return Promise.reject(new DOMException("aborted", "AbortError"));
-            }
-            const id = nextId++;
+        request<TResult>(type: string, data?: unknown, requestOptions?: RequestOptions): Promise<TResult> {
+            if (disposed || !remote) return Promise.reject(new Error(`${opts.name} disposed`));
+            const signal = requestOptions?.signal;
+            if (signal?.aborted) return Promise.reject(new DOMException("aborted", "AbortError"));
+            const operation = nextOperation++;
+            const service = remote;
             return new Promise<TResult>((resolve, reject) => {
-                const entry: PendingEntry = {
-                    resolve: resolve as (value: unknown) => void,
-                    reject,
-                    signal,
-                    abortListener: undefined,
+                const onAbort = () => {
+                    const entry = pending.get(operation);
+                    if (!entry) return;
+                    pending.delete(operation);
+                    entry.detachAbort();
+                    reject(new DOMException("aborted", "AbortError"));
+                    void service.cancel(operation).catch(() => {});
                 };
-                if (signal) {
-                    entry.abortListener = () => {
-                        // Best-effort: tell the worker. Even if the worker is
-                        // mid-CPU and does not react until the next await, the
-                        // caller's promise rejects right now so UI does not
-                        // block on the worker.
-                        const abortMsg: WireAbort = { __k: "abort", id };
-                        try {
-                            endpoint.postMessage(abortMsg);
-                        } catch {
-                            // Endpoint already torn down - ignore.
-                        }
-                        const pendingEntry = pending.get(id);
-                        if (pendingEntry) {
-                            pending.delete(id);
-                            detachAbort(pendingEntry);
-                            reject(new DOMException("aborted", "AbortError"));
-                        }
-                    };
-                    signal.addEventListener("abort", entry.abortListener, { once: true });
-                }
-                pending.set(id, entry);
-                const req: WireRequest = { __k: "req", id, type, data };
+                const entry: PendingRequest = {
+                    reject,
+                    detachAbort: () => signal?.removeEventListener("abort", onAbort),
+                };
+                pending.set(operation, entry);
+                signal?.addEventListener("abort", onAbort, { once: true });
+                let resultPromise: Promise<unknown>;
                 try {
-                    endpoint.postMessage(req, reqOpts?.transfer ?? []);
-                } catch (err) {
-                    // postMessage throws on non-cloneable data (e.g. a closure
-                    // inside `data` by mistake). Clean up and reject - we do
-                    // not want a permanently-pending entry on a bug-shaped
-                    // call.
-                    pending.delete(id);
-                    detachAbort(entry);
-                    reject(err instanceof Error ? err : new Error(String(err)));
+                    resultPromise = service.run(operation, type, transferValue(data, requestOptions?.transfer));
+                } catch (cause) {
+                    pending.delete(operation);
+                    entry.detachAbort();
+                    reject(cause);
+                    return;
                 }
+                void resultPromise.then(
+                    (result) => {
+                        if (!pending.delete(operation)) {
+                            try {
+                                opts.onDiscardedResult?.(result);
+                            } catch (error) {
+                                log.warn("discarded result cleanup failed", { worker: opts.name, err: String(error) });
+                            }
+                            return;
+                        }
+                        entry.detachAbort();
+                        resolve(result as TResult);
+                    },
+                    (cause: unknown) => {
+                        if (!pending.delete(operation)) return;
+                        entry.detachAbort();
+                        reject(cause);
+                    },
+                );
             });
         },
-        notify(type: string, data?: unknown, ntfOpts?: NotifyOptions): void {
-            if (disposed) return;
-            const msg: WireNotification = { __k: "ntf", type, data };
-            try {
-                endpoint.postMessage(msg, ntfOpts?.transfer ?? []);
-            } catch (err) {
-                log.warn("notify postMessage threw", { worker: opts.name, type, err: String(err) });
-            }
+        notify(type, data, notifyOptions) {
+            if (!remote) return;
+            void remote.notify(type, transferValue(data, notifyOptions?.transfer)).catch((error: unknown) => {
+                if (!disposed) log.warn("worker notification failed", { worker: opts.name, type, err: String(error) });
+            });
         },
-        dispose(reason?: string): void {
+        dispose(reason) {
             if (disposed) return;
             disposed = true;
-            const err = new Error(reason ?? `${opts.name} disposed`);
-            err.name = "AbortError";
-            rejectAll(err);
-            detachEndpointListeners();
-            try {
-                endpoint.terminate();
-            } catch {
-                // ignore double terminate
-            }
+            rejectAll(
+                reason instanceof Error ? reason : new DOMException(reason ?? `${opts.name} disposed`, "AbortError"),
+            );
+            teardown();
         },
         get disposed() {
             return disposed;

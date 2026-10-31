@@ -229,6 +229,7 @@ export const frDict = {
     "status.offline.label": "Hors ligne",
     "status.offline.info": "Ce que ça veut dire",
     "status.offline.detail": "Le fond de carte ne se charge pas hors ligne. La vidéo, le graphique de vitesse et l'export fonctionnent toujours — et l'appli se met à jour toute seule dès que tu es de nouveau en ligne.",
+    "status.update.ready": "Une mise à jour est prête. Quand tu as terminé, ferme tous les onglets et fenêtres everydashcam, puis rouvre l’appli.",
 
     "notif.bell.aria": "Notifications",
     "notif.drawer.title": "Notifications",

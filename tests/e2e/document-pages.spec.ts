@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { buildServiceWorker } from "../helpers/service-worker-build.js";
 import { DESKTOP, MOBILE, expect, shot, test } from "./_fixtures.js";
 
 for (const viewport of [DESKTOP, MOBILE]) {
@@ -43,13 +44,13 @@ test.describe("document upgrade with an installed worker", () => {
         // The pre-localized runtime changes the page language from ?lang= and
         // hides other articles. Its stable URL survives service-worker upgrades.
         const legacyRuntime = readFileSync("tests/e2e/__fixtures__/doc-lang-legacy.js", "utf8");
-        const worker = readFileSync("public/sw.js", "utf8");
+        const worker = await buildServiceWorker([]);
         await context.route("**/sw.js", (route) => route.fulfill({ contentType: "text/javascript", body: worker }));
         await page.goto("/en/terms/");
         await page.evaluate(async (cachedScript) => {
             await navigator.serviceWorker.register("/sw.js");
             await navigator.serviceWorker.ready;
-            const runtime = await caches.open("everydashcam-runtime-v3");
+            const runtime = await caches.open("everydashcam-runtime");
             await runtime.put(
                 "/doc-lang.js",
                 new Response(cachedScript, { headers: { "Content-Type": "text/javascript" } }),
@@ -70,7 +71,7 @@ test.describe("document upgrade with an installed worker", () => {
         await expect(page.locator("article")).toBeVisible();
         expect(
             await page.evaluate(async () =>
-                (await (await caches.open("everydashcam-runtime-v3")).match("/doc-lang.js"))?.text(),
+                (await (await caches.open("everydashcam-runtime")).match("/doc-lang.js"))?.text(),
             ),
         ).toBe(legacyRuntime);
     });

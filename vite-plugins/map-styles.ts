@@ -4,7 +4,15 @@ import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 
 /** One immutable directory pairs styles with the local sprites they reference. */
-export function computeMapStyles(root = process.cwd()) {
+export function computeMapStyles(command: "build" | "serve" = "build", root = process.cwd()) {
+    // Vite serves public files directly in dev, so edits are visible on reload.
+    // Only deployed styles need immutable URLs paired with their sprites.
+    if (command === "serve") {
+        return {
+            urls: { light: "/styles/light.json", dark: "/styles/dark.json", neon: "/styles/neon.json" },
+            files: new Map<string, Buffer>(),
+        };
+    }
     const source = resolve(root, "public/styles");
     const originals = new Map<string, Buffer>();
     for (const rel of readdirSync(source, { recursive: true }).map(String).sort()) {
@@ -33,15 +41,6 @@ export function mapStylesPlugin(assets: ReturnType<typeof computeMapStyles>): Pl
         configResolved(config) {
             outDir = resolve(config.root, config.build.outDir);
             build = config.command === "build";
-        },
-        configureServer(server) {
-            server.middlewares.use((req, res, next) => {
-                const url = (req.url ?? "").split("?")[0]!;
-                const bytes = assets.files.get(url);
-                if (!bytes) return next();
-                res.setHeader("content-type", url.endsWith(".json") ? "application/json" : "application/octet-stream");
-                res.end(bytes);
-            });
         },
         writeBundle() {
             if (!build) return;

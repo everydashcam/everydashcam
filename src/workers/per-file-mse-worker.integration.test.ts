@@ -10,7 +10,9 @@ import { createMseFixture } from "../../tests/helpers/mse-fixtures.js";
 import { findBox, iterBoxes, readHandlerType } from "../parsers/internal/mp4-walker.js";
 import { clampTsTrailingBytes } from "../ts-trailer.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
-import { isWireMessage, type WireMessage, type WireNotification } from "./_protocol/wire.js";
+import nodeEndpoint from "comlink/dist/esm/node-adapter.mjs";
+import { createWorkerClient, type WorkerEndpoint } from "./_protocol/worker-client.js";
+import type { WorkerNotification } from "./_protocol/worker-rpc.js";
 import type { FeedDoneNotificationData, MediaSegmentNotificationData } from "./per-file-mse-protocol.js";
 
 let tempDirectory: string;
@@ -31,20 +33,30 @@ beforeAll(async () => {
     await writeFile(
         join(tempDirectory, "endpoint.mjs"),
         `import { parentPort, workerData } from "node:worker_threads";
+        const listeners = new Map();
+        // Restore the browser's File clone semantics without inspecting RPC framing.
+        const restoreFiles = value => {
+            if (value instanceof Blob) return new File([value], workerData.fileName);
+            if (Array.isArray(value)) return value.map(restoreFiles);
+            if (value && Object.getPrototypeOf(value) === Object.prototype) {
+                return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, restoreFiles(item)]));
+            }
+            return value;
+        };
         globalThis.self = {
             postMessage(message, transfer) { parentPort.postMessage(message, transfer); },
             addEventListener(type, listener) {
-                if (type === "message") parentPort.on("message", data => {
-                    // Node 22 clones File as Blob; browser workers retain its name.
-                    if (data.__k === "req" && data.type === "init") {
-                        data.data.file = new File([data.data.file], workerData.fileName);
-                    }
-                    listener({ data });
-                });
-            }
+                const wrapped = data => listener({ data: restoreFiles(data) });
+                listeners.set(listener, wrapped);
+                parentPort.on(type, wrapped);
+            },
+            removeEventListener(type, listener) {
+                parentPort.off(type, listeners.get(listener));
+                listeners.delete(listener);
+            },
         };
         await import("./worker.mjs");
-        parentPort.postMessage({ __k: "ntf", type: "ready" });`,
+        parentPort.postMessage({ ready: true });`,
     );
 });
 
@@ -64,13 +76,35 @@ async function openWorker(
 ) {
     const worker = new Worker(pathToFileURL(join(tempDirectory, "endpoint.mjs")), { workerData: { fileName } });
     workers.push(worker);
-    const events: WireMessage[] = [];
+    const events: WorkerNotification[] = [];
     const listeners = new Set<() => void>();
     let failure: Error | null = null;
+    let ready = false;
     worker.on("message", (message: unknown) => {
-        if (!isWireMessage(message)) return;
-        events.push(message);
+        if (typeof message === "object" && message !== null && "ready" in message) ready = true;
         for (const listener of listeners) listener();
+    });
+    const rpc = nodeEndpoint(worker);
+    const endpoint: WorkerEndpoint = {
+        postMessage: rpc.postMessage,
+        addEventListener(type, listener) {
+            if (type === "message") rpc.addEventListener(type, listener as EventListener);
+            else worker.on(type, listener);
+        },
+        removeEventListener(type, listener) {
+            if (type === "message") rpc.removeEventListener(type, listener as EventListener);
+            else worker.off(type, listener);
+        },
+        terminate() {
+            void worker.terminate();
+        },
+    };
+    const client = createWorkerClient(endpoint, {
+        name: "mse-integration",
+        onNotification(message) {
+            events.push(message);
+            for (const listener of listeners) listener();
+        },
     });
     worker.on("error", (error) => {
         failure = error instanceof Error ? error : new Error(String(error));
@@ -79,7 +113,7 @@ async function openWorker(
     const waitFor = (predicate: () => boolean): Promise<void> =>
         new Promise((resolve, reject) => {
             const finish = () => {
-                const errorMessage = events.find((event) => event.__k === "ntf" && event.type === "error");
+                const errorMessage = events.find((event) => event.type === "error");
                 if (failure || errorMessage) {
                     cleanup();
                     reject(failure ?? new Error(JSON.stringify(errorMessage)));
@@ -101,25 +135,19 @@ async function openWorker(
         });
     const media = (cycleId: number) =>
         events.filter(
-            (event): event is WireNotification =>
-                event.__k === "ntf" &&
-                event.type === "media-segment" &&
-                (event.data as MediaSegmentNotificationData).cycleId === cycleId,
+            (event): event is WorkerNotification =>
+                event.type === "media-segment" && (event.data as MediaSegmentNotificationData).cycleId === cycleId,
         );
-    const send = (type: string, data: unknown) => worker.postMessage({ __k: "ntf", type, data });
-    await waitFor(() => events.some((event) => event.__k === "ntf" && event.type === "ready"));
-    // Exercise filename restoration even on Node versions that can clone File.
-    worker.postMessage({ __k: "req", id: 1, type: "init", data: { file: new Blob([bytes]), startSec } });
-    await waitFor(() => events.some((event) => event.__k === "res"));
-    const init = events.find((event) => event.__k === "res");
-    expect(init, JSON.stringify(init)).toMatchObject({ ok: true });
+    const send = (type: string, data: unknown) => client.notify(type, data);
+    await waitFor(() => ready);
+    const init = await client.request("init", { file: new Blob([bytes]), startSec });
     send("start-feed", feedStartSec === undefined ? { cycleId: 0 } : { cycleId: 0, startSec: feedStartSec });
     return { events, waitFor, media, send, init };
 }
 
-async function readCycle(events: WireMessage[], cycleId: number) {
+async function readCycle(events: WorkerNotification[], cycleId: number) {
     const chunks = events.flatMap((event) => {
-        if (event.__k !== "ntf" || !["init-segment", "media-segment"].includes(event.type)) return [];
+        if (!["init-segment", "media-segment"].includes(event.type)) return [];
         const data = event.data as MediaSegmentNotificationData;
         return data.cycleId === cycleId ? [data.bytes] : [];
     });
@@ -162,7 +190,7 @@ describe("per-file MSE worker with real encoded packets", () => {
                 audioLeadSec: 1024 / 48000,
             }),
         );
-        expect(harness.init).toMatchObject({ result: { hasAudio: true } });
+        expect(harness.init).toMatchObject({ hasAudio: true });
         await harness.waitFor(() =>
             harness
                 .media(0)
@@ -175,7 +203,7 @@ describe("per-file MSE worker with real encoded packets", () => {
 
     it("keeps video playable when audio ends substantially earlier", async () => {
         const harness = await openWorker(await createMseFixture({ audioDurationSec: 0.4 }));
-        expect(harness.init).toMatchObject({ result: { hasAudio: false } });
+        expect(harness.init).toMatchObject({ hasAudio: false });
         await harness.waitFor(() => harness.media(0).length >= 5);
         const output = await readCycle(harness.events, 0);
         expect(output.duration).toBeGreaterThanOrEqual(5);
@@ -183,8 +211,8 @@ describe("per-file MSE worker with real encoded packets", () => {
 
     it("preserves matched audio despite ordinary codec padding differences", async () => {
         const harness = await openWorker(await createMseFixture({ gopCount: 2, audioDurationSec: 2 }));
-        expect(harness.init).toMatchObject({ result: { hasAudio: true } });
-        await harness.waitFor(() => harness.events.some((event) => event.__k === "ntf" && event.type === "feed-done"));
+        expect(harness.init).toMatchObject({ hasAudio: true });
+        await harness.waitFor(() => harness.events.some((event) => event.type === "feed-done"));
         expect((await readCycle(harness.events, 0)).duration).toBeCloseTo(2);
     });
 
@@ -193,8 +221,8 @@ describe("per-file MSE worker with real encoded packets", () => {
         // carry timestamps no audio packet ever reaches: the audio-lead gate
         // must release them when the audio feed ends, not wait forever.
         const harness = await openWorker(await createMseFixture({ gopCount: 2, audioDurationSec: 1.85 }));
-        expect(harness.init).toMatchObject({ result: { hasAudio: true } });
-        await harness.waitFor(() => harness.events.some((event) => event.__k === "ntf" && event.type === "feed-done"));
+        expect(harness.init).toMatchObject({ hasAudio: true });
+        await harness.waitFor(() => harness.events.some((event) => event.type === "feed-done"));
         const output = await readCycle(harness.events, 0);
         expect(output.duration).toBeCloseTo(2);
         expect(output.audioPackets.length).toBeGreaterThan(0);
@@ -218,8 +246,8 @@ describe("per-file MSE worker with real encoded packets", () => {
             view.setUint32(parent.payloadStart + 8 + i * 4, bytes.length + 1024);
         }
         const harness = await openWorker(bytes);
-        expect(harness.init).toMatchObject({ result: { hasAudio: false } });
-        await harness.waitFor(() => harness.events.some((event) => event.__k === "ntf" && event.type === "feed-done"));
+        expect(harness.init).toMatchObject({ hasAudio: false });
+        await harness.waitFor(() => harness.events.some((event) => event.type === "feed-done"));
         const output = await readCycle(harness.events, 0);
         expect(output.duration).toBeCloseTo(2);
         expect(output.audioConfig).toBeNull();
@@ -257,8 +285,8 @@ describe("per-file MSE worker with real encoded packets", () => {
             source.dispose();
         }
         const harness = await openWorker(bytes, 0, "sample.mkv");
-        expect(harness.init).toMatchObject({ result: { hasAudio: false } });
-        await harness.waitFor(() => harness.events.some((event) => event.__k === "ntf" && event.type === "feed-done"));
+        expect(harness.init).toMatchObject({ hasAudio: false });
+        await harness.waitFor(() => harness.events.some((event) => event.type === "feed-done"));
         const output = await readCycle(harness.events, 0);
         expect(output.duration).toBeCloseTo(videoDuration);
         expect(output.audioConfig).toBeNull();
@@ -321,14 +349,12 @@ describe("per-file MSE worker with real encoded packets", () => {
         }
 
         const harness = await openWorker(bytes, 0, "sample.ts");
-        expect(harness.init).toMatchObject({ result: { hasAudio: true, audioTranscoded: false } });
+        expect(harness.init).toMatchObject({ hasAudio: true, audioTranscoded: false });
         const waitForDone = (cycleId: number) =>
             harness.waitFor(() =>
                 harness.events.some(
                     (event) =>
-                        event.__k === "ntf" &&
-                        event.type === "feed-done" &&
-                        (event.data as FeedDoneNotificationData).cycleId === cycleId,
+                        event.type === "feed-done" && (event.data as FeedDoneNotificationData).cycleId === cycleId,
                 ),
             );
         harness.send("tick", { currentTime: 100, appendQueueLen: 0, playbackRate: 1 });

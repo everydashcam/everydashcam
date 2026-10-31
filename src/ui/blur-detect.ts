@@ -940,10 +940,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                     }
                     notify({
                         severity: "warn",
-                        messageKey:
-                            err instanceof Error && err.name === "AssetUnavailableError"
-                                ? "export.blur.tracker.update"
-                                : "export.blur.detect.failed",
+                        messageKey: "export.blur.detect.failed",
                     });
                 } else {
                     log.info("detect pass cancelled", { key: params.key });

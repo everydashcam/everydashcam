@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
@@ -6,7 +7,6 @@ import { applyTrackResult } from "../../src/blur-follow.js";
 import { createBlurRegion, MIN_ZONE_SPAN_SEC, regionRectAt, type BlurRegion } from "../../src/blur-regions.js";
 import { iou } from "../../src/tracking/detect-track.js";
 import type { CropRect } from "../../src/transcode/compose.js";
-import type { WireRequest, WireResponse } from "../../src/workers/_protocol/wire.js";
 import type { TrackRequestData, TrackResult } from "../../src/workers/tracker-protocol.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import type motionFixture from "../testdata/tracker-motion/motion.json";
@@ -125,38 +125,28 @@ async function runFollow(
         route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Tracker motion regression</title>" }),
     );
     await page.goto("/tracker-motion-harness.html");
+    await installWorkerRpc(page);
     const result = await page.evaluate(
         async ({ workerUrl, files, assets, seedRect, endContentSec }) => {
             const worker = new Worker(workerUrl, { type: "module" });
+            const rpc = window.__workerRpc.connect(worker);
             try {
-                return await new Promise<TrackResult>((resolve, reject) => {
-                    worker.onerror = (event) => reject(new Error(event.message));
-                    worker.onmessage = (event: MessageEvent<unknown>) => {
-                        if (!event.data || typeof event.data !== "object") return;
-                        const message = event.data as Partial<WireResponse>;
-                        if (message.__k !== "res" || message.id !== 1) return;
-                        if (message.ok === true) resolve(message.result as TrackResult);
-                        else if (message.ok === false)
-                            reject(new Error(message.error?.message ?? "tracker response failed"));
-                        else reject(new Error("invalid tracker response"));
-                    };
-                    const data: TrackRequestData = {
-                        segments: files.map((file) => ({
-                            file: new File([new Uint8Array(file.bytes)], file.name, { type: "video/mp4" }),
-                            startInFile: 0,
-                            endInFile: file.durationSec,
-                            tripStart: file.tripStart,
-                        })),
-                        seedContentSec: 0,
-                        seedRect,
-                        endContentSec,
-                        modelUrl: new URL(assets.models.tracker.url, location.origin).href,
-                        ortAssets: assets.ort.wasm,
-                    };
-                    worker.postMessage({ __k: "req", id: 1, type: "track", data } satisfies WireRequest);
-                });
+                const data: TrackRequestData = {
+                    segments: files.map((file) => ({
+                        file: new File([new Uint8Array(file.bytes)], file.name, { type: "video/mp4" }),
+                        startInFile: 0,
+                        endInFile: file.durationSec,
+                        tripStart: file.tripStart,
+                    })),
+                    seedContentSec: 0,
+                    seedRect,
+                    endContentSec,
+                    modelUrl: new URL(assets.models.tracker.url, location.origin).href,
+                    ortAssets: assets.ort.wasm,
+                };
+                return await rpc.request<TrackResult>("track", data);
             } finally {
-                worker.terminate();
+                rpc.dispose();
             }
         },
         { workerUrl: `/assets/${workers[0]!}`, files, assets, seedRect, endContentSec },

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { rolldown } from "rolldown";
+import { buildServiceWorker } from "../helpers/service-worker-build.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import { presetLocalStorage, REPO_ROOT } from "./_fixtures.js";
 
@@ -74,7 +75,7 @@ async function runInference(page: Page) {
     );
 }
 
-for (const routing of ["published", "unlisted", "legacy"] as const) {
+for (const routing of ["published", "runtime-only"] as const) {
     test(`split asyncify WASM repairs caches and infers offline with ${routing} asset routing`, {
         tag: ["@golden-blur", "@golden-offline"],
     }, async ({ page, context }) => {
@@ -82,22 +83,14 @@ for (const routing of ["published", "unlisted", "legacy"] as const) {
         if (!("parts" in runtime.wasm)) throw new Error("this regression requires a split runtime");
         const parts = runtime.wasm.parts;
         expect(parts.length).toBeGreaterThan(1);
+        const workerSource = routing === "runtime-only" ? await buildServiceWorker([]) : undefined;
         await presetLocalStorage(page, { lang: "en" });
         await context.route(/^https?:\/\//, async (route) => {
             const url = new URL(route.request().url());
             if (url.origin !== "http://localhost:4173") return route.abort();
-            // An older controlling worker may not list this build's assets.
-            // Exercise that route with real cache bodies and integrity repair.
-            if (routing !== "published" && url.pathname === "/sw.js")
-                return route.fulfill({
-                    contentType: "text/javascript",
-                    body: readFileSync(
-                        resolve(
-                            REPO_ROOT,
-                            routing === "legacy" ? "tests/helpers/legacy-tracker-sw.js" : "public/sw.js",
-                        ),
-                    ),
-                });
+            // Inference resources use a runtime cache even without a precache graph.
+            if (workerSource && url.pathname === "/sw.js")
+                return route.fulfill({ contentType: "text/javascript", body: workerSource });
             if (url.pathname === harnessUrl) return route.fulfill({ contentType: "text/javascript", body: harness });
             if (url.pathname === bundleUrl)
                 return route.fulfill({
@@ -106,10 +99,6 @@ for (const routing of ["published", "unlisted", "legacy"] as const) {
                         resolve(REPO_ROOT, "node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs"),
                     ),
                 });
-            if (routing === "legacy" && /^\/(?:ort|models)\//.test(url.pathname)) {
-                // A background refresh must not outrun the corruption check.
-                await new Promise((resolve) => setTimeout(resolve, 200));
-            }
             return route.continue();
         });
         await page.goto("/en/");
@@ -136,7 +125,7 @@ for (const routing of ["published", "unlisted", "legacy"] as const) {
             .poll(() =>
                 page.evaluate(
                     async (urls) => {
-                        const cache = await caches.open("everydashcam-tracker-v3");
+                        const cache = await caches.open("everydashcam-tracker");
                         return Promise.all(urls.map(async (url) => !!(await cache.match(url))));
                     },
                     parts.map((part) => part.url),
@@ -164,14 +153,14 @@ for (const routing of ["published", "unlisted", "legacy"] as const) {
         const offline = await runInference(page);
         expect(offline, `a fresh worker uses cached bytes; network misses: ${blocked.join(", ")}`).toEqual(online);
 
-        await page.evaluate(async (url) => (await caches.open("everydashcam-tracker-v3")).delete(url), parts[1]!.url);
+        await page.evaluate(async (url) => (await caches.open("everydashcam-tracker")).delete(url), parts[1]!.url);
         const missing = await runInference(page);
         expect(missing.ok, "partial cache must never count as a usable runtime").toBe(false);
         await context.unroute(/^https?:\/\//, blockNetwork);
         expect(await runInference(page), "reconnection repairs the missing piece").toEqual(online);
 
         await page.evaluate(async (url) => {
-            const cache = await caches.open("everydashcam-tracker-v3");
+            const cache = await caches.open("everydashcam-tracker");
             await cache.put(
                 url,
                 new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "application/octet-stream" } }),
@@ -181,7 +170,7 @@ for (const routing of ["published", "unlisted", "legacy"] as const) {
         await expect
             .poll(() =>
                 page.evaluate(async (url) => {
-                    const cached = await (await caches.open("everydashcam-tracker-v3")).match(url);
+                    const cached = await (await caches.open("everydashcam-tracker")).match(url);
                     return cached ? (await cached.arrayBuffer()).byteLength : 0;
                 }, parts[0]!.url),
             )
@@ -189,13 +178,13 @@ for (const routing of ["published", "unlisted", "legacy"] as const) {
         await context.route(/^https?:\/\//, blockNetwork);
         expect(await runInference(page), "the repaired bytes remain usable offline").toEqual(online);
         await page.evaluate(async (url) => {
-            await (await caches.open("everydashcam-tracker-v3")).put(url, new Response(new Uint8Array([9, 8, 7])));
+            await (await caches.open("everydashcam-tracker")).put(url, new Response(new Uint8Array([9, 8, 7])));
         }, assets.models.tracker.url);
         expect((await runInference(page)).ok, "a corrupt model must not reach ONNX even offline").toBe(false);
         await context.unroute(/^https?:\/\//, blockNetwork);
         expect(await runInference(page), "model integrity recovery uses the same loader as WASM").toEqual(online);
         await page.evaluate(async (url) => {
-            await (await caches.open("everydashcam-tracker-v3")).put(
+            await (await caches.open("everydashcam-tracker")).put(
                 url,
                 new Response("<html>old fallback</html>", {
                     headers: { "content-type": "text/html" },

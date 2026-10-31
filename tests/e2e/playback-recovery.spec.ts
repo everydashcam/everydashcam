@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,41 +63,32 @@ test.afterAll(async () => {
 });
 
 async function installMseFailure(page: Page, remaining = 0): Promise<void> {
-    await page.addInitScript((remaining) => {
-        const fault: RecoveryFault = {
-            remaining,
-            failNextSeek: false,
-            seekFailures: [],
-            requests: [],
-            emitFailure: () => {
-                throw new Error("mse worker not attached");
-            },
-            retiredFailure: null,
-        };
-        window.playbackRecoveryFault = fault;
-        const NativeWorker = window.Worker;
-        window.Worker = class extends NativeWorker {
-            private readonly isMse: boolean;
-            constructor(scriptURL: string | URL, options?: WorkerOptions) {
-                super(scriptURL, options);
-                this.isMse = options?.name === "per-file-mse-worker";
-                if (this.isMse)
-                    fault.emitFailure = () =>
-                        this.dispatchEvent(
-                            new MessageEvent("message", {
-                                data: { __k: "ntf", type: "error", data: { reason: "injected-playback-fault" } },
-                            }),
-                        );
-            }
-            override postMessage(message: unknown, options?: Transferable[] | StructuredSerializeOptions): void {
-                if (this.isMse && message && typeof message === "object" && "type" in message) {
-                    if (message.type === "init" && "data" in message) {
-                        const data = message.data as { file: File; startSec: number };
+    await installWorkerRpc(
+        page,
+        (remaining) => {
+            const fault: RecoveryFault = {
+                remaining,
+                failNextSeek: false,
+                seekFailures: [],
+                requests: [],
+                emitFailure: () => {
+                    throw new Error("mse worker not attached");
+                },
+                retiredFailure: null,
+            };
+            window.playbackRecoveryFault = fault;
+            window.__workerRpc.intercept(["per-file-mse-worker"], (worker) => {
+                fault.emitFailure = () => {
+                    void worker.notify("error", { reason: "injected-playback-fault" });
+                };
+                return (type, payload, forward) => {
+                    if (type === "init") {
+                        const data = payload as { file: File; startSec: number };
                         fault.requests.push({ file: data.file.name, startSec: data.startSec });
                     }
-                    if (message.type === "seek" && fault.failNextSeek && "data" in message) {
+                    if (type === "seek" && fault.failNextSeek) {
                         fault.failNextSeek = false;
-                        const target = (message.data as { startSec: number }).startSec;
+                        const target = (payload as { startSec: number }).startSec;
                         const emitFailure = fault.emitFailure;
                         queueMicrotask(() => {
                             const video = document.querySelector<HTMLVideoElement>("#player")!;
@@ -106,20 +98,18 @@ async function installMseFailure(page: Page, remaining = 0): Promise<void> {
                         });
                         return;
                     }
-                    // Metadata and MSE attachment stay real. Only the failing
-                    // feed notification is injected at the worker boundary.
-                    if (message.type === "start-feed" && fault.remaining > 0) {
+                    // Metadata and MSE attachment stay real; inject only the feed failure.
+                    if (type === "start-feed" && fault.remaining > 0) {
                         fault.remaining--;
-                        const emitFailure = fault.emitFailure;
-                        queueMicrotask(emitFailure);
+                        queueMicrotask(fault.emitFailure);
                         return;
                     }
-                }
-                if (Array.isArray(options)) super.postMessage(message, options);
-                else super.postMessage(message, options);
-            }
-        };
-    }, remaining);
+                    return forward();
+                };
+            });
+        },
+        remaining,
+    );
 }
 
 for (const locale of ["en", "ru"]) {

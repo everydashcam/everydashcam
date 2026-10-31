@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import type { Page } from "@playwright/test";
 import type { DetectResult } from "../../src/workers/tracker-protocol.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
@@ -21,96 +22,62 @@ test.use({ serviceWorkers: "block" });
 async function openBlurProgress(page: Page): Promise<void> {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
-    await page.addInitScript((urls: string[]) => {
-        // Exercise UI updates at the worker boundary without making inference
-        // speed or GPU availability part of this DOM contract. The real local
-        // asset bytes still pass the same integrity gate as production.
-        Object.defineProperty(navigator, "gpu", {
-            value: { requestAdapter: async () => ({}) },
-            configurable: true,
-        });
-        for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");
-        const NativeWorker = window.Worker;
-        let completeFutureDetections = false;
-        let detectionRequests = 0;
-        window.Worker = class extends NativeWorker {
-            private isTracker: boolean;
-            private progressData = new Map<string, object>();
-            private pendingDetections = new Set<number>();
-
-            constructor(scriptURL: string | URL, options?: WorkerOptions) {
-                super(scriptURL, options);
-                this.isTracker = options?.name === "tracker-worker";
-                if (!this.isTracker) return;
-                window.addEventListener("e2e:detect-empty-current", () => this.completeDetections());
+    await installWorkerRpc(
+        page,
+        (urls: string[]) => {
+            // Exercise UI updates at the worker boundary without making inference
+            // speed or GPU availability part of this DOM contract. The real local
+            // asset bytes still pass the same integrity gate as production.
+            Object.defineProperty(navigator, "gpu", {
+                value: { requestAdapter: async () => ({}) },
+                configurable: true,
+            });
+            for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");
+            let completeFutureDetections = false;
+            let detectionRequests = 0;
+            window.__workerRpc.intercept(["tracker-worker"], (worker) => {
+                const progressData = new Map<string, object>();
+                const pendingDetections = new Set<(result: DetectResult) => void>();
+                const completeDetections = () => {
+                    for (const resolve of pendingDetections)
+                        resolve({
+                            tracksByKind: {},
+                            statsByKind: {},
+                            sourceFrames: [],
+                            decodedFrames: 0,
+                            passMs: 0,
+                        });
+                    pendingDetections.clear();
+                };
+                window.addEventListener("e2e:detect-empty-current", completeDetections);
                 window.addEventListener("e2e:detect-empty", () => {
                     completeFutureDetections = true;
-                    this.completeDetections();
+                    completeDetections();
                 });
                 for (const type of ["track", "detect"]) {
                     window.addEventListener(`e2e:${type}-progress`, (event) => {
                         if (!(event instanceof CustomEvent) || typeof event.detail !== "number") return;
-                        const data = this.progressData.get(type);
+                        const data = progressData.get(type);
                         if (!data) throw new Error("blur request missing");
-                        this.dispatchEvent(
-                            new MessageEvent("message", {
-                                data: {
-                                    __k: "ntf",
-                                    type: `${type}-progress`,
-                                    data: { ...data, fractionDone: event.detail },
-                                },
-                            }),
-                        );
+                        void worker.notify(`${type}-progress`, { ...data, fractionDone: event.detail });
                     });
                 }
-            }
-
-            private completeDetections(): void {
-                const pending = [...this.pendingDetections];
-                this.pendingDetections.clear();
-                for (const id of pending) {
-                    const result: DetectResult = {
-                        tracksByKind: {},
-                        statsByKind: {},
-                        sourceFrames: [],
-                        decodedFrames: 0,
-                        passMs: 0,
-                    };
-                    this.dispatchEvent(new MessageEvent("message", { data: { __k: "res", id, ok: true, result } }));
-                }
-            }
-
-            override postMessage(message: unknown, options?: Transferable[] | StructuredSerializeOptions): void {
-                if (this.isTracker && message && typeof message === "object" && "__k" in message) {
-                    if (message.__k === "abort") return;
-                    if (
-                        message.__k === "req" &&
-                        "type" in message &&
-                        (message.type === "track" || message.type === "detect") &&
-                        "data" in message &&
-                        message.data &&
-                        typeof message.data === "object"
-                    ) {
-                        this.progressData.set(message.type, message.data);
-                        document.documentElement.setAttribute(`data-${message.type}-requested`, "true");
-                        if (message.type === "detect" && "id" in message && typeof message.id === "number") {
-                            this.pendingDetections.add(message.id);
-                            document.documentElement.setAttribute(
-                                "data-detect-request-count",
-                                String(++detectionRequests),
-                            );
-                            // Save can discover further source windows after
-                            // the first reply; release those requests too.
-                            if (completeFutureDetections) queueMicrotask(() => this.completeDetections());
-                        }
-                        return;
-                    }
-                }
-                if (Array.isArray(options)) super.postMessage(message, options);
-                else super.postMessage(message, options);
-            }
-        };
-    }, computeTrackerAssets("build").urls);
+                return (type, data, forward) => {
+                    if ((type !== "track" && type !== "detect") || !data || typeof data !== "object") return forward();
+                    progressData.set(type, data);
+                    document.documentElement.setAttribute(`data-${type}-requested`, "true");
+                    if (type === "track") return new Promise(() => {});
+                    document.documentElement.setAttribute("data-detect-request-count", String(++detectionRequests));
+                    return new Promise<DetectResult>((resolve) => {
+                        pendingDetections.add(resolve);
+                        // Saving can discover more source windows after the first reply.
+                        if (completeFutureDetections) queueMicrotask(completeDetections);
+                    });
+                };
+            });
+        },
+        computeTrackerAssets("build").urls,
+    );
     await gotoApp(page, "en");
     await loadTrip(page);
     await openExport(page);

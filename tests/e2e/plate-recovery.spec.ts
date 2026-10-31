@@ -1,8 +1,8 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { type BlurRegion, regionRectAt } from "../../src/blur-regions.js";
 import type { CropRect } from "../../src/transcode/compose.js";
-import type { WireRequest, WireResponse } from "../../src/workers/_protocol/wire.js";
 import type { DetectRequestData, DetectResult } from "../../src/workers/tracker-protocol.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import type motionFixture from "../testdata/plate-recovery/motion.json";
@@ -40,37 +40,28 @@ test("a real plate tracker loss triggers same-frame detection through exit", asy
     );
     await page.goto("/plate-recovery-harness.html");
     test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - detection is WebGPU-only");
+    await installWorkerRpc(page);
     const result = await page.evaluate(
         async ({ workerUrl, bytes, assets, durationSec }) => {
             const worker = new Worker(workerUrl, { type: "module" });
+            const rpc = window.__workerRpc.connect(worker);
             try {
-                return await new Promise<DetectResult>((resolve, reject) => {
-                    worker.onerror = (event) => reject(new Error(event.message));
-                    worker.onmessage = (event: MessageEvent<unknown>) => {
-                        if (!event.data || typeof event.data !== "object") return;
-                        const message = event.data as Partial<WireResponse>;
-                        if (message.__k !== "res" || message.id !== 1) return;
-                        if (message.ok === true) resolve(message.result as DetectResult);
-                        else if (message.ok === false) reject(new Error(message.error?.message ?? "detector failed"));
-                        else reject(new Error("invalid detector response"));
-                    };
-                    const file = new File([new Uint8Array(bytes)], "motion.mp4", { type: "video/mp4" });
-                    const data: DetectRequestData = {
-                        segments: [{ file, startInFile: 0, endInFile: durationSec, tripStart: 0 }],
-                        startContentSec: 0,
-                        endContentSec: durationSec,
-                        kinds: ["plate"],
-                        quality: "balanced",
-                        analyzeIntervalsByKind: { plate: [{ startSec: 0, endSec: durationSec }] },
-                        plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
-                        faceModelUrl: new URL(assets.models.face.url, location.origin).href,
-                        trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
-                        ortAssets: assets.ort.webgpu,
-                    };
-                    worker.postMessage({ __k: "req", id: 1, type: "detect", data } satisfies WireRequest);
-                });
+                const file = new File([new Uint8Array(bytes)], "motion.mp4", { type: "video/mp4" });
+                const data: DetectRequestData = {
+                    segments: [{ file, startInFile: 0, endInFile: durationSec, tripStart: 0 }],
+                    startContentSec: 0,
+                    endContentSec: durationSec,
+                    kinds: ["plate"],
+                    quality: "balanced",
+                    analyzeIntervalsByKind: { plate: [{ startSec: 0, endSec: durationSec }] },
+                    plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
+                    faceModelUrl: new URL(assets.models.face.url, location.origin).href,
+                    trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
+                    ortAssets: assets.ort.webgpu,
+                };
+                return await rpc.request<DetectResult>("detect", data);
             } finally {
-                worker.terminate();
+                rpc.dispose();
             }
         },
         { workerUrl: `/assets/${workers[0]!}`, bytes, assets, durationSec: motion.durationSec },

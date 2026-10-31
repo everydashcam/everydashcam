@@ -34,7 +34,7 @@
 // Runs in a worker. No logging - per-frame hot path.
 
 import type { OrtAssets } from "./ort-assets.js";
-import { createOrtSession, type OrtModule, type OrtRuntime } from "./ort-runtime.js";
+import { createOrtSession, type OrtModule, type OrtRuntime, runOrtSession } from "./ort-runtime.js";
 import type { TrackBox } from "./track-guards.js";
 import { TrackGeometry } from "./track-state.js";
 import { packBgrPlanarStandardized } from "./vittrack-pixels.js";
@@ -172,7 +172,7 @@ class VitTrackerRuntime {
         let outputs: OrtOutputs | null = null;
         try {
             const search = preprocessInto(crop, this.searchWorkspace);
-            outputs = await this.session.run({ template, search });
+            outputs = await runOrtSession(this.session, { template, search });
             return consume(outputs);
         } finally {
             try {

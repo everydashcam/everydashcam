@@ -1,7 +1,7 @@
 import { setImmediate as nextTurn } from "node:timers/promises";
 // Mock endpoints for protocol tests. Avoids spinning up real Workers in
-// vitest (environment: node) - the tests exercise our framing/correlation,
-// not the browser's Worker API.
+// vitest (environment: node) - the tests exercise Comlink and our worker
+// lifecycle without a browser.
 //
 // Pairs a WorkerEndpoint (main-thread shape) with a WorkerScopeEndpoint
 // (worker shape) so a message posted on one fires `message` on the other -
@@ -79,6 +79,9 @@ export function makePairedEndpoints(): PairedEndpoints {
         },
         addEventListener(_type, listener) {
             workerListeners.message.add(listener as MsgListener);
+        },
+        removeEventListener(_type, listener) {
+            workerListeners.message.delete(listener as MsgListener);
         },
     };
 

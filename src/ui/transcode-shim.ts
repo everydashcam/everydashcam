@@ -12,18 +12,17 @@
 // Each call creates its own Worker (transcoding is a rare user-initiated operation; keeping an idle
 // worker between exports wastes memory).
 
+import { transfer } from "comlink";
+import type { MapSnapshotRequest } from "../transcode/map-snapshotter-types.js";
 import { createLogger } from "../log.js";
 import type { TranscodeArgs, TranscodeResult } from "../transcode/types.js";
 import type { TranscodeSplitArgs } from "../transcode/pipeline-split.js";
 
 import {
-    TRANSCODE_NOTIFY_MAP_SNAPSHOT_REQUEST,
-    TRANSCODE_NOTIFY_MAP_SNAPSHOT_RESPONSE,
+    TRANSCODE_REQUEST_MAP_SNAPSHOT,
     TRANSCODE_NOTIFY_PROGRESS,
     TRANSCODE_REQUEST_SINGLE,
     TRANSCODE_REQUEST_SPLIT,
-    type MapSnapshotRequestNotification,
-    type MapSnapshotResponseNotification,
     type TranscodeArgsForTransfer,
     type TranscodeProgressNotificationData,
     type TranscodeSingleRequestData,
@@ -189,7 +188,7 @@ function runInWorker(
     // on the worker's first snapshot request, overlapping them with worker
     // startup and the first decodes. The catch only silences the unhandled
     // rejection - the cached rejected promise resurfaces on the first snapshot
-    // request, which turns it into an error response for the pipeline.
+    // request, which rejects the worker's reverse RPC.
     if (overlays?.map) void snapshotSession.preload().catch(() => {});
 
     // Main-thread twin of the worker-side heartbeat: same cadence, this
@@ -199,6 +198,10 @@ function runInWorker(
 
     const client = createWorkerClient(worker, {
         name: "transcode",
+        onRequest: (type, data) => {
+            if (type !== TRANSCODE_REQUEST_MAP_SNAPSHOT) throw new Error(`unknown reverse request type: ${type}`);
+            return renderOneSnapshot(data as MapSnapshotRequest);
+        },
         onNotification: (msg) => {
             if (msg.type === TRANSCODE_NOTIFY_PROGRESS) {
                 const data = msg.data as TranscodeProgressNotificationData;
@@ -210,47 +213,24 @@ function runInWorker(
                 }
                 return;
             }
-            if (msg.type === TRANSCODE_NOTIFY_MAP_SNAPSHOT_REQUEST) {
-                const req = msg.data as MapSnapshotRequestNotification;
-                void renderOneSnapshot(req);
-                return;
-            }
         },
     });
 
-    const renderOneSnapshot = async (req: MapSnapshotRequestNotification): Promise<void> => {
-        try {
-            if (client.disposed || signal.aborted) return;
-            if (!mapConfig) throw new Error("map overlay config missing from export snapshot");
-            const bitmap = await snapshotSession.snapshot({
-                lat: req.lat,
-                lon: req.lon,
-                bearingDeg: req.bearingDeg,
-                zoomKm: req.zoomKm,
-                speedMs: req.speedMs,
-                headingUp: mapConfig.mode === "chase",
-                pitchDeg: mapConfig.pitchDeg,
-                adaptiveZoom: mapConfig.adaptiveZoom,
-            });
-            if (client.disposed) {
-                // Export was cancelled while this snapshot rendered. notify()
-                // early-returns on a disposed client without posting, so the
-                // transfer list is never consumed - the ImageBitmap would be
-                // neither moved to the worker nor closed. Free its GPU surface
-                // here instead of leaking it until GC.
-                bitmap.close();
-                return;
-            }
-            const data: MapSnapshotResponseNotification = { reqId: req.reqId, bitmap };
-            client.notify(TRANSCODE_NOTIFY_MAP_SNAPSHOT_RESPONSE, data, { transfer: [bitmap] });
-        } catch (err) {
-            const data: MapSnapshotResponseNotification = {
-                reqId: req.reqId,
-                error: err instanceof Error ? err.message : String(err),
-            };
-            client.notify(TRANSCODE_NOTIFY_MAP_SNAPSHOT_RESPONSE, data);
+    async function renderOneSnapshot(request: MapSnapshotRequest): Promise<ImageBitmap> {
+        if (client.disposed || signal.aborted) throw new DOMException("transcode cancelled", "AbortError");
+        if (!mapConfig) throw new Error("map overlay config missing from export snapshot");
+        const bitmap = await snapshotSession.snapshot({
+            ...request,
+            headingUp: mapConfig.mode === "chase",
+            pitchDeg: mapConfig.pitchDeg,
+            adaptiveZoom: mapConfig.adaptiveZoom,
+        });
+        if (client.disposed || signal.aborted) {
+            bitmap.close();
+            throw new DOMException("transcode cancelled", "AbortError");
         }
-    };
+        return transfer(bitmap, [bitmap]);
+    }
 
     // Lets the map rAF loop and chart hot-path skip work while the worker is writing,
     // so the main thread stays free for the proxy sink callbacks (where the FSA write actually

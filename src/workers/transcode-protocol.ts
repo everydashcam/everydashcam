@@ -39,31 +39,5 @@ export const TRANSCODE_REQUEST_SINGLE = "transcode-single";
 export const TRANSCODE_REQUEST_SPLIT = "transcode-split";
 export const TRANSCODE_NOTIFY_PROGRESS = "progress";
 
-/**
- * Map snapshot RPC built on top of notifications. The transcode worker cannot
- * touch MapLibre (no DOM / WebGL), so it asks the main thread for a rendered
- * snapshot per frame and waits for the matching response.
- *
- * Symmetric notification names; reqId correlates request to response. We keep
- * a separate "error" carrier so the worker can reject the pending promise on
- * a main-side failure (style load fail / map disposed mid-export) without
- * tearing down the whole transcode.
- */
-export const TRANSCODE_NOTIFY_MAP_SNAPSHOT_REQUEST = "map-snapshot-req";
-export const TRANSCODE_NOTIFY_MAP_SNAPSHOT_RESPONSE = "map-snapshot-res";
-
-export interface MapSnapshotRequestNotification {
-    reqId: number;
-    lat: number;
-    lon: number;
-    bearingDeg: number;
-    zoomKm: number;
-    /** Car speed (m/s) for the chase camera's speed-adaptive zoom. */
-    speedMs: number;
-}
-
-export interface MapSnapshotResponseNotification {
-    reqId: number;
-    bitmap?: ImageBitmap;
-    error?: string;
-}
+/** Reverse RPC: MapLibre renders each requested map frame on the page. */
+export const TRANSCODE_REQUEST_MAP_SNAPSHOT = "map-snapshot";

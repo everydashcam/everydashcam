@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { transfer } from "comlink";
 
 import { _resetForTests } from "../../log.js";
 import { captureSentryException } from "../../sentry.js";
 import { makePairedEndpoints, flushMicrotasks } from "./test-helpers.js";
-import { createWorkerClient } from "./worker-client.js";
+import { createWorkerClient, type WorkerEndpoint } from "./worker-client.js";
 import { isWorkerUnavailableError } from "./worker-error.js";
 import { createWorkerServer } from "./worker-server.js";
 
@@ -20,6 +21,69 @@ afterEach(() => {
 });
 
 describe("createWorkerClient + createWorkerServer", () => {
+    it("transfers buffers in requests, results, and reverse callbacks over a real channel", async () => {
+        const { port1, port2 } = new MessageChannel();
+        const endpoint: WorkerEndpoint = {
+            postMessage: port1.postMessage.bind(port1),
+            addEventListener: port1.addEventListener.bind(port1),
+            removeEventListener: port1.removeEventListener.bind(port1),
+            terminate() {
+                port1.close();
+                port2.close();
+            },
+        };
+        port1.start();
+        const source = new Uint8Array([2, 4]);
+        const response = new Uint8Array([6, 8]);
+        let workerResult: Uint8Array | undefined;
+        const server = createWorkerServer(port2, {
+            async onRequest(_type, data, ctx) {
+                expect(data).toEqual(new Uint8Array([2, 4]));
+                workerResult = await server.request<Uint8Array>("map-snapshot", { frame: 1 });
+                ctx.transfer([workerResult.buffer as ArrayBuffer]);
+                return workerResult;
+            },
+        });
+        const client = createWorkerClient(endpoint, {
+            name: "transfers",
+            onRequest(type, data) {
+                expect(type).toBe("map-snapshot");
+                expect(data).toEqual({ frame: 1 });
+                return transfer(response, [response.buffer]);
+            },
+        });
+        try {
+            const result = await client.request<Uint8Array>("compute", source, { transfer: [source.buffer] });
+            expect(result).toEqual(new Uint8Array([6, 8]));
+            expect(source.byteLength).toBe(0);
+            expect(response.byteLength).toBe(0);
+            expect(workerResult?.byteLength).toBe(0);
+        } finally {
+            client.dispose();
+        }
+    });
+
+    it("closes callback resources that settle after the worker is disposed", async () => {
+        const { mainEndpoint, workerEndpoint } = makePairedEndpoints();
+        let finish: ((value: unknown) => void) | undefined;
+        const server = createWorkerServer(workerEndpoint, {});
+        const client = createWorkerClient(mainEndpoint, {
+            name: "late-callback",
+            onRequest: () =>
+                new Promise((resolve) => {
+                    finish = resolve;
+                }),
+        });
+        void server.request("snapshot");
+        await flushMicrotasks();
+        client.dispose();
+        const close = vi.fn();
+        const bitmap = { close } as unknown as ImageBitmap;
+        finish!(transfer(bitmap, [bitmap]));
+        await flushMicrotasks();
+        expect(close).toHaveBeenCalledOnce();
+    });
+
     it("distinguishes a worker crash from a request handler failure", async () => {
         const pair = makePairedEndpoints();
         const sourceError = new TypeError("invalid state");
@@ -73,7 +137,7 @@ describe("createWorkerClient + createWorkerServer", () => {
         });
     });
 
-    it("forwards AbortSignal: signal.abort() rejects the promise and posts WireAbort", async () => {
+    it("forwards AbortSignal: signal.abort() rejects the promise and cancels the remote operation", async () => {
         const { mainEndpoint, workerEndpoint } = makePairedEndpoints();
         // Server has an onRequest that watches ctx.signal.
         let abortObservedInWorker = false;
@@ -126,7 +190,6 @@ describe("createWorkerClient + createWorkerServer", () => {
 
         expect(onNotification).toHaveBeenCalledTimes(2);
         expect(onNotification).toHaveBeenNthCalledWith(1, {
-            __k: "ntf",
             type: "progress",
             data: { done: 1, total: 10 },
         });
@@ -155,6 +218,19 @@ describe("createWorkerClient + createWorkerServer", () => {
         client.dispose("test teardown");
         await expect(p).rejects.toMatchObject({ name: "AbortError", message: "test teardown" });
         expect(client.disposed).toBe(true);
+    });
+
+    it("preserves a failure when disposing other pending requests", async () => {
+        const { mainEndpoint, terminated } = makePairedEndpoints();
+        const client = createWorkerClient(mainEndpoint, { name: "test-failed-dispose" });
+        const first = client.request("first").catch((error: unknown) => error);
+        const second = client.request("second").catch((error: unknown) => error);
+        const failure = new Error("native initialization failed");
+        failure.name = "OrtInitializationError";
+        client.dispose(failure);
+        expect(await first).toBe(failure);
+        expect(await second).toBe(failure);
+        expect(terminated()).toBe(true);
     });
 
     it("crash via worker error event: rejects pending, fires onCrash, marks disposed", async () => {
@@ -293,8 +369,7 @@ describe("createWorkerClient + createWorkerServer", () => {
         await expect(client.request("x")).rejects.toThrow(/disposed/);
     });
 
-    // listenerCounts asserts: createWorkerClient subscribes a handleMessage
-    // listener; dispose() must unsubscribe it. We compare counts before-create
+    // createWorkerClient owns two Comlink listeners; disposal removes both. We compare counts before-create
     // vs after-dispose - they must match (zero leaked subscriptions).
     // installWorkerLogBridge subscribes another, never-removed listener; its
     // presence shows up as a +1 baseline that we account for explicitly.
@@ -303,11 +378,11 @@ describe("createWorkerClient + createWorkerServer", () => {
         createWorkerServer(workerEndpoint, { onRequest: async () => "ok" });
         const beforeCreate = listenerCounts().mainMessage;
         const client = createWorkerClient(mainEndpoint, { name: "test-listener-cleanup" });
-        // Right after create: framework handleMessage + log bridge = +2.
-        expect(listenerCounts().mainMessage).toBe(beforeCreate + 2);
+        // Two Comlink listeners plus the log bridge.
+        expect(listenerCounts().mainMessage).toBe(beforeCreate + 3);
         await client.request("ping");
         client.dispose();
-        // After dispose: handleMessage removed, log bridge stays (it has no
+        // After disposal the log bridge stays (it has no
         // disposal path - that is a documented limitation, not a leak per
         // request).
         expect(listenerCounts().mainMessage).toBe(beforeCreate + 1);
@@ -322,8 +397,7 @@ describe("createWorkerClient + createWorkerServer", () => {
         await flushMicrotasks();
         fireMainError({ message: "boom", filename: "w.js", lineno: 1, colno: 1 });
         await expect(p).rejects.toBeDefined();
-        // Crash internally calls the same teardown path as dispose: handleMessage
-        // is removed, log bridge stays.
+        // Crash removes both Comlink listeners; the log bridge stays.
         expect(listenerCounts().mainMessage).toBe(beforeCreate + 1);
         expect(client.disposed).toBe(true);
     });
@@ -331,8 +405,8 @@ describe("createWorkerClient + createWorkerServer", () => {
     it("late successful reply after abort is dropped quietly", async () => {
         const { mainEndpoint, workerEndpoint } = makePairedEndpoints();
         // Handler ignores the abort signal and resolves anyway later. The
-        // late reply lands in handleResponse on main, finds no pending entry,
-        // drops silently - no unhandled rejection, no double-resolve.
+        // late Comlink result finds the operation cancelled and is discarded
+        // without an unhandled rejection or a second settlement.
         let resolveHandler: (v: string) => void = () => undefined;
         let handlerInvocations = 0;
         createWorkerServer(workerEndpoint, {
@@ -437,7 +511,7 @@ describe("createWorkerClient + createWorkerServer", () => {
         createWorkerServer(workerEndpoint, {});
         const client = createWorkerClient(mainEndpoint, { name: "test-no-handler" });
         await expect(client.request("anything")).rejects.toMatchObject({
-            message: expect.stringMatching(/no onRequest handler/),
+            message: expect.stringMatching(/no request handler/),
         });
     });
 

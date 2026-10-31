@@ -238,6 +238,7 @@ export const koDict = {
     "status.offline.label": "오프라인",
     "status.offline.info": "무슨 뜻인가요",
     "status.offline.detail": "오프라인일 때는 지도 배경이 표시되지 않아요. 영상, 속도 그래프, 내보내기는 그대로 작동하고, 인터넷에 다시 연결되면 앱이 자동으로 업데이트돼요.",
+    "status.update.ready": "업데이트가 준비됐어요. 작업을 마치면 everydashcam 탭과 창을 모두 닫고 앱을 다시 열어 주세요.",
 
     "notif.bell.aria": "알림",
     "notif.drawer.title": "알림",

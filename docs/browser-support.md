@@ -80,7 +80,7 @@ Numbers are the first stable release where the feature is on by default.
 Safari 15 / Firefox 114 / Chrome 80.
 
 **Service Workers** in the table above gate only the offline PWA precache
-(`public/sw.js`) - export-to-disk does not depend on it (see Library floors
+(`src/sw.ts`) - export-to-disk does not depend on it (see Library floors
 below).
 
 ### OS-level codecs

@@ -11,8 +11,8 @@
 // file; on a warm OS page cache it is a cheap repeat read within an ingest
 // session.
 //
-// Wire: createWorkerServer handles framing + abort forwarding + error
-// serialization. Per-file progress is pushed via server.notify("progress").
+// RPC: Comlink carries calls and errors; createWorkerServer forwards cancellation.
+// Per-file progress is pushed via server.notify("progress").
 
 import { createLogger } from "../log.js";
 import {

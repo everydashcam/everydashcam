@@ -92,29 +92,97 @@ Deployment constraints:
   First visits use bounded startup recovery. Controlled launches use the complete
   shell installed with their active service worker; incomplete updates never
   replace it. Updates wait until all controlled windows close, preserving local
-  recordings and running exports. Refresh alone need not activate an update.
+  recordings and running exports. A ready-update notice asks users to finish work,
+  close all app windows and tabs, and reopen. Refresh alone need not activate an update.
 - The build emits `deployment-assets.json` for the current release's code,
-  bundled media, map styles/sprites and inference binaries. The deployment workflows run
-  `scripts/retain-deployment-assets.mts` against the currently published origin
+  bundled media, map styles/sprites and inference binaries. Bundled filenames come
+  from Vite output; stable public assets have a separate inventory and may change.
+  The deployment workflows run `scripts/retain-deployment-assets.mts` against the
+  currently published origin
   before uploading. It verifies and copies the previous release's immutable
-  files, excluding HTML, service workers and configuration. The manifest remains
-  current-only, so history does not grow on each deployment. Missing or corrupt
-  previous assets fail publication instead of silently reducing compatibility.
+  files, excluding HTML, service workers and configuration. Its `files` list stays
+  current-only; `retainedFiles` records the copied generation for cleanup when a
+  recovery artifact is reused. For hosts that replace files individually, a
+  `publication: "publishing"` manifest protects both inventories until all pages
+  and the service worker have been uploaded and the host writes `"complete"`.
+  Retention carries both inventories from an interrupted publication; after a
+  completed publication a new generation retains only that release's `files`.
+  Retrying the same generation preserves its already retained predecessor.
+  Atomic hosts need no intermediate manifest. Transient network failures get three bounded
+  attempts; missing or corrupt previous assets fail publication instead of silently
+  reducing compatibility. A source without a deployment manifest emits a warning
+  and retains no previous files; there is no service-worker source parsing fallback.
 - Recovery/rollback uses the same retention step before uploading the selected
   hosted artifact: it keeps that artifact's code alongside the currently live
   release. A dashboard-only rollback cannot add newer assets to an old artifact;
   newer tabs may then need to finish work and reopen the app. Do not promise that
-  an uncached asset from an arbitrarily old tab remains downloadable.
-- Cache Storage is disposable. The service worker retains two activated release
-  manifests; a failed installation cannot advance retention. Binary readiness
+  an uncached asset from an arbitrarily old tab remains downloadable. Follow
+  [Hosted recovery](#hosted-recovery) when restoring an artifact or when the live
+  origin cannot supply valid retention data.
+- Cache Storage is disposable. Workbox installs the complete precache before an
+  update can activate, retires obsolete revisions on activation, and bounds
+  runtime and tracker caches with expiration. Application code uses native SRI
+  on downloads; locale shells use a build marker because the hosting edge can
+  append analytics. Cached responses are not rehashed on every read. Online
+  navigation restores missing precache entries. Binary readiness separately
   requires size and SHA-256 verification in `src/tracking/asset-loader.ts`, both
   before consent-gated warming finishes and before inference. Settings and notes
   are independent of resource-cache cleanup. Installed Apple web apps can have
   separate storage from browser tabs; each instance checks its own assets.
+- Tracker binaries migrate from the legacy cache into Workbox with expiration
+  metadata; the source is deleted only after the copy completes. The tracker
+  cache uses an entry-count LRU limit, not a byte budget or a release whitelist.
+  This preserves recently used binaries for newer pages controlled by an older
+  worker and for rollback; it can retain more than two releases. The limit lives
+  in `src/sw-tracker-cache.ts`, and quota errors can purge this disposable cache.
 - Ordinary Vite development does not register an offline worker. Its dev entry
   retires old registrations before importing the app and preserves preferences.
-  Runtime bytes and glue come from one snapshot; restart Vite after replacing
-  dependencies. Exercise offline/update behavior with production builds.
+  Inference binaries and runtime glue come from one snapshot; restart Vite after
+  replacing dependencies or ONNX models. Map styles and sprites in `public/styles/` remain live during
+  development; edit them and reload without restarting. Exercise offline/update
+  behavior with production builds.
+
+## Hosted recovery
+
+Use the saved `hosted-dist-primary-<tag>-<attempt>` Actions artifact, which contains
+production configuration and portable downloads. The GitHub Release archive is a
+separate self-host build. Select the successful run and artifact explicitly:
+
+```sh
+recovery_run="<actions-run-id>"
+recovery_artifact="hosted-dist-primary-<tag>-<attempt>"
+gh run download "$recovery_run" --name "$recovery_artifact" --dir recovery-dist
+node --experimental-strip-types scripts/retain-deployment-assets.mts recovery-dist https://everydashcam.app
+npx wrangler@4.114.0 pages deploy recovery-dist --project-name=everydashcam --branch=release
+node scripts/smoke-portable-downloads.mjs
+```
+
+Run these commands from a checkout with the current retention script, Node from
+`.nvmrc`, and configured Cloudflare credentials. Verify that the selected artifact
+has the release being restored. Older artifacts without the explicit public asset
+inventory must be rebuilt with current deployment tooling; the retention script
+rejects them instead of guessing which files are immutable. The retention step
+adds the currently live release's files so its existing tabs can finish work. Use the equivalent beta
+artifact, origin, and `--branch=main` for staging. A recovery upload does not move
+the machine-managed `release` branch; the next normal release restores its record.
+
+If live metadata or an old asset is unavailable, use the immutable Cloudflare
+deployment URL for that same live release as the retention source. Verify its
+release identity before substituting `https://<deployment-id>.everydashcam.pages.dev`
+for the origin above. If that deployment is unavailable too, download the live
+release's saved hosted artifact into a separate `previous-dist` directory and
+serve it locally in another terminal:
+
+```sh
+python3 -m http.server 4179 --bind 127.0.0.1 --directory previous-dist
+```
+
+Then run the same retention step against `http://127.0.0.1:4179`, followed by the
+upload and smoke check. The local source still undergoes manifest, size and hash
+validation. Do not silently skip retention or substitute an unrelated release:
+without a verified source, compatibility with existing tabs cannot be preserved.
+For a transient failure after GitHub Release publication, rerun only the failed
+`deploy` job; rerunning the full workflow rejects the already published tag.
 
 ## Custom domains
 
@@ -285,8 +353,8 @@ Consequences the workflow is built around:
   Each choice is commented at its site in the file.
 - `public/_headers` - cache-control + security headers + CSP in enforce mode
   (the current allowlist and its rationale live in the file itself).
-- `public/sw.js` - service worker for the offline PWA precache (app shell). Minified
-  by a post-build hook (Oxc).
+- `src/sw.ts` - Workbox service worker. `vite-plugin-pwa` bundles it and injects
+  the final precache manifest through `vite-plugins/sw-precache.ts`.
 - `public/manifest.webmanifest` - PWA-installable.
 - `public/fonts/` - self-hosted woff2 fonts (generated by `node scripts/fetch-fonts.mjs`).
 - `.nvmrc` - the Node version used by the GitHub Actions builds.

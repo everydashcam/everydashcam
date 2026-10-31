@@ -19,11 +19,9 @@ import type { TranscodeResult } from "../transcode/types.js";
 import { MapSnapshotWorkerClient } from "./map-snapshot-worker-client.js";
 import { wrapPortAsFsaWritable } from "./port-writable.js";
 import {
-    TRANSCODE_NOTIFY_MAP_SNAPSHOT_RESPONSE,
     TRANSCODE_NOTIFY_PROGRESS,
     TRANSCODE_REQUEST_SINGLE,
     TRANSCODE_REQUEST_SPLIT,
-    type MapSnapshotResponseNotification,
     type TranscodeProgressNotificationData,
     type TranscodeSingleRequestData,
     type TranscodeSplitRequestData,
@@ -33,10 +31,6 @@ import { createWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker
 const log = createLogger("worker:transcode");
 
 declare const self: WorkerScopeEndpoint;
-
-// Single snapshot client per worker - shared by both single + split pipelines.
-// The pipeline picks it up from the args we attach in the request handler.
-let snapshotClient: MapSnapshotWorkerClient | null = null;
 
 // Runtime-only args both pipelines receive on top of their transferred request
 // args (writable + abort signal + progress relay + snapshotter). Built once per
@@ -65,6 +59,10 @@ const server = createWorkerServer(self, {
             run: (extras: TranscodeRuntimeExtras) => Promise<TranscodeResult>,
             label: string,
         ): Promise<TranscodeResult> => {
+            const snapshotClient = overlaysMap ? new MapSnapshotWorkerClient(server) : undefined;
+            const cancelSnapshots = () => snapshotClient?.dispose("transcode aborted");
+            ctx.signal.addEventListener("abort", cancelSnapshots, { once: true });
+            if (ctx.signal.aborted) cancelSnapshots();
             const extras: TranscodeRuntimeExtras = {
                 // The pinned StreamTarget retires full chunks after writing;
                 // the real-muxer bridge test guards that ownership on upgrades.
@@ -76,7 +74,7 @@ const server = createWorkerServer(self, {
                 },
                 // Attach the snapshotter only when the map overlay is actually
                 // enabled - otherwise the pipeline never touches it.
-                mapSnapshotter: overlaysMap ? (snapshotClient ?? undefined) : undefined,
+                mapSnapshotter: snapshotClient,
             };
             try {
                 return transferMoov(await run(extras));
@@ -86,10 +84,7 @@ const server = createWorkerServer(self, {
                 }
                 throw err;
             } finally {
-                // Flush snapshot requests still pending for THIS transcode: on
-                // abort/error their replies may never come, and each would
-                // otherwise hold its 30 s timeout (late bitmaps additionally
-                // arrive unowned). The client itself stays usable.
+                ctx.signal.removeEventListener("abort", cancelSnapshots);
                 snapshotClient?.dispose("transcode settled");
             }
         };
@@ -113,17 +108,4 @@ const server = createWorkerServer(self, {
         }
         throw new Error(`unknown request type: ${type}`);
     },
-    onNotification: (type, data) => {
-        if (type === TRANSCODE_NOTIFY_MAP_SNAPSHOT_RESPONSE) {
-            // snapshotClient is created eagerly at module load (below) - this
-            // handler only routes the response.
-            snapshotClient?.onResponse(data as MapSnapshotResponseNotification);
-        }
-    },
 });
-
-// Pre-create the snapshot client BEFORE the request handler runs, otherwise
-// localSnapshotter inside onRequest would be null and the map overlay would
-// silently skip every frame. The client itself is cheap (one Map, one
-// counter); creating it eagerly is fine.
-snapshotClient = new MapSnapshotWorkerClient(server);

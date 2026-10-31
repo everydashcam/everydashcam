@@ -2,6 +2,7 @@
 // availability, deterministic click feedback, mandatory playback readiness,
 // final regroup reconciliation, cancellation and recovery from unreadable clips.
 
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -187,39 +188,13 @@ test.describe("progressive ingest", () => {
             });
         }
         if (testInfo.title.includes("auxiliary classifier worker crashes")) {
-            await page.addInitScript(() => {
-                const NativeWorker = window.Worker;
-                window.Worker = class extends NativeWorker {
-                    readonly trackedName: string;
-
-                    constructor(scriptURL: string | URL, options?: WorkerOptions) {
-                        super(scriptURL, options);
-                        this.trackedName = options?.name ?? "unnamed";
-                    }
-
-                    override postMessage(message: unknown, transfer: Transferable[]): void;
-                    override postMessage(message: unknown, options?: StructuredSerializeOptions): void;
-                    override postMessage(
-                        message: unknown,
-                        transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
-                    ): void {
-                        if (
-                            this.trackedName === "ingest-worker" &&
-                            typeof message === "object" &&
-                            message !== null &&
-                            "__k" in message &&
-                            message.__k === "req"
-                        ) {
-                            (
-                                window as typeof window & { __classifierCrashInjected?: boolean }
-                            ).__classifierCrashInjected = true;
-                            this.dispatchEvent(new Event("error"));
-                            return;
-                        }
-                        if (Array.isArray(transferOrOptions)) super.postMessage(message, transferOrOptions);
-                        else super.postMessage(message, transferOrOptions);
-                    }
-                };
+            await installWorkerRpc(page, () => {
+                window.__workerRpc.intercept(["ingest-worker"], (worker) => (_type, _data, _forward) => {
+                    (window as typeof window & { __classifierCrashInjected?: boolean }).__classifierCrashInjected =
+                        true;
+                    worker.crash();
+                    return new Promise(() => {});
+                });
             });
         }
         if (testInfo.title.includes("damaged leading clip")) {
@@ -241,7 +216,7 @@ test.describe("progressive ingest", () => {
                     await route.continue();
                 }
             });
-            await page.addInitScript(() => {
+            await installWorkerRpc(page, () => {
                 const target = window as typeof window & {
                     __gpsResponseQueued?: boolean;
                     __gpsResponseReleased?: boolean;
@@ -255,83 +230,14 @@ test.describe("progressive ingest", () => {
                     target.__gpsResponseReleased = true;
                     for (const deliver of queuedResponses.splice(0)) deliver();
                 };
-                const NativeWorker = window.Worker;
-                window.Worker = class extends NativeWorker {
-                    readonly fullScanRequests = new Set<number>();
-
-                    constructor(scriptURL: string | URL, options?: WorkerOptions) {
-                        super(scriptURL, options);
-                        if (options?.name !== "gps-extract-worker") return;
-                        // Hold worker replies after the bytes are parsed. This
-                        // exposes whether the player starts before GPS reaches
-                        // the main thread without slowing unrelated file reads.
-                        const nativeAdd = this.addEventListener.bind(this) as (
-                            type: string,
-                            listener: EventListenerOrEventListenerObject,
-                            options?: boolean | AddEventListenerOptions,
-                        ) => void;
-                        this.addEventListener = ((
-                            type: string,
-                            listener: EventListenerOrEventListenerObject,
-                            listenerOptions?: boolean | AddEventListenerOptions,
-                        ): void => {
-                            if (type !== "message") {
-                                nativeAdd(type, listener, listenerOptions);
-                                return;
-                            }
-                            nativeAdd(
-                                type,
-                                (event: Event) => {
-                                    const message = (event as MessageEvent<unknown>).data;
-                                    const isResponse =
-                                        typeof message === "object" &&
-                                        message !== null &&
-                                        "__k" in message &&
-                                        message.__k === "res" &&
-                                        "id" in message &&
-                                        typeof message.id === "number" &&
-                                        this.fullScanRequests.has(message.id);
-                                    const deliver = (): void => {
-                                        if (typeof listener === "function") listener.call(this, event);
-                                        else listener.handleEvent(event);
-                                    };
-                                    if (isResponse && !responsesReleased) {
-                                        target.__gpsResponseQueued = true;
-                                        queuedResponses.push(deliver);
-                                        return;
-                                    }
-                                    deliver();
-                                },
-                                listenerOptions,
-                            );
-                        }) as Worker["addEventListener"];
+                window.__workerRpc.intercept(["gps-extract-worker"], () => async (_type, data, forward, kind) => {
+                    const result = await forward();
+                    if (kind === "request" && (data as { mode?: string })?.mode === "all" && !responsesReleased) {
+                        target.__gpsResponseQueued = true;
+                        await new Promise<void>((resolve) => queuedResponses.push(resolve));
                     }
-
-                    override postMessage(message: unknown, transfer: Transferable[]): void;
-                    override postMessage(message: unknown, options?: StructuredSerializeOptions): void;
-                    override postMessage(
-                        message: unknown,
-                        transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
-                    ): void {
-                        if (
-                            typeof message === "object" &&
-                            message !== null &&
-                            "__k" in message &&
-                            message.__k === "req" &&
-                            "id" in message &&
-                            typeof message.id === "number" &&
-                            "data" in message &&
-                            typeof message.data === "object" &&
-                            message.data !== null &&
-                            "mode" in message.data &&
-                            message.data.mode === "all"
-                        ) {
-                            this.fullScanRequests.add(message.id);
-                        }
-                        if (Array.isArray(transferOrOptions)) super.postMessage(message, transferOrOptions);
-                        else super.postMessage(message, transferOrOptions);
-                    }
-                };
+                    return result;
+                });
                 setInterval(() => {
                     if (window.__everydashcam?.state.active && !target.__gpsResponseReleased) {
                         target.__playbackStartedBeforeGps = true;
@@ -340,40 +246,18 @@ test.describe("progressive ingest", () => {
             });
         }
         if (testInfo.title.includes("reuses cached metadata while stale GPS reparses")) {
-            await page.addInitScript(() => {
+            await installWorkerRpc(page, () => {
                 const target = window as typeof window & {
                     __workerRequests?: Array<{ worker: string; type: string }>;
                 };
                 target.__workerRequests = [];
-                const NativeWorker = window.Worker;
-                window.Worker = class extends NativeWorker {
-                    readonly trackedName: string;
-
-                    constructor(scriptURL: string | URL, options?: WorkerOptions) {
-                        super(scriptURL, options);
-                        this.trackedName = options?.name ?? "unnamed";
-                    }
-
-                    override postMessage(message: unknown, transfer: Transferable[]): void;
-                    override postMessage(message: unknown, options?: StructuredSerializeOptions): void;
-                    override postMessage(
-                        message: unknown,
-                        transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
-                    ): void {
-                        if (
-                            typeof message === "object" &&
-                            message !== null &&
-                            "__k" in message &&
-                            message.__k === "req" &&
-                            "type" in message &&
-                            typeof message.type === "string"
-                        ) {
-                            target.__workerRequests?.push({ worker: this.trackedName, type: message.type });
-                        }
-                        if (Array.isArray(transferOrOptions)) super.postMessage(message, transferOrOptions);
-                        else super.postMessage(message, transferOrOptions);
-                    }
-                };
+                window.__workerRpc.intercept(
+                    ["ingest-worker", "indexer-worker", "gps-extract-worker"],
+                    (worker) => (type, _data, forward, kind) => {
+                        if (kind === "request") target.__workerRequests?.push({ worker: worker.name, type });
+                        return forward();
+                    },
+                );
             });
         }
         await presetLocalStorage(page);

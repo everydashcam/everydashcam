@@ -253,6 +253,33 @@ test.describe("export run", () => {
         await expectEncoderDiagnostics(page, "split transcode done");
     });
 
+    test("re-encode transfers rendered map frames through reverse worker RPC", async ({ page, browserName }) => {
+        test.skip(browserName === "firefox", "Firefox WebCodecs H.264 encode is broken (Bugzilla 1918769)");
+        test.skip(!(await canEncodeHighProfileH264(page)), "H.264 encode unavailable");
+        test.setTimeout(120_000);
+        const includes = page.locator(".top-panel__channel-include");
+        await includes.nth(2).click();
+        await includes.nth(1).click();
+        const end = page.locator('.export-trim-bar__input[data-range-edge="end"]');
+        await end.fill("1");
+        await end.press("Enter");
+        await page.locator("#export-panel-ov-map").check();
+        await page.locator("#export-panel-watermark").uncheck();
+        await page.locator("#export-panel-save-btn").click();
+        await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 100_000 });
+        expect(await readExportResult(page)).toMatchObject({ ftyp: true, moov: true, mdat: true });
+        const done = await page.evaluate(
+            () =>
+                window.__everydashcam
+                    .dumpLog()
+                    .reverse()
+                    .find((entry) => entry.msg === "transcode done")?.ctx,
+        );
+        expect(done).toMatchObject({ mapOverlayDropped: false });
+        expect((done?.mapSnapshots as { rendered: number } | undefined)?.rendered).toBeGreaterThan(0);
+        expect(await page.locator("#export-map-snapshot-host").count()).toBeLessThanOrEqual(1);
+    });
+
     test("re-encode single channel takes the composite-free path", async ({ page, browserName }) => {
         // One channel, source dimensions, no overlays, no watermark: nothing is
         // painted over the video, so the pipeline hands decoded frames straight to

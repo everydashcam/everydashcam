@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
@@ -77,28 +78,23 @@ async function restrictDefaultEncoder(page: Page, restriction: EncoderRestrictio
 async function runProbe(page: Page, config: EncoderProbeConfig): Promise<EncoderProbeResult> {
     const file = readdirSync("dist/assets").find((name) => /^encoder-probe-worker-.*\.js$/.test(name));
     expect(file).toBeDefined();
+    await installWorkerRpc(page);
     return page.evaluate(
-        ({ file, config }) =>
-            new Promise<EncoderProbeResult>((resolve, reject) => {
-                const worker = new Worker(`/assets/${file}`, { type: "module" });
-                const timeout = setTimeout(() => {
-                    worker.terminate();
-                    reject(new Error("probe did not finish"));
-                }, 30_000);
-                worker.onmessage = (event) => {
-                    if (event.data.__k !== "res") return;
-                    clearTimeout(timeout);
-                    worker.terminate();
-                    if (event.data.ok) resolve(event.data.result);
-                    else reject(new Error(event.data.error.message));
-                };
-                worker.onerror = (event) => {
-                    clearTimeout(timeout);
-                    worker.terminate();
-                    reject(new Error(event.message));
-                };
-                worker.postMessage({ __k: "req", id: 1, type: "probe", data: config });
-            }),
+        async ({ file, config }) => {
+            const rpc = window.__workerRpc.connect(new Worker(`/assets/${file}`, { type: "module" }));
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                return await Promise.race([
+                    rpc.request<EncoderProbeResult>("probe", config),
+                    new Promise<never>((_resolve, reject) => {
+                        timer = setTimeout(() => reject(new Error("probe did not finish")), 30_000);
+                    }),
+                ]);
+            } finally {
+                clearTimeout(timer);
+                rpc.dispose();
+            }
+        },
         { file, config },
     );
 }

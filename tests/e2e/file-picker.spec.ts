@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -204,31 +205,21 @@ test("folder reading traps focus without accidental cancellation and accepts a l
 
 test("an active import requires explicit cancellation instead of playback keys or Escape", async ({ page }) => {
     await presetLocalStorage(page);
+    await installWorkerRpc(page, () => {
+        const target = window as typeof window & { __classificationHeld?: boolean; __holdClassification?: boolean };
+        window.__workerRpc.intercept(["ingest-worker"], () => (type, _data, forward) => {
+            if (type === "classify-batch" && target.__holdClassification) {
+                target.__classificationHeld = true;
+                return new Promise(() => {});
+            }
+            return forward();
+        });
+    });
     await gotoApp(page);
     await loadTrip(page, SAMPLE_GOPRO);
     await pausePlayback(page);
     await page.evaluate(() => {
-        const postMessage = Worker.prototype.postMessage;
-        const target = window as typeof window & { __classificationHeld?: boolean };
-        Worker.prototype.postMessage = function (
-            message: unknown,
-            transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
-        ): void {
-            // Hold a real worker request at the transport boundary to keep
-            // classification pending; the parser and its result are not mocked.
-            if (
-                typeof message === "object" &&
-                message !== null &&
-                "__k" in message &&
-                message.__k === "req" &&
-                "type" in message &&
-                message.type === "classify-batch"
-            ) {
-                target.__classificationHeld = true;
-                return;
-            }
-            Reflect.apply(postMessage, this, [message, transferOrOptions]);
-        };
+        (window as typeof window & { __holdClassification?: boolean }).__holdClassification = true;
     });
     await page.locator("#folder-input").setInputFiles(SAMPLE_70MAI);
     await expect

@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -19,7 +20,7 @@ test("Save keeps an adopted detection pass when playback switches trips", async 
     test.setTimeout(120_000);
     await presetLocalStorage(page);
     await installExportCapture(page);
-    await page.addInitScript(() => {
+    await installWorkerRpc(page, () => {
         const target = window as typeof window & {
             __detectResponseHeld?: boolean;
             __releaseDetectResponse?: () => void;
@@ -30,29 +31,14 @@ test("Save keeps an adopted detection pass when playback switches trips", async 
             released = true;
             for (const deliver of pending.splice(0)) deliver();
         };
-        const NativeWorker = window.Worker;
-        window.Worker = class extends NativeWorker {
-            constructor(scriptURL: string | URL, options?: WorkerOptions) {
-                super(scriptURL, options);
-                if (options?.name !== "tracker-worker") return;
-                // Hold the real inference result at the message boundary so
-                // Save has to adopt background work still pending in the UI.
-                this.addEventListener("message", (event: MessageEvent<unknown>) => {
-                    const message = event.data;
-                    if (
-                        released ||
-                        !message ||
-                        typeof message !== "object" ||
-                        !("__k" in message) ||
-                        message.__k !== "res"
-                    )
-                        return;
-                    event.stopImmediatePropagation();
-                    target.__detectResponseHeld = true;
-                    pending.push(() => this.dispatchEvent(new MessageEvent("message", { data: message })));
-                });
+        window.__workerRpc.intercept(["tracker-worker"], () => async (type, _data, forward) => {
+            const result = await forward();
+            if (type === "detect" && !released) {
+                target.__detectResponseHeld = true;
+                await new Promise<void>((resolve) => pending.push(resolve));
             }
-        };
+            return result;
+        });
     });
     await page.setViewportSize(DESKTOP);
     await gotoApp(page, "en");

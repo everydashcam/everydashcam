@@ -229,6 +229,7 @@ export const ptDict = {
     "status.offline.label": "Offline",
     "status.offline.info": "O que isto significa",
     "status.offline.detail": "O fundo do mapa não carrega offline. O vídeo, o gráfico de velocidade e a exportação continuam funcionando — e o app se atualiza quando você volta a ter conexão.",
+    "status.update.ready": "Uma atualização está pronta. Quando terminar, feche todas as abas e janelas do everydashcam e abra o app novamente.",
 
     "notif.bell.aria": "Notificações",
     "notif.drawer.title": "Notificações",

@@ -9,7 +9,7 @@ import {
     type TileRect,
     tileRects,
 } from "./detect-common.js";
-import { createOrtSession, type OrtModule, type OrtRuntime } from "./ort-runtime.js";
+import { createOrtSession, type OrtModule, type OrtRuntime, runOrtSession } from "./ort-runtime.js";
 
 type OrtTensor = InstanceType<OrtModule["Tensor"]>;
 type OrtSession = Awaited<ReturnType<OrtModule["InferenceSession"]["create"]>>;
@@ -136,15 +136,21 @@ export class TiledDetector {
                 const tensor = this.toTensor(this.inputSlots[tileIdx & 1]!);
                 // The other slot remains owned by ORT until collect resolves.
                 await collect();
-                inFlight = { outputs: this.session.run({ [this.session.inputNames[0]!]: tensor }), lb, tile };
+                inFlight = {
+                    outputs: runOrtSession(this.session, { [this.session.inputNames[0]!]: tensor }),
+                    lb,
+                    tile,
+                };
             }
             await collect();
         } catch (error) {
             // Packing can fail while the previous inference is still running.
             try {
                 await collect();
-            } catch {
-                // Preserve the original failure after draining its outputs.
+            } catch (drainError) {
+                // Runtime failure also invalidates queued passes, even if
+                // preprocessing was the first operation to report an error.
+                if (drainError instanceof Error && drainError.name === "OrtInferenceError") throw drainError;
             }
             throw error;
         }

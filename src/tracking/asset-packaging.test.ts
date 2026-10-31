@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -46,6 +46,29 @@ it("refuses a runtime whose glue changed after the binary snapshot", () => {
     const root = sourceTree();
     const assets = computeTrackerAssets("build", root);
     writeFileSync(join(root, "node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs"), "new glue");
+    expect(() => assets.assertRuntimeUnchanged()).toThrow("onnxruntime changed");
+});
+
+it("detects replaced dev dependencies even when their length and modification time are preserved", () => {
+    const root = sourceTree();
+    const path = join(root, "node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs");
+    const assets = computeTrackerAssets("serve", root);
+    const before = statSync(path);
+    assets.assertRuntimeUnchanged();
+    writeFileSync(path, "changed api");
+    utimesSync(path, before.atime, before.mtime);
+    expect(statSync(path).size).toBe(before.size);
+    expect(() => assets.assertRuntimeUnchanged()).toThrow("onnxruntime changed");
+});
+
+it("accepts metadata changes when dev dependency bytes remain unchanged", () => {
+    const root = sourceTree();
+    const assets = computeTrackerAssets("serve", root);
+    const path = join(root, "node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs");
+    utimesSync(path, new Date(0), new Date(0));
+    assets.assertRuntimeUnchanged();
+    assets.assertRuntimeUnchanged();
+    writeFileSync(path, "new glue");
     expect(() => assets.assertRuntimeUnchanged()).toThrow("onnxruntime changed");
 });
 

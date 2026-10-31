@@ -81,7 +81,7 @@ For browser tests, install Playwright's pinned full browser with
   in `vite-plugins/lazy-boundaries.ts` when adding heavy deferred dependencies;
   payload sizes are diagnostics, not a substitute for that guard.
 - Export/playback: `src/ui/export-flow.ts`, `src/export/`, `src/transcode/`.
-  Worker lifecycle/protocols: `src/workers/_protocol/`. Detection/tracking:
+  Worker RPC uses Comlink; lifecycle/cancellation: `src/workers/_protocol/`. Detection/tracking:
   `src/tracking/`; model packaging: `vite-plugins/tracker-assets.ts`.
 - Persistence: `src/persist/`; annotations/notes replicas: `src/ui/annotations.ts`
   and `src/ui/annotations-sidecar.ts`. After parser/indexer semantic changes, run
@@ -89,7 +89,7 @@ For browser tests, install Playwright's pinned full browser with
   `INDEX_CACHE_FORMAT` in `src/persist/types.ts` only for persisted shape changes.
   Expected cache invalidation from parser, dependency, or bundler updates is
   routine; it needs no special release warning or workaround to preserve a hash.
-- Hosted offline behavior: `public/sw.js`, `src/ui/sw-registration.ts`, and
+- Hosted offline behavior uses Workbox: `src/sw.ts`, `src/ui/sw-registration.ts`, and
   `vite-plugins/sw-precache.ts`. Build/SEO: `vite.config.ts`, `vite-plugins/`.
   Portable shares application code through the `__PORTABLE__` boundary and
   aliases in `vite.portable.config.ts`.

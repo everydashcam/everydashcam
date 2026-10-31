@@ -777,7 +777,7 @@ initSidebar({
 syncSortControls();
 syncEmptyState();
 
-// Service worker for the offline PWA precache (app shell; see public/sw.js).
+// Service worker for the offline PWA precache (app shell; see src/sw.ts).
 // Requires HTTPS or localhost. Registration is best-effort - if it fails or is
 // disabled (incognito), the app still works fully online, just without the
 // offline cache.
@@ -794,7 +794,7 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     // picked up for up to 4h. "none" makes the update check always revalidate,
     // so the new SW installs (pre-caching the new build) on the next load; it
     // then waits and takes over on the next full launch - see the update
-    // handover rationale in public/sw.js.
+    // handover rationale in src/sw.ts.
     //
     // Registration is DEFERRED to window load + an idle slot: a fresh install
     // kicks off the multi-MB precache download, and started at module-eval it
@@ -804,35 +804,33 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     // offline boot does not depend on this timing; deferral only shifts WHEN a
     // new install/update check starts. The scheduler bounds both the load and
     // idle waits, and retries registration on reconnect after a failed install.
-    const watchedRegistrations = new WeakSet<ServiceWorkerRegistration>();
-    const registerSw = (): Promise<void> => {
-        return navigator.serviceWorker.register(swUrl, { updateViaCache: "none" }).then(
-            (reg) => {
-                // Log scope/state so "export not downloading" reports can quickly
-                // confirm the SW is fine and dig elsewhere (incognito, CORS, etc.).
-                // State is not fresh at registration time - read installing/waiting/active
-                // by priority.
-                const sw = reg.active ?? reg.waiting ?? reg.installing;
-                swLog.info("registered", { scope: reg.scope, state: sw?.state });
-                if (watchedRegistrations.has(reg)) return;
-                watchedRegistrations.add(reg);
-                // Terminal outcome of an update install, for diagnostic reports:
-                // "installed" with isUpdate = new version downloaded and waiting
-                // for the next launch (so a report from an old build version is
-                // expected, not a broken update path); "redundant" = the install
-                // failed (e.g. precache refused to accept a hole in app code).
-                reg.addEventListener("updatefound", () => {
-                    const installing = reg.installing;
-                    installing?.addEventListener("statechange", () => {
-                        if (installing.state !== "installed" && installing.state !== "redundant") return;
-                        swLog.info("update install", { state: installing.state, isUpdate: reg.active !== null });
-                    });
-                });
-            },
-            (err: unknown) => {
-                swLog.warn("registration failed", err);
-            },
-        );
+    let registration: ServiceWorkerRegistration | undefined;
+    let hasNotifiedUpdate = false;
+    const registerSw = async (): Promise<void> => {
+        if (registration) {
+            try {
+                await registration.update();
+                return;
+            } catch (err) {
+                // A failed first install removes its registration. Workbox
+                // registers once per instance, so reconnect needs a new one.
+                if (!(err instanceof DOMException && err.name === "InvalidStateError")) throw err;
+                registration = undefined;
+            }
+        }
+        const { Workbox } = await import("workbox-window");
+        const worker = new Workbox(swUrl, { updateViaCache: "none" });
+        worker.addEventListener("waiting", () => {
+            if (hasNotifiedUpdate) return;
+            hasNotifiedUpdate = true;
+            notify({ severity: "info", messageKey: "status.update.ready" });
+        });
+        worker.addEventListener("installed", (event) => {
+            swLog.info("installed", { isUpdate: event.isUpdate === true });
+        });
+        worker.addEventListener("redundant", () => swLog.warn("worker became redundant"));
+        registration = await worker.register({ immediate: true });
+        swLog.info("registered", { scope: registration?.scope });
     };
     scheduleServiceWorkerRegistration(registerSw);
 

@@ -4,6 +4,7 @@
 // pixels at clip edges and file seams: for a privacy feature, box markers
 // prove nothing about the saved pixels.
 
+import { installWorkerRpc } from "./_worker-rpc.js";
 import {
     DESKTOP,
     MOBILE,
@@ -147,10 +148,26 @@ async function setFixtureTrimEdge(page: Page, edge: "start" | "end", time: numbe
 }
 
 test.describe("blur regions", () => {
-    test.beforeEach(async ({ page }) => {
+    test.beforeEach(async ({ page }, info) => {
         await presetLocalStorage(page);
         await installExportCapture(page, undefined, { pickerDelayMs: 500 }); // before gotoApp - captured at bundle load
         await page.setViewportSize(DESKTOP);
+        if (info.title.includes("detector detail is selectable")) {
+            await installWorkerRpc(page, () => {
+                const qualities: string[] = [];
+                const thresholds: number[] = [];
+                window.__workerRpc.intercept(["tracker-worker"], () => (type, data, forward) => {
+                    const request = data as { quality?: string; thresholds?: { plate: number } };
+                    if (type === "detect" && request?.quality) {
+                        qualities.push(request.quality);
+                        document.documentElement.dataset.detectQualityRequests = JSON.stringify(qualities);
+                        thresholds.push(request.thresholds!.plate);
+                        document.documentElement.dataset.detectThresholdRequests = JSON.stringify(thresholds);
+                    }
+                    return forward();
+                });
+            });
+        }
         await gotoApp(page, "en");
         await loadTrip(page, SAMPLE_70MAI);
         await pausePlayback(page);
@@ -709,28 +726,6 @@ test.describe("blur regions", () => {
     test("detector detail is selectable before scanning and a change reanalyzes the range", async ({ page }) => {
         test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - detection is WebGPU-only");
         test.setTimeout(180_000);
-        await page.evaluate(() => {
-            const original = Worker.prototype.postMessage;
-            const qualities: string[] = [];
-            const thresholds: number[] = [];
-            Worker.prototype.postMessage = function (
-                message: unknown,
-                options?: Transferable[] | StructuredSerializeOptions,
-            ) {
-                const request = message as {
-                    __k?: string;
-                    type?: string;
-                    data?: { quality?: string; thresholds?: { plate: number } };
-                };
-                if (request?.__k === "req" && request.type === "detect" && request.data?.quality) {
-                    qualities.push(request.data.quality);
-                    document.documentElement.dataset.detectQualityRequests = JSON.stringify(qualities);
-                    thresholds.push(request.data.thresholds!.plate);
-                    document.documentElement.dataset.detectThresholdRequests = JSON.stringify(thresholds);
-                }
-                original.call(this, message, Array.isArray(options) ? { transfer: options } : options);
-            };
-        });
         const quality = page.getByRole("slider", { name: "Detection detail" });
         await expect(quality).toBeEnabled();
         await expect(quality).toHaveValue("1");

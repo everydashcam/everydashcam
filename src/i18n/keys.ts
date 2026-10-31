@@ -311,6 +311,7 @@ export type I18nKey =
     | "status.offline.label"
     | "status.offline.info"
     | "status.offline.detail"
+    | "status.update.ready"
 
     // Notifications: bell button in the topbar, toasts that pop from
     // top-right and the drawer popover that lists session history.

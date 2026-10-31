@@ -1,10 +1,10 @@
 /// <reference types="vitest/config" />
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { minify as minifyHtml } from "html-minifier-terser";
-import { defineConfig, minify as minifyOxc } from "vite";
+import { defineConfig } from "vite";
 import { documentPagesPlugin } from "./vite-plugins/document-pages.js";
 import { cspHashPlugin } from "./vite-plugins/csp-hash.js";
 import {
@@ -66,31 +66,6 @@ function getAppVersion(): string {
     }
 }
 const APP_VERSION = getAppVersion();
-
-// Post-build plugin: minifies dist/sw.js. Vite copies public/ into dist/
-// as-is (assets under public/ never go through the bundle pipeline and are
-// not minified), so without this step the SW would ship to prod unminified.
-// Run it through Vite's `minify` export (the Oxc minifier from rolldown/utils -
-// same toolchain as the rest of the bundle, no extra dependency; transformWithOxc
-// does NOT fit - it's a transformer, minify is not applied there). The ABI with
-// native-file-system-adapter (postMessage payload `{url, headers, readablePort}`)
-// is unaffected: the minifier compresses whitespace and local identifiers but does
-// NOT rename object keys - and those keys are exactly the SW contract.
-function minifyServiceWorker() {
-    return {
-        name: "minify-sw",
-        apply: "build" as const,
-        async closeBundle() {
-            // Same dist/sw.js path as swPrecachePlugin (they are a coupled
-            // inject->minify pair); keep one source of truth for its location.
-            const swPath = resolve(process.cwd(), "dist", "sw.js");
-            const code = readFileSync(swPath, "utf-8");
-            // minify signature is (filename, code) - filename drives the parser.
-            const { code: minified } = await minifyOxc("sw.js", code);
-            writeFileSync(swPath, minified);
-        },
-    };
-}
 
 // HTML minification (Vite does not do it by default, only JS/CSS). Applied
 // via transformIndexHtml in the "post" phase - after all asset-injection
@@ -154,7 +129,7 @@ const SENTRY_INSTRUMENTATION = Boolean(
 export default defineConfig(({ command }) => {
     // Snapshot bytes once for both the manifest and dev/build delivery.
     const trackerAssets = computeTrackerAssets(command);
-    const mapAssets = computeMapStyles();
+    const mapAssets = computeMapStyles(command);
     return {
     define: {
         __DC_MAP_STYLES__: JSON.stringify(mapAssets.urls),
@@ -274,21 +249,10 @@ export default defineConfig(({ command }) => {
                 process.env.DISABLE_CLOUDFLARE_ANALYTICS === "1" ||
                 process.env.DISABLE_CLOUDFLARE_ANALYTICS === "true",
         }),
-        // Inject the precache manifest into dist/sw.js for offline support. MUST
-        // run AFTER i18nPrerenderPlugin + rootStubPlugin (all locale shells + the
-        // stub must exist in dist/) and BEFORE minifyServiceWorker() (which then
-        // minifies the SW with the manifest already injected). See
-        // vite-plugins/sw-precache.ts.
-        swPrecachePlugin(),
-        // Self-hosts the blur-zone tracker's runtime assets (onnxruntime-web wasm
-        // + ONNX models) under cache-busted URLs; deliberately NOT precached, and
-        // injects the current URL set into sw.js for bounded release retention. See vite-plugins/tracker-assets.ts.
+        // Emit immutable inference files before Workbox collects the finished build.
         trackerAssetsPlugin(trackerAssets),
-        deploymentAssetsPlugin(),
-        // Minify dist/sw.js LAST in the SW pipeline - after swPrecachePlugin has
-        // written the manifest into the readable source, so the injected manifest
-        // is minified together with the rest of the SW.
-        minifyServiceWorker(),
+        swPrecachePlugin(),
+        deploymentAssetsPlugin([...trackerAssets.urls, ...mapAssets.files.keys()]),
         // llms.txt for AI agents (Claude, Perplexity, ChatGPT). Independent
         // of noIndex - the file lists production URLs, so even on staging
         // it points agents at the canonical site. See vite-plugins/llms-txt.ts.

@@ -5,11 +5,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { stagePortableRelease } from "../../scripts/_portable-artifacts.mjs";
 import { publishPortableDownloads } from "../../vite-plugins/portable-downloads.js";
-import { collectPrecacheEntries } from "../../vite-plugins/sw-precache.js";
+import { collectPrecacheEntries, stampPrecacheShells } from "../../vite-plugins/sw-precache.js";
 import { portableFilename } from "./release-tags.mjs";
 
 const directories: string[] = [];
-const shell = '<!doctype html><a id="portable-download" hidden download>Download</a><p>Viewer</p>';
+const shell =
+    '<!doctype html><html><head></head><body><a id="portable-download" hidden download>Download</a><p>Viewer</p></body></html>';
 
 function fixture(version = "v2026.09.25") {
     const root = mkdtempSync(join(tmpdir(), "portable-publication-"));
@@ -78,7 +79,7 @@ describe("portable website publication", () => {
 
     it.each(["v2026.09.25", "dev-abcdef1234567"])(
         "publishes %s with exact bytes and matching-locale links outside precache",
-        (version) => {
+        async (version) => {
             const { dist, manifestPath, file, bytes, manifest } = fixture(version);
             publishPortableDownloads(dist, manifestPath, false, version.startsWith("dev-"));
             expect(readFileSync(join(dist, file.path.slice(1)))).toEqual(bytes);
@@ -93,9 +94,10 @@ describe("portable website publication", () => {
                 expect(html).toContain(`title="${version} · 0 MB"`);
             }
             expect(readFileSync(join(dist, "ru/index.html"), "utf8")).not.toContain("portable-download");
-            expect(collectPrecacheEntries(dist, ["en", "ru"]).some(({ url }) => url.startsWith("/downloads/"))).toBe(
-                false,
-            );
+            stampPrecacheShells(dist, ["en", "ru"]);
+            expect(
+                (await collectPrecacheEntries(dist, ["en", "ru"])).some(({ url }) => url.startsWith("/downloads/")),
+            ).toBe(false);
         },
     );
 

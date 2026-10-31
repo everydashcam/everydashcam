@@ -227,6 +227,7 @@ export const deDict = {
     "status.offline.label": "Offline",
     "status.offline.info": "Was das bedeutet",
     "status.offline.detail": "Der Kartenhintergrund lädt offline nicht. Video, Geschwindigkeitsdiagramm und Export funktionieren weiter — und die App aktualisiert sich, sobald du wieder online bist.",
+    "status.update.ready": "Ein Update ist bereit. Wenn du fertig bist, schließe alle Tabs und Fenster von everydashcam und öffne die App erneut.",
 
     "notif.bell.aria": "Benachrichtigungen",
     "notif.drawer.title": "Benachrichtigungen",

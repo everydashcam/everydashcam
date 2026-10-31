@@ -1,3 +1,4 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { resolve } from "node:path";
 import type { DetectRequestData, DetectResult } from "../../src/workers/tracker-protocol.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
@@ -24,95 +25,70 @@ for (const locale of ["en", "ru"] as const)
         test(`reviews independent detections as sections on ${locale} ${size}`, async ({ page }, info) => {
             await presetLocalStorage(page);
             await page.setViewportSize(viewport);
-            await page.addInitScript((urls: string[]) => {
-                Object.defineProperty(navigator, "gpu", {
-                    value: { requestAdapter: async () => ({}) },
-                    configurable: true,
-                });
-                for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");
-                const NativeWorker = window.Worker;
-                window.Worker = class extends NativeWorker {
-                    private isTracker: boolean;
-                    constructor(url: string | URL, options?: WorkerOptions) {
-                        super(url, options);
-                        this.isTracker = options?.name === "tracker-worker";
-                    }
-                    override postMessage(
-                        message: unknown,
-                        options?: Transferable[] | StructuredSerializeOptions,
-                    ): void {
-                        if (
-                            this.isTracker &&
-                            message &&
-                            typeof message === "object" &&
-                            "__k" in message &&
-                            message.__k === "req" &&
-                            "data" in message &&
-                            "id" in message
-                        ) {
-                            const request = message.data as DetectRequestData;
-                            const rect = { xPct: 0.2, yPct: 0.4, wPct: 0.1, hPct: 0.1 };
-                            const first = request.segments[0]!;
-                            const end = first.endInFile;
-                            const unit = end / 8;
-                            // Match the 30 fps fixture and WebCodecs' microsecond timestamps.
-                            const sourceTime = (frame: number) => Math.round((frame * 1e6) / 30) / 1e6;
-                            const frameTime = (value: number) =>
-                                first.tripStart + sourceTime(Math.round(value * unit * 30));
-                            const track = (from: number, to: number, bestScore: number, x = 0.2) => ({
-                                startSec: frameTime(from),
-                                endSec: frameTime(to),
-                                detHits: 1,
-                                bestScore,
-                                keyframes: [{ contentSec: frameTime(from), rect: { ...rect, xPct: x } }],
-                            });
-                            const result: DetectResult = {
-                                uncertainFramesByKind: { plate: [{ contentSec: frameTime(0.5), durationSec: 1 / 30 }] },
-                                tracksByKind: {
-                                    plate:
-                                        first.tripStart === 0
-                                            ? [
-                                                  track(1, 4, 0.8),
-                                                  track(1, 4, 0.75, 0.8),
-                                                  track(4, 6, 0.9, 0.6),
-                                                  track(6.5, 8, 0.8),
-                                              ]
-                                            : [track(1, 1 + 1 / (30 * unit), 0.8)],
-                                },
-                                sourceFrames: Array.from({ length: Math.ceil(end * 30) }, (_, i) => ({
-                                    contentSec: first.tripStart + sourceTime(i),
-                                    durationSec: 1 / 30,
-                                })),
-                                statsByKind: {},
-                                decodedFrames: 0,
-                                passMs: 0,
-                            };
-                            const expectedFrames = JSON.parse(
-                                document.documentElement.dataset.reviewFrames ?? "[]",
-                            ) as number[];
-                            expectedFrames.push(
-                                ...(first.tripStart === 0 ? [frameTime(1), frameTime(6.5)] : [frameTime(1)]),
-                            );
-                            document.documentElement.dataset.reviewFrames = JSON.stringify(expectedFrames);
-                            const uncertainFrames = JSON.parse(
-                                document.documentElement.dataset.uncertainFrames ?? "[]",
-                            ) as number[];
-                            uncertainFrames.push(frameTime(0.5));
-                            document.documentElement.dataset.uncertainFrames = JSON.stringify(uncertainFrames);
-                            queueMicrotask(() =>
-                                this.dispatchEvent(
-                                    new MessageEvent("message", {
-                                        data: { __k: "res", id: message.id, ok: true, result },
-                                    }),
-                                ),
-                            );
-                            return;
-                        }
-                        if (Array.isArray(options)) super.postMessage(message, options);
-                        else super.postMessage(message, options);
-                    }
-                };
-            }, computeTrackerAssets("build").urls);
+            await installWorkerRpc(
+                page,
+                (urls: string[]) => {
+                    Object.defineProperty(navigator, "gpu", {
+                        value: { requestAdapter: async () => ({}) },
+                        configurable: true,
+                    });
+                    for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");
+                    window.__workerRpc.intercept(["tracker-worker"], () => (type, data, forward) => {
+                        if (type !== "detect") return forward();
+                        const request = data as DetectRequestData;
+                        const rect = { xPct: 0.2, yPct: 0.4, wPct: 0.1, hPct: 0.1 };
+                        const first = request.segments[0]!;
+                        const end = first.endInFile;
+                        const unit = end / 8;
+                        // Match the 30 fps fixture and WebCodecs' microsecond timestamps.
+                        const sourceTime = (frame: number) => Math.round((frame * 1e6) / 30) / 1e6;
+                        const frameTime = (value: number) =>
+                            first.tripStart + sourceTime(Math.round(value * unit * 30));
+                        const track = (from: number, to: number, bestScore: number, x = 0.2) => ({
+                            startSec: frameTime(from),
+                            endSec: frameTime(to),
+                            detHits: 1,
+                            bestScore,
+                            keyframes: [{ contentSec: frameTime(from), rect: { ...rect, xPct: x } }],
+                        });
+                        const result: DetectResult = {
+                            uncertainFramesByKind: { plate: [{ contentSec: frameTime(0.5), durationSec: 1 / 30 }] },
+                            tracksByKind: {
+                                plate:
+                                    first.tripStart === 0
+                                        ? [
+                                              track(1, 4, 0.8),
+                                              track(1, 4, 0.75, 0.8),
+                                              track(4, 6, 0.9, 0.6),
+                                              track(6.5, 8, 0.8),
+                                          ]
+                                        : [track(1, 1 + 1 / (30 * unit), 0.8)],
+                            },
+                            sourceFrames: Array.from({ length: Math.ceil(end * 30) }, (_, i) => ({
+                                contentSec: first.tripStart + sourceTime(i),
+                                durationSec: 1 / 30,
+                            })),
+                            statsByKind: {},
+                            decodedFrames: 0,
+                            passMs: 0,
+                        };
+                        const expectedFrames = JSON.parse(
+                            document.documentElement.dataset.reviewFrames ?? "[]",
+                        ) as number[];
+                        expectedFrames.push(
+                            ...(first.tripStart === 0 ? [frameTime(1), frameTime(6.5)] : [frameTime(1)]),
+                        );
+                        document.documentElement.dataset.reviewFrames = JSON.stringify(expectedFrames);
+                        const uncertainFrames = JSON.parse(
+                            document.documentElement.dataset.uncertainFrames ?? "[]",
+                        ) as number[];
+                        uncertainFrames.push(frameTime(0.5));
+                        document.documentElement.dataset.uncertainFrames = JSON.stringify(uncertainFrames);
+                        return result;
+                    });
+                },
+                computeTrackerAssets("build").urls,
+            );
             await gotoApp(page, locale);
             await loadTrip(page, resolve(SAMPLE_70MAI, "Normal/Front"));
             await pausePlayback(page);

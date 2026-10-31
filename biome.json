@@ -9,6 +9,7 @@
 		"includes": [
 			"src/**",
 			"scripts/**",
+			"vite-plugins/**",
 			"tests/**",
 			"playwright.perf.config.ts",
 			"vitest.bench.config.ts",

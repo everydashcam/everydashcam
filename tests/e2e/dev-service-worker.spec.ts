@@ -1,6 +1,5 @@
+import { buildServiceWorker } from "../helpers/service-worker-build.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
@@ -27,8 +26,9 @@ test("retires an installed dev worker before loading the app without clearing pr
             document.documentElement.dataset.testAppReady = "true";
         });
     });
+    const worker = await buildServiceWorker([]);
     const installedWorker = async (route: import("@playwright/test").Route) =>
-        route.fulfill({ contentType: "text/javascript", body: readFileSync(resolve("public/sw.js")) });
+        route.fulfill({ contentType: "text/javascript", body: worker });
     await context.route(`${origin}/sw.js`, installedWorker);
     await page.route(`${origin}/setup`, (route) =>
         route.fulfill({ contentType: "text/html", body: "<!doctype html><title>setup</title>" }),
@@ -41,13 +41,25 @@ test("retires an installed dev worker before loading the app without clearing pr
     await page.evaluate(async () => {
         localStorage.setItem("everydashcam:lang", "en");
         localStorage.setItem("preserve-dev-preference", "selected");
-        const cache = await caches.open("everydashcam-runtime-v3");
+        const cache = await caches.open("everydashcam-runtime");
         await cache.put(
             "/src/app.ts",
             new Response('throw new Error("stale dev module executed")', {
                 headers: { "content-type": "text/javascript" },
             }),
         );
+        for (const name of [
+            "everydashcam-precache",
+            "everydashcam-tracker",
+            "everydashcam-precache-v4",
+            "everydashcam-runtime-v3",
+            "everydashcam-tracker-v3",
+            "everydashcam-releases-v1",
+            "everydashcam-map-tiles",
+            "other-app",
+        ]) {
+            await (await caches.open(name)).put("/resource", new Response("cached resource"));
+        }
     });
     await context.unroute(`${origin}/sw.js`, installedWorker);
     await page.goto(`${origin}/`);
@@ -57,6 +69,10 @@ test("retires an installed dev worker before loading the app without clearing pr
     expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
     expect(await page.evaluate(() => localStorage.getItem("preserve-dev-preference"))).toBe("selected");
     expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
+    expect(await page.evaluate(async () => (await caches.keys()).sort())).toEqual([
+        "everydashcam-map-tiles",
+        "other-app",
+    ]);
     expect(errors).toEqual([]);
 });
 
@@ -92,4 +108,31 @@ test("runs verified ONNX inference directly through the development server", asy
     expect(result.binaryReleased).toBe(true);
     expect(Object.values(result.outputs!).every((output) => output.finite)).toBe(true);
     expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
+});
+
+test("serves edited map styles without restarting Vite", async ({ request }, info) => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { computeMapStyles, mapStylesPlugin } = await import("../../vite-plugins/map-styles.js");
+    const root = info.outputPath("map-style-dev");
+    const path = resolve(root, "public/styles/light.json");
+    mkdirSync(resolve(root, "public/styles"), { recursive: true });
+    writeFileSync(path, '{"name":"first"}');
+    const styles = computeMapStyles("serve", root);
+    const local = await createServer({
+        configFile: false,
+        root,
+        plugins: [mapStylesPlugin(styles)],
+        server: { host: "127.0.0.1", port: 0, open: false },
+        logLevel: "error",
+    });
+    try {
+        await local.listen();
+        const url = new URL(styles.urls.light, local.resolvedUrls!.local[0]).href;
+        expect(await (await request.get(url)).json()).toEqual({ name: "first" });
+        writeFileSync(path, '{"name":"edited"}');
+        expect(await (await request.get(url)).json()).toEqual({ name: "edited" });
+    } finally {
+        await local.close();
+    }
 });

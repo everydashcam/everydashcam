@@ -10,16 +10,13 @@ import { createHash } from "node:crypto";
 //
 //   2. All prerendered locale shells (/<lang>/) are in the manifest.
 //
-//   3. The manifest and tracker URLs evaluated from the minified dist/sw.js
-//      match the final artifacts. This also catches invalid JavaScript and
-//      placeholders left behind by the build pipeline.
+//   3. Workbox's injected manifest matches the final artifact bytes and SRI.
 //
 // Like csp-hash.integration.test.ts this runs against artifacts on disk: it
 // needs `npm run build` first. Missing dist/ skips locally but THROWS in CI.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { runInNewContext } from "node:vm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { SEO_LOCALES } from "./i18n/seo-config.js";
 import { collectPrecacheEntries } from "../vite-plugins/sw-precache.js";
@@ -56,27 +53,26 @@ function bootAssetsOf(html: string): string[] {
     return [...new Set(out)];
 }
 
-function injectedValues(): { manifest: unknown; trackerUrls: unknown } {
-    return runInNewContext(
-        `${readFileSync(SW, "utf-8")}\n;({ manifest: PRECACHE_MANIFEST, trackerUrls: TRACKER_ASSET_URLS });`,
-        {
-            URL,
-            self: { location: { origin: "https://everydashcam.app" }, addEventListener() {} },
-        },
-    );
+function injectedManifest(): unknown {
+    // injectManifest inserts JSON after Vite compiles the worker. Parse only
+    // that data; library code and browser globals do not need a mock runtime.
+    const source = readFileSync(SW, "utf8");
+    const json = source.match(/\[\{"(?:integrity|revision|url)":.+?\}\]/)?.[0];
+    if (!json) throw new Error("Workbox manifest missing in dist/sw.js");
+    return JSON.parse(json);
 }
 
 describe("sw-precache integration: manifest covers the real boot graph", () => {
     const segments = SEO_LOCALES.map((locale) => locale.urlSegment);
-    let entries: ReturnType<typeof collectPrecacheEntries>;
+    let entries: Awaited<ReturnType<typeof collectPrecacheEntries>>;
     let urls: Set<string>;
-    let injected: ReturnType<typeof injectedValues>;
+    let injected: unknown;
 
-    beforeAll(() => {
+    beforeAll(async () => {
         if (!hasDist) return;
-        entries = collectPrecacheEntries(DIST_DIR, segments);
+        entries = await collectPrecacheEntries(DIST_DIR, segments);
         urls = new Set(entries.map((entry) => entry.url));
-        injected = injectedValues();
+        injected = injectedManifest();
     });
 
     itIf("every /en/ boot asset (entry, preloads, css) is in the precache manifest", () => {
@@ -152,20 +148,20 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
                 entries.find((entry) => entry.url === url),
                 `shell ${url} must carry its build identity`,
             ).toMatchObject({
-                htmlRevision: expect.stringMatching(/^[0-9a-f]{16}$/),
+                revision: expect.stringMatching(/^[0-9a-f]{16}$/),
             });
         }
     });
 
     itIf("the injected manifest contains every final artifact and its current content revision", () => {
-        expect(injected.manifest).toEqual(entries);
+        expect(injected).toEqual(entries);
     });
 
-    itIf("the injected tracker URLs match the emitted runtime and model bytes", () => {
+    itIf("tracker assets remain lazy and match the emitted runtime and model bytes", () => {
         const root = resolve(DIST_DIR, "..");
         const assets = computeTrackerAssets("build", root);
-        expect(injected.trackerUrls).toEqual(assets.urls);
         for (const url of assets.urls) {
+            expect(urls.has(url)).toBe(false);
             const emitted = readFileSync(resolve(DIST_DIR, url.slice(1)));
             expect(emitted.equals(assets.files.get(url)!), `tracker asset ${url} matches its snapshot`).toBe(true);
             expect(emitted.length, `tracker asset ${url} fits Cloudflare Pages`).toBeLessThanOrEqual(25 * 1024 * 1024);

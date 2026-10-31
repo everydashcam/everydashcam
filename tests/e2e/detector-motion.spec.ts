@@ -1,9 +1,9 @@
+import { installWorkerRpc } from "./_worker-rpc.js";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { type BlurRegion, regionRectAt } from "../../src/blur-regions.js";
 import type { CropRect } from "../../src/transcode/compose.js";
-import type { WireRequest, WireResponse } from "../../src/workers/_protocol/wire.js";
 import type { DetectRequestData, DetectResult } from "../../src/workers/tracker-protocol.js";
 import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import type faceMotionFixture from "../testdata/detector-motion/face-motion.json";
@@ -378,12 +378,11 @@ VideoDecoder.prototype.decode = function(...args) {
     nativeDecodeCalls++;
     return originalDecode.apply(this, args);
 };
-const originalPostMessage = self.postMessage;
-self.postMessage = function(message, ...args) {
-    if (message?.__k === "res" && message.ok === true) {
-        message.result.nativeDecodeCalls = nativeDecodeCalls;
-    }
-    return originalPostMessage.call(this, message, ...args);
+const originalClose = VideoDecoder.prototype.close;
+VideoDecoder.prototype.close = function(...args) {
+    const result = originalClose.apply(this, args);
+    self.postMessage({ e2eNativeDecodeCalls: nativeDecodeCalls });
+    return result;
 };
 `;
                 const workerCode = readFileSync(resolve(REPO_ROOT, "dist/assets", workers[0]!), "utf8");
@@ -413,6 +412,7 @@ self.postMessage = function(message, ...args) {
             );
             await page.goto("/detector-motion-harness.html");
             test.skip(!(await hasWebGpuAdapter(page)), "WebGPU adapter unavailable - detection is WebGPU-only");
+            await installWorkerRpc(page);
             const result = await page.evaluate(
                 async ({
                     workerUrl,
@@ -427,48 +427,44 @@ self.postMessage = function(message, ...args) {
                     thresholds,
                 }) => {
                     const worker = new Worker(workerUrl, { type: "module" });
+                    const rpc = window.__workerRpc.connect(worker);
+                    let nativeDecodeCalls = 0;
+                    worker.addEventListener("message", (event: MessageEvent<unknown>) => {
+                        if (event.data && typeof event.data === "object" && "e2eNativeDecodeCalls" in event.data) {
+                            nativeDecodeCalls = Math.max(nativeDecodeCalls, Number(event.data.e2eNativeDecodeCalls));
+                        }
+                    });
                     try {
-                        return await new Promise<MeasuredDetectResult>((resolve, reject) => {
-                            worker.onerror = (event) => reject(new Error(event.message));
-                            worker.onmessage = (event: MessageEvent<unknown>) => {
-                                if (!event.data || typeof event.data !== "object") return;
-                                const message = event.data as Partial<WireResponse>;
-                                if (message.__k !== "res" || message.id !== 1) return;
-                                if (message.ok === true) resolve(message.result as MeasuredDetectResult);
-                                else if (message.ok === false)
-                                    reject(new Error(message.error?.message ?? "detector response failed"));
-                                else reject(new Error("invalid detector response"));
-                            };
-                            const file = new File([new Uint8Array(bytes)], filename, { type: "video/mp4" });
-                            const windows =
-                                splitSec === null
-                                    ? [[startSec, durationSec]]
-                                    : [
-                                          [startSec, splitSec],
-                                          [splitSec, durationSec],
-                                      ];
-                            const data: DetectRequestData = {
-                                segments: windows.map(([startInFile, endInFile]) => ({
-                                    file,
-                                    startInFile: startInFile!,
-                                    endInFile: endInFile!,
-                                    tripStart: 0,
-                                })),
-                                startContentSec: startSec,
-                                endContentSec: durationSec,
-                                kinds: [kind],
-                                quality,
-                                thresholds,
-                                analyzeIntervalsByKind: { [kind]: [{ startSec, endSec: durationSec }] },
-                                plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
-                                faceModelUrl: new URL(assets.models.face.url, location.origin).href,
-                                ortAssets: assets.ort.webgpu,
-                                trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
-                            };
-                            worker.postMessage({ __k: "req", id: 1, type: "detect", data } satisfies WireRequest);
-                        });
+                        const file = new File([new Uint8Array(bytes)], filename, { type: "video/mp4" });
+                        const windows =
+                            splitSec === null
+                                ? [[startSec, durationSec]]
+                                : [
+                                      [startSec, splitSec],
+                                      [splitSec, durationSec],
+                                  ];
+                        const data: DetectRequestData = {
+                            segments: windows.map(([startInFile, endInFile]) => ({
+                                file,
+                                startInFile: startInFile!,
+                                endInFile: endInFile!,
+                                tripStart: 0,
+                            })),
+                            startContentSec: startSec,
+                            endContentSec: durationSec,
+                            kinds: [kind],
+                            quality,
+                            thresholds,
+                            analyzeIntervalsByKind: { [kind]: [{ startSec, endSec: durationSec }] },
+                            plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
+                            faceModelUrl: new URL(assets.models.face.url, location.origin).href,
+                            ortAssets: assets.ort.webgpu,
+                            trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
+                        };
+                        const result = await rpc.request<MeasuredDetectResult>("detect", data);
+                        return { ...result, nativeDecodeCalls };
                     } finally {
-                        worker.terminate();
+                        rpc.dispose();
                     }
                 },
                 {

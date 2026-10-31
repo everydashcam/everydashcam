@@ -46,19 +46,27 @@ export function trackerWorkerClient(): WorkerClient {
     return client;
 }
 
-/** Native runtime initialization can leave ORT permanently aborted. A failed
- * request ends this instance; the next explicit attempt gets a fresh worker. */
+/** Initialization, inference and stalled passes can leave ORT unusable.
+ * Decode/preprocessing errors outside ORT leave unrelated queued work usable. */
 export async function requestTrackerWorker<T>(...args: Parameters<WorkerClient["request"]>): Promise<T> {
     const owner = trackerWorkerClient();
     try {
         return await owner.request<T>(...args);
     } catch (error) {
-        if (error instanceof Error && error.name.startsWith("Asset")) invalidateBlurAssetReadiness();
+        const isAssetFailure = error instanceof Error && error.name.startsWith("Asset");
+        if (isAssetFailure) invalidateBlurAssetReadiness();
+        const timeout = args[2]?.signal?.reason;
         if (
-            !(error instanceof Error && error.name === "AbortError") ||
-            args[2]?.signal?.reason?.name === "TimeoutError"
+            isAssetFailure ||
+            (error instanceof Error &&
+                (error.name === "OrtInitializationError" || error.name === "OrtInferenceError")) ||
+            timeout?.name === "TimeoutError"
         ) {
-            owner.dispose("tracker request failed");
+            // Other passes must report this failure too, not mistake worker
+            // replacement for their user's cancellation.
+            owner.dispose(
+                timeout?.name === "TimeoutError" ? timeout : error instanceof Error ? error : new Error(String(error)),
+            );
             if (client === owner) client = null;
         }
         throw error;

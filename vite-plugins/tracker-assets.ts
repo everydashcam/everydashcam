@@ -2,7 +2,7 @@
 // ONNX's official bundled ESM supplies its matching JS glue; only binary data
 // needs separate delivery. Large WASM remains below the Pages 25 MiB file cap.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, type Stats, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 import type { AssetPart, TrackerAssetManifest } from "../src/tracking/ort-assets.js";
@@ -24,12 +24,19 @@ export interface TrackerAssets {
     assertRuntimeUnchanged(): void;
 }
 
+function sameSourceVersion(a: Stats, b: Stats): boolean {
+    return (
+        a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs && a.ino === b.ino && a.dev === b.dev
+    );
+}
+
 export function computeTrackerAssets(command: "serve" | "build", root = process.cwd()): TrackerAssets {
-    const sources = new Map<string, string>();
+    const sources = new Map<string, { hash: string; stat: Stats }>();
     const snapshot = (path: string) => {
+        const stat = statSync(path);
         const bytes = readFileSync(path);
         if (bytes.length === 0) throw new Error(`empty tracker runtime source: ${path}`);
-        sources.set(path, createHash("sha256").update(bytes).digest("hex"));
+        sources.set(path, { hash: createHash("sha256").update(bytes).digest("hex"), stat });
         return bytes;
     };
     const files = new Map<string, Buffer>();
@@ -65,16 +72,19 @@ export function computeTrackerAssets(command: "serve" | "build", root = process.
         urls: [...files.keys()],
         build: command === "build",
         assertRuntimeUnchanged() {
-            for (const [path, hash] of sources) {
-                if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
+            for (const [path, source] of sources) {
+                const stat = statSync(path);
+                // Dev requests need only cheap metadata checks until a source
+                // changes. Build emission still verifies the complete bytes.
+                if (command === "serve" && sameSourceVersion(stat, source.stat)) continue;
+                if (createHash("sha256").update(readFileSync(path)).digest("hex") !== source.hash) {
                     throw new Error("onnxruntime changed during this build; restart the development server or rebuild");
                 }
+                source.stat = stat;
             }
         },
     };
 }
-
-const SW_PLACEHOLDER = /const TRACKER_ASSET_URLS = \[\];\s*\/\/ __DC_TRACKER_ASSET_URLS__/;
 
 export function trackerAssetsPlugin(assets: TrackerAssets): Plugin {
     let outDir = resolve("dist");
@@ -114,15 +124,6 @@ export function trackerAssetsPlugin(assets: TrackerAssets): Plugin {
                 for (const name of readdirSync(assetsDir)) {
                     if (/^ort-wasm.*\.wasm$/.test(name)) rmSync(resolve(assetsDir, name));
                 }
-            }
-            const swPath = resolve(outDir, "sw.js");
-            if (existsSync(swPath)) {
-                const sw = readFileSync(swPath, "utf8");
-                if (!SW_PLACEHOLDER.test(sw)) throw new Error("tracker-assets: missing service worker placeholder");
-                writeFileSync(
-                    swPath,
-                    sw.replace(SW_PLACEHOLDER, `const TRACKER_ASSET_URLS = ${JSON.stringify(assets.urls)};`),
-                );
             }
         },
     };

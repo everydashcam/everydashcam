@@ -127,7 +127,7 @@ base("retains the hash-based script policy after restoring the document", async 
     const directive = await page.evaluate(
         () =>
             new Promise<string>((done) => {
-                addEventListener("securitypolicyviolation", (event) => done(event.effectiveDirective), {
+                window.addEventListener("securitypolicyviolation", (event) => done(event.effectiveDirective), {
                     once: true,
                 });
                 const script = document.createElement("script");

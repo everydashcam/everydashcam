@@ -4,7 +4,7 @@ import { type BlurRegion, regionRectAt } from "../blur-regions.js";
 import type { Channel } from "../parsers/types.js";
 import { groupTrips, tripAllCandidates, type Trip, type VideoCandidate } from "../trips.js";
 import { flushMicrotasks, makePairedEndpoints } from "../workers/_protocol/test-helpers.js";
-import { isWireMessage, type WireRequest } from "../workers/_protocol/wire.js";
+import { createWorkerServer, type WorkerServer } from "../workers/_protocol/worker-server.js";
 import {
     DETECT_REQUEST,
     TRACK_NOTIFY_PROGRESS,
@@ -22,6 +22,7 @@ const ui = vi.hoisted(() => {
         trip: null as Trip | null,
         range: { startTripSec: 0, endTripSec: 3 },
         channels: ["front"] as Channel[],
+        notifications: [] as string[],
     };
 });
 
@@ -48,7 +49,9 @@ vi.mock("./export-state.js", () => ({
     subscribeExportState: () => () => {},
     notifyExportStateChanged: () => {},
 }));
-vi.mock("./notifications.js", () => ({ notify: () => {} }));
+vi.mock("./notifications.js", () => ({
+    notify: (message: { messageKey: string }) => ui.notifications.push(message.messageKey),
+}));
 
 import {
     _resetForTests as resetDetection,
@@ -165,7 +168,22 @@ function regroupTrip(): void {
 }
 
 let endpoints: ReturnType<typeof makePairedEndpoints>;
-let requests: WireRequest[];
+interface PendingPass {
+    type: string;
+    data: unknown;
+    resolve(result: unknown): void;
+    reject(error: Error): void;
+}
+let requests: PendingPass[];
+let server: WorkerServer;
+function startWorker(): void {
+    endpoints = makePairedEndpoints();
+    server = createWorkerServer(endpoints.workerEndpoint, {
+        onRequest(type, data) {
+            return new Promise((resolve, reject) => requests.push({ type, data, resolve, reject }));
+        },
+    });
+}
 
 beforeEach(() => {
     _resetForTests();
@@ -174,18 +192,11 @@ beforeEach(() => {
     ui.trip = makeTrip();
     ui.range = { startTripSec: 0, endTripSec: 3 };
     ui.channels = ["front"];
-    endpoints = makePairedEndpoints();
+    ui.notifications = [];
     requests = [];
-    endpoints.workerEndpoint.addEventListener("message", (event) => {
-        if (isWireMessage(event.data) && event.data.__k === "req") requests.push(event.data);
-    });
+    startWorker();
     vi.stubGlobal("Worker", function Worker() {
-        if (endpoints.terminated()) {
-            endpoints = makePairedEndpoints();
-            endpoints.workerEndpoint.addEventListener("message", (event) => {
-                if (isWireMessage(event.data) && event.data.__k === "req") requests.push(event.data);
-            });
-        }
+        if (endpoints.terminated()) startWorker();
         return endpoints.mainEndpoint;
     });
     vi.stubGlobal("window", globalThis);
@@ -203,37 +214,108 @@ afterEach(() => {
 });
 
 describe("blur pass lifecycle", () => {
-    it("discards a failed native runtime and preserves the region for an explicit retry", async () => {
-        const region = makeRegion();
-        const before = structuredClone(region);
-        const first = toggleTrackPass(ui.trip!, region);
+    it("keeps unrelated Follow requests running after a decoding error", async () => {
+        const first = toggleTrackPass(ui.trip!, makeRegion());
+        const secondRegion = { ...makeRegion(), id: "region-2" };
+        const second = toggleTrackPass(ui.trip!, secondRegion);
         await flushMicrotasks();
-        const failedEndpoints = endpoints;
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[0]!.id,
-            ok: false,
-            error: { name: "AssetIntegrityError", message: "asset integrity mismatch" },
-        });
+        expect(requests).toHaveLength(2);
+        requests[0]!.reject(Object.assign(new Error("decode failed"), { name: "Error" }));
         expect(await first).toBe("failed");
-        expect(failedEndpoints.terminated()).toBe(true);
-        expect(region).toEqual(before);
+        expect(endpoints.terminated()).toBe(false);
+        expect(trackPassOf(secondRegion.id)).not.toBeNull();
+        requests[1]!.resolve({ keyframes: [], trackedUntilSec: 4, endReason: "completed" });
+        expect(await second).toBe("completed");
+        expect(ui.notifications).toEqual(["export.blur.track.failed"]);
+    });
 
-        const retry = toggleTrackPass(ui.trip!, region);
+    it("lets export detection finish after an unrelated Follow decoding error", async () => {
+        await downloadBlurAssets(["detect-plate"]);
+        const follow = toggleTrackPass(ui.trip!, makeRegion());
         await flushMicrotasks();
-        expect(endpoints).not.toBe(failedEndpoints);
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[1]!.id,
-            ok: true,
-            result: {
+        setDetectEnabled("plate", true);
+        const detection = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        const detectRequest = requests.find((request) => request.type === DETECT_REQUEST)!;
+        expect(detectRequest).toBeDefined();
+        requests[0]!.reject(Object.assign(new Error("decode failed"), { name: "Error" }));
+        expect(await follow).toBe("failed");
+        expect(endpoints.terminated()).toBe(false);
+        detectRequest.resolve(makeDetectResult());
+        expect(await detection).toHaveLength(1);
+        expect(ui.notifications).toEqual(["export.blur.track.failed"]);
+    });
+
+    it.each(["AssetIntegrityError", "OrtInitializationError", "OrtInferenceError"])(
+        "reports %s to other Follow and export detection requests when the worker must stop",
+        async (name) => {
+            await downloadBlurAssets(["detect-plate"]);
+            const first = toggleTrackPass(ui.trip!, makeRegion());
+            const second = toggleTrackPass(ui.trip!, { ...makeRegion(), id: "region-2" });
+            await flushMicrotasks();
+            setDetectEnabled("plate", true);
+            const signal = new AbortController().signal;
+            const detection = ensureDetectRegionsForExport(captureDetectExportRequest()!, signal, () => {}).catch(
+                (error: unknown) => error,
+            );
+            await flushMicrotasks();
+            expect(requests.some((request) => request.type === DETECT_REQUEST)).toBe(true);
+            requests[0]!.reject(Object.assign(new Error("runtime unavailable"), { name: name }));
+            expect(await first).toBe("failed");
+            expect(await second).toBe("failed");
+            expect(await detection).toMatchObject({ name, message: "runtime unavailable" });
+            expect(signal.aborted).toBe(false);
+            expect(endpoints.terminated()).toBe(true);
+            expect(ui.notifications).toEqual([
+                "export.blur.track.failed",
+                "export.blur.track.failed",
+                "export.blur.detect.failed",
+            ]);
+        },
+    );
+
+    it("reports a stalled worker to queued Follow requests without treating them as user cancellation", async () => {
+        vi.useFakeTimers();
+        const first = toggleTrackPass(ui.trip!, makeRegion());
+        const second = toggleTrackPass(ui.trip!, { ...makeRegion(), id: "region-2" });
+        await flushMicrotasks();
+        server.notify(TRACK_NOTIFY_STARTED, requests[0]!.data);
+        await flushMicrotasks();
+        vi.runAllTimers();
+        expect(await first).toBe("failed");
+        expect(await second).toBe("failed");
+        expect(endpoints.terminated()).toBe(true);
+        expect(ui.notifications).toEqual(["export.blur.track.timeout", "export.blur.track.failed"]);
+    });
+
+    it.each(["AssetIntegrityError", "OrtInferenceError"])(
+        "discards %s and preserves the region for an explicit retry",
+        async (name) => {
+            const region = makeRegion();
+            const before = structuredClone(region);
+            const first = toggleTrackPass(ui.trip!, region);
+            await flushMicrotasks();
+            const failedEndpoints = endpoints;
+            requests[0]!.reject(Object.assign(new Error("runtime unavailable"), { name }));
+            expect(await first).toBe("failed");
+            expect(failedEndpoints.terminated()).toBe(true);
+            expect(region).toEqual(before);
+
+            const retry = toggleTrackPass(ui.trip!, region);
+            await flushMicrotasks();
+            expect(endpoints).not.toBe(failedEndpoints);
+            requests[1]!.resolve({
                 keyframes: [{ contentSec: 0, rect: region.keyframes[0]!.rect }],
                 trackedUntilSec: 4,
                 endReason: "completed",
-            },
-        });
-        expect(await retry).toBe("completed");
-    });
+            });
+            expect(await retry).toBe("completed");
+        },
+    );
 
     it.each([true, false])("applies a lost Follow with automatic timing %s", async (autoEnd) => {
         const region = makeRegion();
@@ -241,12 +323,7 @@ describe("blur pass lifecycle", () => {
         const pending = toggleTrackPass(ui.trip!, region);
         await flushMicrotasks();
         const rect = { xPct: 0.6, yPct: 0.6, wPct: 0.1, hPct: 0.1 };
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[0]!.id,
-            ok: true,
-            result: { keyframes: [{ contentSec: 1, rect }], trackedUntilSec: 1, endReason: "lost" },
-        });
+        requests[0]!.resolve({ keyframes: [{ contentSec: 1, rect }], trackedUntilSec: 1, endReason: "lost" });
 
         expect(await pending).toBe("completed");
         expect(region.endSec).toBe(autoEnd ? 1 : 4);
@@ -275,12 +352,12 @@ describe("blur pass lifecycle", () => {
         await flushMicrotasks();
         expect(requests, "tile reorder does not discard and repeat the active scan").toHaveLength(1);
 
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: frontRequest.id, ok: true, result: makeDetectResult() });
+        frontRequest.resolve(makeDetectResult());
         await flushMicrotasks();
         await flushMicrotasks();
         const rearRequest = requests[1]!;
         expect(rearRequest.data).toMatchObject({ segments: [{ file: rear.file }] });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: rearRequest.id, ok: true, result: makeDetectResult() });
+        rearRequest.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions().map((region) => region.channel)).toEqual(["front", "rear"]);
         expect(detectCounts()).toEqual({ plate: 1, face: 0 });
@@ -321,22 +398,14 @@ describe("blur pass lifecycle", () => {
         expect(firstData.passId).not.toBe(secondData.passId);
 
         vi.useFakeTimers();
-        endpoints.workerEndpoint.postMessage({ __k: "ntf", type: TRACK_NOTIFY_STARTED, data: firstData });
-        endpoints.workerEndpoint.postMessage({
-            __k: "ntf",
-            type: TRACK_NOTIFY_PROGRESS,
-            data: { ...firstData, fractionDone: 0.9 },
-        });
+        server.notify(TRACK_NOTIFY_STARTED, firstData);
+        server.notify(TRACK_NOTIFY_PROGRESS, { ...firstData, fractionDone: 0.9 });
         await flushMicrotasks();
         expect(trackPassOf(region.id), "old progress does not move the new pass").toEqual({ fractionDone: 0 });
         expect(vi.getTimerCount(), "queue wait does not arm the replacement's inactivity cap").toBe(0);
 
-        endpoints.workerEndpoint.postMessage({ __k: "ntf", type: TRACK_NOTIFY_STARTED, data: secondData });
-        endpoints.workerEndpoint.postMessage({
-            __k: "ntf",
-            type: TRACK_NOTIFY_PROGRESS,
-            data: { ...secondData, fractionDone: 0.25 },
-        });
+        server.notify(TRACK_NOTIFY_STARTED, secondData);
+        server.notify(TRACK_NOTIFY_PROGRESS, { ...secondData, fractionDone: 0.25 });
         await flushMicrotasks();
         expect(trackPassOf(region.id)).toEqual({ fractionDone: 0.25 });
         expect(vi.getTimerCount()).toBe(1);
@@ -350,15 +419,10 @@ describe("blur pass lifecycle", () => {
         const before = structuredClone(region);
         const pending = toggleTrackPass(ui.trip!, region);
         await flushMicrotasks();
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[0]!.id,
-            ok: true,
-            result: {
-                keyframes: [{ contentSec: 2, rect: { xPct: 0.6, yPct: 0.6, wPct: 0.1, hPct: 0.1 } }],
-                trackedUntilSec: 4,
-                endReason: "completed",
-            },
+        requests[0]!.resolve({
+            keyframes: [{ contentSec: 2, rect: { xPct: 0.6, yPct: 0.6, wPct: 0.1, hPct: 0.1 } }],
+            trackedUntilSec: 4,
+            endReason: "completed",
         });
         queueMicrotask(() => cancelTrackPass(region.id));
         expect(await pending).toBe("cancelled");
@@ -372,17 +436,12 @@ describe("blur pass lifecycle", () => {
         const pending = toggleTrackPass(ui.trip!, region);
         await flushMicrotasks();
         const request = requests[0]!;
-        endpoints.workerEndpoint.postMessage({ __k: "ntf", type: TRACK_NOTIFY_STARTED, data: request.data });
+        server.notify(TRACK_NOTIFY_STARTED, request.data);
         await flushMicrotasks();
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: request.id,
-            ok: true,
-            result: {
-                keyframes: [{ contentSec: 2, rect: { xPct: 0.6, yPct: 0.6, wPct: 0.1, hPct: 0.1 } }],
-                trackedUntilSec: 4,
-                endReason: "completed",
-            },
+        request.resolve({
+            keyframes: [{ contentSec: 2, rect: { xPct: 0.6, yPct: 0.6, wPct: 0.1, hPct: 0.1 } }],
+            trackedUntilSec: 4,
+            endReason: "completed",
         });
         queueMicrotask(() => vi.runAllTimers());
         expect(await pending).toBe("failed");
@@ -404,7 +463,7 @@ describe("blur pass lifecycle", () => {
             contentSec: 1,
             rect: { xPct: 0.3, yPct: 0.2, wPct: 0.1, hPct: 0.1 },
         });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result });
+        request.resolve(result);
         expect(await initial).toHaveLength(1);
 
         regroupTrip();
@@ -496,7 +555,7 @@ describe("blur pass lifecycle", () => {
             await flushMicrotasks();
             const result = makeDetectResult();
             result.sourceFrames = sourceFrames;
-            endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+            requests[0]!.resolve(result);
             expect(await initial).toHaveLength(1);
 
             ui.range = { startTripSec: startSec, endTripSec: 2.5 };
@@ -542,7 +601,7 @@ describe("blur pass lifecycle", () => {
             { contentSec: heldTimestamp, rect },
             { contentSec: 0.7, rect },
         ];
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+        requests[0]!.resolve(result);
         expect(await initial).toHaveLength(1);
 
         ui.range = { startTripSec: 0.62, endTripSec: 0.68 };
@@ -583,12 +642,7 @@ describe("blur pass lifecycle", () => {
                 checkpoints: [],
             },
         };
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[0]!.id,
-            ok: true,
-            result: completed,
-        });
+        requests[0]!.resolve(completed);
         expect(await initial).toHaveLength(1);
 
         ui.range = { startTripSec, endTripSec };
@@ -610,7 +664,7 @@ describe("blur pass lifecycle", () => {
         const replacement = makeDetectResult();
         replacement.tracksByKind.plate![0]!.startSec = startTripSec;
         replacement.tracksByKind.plate![0]!.endSec = endTripSec;
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: replacement });
+        request.resolve(replacement);
         expect(await expanded, "the complete analysis replaces old tracks without duplicate covers").toMatchObject([
             { startSec: startTripSec, endSec: endTripSec, interpolation: "hold" },
         ]);
@@ -632,7 +686,7 @@ describe("blur pass lifecycle", () => {
                 checkpoints: [],
             },
         };
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result: completed });
+        requests[0]!.resolve(completed);
         await flushMicrotasks();
         ui.range.endTripSec = 4;
         const controller = new AbortController();
@@ -640,18 +694,12 @@ describe("blur pass lifecycle", () => {
         const rejected = expect(pending).rejects.toThrow();
         await flushMicrotasks();
         if (outcome === "cancelled") controller.abort();
-        else
-            endpoints.workerEndpoint.postMessage({
-                __k: "res",
-                id: requests[1]!.id,
-                ok: false,
-                error: { name: "Error", message: "decode failed" },
-            });
+        else requests[1]!.reject(Object.assign(new Error("decode failed"), { name: "Error" }));
         await rejected;
         ensureDetectPass();
         await flushMicrotasks();
         expect(requests[2]!.data).toMatchObject({ cachedAnalysisByKind: completed.analysisByKind });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[2]!.id, ok: true, result: completed });
+        requests[2]!.resolve(completed);
         await flushMicrotasks();
     });
 
@@ -670,7 +718,7 @@ describe("blur pass lifecycle", () => {
         ui.range = { startTripSec: 1, endTripSec: 11 };
         await downloadBlurAssets(["detect-plate"]);
         setDetectEnabled("plate", true);
-        const reply = async (request: WireRequest) => {
+        const reply = async (request: PendingPass) => {
             const data = request.data as DetectRequestData;
             expect(data.segments, "each cached result has a single source owner").toHaveLength(1);
             const start = data.startContentSec;
@@ -680,7 +728,7 @@ describe("blur pass lifecycle", () => {
             result.tracksByKind.plate![0]!.endSec = end;
             result.tracksByKind.plate![0]!.keyframes[0]!.contentSec = start;
             result.sourceFrames = [{ contentSec: start, durationSec: end - start }];
-            endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result });
+            request.resolve(result);
             await flushMicrotasks();
         };
         const initial = ensureDetectRegionsForExport(
@@ -742,7 +790,7 @@ describe("blur pass lifecycle", () => {
             contentSec: frame.contentSec,
             rect: { ...makeRegion().keyframes[0]!.rect, xPct: index / 100 },
         }));
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+        requests[0]!.resolve(result);
         const [original] = await initial;
         ui.range = { startTripSec: 1.01, endTripSec: 1.07 };
         const [trimmed] = await ensureDetectRegionsForExport(
@@ -771,7 +819,7 @@ describe("blur pass lifecycle", () => {
         await vi.advanceTimersByTimeAsync(1500);
         expect(requests, "the matching pass keeps its accumulated work").toHaveLength(1);
         expect(detectPassState()).not.toBeNull();
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result: makeDetectResult() });
+        requests[0]!.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions()).toHaveLength(1);
     });
@@ -788,12 +836,7 @@ describe("blur pass lifecycle", () => {
 
         setDetectQuality("thorough");
         expect(captured.params.quality, "an active export keeps its captured choice").toBe("fast");
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[0]!.id,
-            ok: true,
-            result: makeDetectResult(),
-        });
+        requests[0]!.resolve(makeDetectResult());
         expect(await initial, "changing the live slider does not cancel the saved export").toHaveLength(1);
         expect(detectRegions(), "a fast result is stale for the new thorough choice").toHaveLength(0);
 
@@ -808,12 +851,7 @@ describe("blur pass lifecycle", () => {
             quality: "thorough",
             analyzeIntervalsByKind: { plate: [{ startSec: 0, endSec: 3 }] },
         });
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[1]!.id,
-            ok: true,
-            result: makeDetectResult(),
-        });
+        requests[1]!.resolve(makeDetectResult());
         expect(await updated).toHaveLength(1);
         expect(detectRegions()).toHaveLength(1);
         regroupTrip();
@@ -834,7 +872,7 @@ describe("blur pass lifecycle", () => {
         expect(captured.params.thresholds.face).toBe(0.5);
         const result = makeDetectResult();
         result.tracksByKind.face = result.tracksByKind.plate;
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+        requests[0]!.resolve(result);
         expect(await initial, "changing the live slider preserves a captured export").toHaveLength(2);
         expect(detectRegions(), "the old threshold must not appear as a current result").toHaveLength(0);
 
@@ -848,7 +886,7 @@ describe("blur pass lifecycle", () => {
             thresholds: { plate: 0.5, face: 0.1 },
             analyzeIntervalsByKind: { plate: [], face: [{ startSec: 0, endSec: 3 }] },
         });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[1]!.id, ok: true, result });
+        requests[1]!.resolve(result);
         expect(await updated).toHaveLength(2);
         regroupTrip();
         expect(detectThreshold("face")).toBe(0.1);
@@ -865,7 +903,7 @@ describe("blur pass lifecycle", () => {
             thresholds: { plate: 0.5, face: 0.5 },
             analyzeIntervalsByKind: { plate: [], face: [{ startSec: 0, endSec: 3 }] },
         });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[2]!.id, ok: true, result });
+        requests[2]!.resolve(result);
         expect(await restored).toHaveLength(2);
     });
 
@@ -880,7 +918,7 @@ describe("blur pass lifecycle", () => {
         setDetectThreshold("face", 1);
         await vi.advanceTimersByTimeAsync(1500);
         expect(requests, "an unchanged active kind retains its scan").toHaveLength(1);
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result: makeDetectResult() });
+        requests[0]!.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions()).toHaveLength(1);
     });
@@ -904,7 +942,7 @@ describe("blur pass lifecycle", () => {
             expect(requests).toHaveLength(index + 1);
             const result = makeDetectResult();
             result.tracksByKind.plate![0]!.keyframes[0]!.rect = expectedRects[index]!;
-            endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[index]!.id, ok: true, result });
+            requests[index]!.resolve(result);
             expect((await pending)[0]!.keyframes[0]!.rect).toEqual(expectedRects[index]);
         }
         for (const quality of ["balanced", "fast", "thorough"] as const) {
@@ -933,7 +971,7 @@ describe("blur pass lifecycle", () => {
         const result = makeDetectResult();
         result.tracksByKind.plate![0]!.endSec = 4;
         result.tracksByKind.plate![0]!.keyframes[0]!.rect = { ...expectedRects[2]!, xPct: 0.7 };
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[3]!.id, ok: true, result });
+        requests[3]!.resolve(result);
         expect((await expanded)[0]!.keyframes[0]!.rect.xPct).toBeCloseTo(0.7);
         ui.range = { startTripSec: 0, endTripSec: 3 };
         for (const quality of ["fast", "thorough"] as const) {
@@ -957,12 +995,7 @@ describe("blur pass lifecycle", () => {
             () => {},
         );
         await flushMicrotasks();
-        endpoints.workerEndpoint.postMessage({
-            __k: "res",
-            id: requests[0]!.id,
-            ok: true,
-            result: makeDetectResult(),
-        });
+        requests[0]!.resolve(makeDetectResult());
         expect(await initial).toHaveLength(1);
 
         setDetectEnabled("face", true);
@@ -978,7 +1011,7 @@ describe("blur pass lifecycle", () => {
         });
         const faceResult = makeDetectResult();
         faceResult.tracksByKind = { face: faceResult.tracksByKind.plate };
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: faceResult });
+        request.resolve(faceResult);
         expect((await combined).map((region) => region.id)).toEqual([
             expect.stringMatching(/^auto-plate-/),
             expect.stringMatching(/^auto-face-/),
@@ -994,7 +1027,7 @@ describe("blur pass lifecycle", () => {
 
         regroupTrip();
         expect(detectPassState(), "the rebuilt trip still owns the running scan").not.toBeNull();
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: makeDetectResult() });
+        request.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectEnabled("plate")).toBe(true);
         expect(detectRegions()).toHaveLength(1);
@@ -1009,7 +1042,7 @@ describe("blur pass lifecycle", () => {
         tripAllCandidates(ui.trip!)[0]!.rotation = 180;
 
         regroupTrip();
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: makeDetectResult() });
+        request.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectPassState()).toBeNull();
         expect(detectEnabled("plate"), "source corrections preserve the user's privacy choice").toBe(true);
@@ -1018,7 +1051,7 @@ describe("blur pass lifecycle", () => {
         await flushMicrotasks();
         const replacement = requests[1]!;
         expect(replacement.data).toMatchObject({ analyzeIntervalsByKind: { plate: [{ startSec: 0, endSec: 3 }] } });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: replacement.id, ok: true, result: makeDetectResult() });
+        replacement.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions()).toHaveLength(1);
     });
@@ -1036,7 +1069,7 @@ describe("blur pass lifecycle", () => {
         tripAllCandidates(ui.trip!)[0]!.rotation = 180;
         carryBlurRegions([ui.trip!], [ui.trip!]);
 
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: makeDetectResult() });
+        request.resolve(makeDetectResult());
         expect(await pending, "the captured export still receives its own results").toHaveLength(1);
         expect(detectEnabled("plate")).toBe(true);
         expect(detectRegions(), "the old export cannot replace the corrected trip's empty cache").toEqual([]);
@@ -1045,7 +1078,7 @@ describe("blur pass lifecycle", () => {
         await flushMicrotasks();
         const replacement = requests[1]!;
         expect(replacement.data).toMatchObject({ analyzeIntervalsByKind: { plate: [{ startSec: 0, endSec: 3 }] } });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: replacement.id, ok: true, result: makeDetectResult() });
+        replacement.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions()).toHaveLength(1);
     });
@@ -1060,7 +1093,7 @@ describe("blur pass lifecycle", () => {
         ensureDetectPass();
         await flushMicrotasks();
         const request = requests[0]!;
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: request.id, ok: true, result: makeDetectResult() });
+        request.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions()).toHaveLength(1);
 
@@ -1081,7 +1114,7 @@ describe("blur pass lifecycle", () => {
             segments: [{ file: rear.file }],
             analyzeIntervalsByKind: { plate: [{ startSec: 0, endSec: 3 }] },
         });
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: replacement.id, ok: true, result: makeDetectResult() });
+        replacement.resolve(makeDetectResult());
         await flushMicrotasks();
         expect(detectRegions()).toMatchObject([{ channel: "front", style: "fill" }]);
     });
@@ -1105,7 +1138,7 @@ describe("blur pass lifecycle", () => {
             front.startUtc += 3600;
             rear.startUtc += 3600;
             regroupTrip();
-            endpoints.workerEndpoint.postMessage({ __k: "res", id: first.id, ok: true, result: makeDetectResult() });
+            first.resolve(makeDetectResult());
             await flushMicrotasks();
             await flushMicrotasks();
             expect(requests, "the rear channel is still analyzed after the first channel finishes").toHaveLength(2);
@@ -1113,7 +1146,7 @@ describe("blur pass lifecycle", () => {
             expect(second.data).toMatchObject({
                 segments: [{ file: rear.file, startInFile: 0, endInFile: 3, tripStart: 0 }],
             });
-            endpoints.workerEndpoint.postMessage({ __k: "res", id: second.id, ok: true, result: makeDetectResult() });
+            second.resolve(makeDetectResult());
             await flushMicrotasks();
             expect(detectRegions().map((region) => region.channel)).toEqual(["front", "rear"]);
             if (exported) expect((await exported).map((region) => region.channel)).toEqual(["front", "rear"]);
@@ -1188,7 +1221,7 @@ it.each([false, true])(
             },
         ];
         result.tracksByKind.face = [{ ...result.tracksByKind.plate[0]!, endSec: bridge ? 2.2 : 1 }];
-        endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+        requests[0]!.resolve(result);
         await flushMicrotasks();
         expect(detectCounts()).toEqual({ plate: 2, face: 1 });
         const seeks = detectFindings().map((finding) => finding.seekSec);
@@ -1227,7 +1260,7 @@ it("keeps failed recovery review separate from masks and clips it on cached trim
             { contentSec: 1.04, durationSec: 0.04 },
         ],
     };
-    endpoints.workerEndpoint.postMessage({ __k: "res", id: requests[0]!.id, ok: true, result });
+    requests[0]!.resolve(result);
     await flushMicrotasks();
     expect(detectUncertainFindings()).toEqual([{ startSec: 1, endSec: 1.08, seekSec: 1.02 }]);
     const masks = detectRegions();

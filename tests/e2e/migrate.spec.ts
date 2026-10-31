@@ -1,3 +1,4 @@
+import { buildServiceWorker } from "../helpers/service-worker-build.js";
 import { readFileSync } from "node:fs";
 import type { Download, Page } from "@playwright/test";
 import { migrationText } from "../../src/migrate/i18n.js";
@@ -383,11 +384,8 @@ test.describe("recovery through an installed pre-migration worker", () => {
         // The old shell has a revision marker just like a published app build.
         const revision = "0123456789abcdef";
         const shell = `<html><head><meta name="dc-precache-revision" content="${revision}"></head><body>Old app shell</body></html>`;
-        const manifest = [{ url: "/en/", revision, htmlRevision: revision }];
-        const worker = readFileSync("public/sw.js", "utf8").replace(
-            "const PRECACHE_MANIFEST = []; // __DC_PRECACHE_MANIFEST__",
-            `const PRECACHE_MANIFEST = ${JSON.stringify(manifest)};`,
-        );
+        const manifest = [{ url: "/en/", revision }];
+        const worker = await buildServiceWorker(manifest);
         await context.route("**/sw.js", (route) => route.fulfill({ contentType: "text/javascript", body: worker }));
         await context.route("**/en/", (route) => route.fulfill({ contentType: "text/html", body: shell }));
         await seedDatabase(page, RECORDS, 1);
