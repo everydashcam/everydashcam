@@ -630,7 +630,7 @@ export const koDict = {
     "feedback.success.step2": "아래 주소로 이메일을 보내고 보고서 파일을 첨부해 주세요.",
     "feedback.success.openMail": "메일 열기",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "이 파일을 첨부해 주세요:\n{filename}\n(다운로드 폴더에 있어요)",
+    "feedback.body.attachReminder": "다운로드한 보고서를 꼭 첨부해 주세요!\n{filename}\n다운로드 폴더에 있어요.",
     "feedback.body.context.title": "지금 열려 있는 것:",
     "feedback.body.context.file": "파일: {name}",
     "feedback.body.context.trip": "주행: {start} → {end} · {files} · {distance}",

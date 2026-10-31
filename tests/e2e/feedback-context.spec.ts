@@ -66,7 +66,7 @@ test.describe("contextual feedback", () => {
         expect(decoded).toContain("Expected number of cameras:");
         expect(decoded).toContain("What I expected to see (GPS, cameras):");
         expect(decoded).toContain("Recordings link:");
-        expect(decoded).not.toContain("Attach this file:");
+        expect(decoded).not.toContain("ATTACH THE DOWNLOADED REPORT");
         await page.locator("#feedback-context-recordings summary").click();
         await expect(page.locator("#feedback-context-samples")).toContainText("every file stored beside them");
         await expect(page.locator("#feedback-modal")).toHaveCSS("opacity", "1");
@@ -112,8 +112,9 @@ test.describe("contextual feedback", () => {
         const mailto = await page.evaluate(() => (window as unknown as { __mailto: string }).__mailto);
         expect(mailto.length).toBeLessThan(2_000);
         const decoded = decodeURIComponent(mailto);
-        expect(decoded).toContain("gps extraction failed:");
-        expect(decoded).toContain("recognized cameras remain unpaired:");
+        expect(decoded).toContain("Dashcam model:");
+        expect(decoded).not.toContain("gps extraction failed:");
+        expect(decoded).not.toContain("recognized cameras remain unpaired:");
         expect(decoded).not.toContain(files[0]);
         expect(decoded).not.toContain(finalFile);
 
@@ -124,7 +125,9 @@ test.describe("contextual feedback", () => {
         expect(report).toContain(finalFile);
     });
 
-    test("report and email retain the file, trip and recognition reason captured when help opens", async ({ page }) => {
+    test("download retains the captured context while email asks for the report and camera details", async ({
+        page,
+    }) => {
         await gotoApp(page, "en");
         await loadTrip(page);
         const original = await page.evaluate(() => {
@@ -148,8 +151,11 @@ test.describe("contextual feedback", () => {
 
         await page.locator("#feedback-report-mail").click();
         const initialMailto = await page.evaluate(() => (window as unknown as { __mailto: string }).__mailto);
-        expect(decodeURIComponent(initialMailto)).toContain(`File: ${original.file}`);
-        expect(decodeURIComponent(initialMailto)).toContain("embedded GPS reader failed for the open trip");
+        const initialBody = new URL(initialMailto).searchParams.get("body")!;
+        expect(initialBody.startsWith("Dashcam model:")).toBe(true);
+        expect(initialBody).not.toContain(original.file);
+        expect(initialBody).not.toContain("embedded GPS reader failed for the open trip");
+        expect(initialBody).not.toContain("ATTACH THE DOWNLOADED REPORT");
 
         const downloadPromise = page.waitForEvent("download");
         await page.locator("#feedback-primary").click();
@@ -165,7 +171,41 @@ test.describe("contextual feedback", () => {
         expect(report).toContain("everydashcam camera report");
         await page.locator("#feedback-post-download-mail").click();
         const mailto = await page.evaluate(() => (window as unknown as { __mailto: string }).__mailto);
-        expect(decodeURIComponent(mailto)).toContain(`File: ${original.file}`);
-        expect(decodeURIComponent(mailto)).toContain(download.suggestedFilename());
+        const body = new URL(mailto).searchParams.get("body")!;
+        expect(body.startsWith("DON'T FORGET TO ATTACH THE DOWNLOADED REPORT!\n")).toBe(true);
+        expect(body).toContain(download.suggestedFilename());
+        expect(body).toContain("Dashcam model:");
+        expect(body).toContain("What I expected to see (GPS, cameras):");
+        expect(body).not.toContain(original.file);
+        expect(body).not.toContain("embedded GPS reader failed for the open trip");
+        expect(body).not.toContain("Environment:");
+
+        await page.locator("#feedback-cancel").click();
+        await openContextFeedback(page, "gps");
+        await page.locator("#feedback-report-mail").click();
+        const reopenedMailto = await page.evaluate(() => (window as unknown as { __mailto: string }).__mailto);
+        const reopenedBody = new URL(reopenedMailto).searchParams.get("body")!;
+        expect(reopenedBody).toContain("Dashcam model:");
+        expect(reopenedBody).not.toContain("ATTACH THE DOWNLOADED REPORT");
+        expect(reopenedBody).not.toContain(download.suggestedFilename());
     });
+
+    for (const [locale, reminder, location] of [
+        ["en", "DON'T FORGET TO ATTACH THE DOWNLOADED REPORT!", "It's in your Downloads folder."],
+        ["ru", "НЕ ЗАБУДЬ ПРИКРЕПИТЬ СКАЧАННЫЙ ОТЧЁТ!", "Он в папке «Загрузки»."],
+    ] as const) {
+        test(`ordinary ${locale} email contains only the report attachment reminder`, async ({ page }) => {
+            await gotoApp(page, locale);
+            await page.locator("#feedback-btn").click();
+            await page.locator("#feedback-recordings-skip").click();
+            const downloadPromise = page.waitForEvent("download");
+            await page.locator("#feedback-primary").click();
+            const download = await downloadPromise;
+            await page.locator("#feedback-post-download-mail").click();
+            const mailto = await page.evaluate(() => (window as unknown as { __mailto: string }).__mailto);
+            expect(new URL(mailto).searchParams.get("body")).toBe(
+                `${reminder}\n${download.suggestedFilename()}\n${location}`,
+            );
+        });
+    }
 });

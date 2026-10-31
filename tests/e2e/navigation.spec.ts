@@ -212,6 +212,10 @@ test.describe("navigation & shell", () => {
         expect(mailto).toContain("mailto:feedback@everydashcam.app");
         const decoded = decodeURIComponent(mailto ?? "");
         expect(decoded).toContain("[everydashcam]");
+        const body = new URL(mailto!).searchParams.get("body")!;
+        expect(body.startsWith("DON'T FORGET TO ATTACH THE DOWNLOADED REPORT!\n")).toBe(true);
+        expect(body).toContain(download.suggestedFilename());
+        expect(body).not.toContain("Environment:");
         // The "I've got a link" path drops a recordings-link placeholder into the body.
         expect(decoded).toContain("Recordings link");
     });

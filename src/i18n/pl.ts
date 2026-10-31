@@ -621,7 +621,7 @@ export const plDict = {
     "feedback.success.step2": "Wyślij go mailem na adres poniżej — dołącz plik do wiadomości.",
     "feedback.success.openMail": "Otwórz pocztę",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Dołącz ten plik:\n{filename}\n(jest w folderze Pobrane)",
+    "feedback.body.attachReminder": "NIE ZAPOMNIJ DOŁĄCZYĆ POBRANEGO RAPORTU!\n{filename}\nZnajdziesz go w folderze Pobrane.",
     "feedback.body.context.title": "Aktualnie otwarte:",
     "feedback.body.context.file": "Plik: {name}",
     "feedback.body.context.trip": "Przejazd: {start} → {end} · {files} · {distance}",

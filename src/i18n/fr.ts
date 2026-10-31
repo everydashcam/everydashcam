@@ -621,7 +621,7 @@ export const frDict = {
     "feedback.success.step2": "Envoie-le par mail à l'adresse ci-dessous — joins le fichier au message.",
     "feedback.success.openMail": "Ouvrir la messagerie",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Joins ce fichier :\n{filename}\n(il se trouve dans Téléchargements)",
+    "feedback.body.attachReminder": "N’OUBLIE PAS DE JOINDRE LE RAPPORT TÉLÉCHARGÉ !\n{filename}\nIl se trouve dans le dossier Téléchargements.",
     "feedback.body.context.title": "Ouvert maintenant :",
     "feedback.body.context.file": "Fichier : {name}",
     "feedback.body.context.trip": "Trajet : {start} → {end} · {files} · {distance}",

@@ -622,7 +622,7 @@ export const enDict = {
     "feedback.success.step2": "Email it to the address below — attach the file to the message.",
     "feedback.success.openMail": "Open email",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Attach this file:\n{filename}\n(it's in your Downloads folder)",
+    "feedback.body.attachReminder": "DON'T FORGET TO ATTACH THE DOWNLOADED REPORT!\n{filename}\nIt's in your Downloads folder.",
     "feedback.body.context.title": "Currently open:",
     "feedback.body.context.file": "File: {name}",
     "feedback.body.context.trip": "Trip: {start} → {end} · {files} · {distance}",

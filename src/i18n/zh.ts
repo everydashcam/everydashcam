@@ -619,7 +619,7 @@ export const zhDict = {
     "feedback.success.step2": "发邮件到下面的地址，并把文件附在邮件里。",
     "feedback.success.openMail": "打开邮件应用",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "请附上这个文件：\n{filename}\n（文件在下载文件夹中）",
+    "feedback.body.attachReminder": "别忘了附上下载的报告！\n{filename}\n文件在下载文件夹中。",
     "feedback.body.context.title": "当前打开的是：",
     "feedback.body.context.file": "文件：{name}",
     "feedback.body.context.trip": "行程：{start} → {end} · {files} · {distance}",

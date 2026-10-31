@@ -619,7 +619,7 @@ export const deDict = {
     "feedback.success.step2": "Schick sie per Mail an die Adresse unten — häng die Datei an die Nachricht an.",
     "feedback.success.openMail": "Mail öffnen",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Hänge diese Datei an:\n{filename}\n(sie liegt im Downloads-Ordner)",
+    "feedback.body.attachReminder": "VERGISS NICHT, DEN HERUNTERGELADENEN BERICHT ANZUHÄNGEN!\n{filename}\nDu findest ihn im Downloads-Ordner.",
     "feedback.body.context.title": "Gerade geöffnet:",
     "feedback.body.context.file": "Datei: {name}",
     "feedback.body.context.trip": "Fahrt: {start} → {end} · {files} · {distance}",

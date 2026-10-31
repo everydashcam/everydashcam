@@ -621,7 +621,7 @@ export const ptDict = {
     "feedback.success.step2": "Envie por e-mail para o endereço abaixo — anexe o arquivo à mensagem.",
     "feedback.success.openMail": "Abrir e-mail",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Anexe este arquivo:\n{filename}\n(ele está na pasta Downloads)",
+    "feedback.body.attachReminder": "NÃO ESQUEÇA DE ANEXAR O RELATÓRIO BAIXADO!\n{filename}\nEle está na pasta Downloads.",
     "feedback.body.context.title": "Aberto agora:",
     "feedback.body.context.file": "Arquivo: {name}",
     "feedback.body.context.trip": "Viagem: {start} → {end} · {files} · {distance}",

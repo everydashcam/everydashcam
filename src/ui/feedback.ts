@@ -272,38 +272,20 @@ function mailtoUrl(): string {
     return `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(currentSubject())}&body=${encodeURIComponent(body)}`;
 }
 
-function recognitionMailSummary(issue: string): string {
-    // Keep full file lists in the report: long mailto URLs can fail in email clients.
-    return issue
-        .split(/\n\s*\n/, 2)
-        .map((section) => Array.from(section.split("\n", 1)[0]!.trim()).slice(0, 240).join(""))
-        .filter(Boolean)
-        .join("\n");
-}
-
 function buildMailBody(reportName: string | null): string {
     const parts: string[] = [];
-    if (preset === "gps" || preset === "cameras") {
-        parts.push(t("feedback.recognition.mailPrompt"));
-    }
-    const ctx = openedSnapshot?.context;
-    if (ctx) parts.push(ctx);
-    if (openedSnapshot?.recognitionIssue) {
-        parts.push(`Recognition issue: ${recognitionMailSummary(openedSnapshot.recognitionIssue)}`);
-    }
-    if (openedSnapshot?.environment) parts.push(openedSnapshot.environment);
-    if (hasRecordingsLink) parts.push(t("feedback.recordings.mailPrompt"));
     if (reportName) {
         parts.push(t("feedback.body.attachReminder", { filename: reportName }));
     }
-    // --- separator between sections for readability in plain-text mail clients.
-    return parts.join("\n\n---\n");
+    if (preset === "gps" || preset === "cameras") {
+        parts.push(t("feedback.recognition.mailPrompt"));
+    }
+    if (hasRecordingsLink) parts.push(t("feedback.recordings.mailPrompt"));
+    return parts.join("\n\n");
 }
 
 /**
- * Context of what the user currently sees in the player. Without it a report like "video won't play"
- * is useless - we don't know the file, codec, or position. Even with the technical report attached,
- * many people don't read it; the email body is the first impression.
+ * Captures the current file and playback position for the downloaded report.
  * Returns an empty string if no trip is selected (landing / empty state).
  */
 function currentContextSummary(): string {
@@ -383,7 +365,7 @@ function currentContextSummary(): string {
     return lines.join("\n");
 }
 
-/** Version + UA, always included so a "try Chrome instead" response does not require follow-up questions. */
+/** Version and browser for the report preview and diagnostic fallback. */
 function envSummary(): string {
     return [
         t("feedback.body.env.title"),

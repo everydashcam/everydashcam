@@ -621,7 +621,7 @@ export const esDict = {
     "feedback.success.step2": "Envíalo por correo a la dirección de abajo — adjunta el archivo al mensaje.",
     "feedback.success.openMail": "Abrir correo",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Adjunta este archivo:\n{filename}\n(está en la carpeta Descargas)",
+    "feedback.body.attachReminder": "¡NO OLVIDES ADJUNTAR EL INFORME DESCARGADO!\n{filename}\nEstá en la carpeta Descargas.",
     "feedback.body.context.title": "Abierto ahora:",
     "feedback.body.context.file": "Archivo: {name}",
     "feedback.body.context.trip": "Trayecto: {start} → {end} · {files} · {distance}",

@@ -631,7 +631,7 @@ export const jaDict = {
     "feedback.success.step2": "下のアドレス宛にメールし、ファイルを添付してください。",
     "feedback.success.openMail": "メーラーを開く",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "このファイルを添付してください：\n{filename}\n（ダウンロードフォルダーにあります）",
+    "feedback.body.attachReminder": "ダウンロードしたレポートを忘れずに添付してください！\n{filename}\nダウンロードフォルダーにあります。",
     "feedback.body.context.title": "現在開いているもの：",
     "feedback.body.context.file": "ファイル：{name}",
     "feedback.body.context.trip": "走行：{start} → {end} · {files} · {distance}",

@@ -626,7 +626,7 @@ export const ruDict = {
     "feedback.success.step2": "Отправь его письмом на адрес ниже — приложи файл к сообщению.",
     "feedback.success.openMail": "Открыть почту",
     "feedback.subject": "[everydashcam] {topic}",
-    "feedback.body.attachReminder": "Прикрепи этот файл:\n{filename}\n(он лежит в папке «Загрузки»)",
+    "feedback.body.attachReminder": "НЕ ЗАБУДЬ ПРИКРЕПИТЬ СКАЧАННЫЙ ОТЧЁТ!\n{filename}\nОн в папке «Загрузки».",
     "feedback.body.context.title": "Сейчас открыто:",
     "feedback.body.context.file": "Файл: {name}",
     "feedback.body.context.trip": "Поездка: {start} → {end} · {files} · {distance}",
