@@ -132,9 +132,16 @@ function openSettings(): void {
     // settings must always start at the top, not where the user left off.
     const card = m.querySelector(".modal-card");
     if (card) card.scrollTop = 0;
+    const settingsButton = document.getElementById("settings-btn");
     activateModal(m, {
         onClose: closeSettings,
         initialFocus: document.getElementById("settings-modal-header-close"),
+        // Safari pointer clicks can leave body focused. The collapsed button
+        // is invoked through the overflow menu, whose trigger stays visible.
+        returnFocus:
+            settingsButton?.dataset.overflowHidden === "true"
+                ? document.getElementById("topbar-overflow")
+                : settingsButton,
     });
 }
 

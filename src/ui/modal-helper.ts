@@ -90,14 +90,22 @@ function onKeydown(ev: KeyboardEvent): void {
 }
 
 /**
- * Activates a11y management for a now-visible modal. Saves the current focus,
- * locks body scroll (first modal only), and moves focus inside - to
+ * Activates a11y management for a now-visible modal. Saves the invoking control
+ * or current focus, locks body scroll (first modal only), and moves focus inside - to
  * initialFocus if given, else the first focusable element, else the modal root
  * (which must be focusable, e.g. tabindex="-1", for the trap to hold).
  * CSS z-index owns the layer order: opening background work beneath a visible
  * dialog preserves that dialog's keyboard ownership and focus return path.
  */
-export function activateModal(el: HTMLElement, opts: { onClose: () => void; initialFocus?: HTMLElement | null }): void {
+export function activateModal(
+    el: HTMLElement,
+    opts: {
+        onClose: () => void;
+        initialFocus?: HTMLElement | null;
+        /** Pointer activation does not focus buttons in every browser. */
+        returnFocus?: HTMLElement | SVGElement | null;
+    },
+): void {
     // Re-activating an already-tracked modal is a no-op (idempotent open).
     if (stack.some((e) => e.el === el)) return;
 
@@ -117,7 +125,7 @@ export function activateModal(el: HTMLElement, opts: { onClose: () => void; init
     }
 
     closeActivePopover();
-    const focused = document.activeElement;
+    const focused = opts.returnFocus ?? document.activeElement;
     const savedFocus = focused instanceof HTMLElement || focused instanceof SVGElement ? focused : null;
     if (stack.length === 0) document.body.style.overflow = "hidden";
     const home = adoptIntoModalHost(el);

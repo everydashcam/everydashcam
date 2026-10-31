@@ -29,6 +29,13 @@ The latter builds and lists the selected tests without launching a browser.
 To run every scenario in a feature file, use the full entry point, for example
 `npm run test:e2e -- blur-regions.spec.ts`.
 
+For focus, menus and pointer controls in a second engine, install the pinned
+engine with `npx playwright install webkit`, then run
+`npm run test:e2e -- --project=webkit-ui`. Individual `@webkit-ui` tags select
+the relevant cases, including touch layouts. This is Playwright's WebKit, not
+branded Safari or a physical iPad. Native multitouch injection uses Chromium
+CDP and is explicitly skipped in WebKit; tap and mouse input still run.
+
 Real plate/face inference also has an explicit required project:
 `npm run test:e2e -- --project=detectors-webgpu --workers=1`. It runs short
 plate and face motion cases, negative small-plate checkpoints, 60 fps mask copying,

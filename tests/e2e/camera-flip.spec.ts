@@ -36,7 +36,10 @@ function colorError(expected: number[], actual: number[]): number {
 }
 
 test.describe("camera reflection", () => {
-    test("camera menus work without Popover API on mobile and in fullscreen", async ({ page }) => {
+    test("camera menus work without Popover API on mobile and in fullscreen", { tag: "@webkit-ui" }, async ({
+        page,
+        browserName,
+    }) => {
         await omitModernBrowserApis(page);
         await presetLocalStorage(page);
         await page.setViewportSize(DESKTOP);
@@ -73,10 +76,19 @@ test.describe("camera reflection", () => {
         await frontButton.click();
         await expect(page.locator("#player-wrap > #camera-settings-front")).toBeVisible();
         await expect(menu).toBeInViewport({ ratio: 1 });
+        const isNativeFullscreen = await page.evaluate(() => document.fullscreenElement !== null);
         await page.keyboard.press("Escape");
         await expect(menu).toBeHidden();
-        await expect(frontButton).toBeFocused();
-        await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
+        if (browserName === "webkit" && isNativeFullscreen) {
+            // Native WebKit consumes Escape before DOM keydown and exits
+            // fullscreen. Its exit lifecycle owns the focus return instead.
+            await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+            await expect(page.locator("#player-wrap")).not.toHaveClass(/player-expanded/);
+            await expect(page.locator("#player-fullscreen")).toBeFocused();
+        } else {
+            await expect(frontButton).toBeFocused();
+            await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
+        }
     });
 
     test("composition reflects each video before overlays, crops and privacy masks", async ({ page }) => {
@@ -125,7 +137,9 @@ test.describe("camera reflection", () => {
         expect(result.split).toEqual([green, blue, blue, green]);
     });
 
-    test("settings stay with the camera and channel across reloads and remain usable on mobile", async ({ page }) => {
+    test("settings stay with the camera and channel across reloads and remain usable on mobile", {
+        tag: "@webkit-ui",
+    }, async ({ page }) => {
         await presetLocalStorage(page);
         await page.setViewportSize(DESKTOP);
         await gotoApp(page, "en");

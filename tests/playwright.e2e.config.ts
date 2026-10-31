@@ -69,6 +69,14 @@ export default defineConfig({
             use: { channel: process.env.PW_CHANNEL || "chromium" },
         },
         {
+            // Explicit UI checks against WebKit's native focus and fullscreen
+            // behavior. This uses Playwright WebKit, not branded Safari.
+            name: "webkit-ui",
+            default: false,
+            grep: /@webkit-ui/,
+            use: { browserName: "webkit" },
+        },
+        {
             // Real detector coverage requires shader-f16 and runs on Metal in CI.
             name: "detectors-webgpu",
             default: false,
