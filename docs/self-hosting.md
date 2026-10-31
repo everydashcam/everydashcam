@@ -6,10 +6,7 @@ you can open a portable HTML, run a prebuilt release, use the Docker image,
 copy the files to an internal web server or build the project yourself. Recordings stay in the
 browser whichever route you choose.
 
-The project is not distributed as a white-label product. These instructions do
-not grant permission to publish a separate service under the everydashcam name,
-logo or brand mark. The exact code-license and branding boundary is summarized
-at the end of this guide.
+Code licensing and branding follow [README.md](../README.md#license).
 
 If you only want everydashcam to work offline, you may not need to host it.
 [everydashcam.app](https://everydashcam.app) can be installed from the browser and
@@ -109,25 +106,18 @@ Every release includes `SHA256SUMS` and signed build provenance. With the
 [GitHub CLI](https://cli.github.com) installed and signed in, replace `<tag>`
 with the release tag and `<archive>` with the downloaded filename.
 
-For releases through `v2026.10.09`, verify build provenance with the original
-owner and signing workflow:
-
-```sh
-gh attestation verify dashcamigo.tar.gz --owner amkulikov \
-  --signer-workflow amkulikov/dashcamigo/.github/workflows/release.yml
-```
-
-These attestations are available under the original owner's account. Repository
-lookup returns 404 after the transfer, which also prevents
-`gh release verify-asset` from checking these historical releases.
-
-For later releases, use the new repository and signing workflow:
+For current releases:
 
 ```sh
 gh release verify-asset <tag> <archive> -R everydashcam/everydashcam
 gh attestation verify <archive> -R everydashcam/everydashcam \
   --signer-workflow everydashcam/everydashcam/.github/workflows/release.yml
 ```
+
+For archives through `v2026.10.09`, use `gh attestation verify <archive>
+--owner amkulikov --signer-workflow amkulikov/dashcamigo/.github/workflows/release.yml`.
+Those attestations remain under the original owner; repository-based release
+verification is unavailable after the transfer.
 
 The release check confirms that the archive matches the immutable GitHub release.
 The attestation check confirms that the named release workflow built it from the
@@ -143,8 +133,8 @@ variables:
 docker run -d --name everydashcam -p 8080:80 ghcr.io/everydashcam/everydashcam
 ```
 
-For an existing installation, replace the old `ghcr.io/amkulikov/dashcamigo`
-image with the image above. The old image remains available without updates.
+Existing installations using `ghcr.io/amkulikov/dashcamigo` must switch to
+this image to receive updates.
 
 Open [localhost:8080](http://localhost:8080).
 
@@ -312,10 +302,5 @@ an optional integration from `.env.example`.
 Exports that include overlays carry the everydashcam.app watermark. Original
 quality exports are left untouched.
 
-The source code is available under the AGPL-3.0-only license. If a modified
-version is made available to other people over a network, the license requires
-its complete source to be offered under the same terms. The **everydashcam** name,
-logo and brand mark are not included in that license and may not identify a
-fork, mirror, rehosted copy or separate hosted service. See
-[README.md](../README.md#license) and [LICENSE](../LICENSE) for the binding
-terms.
+See [README.md](../README.md#license) and [LICENSE](../LICENSE) for source
+availability obligations and the separate branding boundary.

@@ -1,4 +1,4 @@
-# everydashcam (ex-dashcamigo)
+# everydashcam
 
 <p align="center">
   <a href="https://everydashcam.app">

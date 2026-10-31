@@ -20,7 +20,7 @@ Use the Node.js version in `.nvmrc`, then install the dependencies and start the
 development server:
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
@@ -35,7 +35,7 @@ not fit the project's architecture.
 
 Before opening a pull request:
 
-- Run `npm run typecheck` and `npm run check`.
+- Run `npm run typecheck` and `npm run check:ci`.
 - Add tests for behavior changes.
 - Put UI text through i18n rather than adding literals to the code. English and
   Russian ship together; keep the other locale dictionaries in sync, using the

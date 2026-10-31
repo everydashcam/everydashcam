@@ -1,249 +1,111 @@
 # Browser and OS support
 
-## The short answer
+## Choosing a browser
 
-Use a current desktop browser for the smoothest experience. Chrome and Edge
-offer the broadest support, especially when editing a trip or saving a large
-export directly to disk.
+Use a current browser. Chrome and Edge offer the broadest editing and
+export support, including saving large exports directly to disk. Safari and
+Firefox can open recordings and show video, routes and charts when the
+browser and operating system can play the recording's format.
 
-Safari and Firefox handle the core job — opening recordings, playing a trip,
-and showing its route and charts — when the browser and operating system can
-play the camera's video format. Some editing and export options may be limited.
+On iPhone and iPad, prefer selecting individual recordings over an entire
+SD-card folder. The map needs a usable WebGL2 context; other viewer features
+remain available when the graphics hardware cannot provide one.
 
-On phones and tablets, the available features also depend on the operating
-system. On iPhone and iPad, selecting the individual recordings you need is
-safer than selecting an entire SD-card folder. The map requires WebGL2 and may
-be unavailable when hardware acceleration is disabled or the graphics hardware
-is too old.
-
-everydashcam checks these capabilities when it opens. If something important is
-missing, the app explains which feature is affected and what you can do. The
-rest of this document records the exact boundary for maintainers and technical
-troubleshooting.
+For portable HTML, see [self-hosting](self-hosting.md#open-the-portable-html).
 
 ## Capability model
 
-Each capability is one of three severities:
+Target current and previous major browser engines. Enable features by actual
+capability, not a browser-version floor. API introduction dates do not establish
+whole-app compatibility; test a browser before claiming a minimum version.
+Build syntax targets live in [the hosted config](../vite.config.ts) and
+[the portable config](../vite.portable.config.ts).
 
-- **blocking** - the core job is impossible and there is no graceful path. The
-  UI shows a full blocking gate ("won't run here" + cause + what to do) and
-  `app.ts` skips heavy init.
-- **degraded** - a real, user-visible feature is gone but the core still works.
-  The UI explains it proactively (a concise notice) and at the point of use.
-- **info** - invisible to the user (a background feature already covers it) or
-  only a diagnostic. Recorded for metrics, never surfaced on its own.
+[Capabilities and their severity](../src/capabilities.ts) are the source of
+truth: blocking gaps prevent startup, degraded gaps explain an unavailable
+feature, and informational gaps are handled at the point of use.
+[Capability notices](../src/ui/capability-gate.ts) use localized `caps.*` copy.
 
-The blocking set is small and fixed (the `"blocking"` entries in `SEVERITY`),
-and all of its members are universal on any browser modern enough to parse our
-ES-module bundle, so the gate is a genuine safety net rather than an everyday
-wall. The everyday value is in the **degraded** set (no map / no editor / iOS
-load friction).
+| Capability | Boundary |
+| --- | --- |
+| Native video and container parsing | Do not require WebCodecs; codec availability still depends on the browser, OS and GPU. |
+| Edited export and previews | Require the relevant decode/encode and canvas capabilities. Original-quality stream-copy export does not require WebCodecs. |
+| H.264 encoding | Probe a real encode in [transcode capabilities](../src/transcode/capabilities.ts); API presence and `isConfigSupported()` alone are insufficient. |
+| HEVC playback | Uses platform decoders, with container remux when needed. There is no WASM software-decoder fallback. Shared browser advice lives in [empty-state.ts](../src/ui/empty-state.ts). |
+| Saving exports | [Export flow](../src/ui/export-flow.ts) uses a native file picker when available, otherwise an [in-memory download](../src/ui/in-memory-file.ts). Service workers are not required. |
+| Offline reopening | Uses the hosted [service worker](../src/sw.ts); its absence does not disable local playback or export. |
+| Secure context | Some editing, file-access and offline features require HTTPS or localhost. See [local-network hosting](self-hosting.md#https-and-local-networks). |
 
-Per-capability severity assignment and the rationale behind each one: `SEVERITY`
-in `src/capabilities.ts` - one map, one comment per capability, the single place
-to revisit if a gap's classification should change.
+## Compatibility fallbacks
 
-### Implementation
+Keep fallbacks at their call sites:
 
-- Detection and severity: `src/capabilities.ts`.
-- Blocking and degraded-state notices: `src/ui/capability-gate.ts`, with copy
-  in the `caps.*` keys under `src/i18n/`.
-- Map degradation: `src/ui/map.ts`; `refreshMapless` keeps the chart working
-  without a map.
-- Export destination selection: `src/ui/export-flow.ts` and
-  `src/ui/in-memory-file.ts`.
+- [Abort signals](../src/abort-signals.ts): native `AbortSignal.any` or a
+  fallback that preserves the first reason and releases subscriptions.
+- [MSE runtime](../src/per-file-mse.ts): `MediaSource` or
+  `ManagedMediaSource`, with the required remote-playback handling.
+- [Camera menu](../src/ui/player-camera-flip.ts): native Popover API or a
+  menu with keyboard/outside-pointer dismissal and fullscreen support.
+- [Browser identification](../src/capabilities.ts): preserve branded WebKit
+  names while applying engine-specific file-read workarounds. Feature
+  availability still comes from probes.
 
-## API introduction versions (first stable, no flag)
-
-Researched against MDN browser-compat-data, caniuse, and vendor release notes.
-Numbers are the first stable release where the feature is on by default.
-`n/a` = never shipped.
-
-| Web API | Chrome | Edge | Firefox | Safari (macOS) | Safari (iOS) | Android Chrome |
-|---|---|---|---|---|---|---|
-| WebCodecs (VideoDecoder/Encoder) | 94 | 94 | 130 | 16.4 | 16.4 | 94 (Firefox Android: n/a) |
-| WebGL2 | 56 | 79 | 51 | 15 | 15 | 58 |
-| File System Access pickers | 86 | 86 | n/a | n/a | n/a | 132 |
-| `<input webkitdirectory>` | 30 | 79 | 50 | 11.1 | 18.4 | 132 |
-| DnD folder (`webkitGetAsEntry`) | 13 | 79 | 50 | 11.1 | n/a | n/a |
-| Service Workers | 40 | 17 | 44 | 11.1 | 11.3 | 40 |
-| Module Workers (`{type:"module"}`) | 80 | 80 | 114 | 15 | 15 | 80 |
-| MediaSource | 31 | 12 | 42 | 8 | 13 (iPad only) | 31 |
-| ManagedMediaSource (iPhone MSE) | n/a | n/a | n/a | 17.0 | 17.1 | n/a |
-| OffscreenCanvas (2D) | 69 | 79 | 105 | 16.4 | 16.4 | 69 |
-| `structuredClone` | 98 | 98 | 94 | 15.4 | 15.4 | 98 |
-| `isSecureContext` | 47 | 15 | 49 | 11.1 | 11.3 | 47 |
-
-These are individual API floors, not verified minimum versions for the whole
-application. In particular, the first browser with WebCodecs is not necessarily
-able to run every editor path. Both editions emit ES2022 syntax (see
-[`vite.config.ts`](../vite.config.ts) and
-[`vite.portable.config.ts`](../vite.portable.config.ts)); the build target does
-not add missing Web APIs. Library and runtime requirements apply as well.
-
-Older browsers remain eligible for viewing and any other capability they
-provide; there is no browser-version gate. Native `<video>` playback and
-container parsing do not require WebCodecs. Test an actual browser version
-before claiming an end-to-end minimum for it.
-
-**Service Workers** in the table above gate only the offline PWA precache
-(`src/sw.ts`) - export-to-disk does not depend on it (see Library floors
-below).
-
-### Compatibility fallbacks
-
-- Cancellation composition uses native `AbortSignal.any` when available and
-  [`combineAbortSignals`](../src/abort-signals.ts) otherwise. The fallback
-  preserves the first abort reason, including `TimeoutError`, and
-  releases its subscriptions when the operation ends.
-- MSE playback uses classic `MediaSource` when present and
-  `ManagedMediaSource` otherwise (iPhone), with remote playback disabled
-  while it is attached as WebKit requires; see
-  [`resolveMediaSourceRuntime`](../src/per-file-mse.ts).
-- Camera settings use native Popover API when available. Without it,
-  [`player-camera-flip.ts`](../src/ui/player-camera-flip.ts) uses a hidden menu
-  with keyboard and outside-pointer dismissal, hosted outside the clipped
-  video tile and inside the fullscreen player when needed. Unsupported
-  `:popover-open` selectors are never evaluated by that fallback.
-- Branded WebKit user agents (`FxiOS`, `EdgiOS`, `CriOS`) keep their browser
-  names while selecting WebKit-specific read workarounds. Feature availability
-  still comes from probes, not those names.
-
-Regression tests can omit newer APIs in the current test browser to exercise
-these branches. That verifies fallback behavior, not complete compatibility
-with a historical Safari/Chromium build or its media codecs.
-
-### OS-level codecs
-
-Codec support comes from the OS/GPU + the browser distributor, not the engine
-version. The API existing does not mean a codec decodes - always probe.
-
-- **H.264 / AVC** - treat as a baseline everywhere, with two real exceptions:
-  open-source **Chromium without proprietary codecs** has no software H.264
-  decoder, and **Linux Firefox** needs system codecs
-  (gstreamer/ffmpeg/OpenH264). For the e2e browser, see
-  [`tests/playwright.e2e.config.ts`](../tests/playwright.e2e.config.ts).
-- **HEVC / H.265** - reliable on Apple platforms and macOS Chromium (OS
-  software fallback) and Android with a hardware HEVC decoder. On Windows the
-  two Chromium decode paths differ (per Microsoft's Edge video-playback
-  troubleshooting doc and StaZhu/enable-chromium-hevc-hardware-decoding):
-  **Chrome uses its own D3D11VA path - nothing to install, but hardware-only**
-  (no software fallback, so a GPU/driver without HEVC decode means no HEVC at
-  all); **Edge routes through Media Foundation and needs the Microsoft Store
-  "HEVC Video Extensions"** (paid; the free "from Device Manufacturer" twin is
-  OEM-preinstalled on many PCs and hidden from Settings > Apps -
-  `Get-AppxPackage -AllUsers *HEVC*` is the reliable check). The MFT path
-  software-falls-back, so Edge + the Store codec works even without HEVC
-  hardware - the one Windows setup that always can. Opera's path is
-  undocumented - do not promise it to users. Windows Firefox also needs the
-  Store extension; Linux desktops are flaky-to-absent. This is why the
-  codec-unsupported overlay and the export panel share the per-browser advice
-  (`codecPlaybackAdviceHtml` in `src/ui/empty-state.ts`), we keep the MSE remux
-  fallback (container-level only - there is no WASM software decoder, decode is
-  always the platform's), and the `hevc` e2e test self-skips where decode is
-  absent.
-
-### Library floors
-
-- **mediabunny** (pinned version: `package.json`) - targets "ECMAScript 2021 or
-  later" (Chrome/Edge 85, FF 79, Safari 15). Container parse/demux and
-  stream-copy mux do **not** need WebCodecs (they run even in Node); only
-  decode/encode (re-encode export, previews) need it. So stream-copy export and
-  metadata work on mobile Safari + Android Chrome where decode might not.
-- **maplibre-gl** (pinned version: `package.json`) - **requires WebGL2**; the
-  WebGL1 fallback is gone, so a WebGL1-only GPU gets no map at all. `new Map()`
-  does not reliably throw on a context-less GPU, so we preflight the context
-  ourselves in `ensureMap`. Ships ESM-only and cannot resolve its own worker
-  through a bundler, so the consumer must hand it the worker URL before the
-  first map is constructed.
+Tests that omit an API in a current browser verify the fallback, not complete
+compatibility with historical browsers or their media codecs.
 
 ## Known limitations
 
-- **Chromium file-handle persistence** - Chromium 153 can terminate the browser
-  when in-memory IndexedDB restores a `FileSystemHandle` (the pinned
-  [Chromium `CHECK`](https://github.com/chromium/chromium/blob/153.0.8010.12/content/browser/indexed_db/instance/sqlite/database_connection.cc#L2482)).
-  A round-trip probe can itself crash, and storage APIs do not expose this
-  backend. The temporary exception in
-  [`canPersistFileHandles`](../src/persist/file-handle-support.ts) therefore
-  disables remembered folders and saved notes-file connections in Chromium 153
-  and unverified later versions, in all contexts; it does not detect private
-  browsing. File opening, playback, export, live notes-file writes, and ordinary
-  annotation and index-cache storage remain available. Existing saved connections
-  stay untouched; newly selected connections last for the current tab. Before
-  narrowing or removing the guard, verify an upstream fix and round-trip native
-  file and directory handles through IndexedDB in regular and private contexts.
-- **Pre-ES-module browsers** (no `<script type=module>`: IE11, old Edge, Chrome
-  <61, Safari <11) never execute our bundle, so the in-bundle gate cannot run.
-  They get the static prerendered landing + the splash watchdog and non-working
-  CTAs. We deliberately do not add a `nomodule` inline fallback: it would be a
-  new inline script that the CSP-hash build plugin (which hashes only
-  `#dc-bootstrap`) does not cover, so it would need a build/CSP change for a
-  near-zero, far-below-target-bar audience.
-- **iOS `webkitdirectory`** - the attribute is *present* (so
-  `'webkitdirectory' in input` returns true) on every iOS version, but the
-  picker does nothing on iOS 11.3-18.3 and is a trap on 18.4+
-  ([WebKit bug 271705](https://bugs.webkit.org/show_bug.cgi?id=271705)): WebKit
-  copies the ENTIRE chosen folder into the browser's own temporary storage
-  (`NSFileManager copyItemAtURL:`) before the page sees a single file - minutes
-  to hours on a full SD card, no way for the page to filter or stream the
-  selection (the `accept` filter is ignored in folder mode). Cleanup of those
-  copies is registered only after ALL copies finish and runs at tab teardown
-  (`_removeTemporaryDirectoriesWhenDeallocated` in WebKit's
-  `WKFileUploadPanel.mm`, the copy-then-cleanup design from
-  [WebKit bug 228683](https://bugs.webkit.org/show_bug.cgi?id=228683)) - so a
-  process killed mid-copy strands the copies in the browser app's own
-  container, where site-data clearing does not reach them; only reinstalling
-  the browser does. Reading a folder in place
-  is not coming: WebKit formally declined the directory part of File System
-  Access ([standards-positions#28](https://github.com/WebKit/standards-positions/issues/28)).
-  Feature-detection cannot see any of this. Mitigation: the iOS folder warning
-  (`src/ui/ios-folder-warning-modal.ts`) shows before every folder pick and
-  steers to selecting individual files - those are also copied, but only the
-  selection, and a completed copy is scheduled for cleanup.
-- **Firefox H.264 encode is broken in practice** -
-  `VideoEncoder.isConfigSupported()` returns true for H.264 but
-  `configure()`/`encode()` throw ([Bugzilla 1918769](https://bugzilla.mozilla.org/show_bug.cgi?id=1918769),
-  FF 130-145). So `webCodecsEncode` being present is not enough; the export
-  path probes real encodability before running - see
-  `src/transcode/capabilities.ts`. Stream-copy is unaffected.
-- **Firefox for Android** has no WebCodecs at all (no VideoDecoder/Encoder) - no
-  editor/export/previews there regardless of version.
-- **WebGL2 is also a hardware floor** - `getContext("webgl2")` can return null on
-  an old/blocklisted GPU no matter how new the browser. The map degradation path
-  covers this.
-- **WASM + CSP** - the hosted tracker uses ONNX Runtime Web and needs
-  `'wasm-unsafe-eval'` in `script-src`; JavaScript evaluation remains blocked.
-  Runtime modules and weights are self-hosted. The hosted app is cross-origin
-  isolated (COOP `same-origin`, COEP `require-corp`; the service worker adds
-  COEP to its responses), which WASM threads require. Third-party resources
-  must load through CORS or send CORP. Without isolation the tracker falls back
-  to one thread; the thread count and its build requirement are documented at
-  `threadCount` in `src/tracking/ort-runtime.ts`. Portable runs from `file://`,
-  cannot be isolated, and omits tracking and that permission. Policies live in
-  `public/_headers` and `vite-plugins/portable.ts`.
+- **File-handle persistence:** the [Chromium crash guard](../src/persist/file-handle-support.ts)
+  disables durable folder and notes-file connections for affected or unverified
+  versions. A round-trip probe can itself crash; this is not private-browsing
+  detection. Existing connections and ordinary notes/index-cache data stay
+  untouched; new connections last for the tab. Before narrowing the guard,
+  verify the [upstream failure](https://github.com/chromium/chromium/blob/153.0.8010.12/content/browser/indexed_db/instance/sqlite/database_connection.cc#L2482)
+  is fixed and test native file and directory handles in regular and private
+  contexts.
+- **iOS folder selection:** WebKit can copy the entire folder before exposing
+  any files to the page; feature detection cannot reveal this cost. The
+  [folder warning](../src/ui/ios-folder-warning-modal.ts) steers users to
+  individual files. Keep the warning until the copy/cleanup behavior is
+  verified on devices; see [WebKit 271705](https://bugs.webkit.org/show_bug.cgi?id=271705)
+  and [228683](https://bugs.webkit.org/show_bug.cgi?id=228683). Interrupted
+  copies can outlive the tab, and the page cannot filter the folder first.
+- **Codec probes:** Firefox H.264 encoding has returned false-positive support
+  reports ([1918769](https://bugzilla.mozilla.org/show_bug.cgi?id=1918769)).
+  Preserve the real-encode probe rather than a version-based promise. Browsers
+  without WebCodecs retain native playback and stream-copy where supported.
+- **Map hardware:** preflight WebGL2 in [map.ts](../src/ui/map.ts); a current
+  browser on a blocked GPU may still have no usable context. Keep the chart
+  and video usable when map initialization fails.
+- **Tracking and hosting headers:** ONNX Runtime requires the hosted
+  `'wasm-unsafe-eval'` permission; threaded WASM also needs cross-origin
+  isolation. Third-party resources must satisfy CORS/CORP. The worker's
+  response headers and the fallback to one thread matter as well. See
+  [headers](../public/_headers), [service worker](../src/sw.ts) and
+  `threadCount` in [ORT runtime](../src/tracking/ort-runtime.ts). Portable
+  excludes tracking and that CSP permission.
+- **Damaged recordings:** runtime decode faults do not establish codec
+  incompatibility. [Playback recovery](../src/ui/player.ts) distinguishes
+  retries, source rejection and a [damaged clip tail](../src/ui/playback-tail.ts).
+  An MP4 sample table can reference bytes beyond EOF; current ingest repairs
+  do not generally repair such tables, and native-to-MSE recovery is not a
+  general corruption repair. Export tolerates only a bounded damaged source
+  tail via `nextTolerant` in [pipeline-common.ts](../src/transcode/pipeline-common.ts),
+  reports loss, and must not discard later intact files. Further repair work
+  needs a reproducible real sample.
 
-## Manual verification (not automated)
+## Manual verification
 
-The e2e suite drives the export pipeline on a small synthetic sample under the
-browser selected by [`tests/playwright.e2e.config.ts`](../tests/playwright.e2e.config.ts).
-It validates *correctness* of the
-in-memory (no-native-FSA) export - resizable-buffer growth, staged GPMF
-injection, the Download button, byte-level container/`gpmd` markers - but it
-**cannot** validate two engine- and size-dependent things. Check these by hand
-before shipping a change that touches the export RAM path:
+Use the [e2e guide](../tests/e2e/README.md) for automated coverage. When changing
+export memory or download behavior, also check:
 
-1. **Real RAM peak on live Safari/Firefox with a multi-GB clip.** The whole MP4
-   is built in RAM (no streaming, no pre-cap - the cap is unmeasurable on Safari,
-   so we warn instead of block). Export a ~3 GB+ clip in desktop Safari and watch
-   memory: it should peak around 1x the output during mux+inject and ~2x briefly
-   during download, then settle. If allocation fails it must surface the "too
-   large, use desktop Chrome" message, not a silent tab crash.
-2. **Safari "open in tab" vs Downloads.** The done-view Download button hands a
-   `video/mp4` Blob to an `<a download>`. Confirm Safari actually files it in
-   Downloads rather than opening the MP4 in a new tab (the `File{type}` carries
-   the name without the `.html` artifact - verify the saved filename).
-3. **iOS quota / eviction.** Mobile WebKit has tighter memory and storage limits;
-   confirm a moderate clip exports without the tab being reclaimed mid-export.
+1. A multi-GB in-memory export in real Safari/Firefox: allocation failure must
+   produce an actionable message rather than a silent tab crash. Measure peak
+   memory through both muxing and download.
+2. Safari saves the MP4 in Downloads with the intended filename, rather than
+   opening a new tab.
+3. A representative mobile export survives memory pressure and storage eviction.
 
-The native (Chromium desktop, `showSaveFilePicker` -> disk) path streams at any
-size and is not subject to these.
+Native file-picker exports stream to disk. Automated small-fixture tests do
+not establish native-dialog behavior, large-file memory limits or physical
+mobile-device compatibility.
