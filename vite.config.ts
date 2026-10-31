@@ -26,6 +26,7 @@ import { portableDownloadsPlugin } from "./vite-plugins/portable-downloads.js";
 import { staticSearchMetaPlugin } from "./vite-plugins/static-search-meta.js";
 import { standaloneFontsPlugin } from "./vite-plugins/standalone-fonts.js";
 import { computeTrackerAssets, trackerAssetsPlugin } from "./vite-plugins/tracker-assets.js";
+import { ortThreadChunks } from "./vite-plugins/ort-thread-chunks.js";
 import { swPrecachePlugin } from "./vite-plugins/sw-precache.js";
 import { getSeoLocales, i18nPrerenderPlugin, sitemapPlugin } from "./vite-plugins/seo-prerender.js";
 import { alternativePagesPlugin } from "./vite-plugins/alternative-pages.js";
@@ -130,6 +131,7 @@ export default defineConfig(({ command }) => {
     // Snapshot bytes once for both the manifest and dev/build delivery.
     const trackerAssets = computeTrackerAssets(command);
     const mapAssets = computeMapStyles(command);
+    const ortThreads = ortThreadChunks();
     return {
     define: {
         __DC_MAP_STYLES__: JSON.stringify(mapAssets.urls),
@@ -251,6 +253,8 @@ export default defineConfig(({ command }) => {
         }),
         // Emit immutable inference files before Workbox collects the finished build.
         trackerAssetsPlugin(trackerAssets),
+        // Worker builds finish before this check: both ORT runtime chunks can start threads.
+        ortThreads.plugin(),
         swPrecachePlugin(),
         deploymentAssetsPlugin([...trackerAssets.urls, ...mapAssets.files.keys()]),
         // llms.txt for AI agents (Claude, Perplexity, ChatGPT). Independent
@@ -356,10 +360,17 @@ export default defineConfig(({ command }) => {
     // Workers are a SEPARATE build graph (their own Rolldown pass); the
     // build.rolldownOptions above does not reach them. Each worker bundles its
     // own copy of mediabunny, so without this each one carries dozens of
-    // duplicated MPL license banners. Strip comments here too. We set ONLY
-    // output.comments - Vite fills in the worker format/entry itself (merged,
-    // not overwritten).
+    // duplicated MPL license banners. Strip comments here too.
+    //
+    // ES output: every call site already starts a module worker, and a dynamic
+    // import inside a worker stays its own chunk with a real import.meta.url.
+    // ONNX Runtime starts its WASM threads from that URL; an IIFE would inline
+    // the runtime and point import.meta.url at the whole tracker worker. Module
+    // workers are within the support floor (docs/browser-support.md). The
+    // file-origin portable build keeps IIFE workers (vite.portable.config.ts).
     worker: {
+        format: "es",
+        plugins: () => [ortThreads.workerPlugin()],
         rolldownOptions: {
             output: {
                 comments: false,

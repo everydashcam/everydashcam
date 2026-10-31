@@ -47,6 +47,11 @@ export default defineConfig((): UserConfig => {
         },
         plugins: [resourcePlugin()],
         css: { postcss: {} },
+        // Classic workers, unlike the hosted build: inline workers start from a
+        // blob: URL, and Chromium refuses a module worker from a blob: URL on a
+        // file: page ("Refused to cross-origin redirects of the top-level worker
+        // script."). Vite's inline wrapper falls back to a data: URL only on a
+        // synchronous throw, so every worker would fail to load there.
         worker: { format: "iife", plugins: () => [resourcePlugin()] },
         build: {
             target: "es2022",
