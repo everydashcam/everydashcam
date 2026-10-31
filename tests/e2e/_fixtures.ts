@@ -387,6 +387,42 @@ export async function loadTrip(page: Page, sampleDir: string = SAMPLE_70MAI): Pr
 }
 
 /**
+ * Opens the trip whose clips include `recordingName` and waits until it is the
+ * active trip. Collapsed cards render no clip rows, so the card is resolved
+ * through app state instead of a file-name selector. Embedded GPS can refine
+ * clocks and renumber trips between the lookup and the click; the step retries
+ * until the opened trip really contains the recording.
+ */
+export async function openTripWithRecording(page: Page, recordingName: string): Promise<void> {
+    const activeTripHasRecording = () =>
+        page.evaluate((name) => {
+            const state = window.__everydashcam.state;
+            const trip = state.active ? state.trips[state.active.trip] : undefined;
+            return (
+                trip?.frames.some((frame) =>
+                    Object.values(frame.channels).some((candidate) => candidate.file.name === name),
+                ) === true
+            );
+        }, recordingName);
+    await expect(async () => {
+        const tripIdx = await page.evaluate(
+            (name) =>
+                window.__everydashcam.state.trips.findIndex((trip) =>
+                    trip.frames.some((frame) =>
+                        Object.values(frame.channels).some((candidate) => candidate.file.name === name),
+                    ),
+                ),
+            recordingName,
+        );
+        expect(tripIdx, `a trip contains ${recordingName}`).toBeGreaterThanOrEqual(0);
+        // Bounded so a card renumbered away is looked up again instead of
+        // waiting out the test timeout.
+        await page.locator(`li.trip[data-trip-index="${tripIdx}"] .trip-title`).click({ timeout: 5_000 });
+        await expect.poll(activeTripHasRecording).toBe(true);
+    }).toPass();
+}
+
+/**
  * Open the export panel, regardless of viewport. Export is the LAST control to
  * overflow into the player-bar kebab on a narrow bar, so click it directly when
  * visible, otherwise reach it through the overflow menu. Both branches end with

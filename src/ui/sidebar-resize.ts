@@ -29,7 +29,9 @@ function syncResizeValue(): void {
 function applySidebarWidth(width: number): number {
     const clamped = Math.max(SIDEBAR_MIN, Math.min(maxSidebarWidth(), width));
     document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
-    syncResizeValue();
+    // No synchronous syncResizeValue: measuring right after the write forced a
+    // layout on every pointermove. The ResizeObserver in initSidebarResize
+    // reports the new width after layout, before the frame is painted.
     return clamped;
 }
 

@@ -332,6 +332,8 @@
 }
 
 .trip {
+    /* Shared by the hero's min-height and the off-screen height estimate below. */
+    --trip-hero-min-height: 104px;
     background: var(--bg-elev-2);
     border: 1px solid var(--border);
     border-radius: var(--dc-radius-md);
@@ -339,6 +341,18 @@
     transition:
         border-color var(--dc-dur-base) var(--dc-ease),
         box-shadow var(--dc-dur-base) var(--dc-ease);
+}
+/* Off-screen collapsed cards skip layout and paint, which keeps full list
+   rebuilds and scrolling cheap on long libraries. Until a card has rendered,
+   its height is the bare 3:1 hero: 100cqi is the sidebar's content width, less
+   the card's two 1px borders. After that the browser remembers the real height
+   (the "auto" keyword), and sidebar.ts carries it onto rebuilt cards so a
+   restored scroll position still lands on the same card. Expanded cards opt
+   out: their clip list is open and usually in view. Engines without support
+   ignore both declarations and render every card. */
+.trip:not(.expanded, .unindexed-note) {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto max(var(--trip-hero-min-height), (100cqi - 2px) / 3);
 }
 /* Active trip: an orange ring via box-shadow (not border, so as not to
    shift content). On the hero card an inset-shadow on the left wouldn't
@@ -754,16 +768,13 @@
     }
 }
 
+/* Present only while the card is expanded (sidebar.ts builds and removes it). */
 .trip-files {
     list-style: none;
     margin: 0;
     padding: 0 0 var(--dc-space-1) 0;
     border-top: 1px solid var(--border);
     background: var(--bg-elev);
-    display: none;
-}
-.trip.expanded .trip-files {
-    display: block;
 }
 
 .trip-files li {
@@ -1247,7 +1258,7 @@
 }
 
 .trip-header {
-    min-height: 104px;
+    min-height: var(--trip-hero-min-height);
 }
 .trip-title {
     bottom: 42px;

@@ -61,6 +61,74 @@ const tripEventCycleIdx = new Map<number, number>();
 let selectTripEvent: SidebarCallbacks["onPlayTripEvent"];
 const renderedFilterFacts = new Map<number, TripFilterFacts>();
 
+// Lucide glyphs repeated on every card. Each is parsed once and cloned per use:
+// re-parsing the same markup for every card was a measurable share of a full
+// rebuild on long libraries.
+const STAR_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>`;
+const PENCIL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`;
+const FILM_ICON = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>`;
+const ALERT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+const INFO_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+const parsedIcons = new Map<string, Element>();
+
+/** Returns a fresh copy of the trusted icon markup, parsing it only on first use. */
+function cloneIcon(markup: string): Node {
+    let parsed = parsedIcons.get(markup);
+    if (!parsed) {
+        const template = document.createElement("template");
+        template.innerHTML = markup;
+        const element = template.content.firstElementChild;
+        if (!element) throw new Error("icon markup has no element");
+        parsed = element;
+        parsedIcons.set(markup, parsed);
+    }
+    return parsed.cloneNode(true);
+}
+
+// Collapsed off-screen cards skip rendering (content-visibility: auto in
+// sidebar.css) and take their height from contain-intrinsic-block-size. The
+// browser remembers a card's real height only on that element, so a rebuilt card
+// would fall back to the generic estimate: every off-screen card with a note or
+// an event list would then shift the restored scroll position. Carry the last
+// laid-out height onto the replacement instead.
+const CARD_HEIGHT_PROPERTY = "contain-intrinsic-block-size";
+
+/**
+ * Measures the inner heights of the collapsed cards currently in the list, keyed
+ * by recording identity. Call only while layout is already current (renderTrips
+ * reads scrollTop first), or the reads force a layout of the list being replaced.
+ */
+function captureCollapsedCardHeights(): Map<string, number> {
+    const heights = new Map<string, number>();
+    // Rects report painted sizes, which the mobile drawer's FLIP animation
+    // scales. One computed (layout) height yields the factor for every card;
+    // getComputedStyle per card would be slow in WebKit on long lists.
+    let paintScale = 0;
+    let borderHeight = 0;
+    for (const card of dom.list.querySelectorAll<HTMLElement>("li.trip:not(.expanded)")) {
+        const key = recordingFocusKeys.get(card);
+        if (!key) continue;
+        const paintedHeight = card.getBoundingClientRect().height;
+        if (paintScale === 0) {
+            const style = getComputedStyle(card);
+            const layoutHeight = Number.parseFloat(style.height);
+            // No boxes (a hidden ancestor): nothing worth carrying.
+            if (!(layoutHeight > 0 && paintedHeight > 0)) return heights;
+            paintScale = paintedHeight / layoutHeight;
+            borderHeight = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+        }
+        heights.set(key, paintedHeight / paintScale - borderHeight);
+    }
+    return heights;
+}
+
+/** Seeds a rebuilt card's off-screen height with its predecessor's measurement. */
+function seedCardHeight(card: HTMLElement, heights: ReadonlyMap<string, number>): void {
+    const key = recordingFocusKeys.get(card);
+    const height = key === undefined ? undefined : heights.get(key);
+    if (height !== undefined) card.style.setProperty(CARD_HEIGHT_PROPERTY, `auto ${height}px`);
+}
+
 /**
  * Drops the per-trip event-cycle cursor. Called from applyRegroup: the cursor is
  * keyed by positional trip index, which groupTrips renumbers on every regroup, so
@@ -77,6 +145,7 @@ export function renderTrips(): void {
     // this the viewport jumps to the top and focus is lost.
     const prevScrollTop = dom.sidebar.scrollTop;
     const focus = captureListFocus(dom.list);
+    const cardHeights = captureCollapsedCardHeights();
 
     dom.list.innerHTML = "";
     // Empty-state must stay in sync with the trip list so the player shows exactly when the first trip appears in the sidebar.
@@ -170,7 +239,9 @@ export function renderTrips(): void {
             dom.list.appendChild(sep);
             lastBucket = bucket;
         }
-        dom.list.appendChild(buildTripCard(trip, tripIdx));
+        const card = buildTripCard(trip, tripIdx);
+        seedCardHeight(card, cardHeights);
+        dom.list.appendChild(card);
     });
 
     if (state.unindexed.size > 0) {
@@ -211,7 +282,7 @@ function buildTripActions(tripIdx: number, isFavorite: boolean): HTMLElement {
     favBtn.dataset.action = "trip-fav";
     favBtn.dataset.tripIndex = String(tripIdx);
     // Lucide star; fill switches on via CSS when .is-on.
-    favBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>`;
+    favBtn.appendChild(cloneIcon(STAR_ICON));
     actions.appendChild(favBtn);
     const editBtn = document.createElement("button");
     editBtn.type = "button";
@@ -222,7 +293,7 @@ function buildTripActions(tripIdx: number, isFavorite: boolean): HTMLElement {
     editBtn.dataset.action = "trip-edit";
     editBtn.dataset.tripIndex = String(tripIdx);
     // Lucide pencil.
-    editBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`;
+    editBtn.appendChild(cloneIcon(PENCIL_ICON));
     actions.appendChild(editBtn);
     return actions;
 }
@@ -298,7 +369,7 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
         const icon = document.createElement("div");
         icon.className = "trip-no-preview-icon";
         icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>`;
+        icon.appendChild(cloneIcon(FILM_ICON));
         header.appendChild(icon);
     }
 
@@ -366,7 +437,10 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
         evchip.title = evTitle;
         evchip.setAttribute("aria-label", evTitle);
         // Inline Lucide alert-triangle. Color inherited from CSS.
-        evchip.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span class="num mono">${trip.events.length}</span>`;
+        const count = document.createElement("span");
+        count.className = "num mono";
+        count.textContent = String(trip.events.length);
+        evchip.append(cloneIcon(ALERT_ICON), count);
         header.appendChild(evchip);
     }
 
@@ -413,6 +487,27 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
         li.appendChild(events);
     }
 
+    // Clip rows exist only while the card is expanded: a collapsed card never
+    // shows them, and building them for every card dominated full rebuilds on
+    // long libraries. toggleExpanded adds and removes them in place.
+    if (state.expandedTrips.has(tripIdx)) li.appendChild(buildTripFileList(trip, tripIdx));
+
+    // Keep the click "opening" spinner across a rebuild (refreshTripCard during
+    // metadata read) until playback clears it via clearOpeningTrip (from playFrame).
+    if (openingKeys && cands.some((candidate) => openingKeys?.has(vendorFileKey(candidate)))) {
+        appendOpeningSpinner(li);
+    }
+
+    return li;
+}
+
+/**
+ * Builds the clip rows of an expanded card: one row per recording at the
+ * interval where it first appears, with its play target, metadata chips and
+ * details toggle. The active row reflects state.active at build time; later
+ * moves go through setFrameRowActive.
+ */
+function buildTripFileList(trip: Trip, tripIdx: number): HTMLUListElement {
     // A camera can keep the same file across several intervals. List it only
     // when it first appears, preferring a newly started camera for each row.
     const listedCandidates = new Set<VideoCandidate>();
@@ -546,20 +641,12 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
         detailsBtn.setAttribute("aria-label", detailsLabel);
         detailsBtn.title = detailsLabel;
         // Lucide "info" glyph. Color/opacity from CSS.
-        detailsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+        detailsBtn.appendChild(cloneIcon(INFO_ICON));
         fli.appendChild(detailsBtn);
 
         filesList.appendChild(fli);
     });
-    li.appendChild(filesList);
-
-    // Keep the click "opening" spinner across a rebuild (refreshTripCard during
-    // metadata read) until playback clears it via clearOpeningTrip (from playFrame).
-    if (openingKeys && cands.some((candidate) => openingKeys?.has(vendorFileKey(candidate)))) {
-        appendOpeningSpinner(li);
-    }
-
-    return li;
+    return filesList;
 }
 
 /**
@@ -589,7 +676,13 @@ export function refreshTripCard(tripIdx: number): void {
     const oldLi = dom.list.querySelector<HTMLElement>(`li.trip[data-trip-index="${tripIdx}"]`);
     if (!oldLi) return;
     const focus = captureListFocus(oldLi);
-    oldLi.replaceWith(buildTripCard(trip, tripIdx));
+    const card = buildTripCard(trip, tripIdx);
+    // Reuse the height seeded by the last full render. Measuring the old card
+    // here would force a list layout on every call, and ingest refreshes many
+    // cards in one task.
+    const seededHeight = oldLi.style.getPropertyValue(CARD_HEIGHT_PROPERTY);
+    if (seededHeight) card.style.setProperty(CARD_HEIGHT_PROPERTY, seededHeight);
+    oldLi.replaceWith(card);
     restoreListFocus(focus, dom.list);
     dom.list.setAttribute("aria-busy", state.trips.some(tripHasPending) ? "true" : "false");
 }
@@ -680,10 +773,10 @@ type ListFocus =
     | { kind: "title"; key: string }
     | { kind: "frame-action"; key: string; action: string }
     // Any trip-level control: toggling the star re-renders the list AND can
-    // move the card into the favorites group, the chevron and the event chip
-    // rebuild it outright - without this every keyboard press on one of them
-    // drops focus to <body>. Not a fixed union: naming the controls one by one
-    // is what left the chevron broken while the star next to it was fixed.
+    // move the card into the favorites group, and any full render (units,
+    // filters, regroup) rebuilds every card - without this a keyboard user on
+    // one of these controls drops to <body>. Not a fixed union, so a control
+    // added later is covered without being named here.
     | { kind: "action"; key: string; action: string };
 
 const recordingFocusKeys = new WeakMap<Element, string>();
@@ -775,10 +868,28 @@ function tripHasProvisionalFacts(trip: Trip): boolean {
     return tripAllCandidates(trip).some((candidate) => candidate.metadataReady === false);
 }
 
-function toggleExpanded(tripIdx: number): void {
-    if (state.expandedTrips.has(tripIdx)) state.expandedTrips.delete(tripIdx);
-    else state.expandedTrips.add(tripIdx);
-    renderTrips();
+/**
+ * Expands or collapses one card in place. Nothing else in the list depends on
+ * the expanded set, so a full renderTrips here only cost time; the chevron
+ * element survives, which also keeps its keyboard focus.
+ */
+function toggleExpanded(tripIdx: number, chevron: HTMLElement): void {
+    const trip = state.trips[tripIdx];
+    const card = chevron.closest<HTMLLIElement>("li.trip");
+    if (!trip || !card) return;
+    const expanded = !state.expandedTrips.has(tripIdx);
+    if (expanded) state.expandedTrips.add(tripIdx);
+    else state.expandedTrips.delete(tripIdx);
+    // Rows are rebuilt on every expand rather than kept hidden, so they never
+    // carry state that went stale while the card was collapsed.
+    card.querySelector(":scope > .trip-files")?.remove();
+    // Last child, matching buildTripCard (the opening spinner lives in the header).
+    if (expanded) card.appendChild(buildTripFileList(trip, tripIdx));
+    card.classList.toggle("expanded", expanded);
+    const label = expanded ? t("trip.chevron.collapse") : t("trip.chevron.expand");
+    chevron.setAttribute("aria-label", label);
+    chevron.setAttribute("aria-expanded", expanded ? "true" : "false");
+    chevron.title = label;
 }
 
 /**
@@ -969,7 +1080,7 @@ export function initSidebar(cb: SidebarCallbacks): void {
         if (!Number.isFinite(tripIdx)) return;
 
         if (action === "chevron") {
-            toggleExpanded(tripIdx);
+            toggleExpanded(tripIdx, actionEl);
         } else if (action === "play-trip") {
             markOpening(tripIdx);
             void cb.onPlayTrip(tripIdx);

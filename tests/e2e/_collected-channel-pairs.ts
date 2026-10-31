@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
 import type { CollectedPair } from "../../src/parsers/__fixtures__/supported-gps/grouping-cases.js";
-import { expect, pausePlayback, REPO_ROOT, waitForMetadata } from "./_fixtures.js";
+import { expect, openTripWithRecording, pausePlayback, REPO_ROOT, waitForMetadata } from "./_fixtures.js";
 
 function writePair(directory: string, pair: CollectedPair): string[] {
     mkdirSync(directory, { recursive: true });
@@ -97,11 +97,7 @@ export async function checkCollectedChannelPair(
     }
 
     for (const trip of grouped) {
-        await page
-            .locator("li.trip")
-            .filter({ has: page.locator(".file-name", { hasText: trip.files[0]!.name }) })
-            .locator(".trip-title")
-            .click();
+        await openTripWithRecording(page, trip.files[0]!.name);
         await pausePlayback(page);
         await expect(page.locator("#trip-analysis-status")).toBeHidden();
         if (trip.files.some((file) => file.gpsCount > 0)) await expect(page.locator(".player-no-gps")).toBeHidden();

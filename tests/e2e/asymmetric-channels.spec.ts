@@ -137,6 +137,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("seeks both cameras and preserves the clock when the main camera changes", async ({ page }) => {
+    // Clip rows exist only on an expanded card.
+    await page.getByRole("button", { name: "Expand file list" }).click();
+    await expect(page.locator(".trip-files > li").first()).toBeVisible();
     const names = await page.locator(".trip-files > li .file-name").allTextContents();
     expect(names.length).toBeGreaterThan(0);
     expect(new Set(names).size, "source files do not repeat for internal playback intervals").toBe(names.length);

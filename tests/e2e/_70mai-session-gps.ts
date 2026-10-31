@@ -2,7 +2,16 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { write70maiHiddenGpsCard } from "./_70mai-card.js";
-import { DESKTOP, expect, MOBILE, pausePlayback, REPO_ROOT, SAMPLE_GOPRO, SAMPLE_NOGPS } from "./_fixtures.js";
+import {
+    DESKTOP,
+    expect,
+    MOBILE,
+    openTripWithRecording,
+    pausePlayback,
+    REPO_ROOT,
+    SAMPLE_GOPRO,
+    SAMPLE_NOGPS,
+} from "./_fixtures.js";
 
 const RECORDING_NAME = "NO20261020-162549-000239F.MP4";
 const FOLLOWING_RECORDING_NAME = "NO20261020-162552-000241F.MP4";
@@ -56,24 +65,7 @@ function sessionRecordingState(page: Page) {
 }
 
 async function openRecordingTrip(page: Page, name: string): Promise<void> {
-    // Embedded GPS can refine clocks and reorder trips while Playwright waits
-    // for the click. Resolve the card by recording identity on every retry.
-    await page
-        .locator("li.trip")
-        .filter({ has: page.locator(".file-name", { hasText: name }) })
-        .locator(".trip-title")
-        .click();
-    await expect
-        .poll(() =>
-            page.evaluate((name) => {
-                const state = window.__everydashcam.state;
-                const trip = state.active ? state.trips[state.active.trip] : undefined;
-                return trip?.frames.some((frame) =>
-                    Object.values(frame.channels).some((candidate) => candidate.file.name === name),
-                );
-            }, name),
-        )
-        .toBe(true);
+    await openTripWithRecording(page, name);
     await pausePlayback(page);
     await expect(page.locator("#trip-analysis-status")).toBeHidden();
 }

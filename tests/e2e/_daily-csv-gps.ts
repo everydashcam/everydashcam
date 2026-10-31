@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import type { GeoJSONSource } from "maplibre-gl";
-import { expect, pausePlayback, REPO_ROOT, SAMPLE_NOGPS } from "./_fixtures.js";
+import { expect, openTripWithRecording, pausePlayback, REPO_ROOT, SAMPLE_NOGPS } from "./_fixtures.js";
 
 const RECORDINGS = [
     { name: "20240112181419_180.MP4", folder: "100video", mode: "normal", knots: [50.965, 50.862, 50.977] },
@@ -48,26 +48,14 @@ export async function checkDailyCsvGps(page: Page, directory: string): Promise<v
     await expectDailyRecordings(page, RECORDINGS);
 
     for (const recording of RECORDINGS) {
-        const tripCard = page
-            .locator("li.trip")
-            .filter({ has: page.locator(".file-name", { hasText: recording.name }) });
-        await tripCard.locator(".trip-title").click();
-        await expect
-            .poll(() =>
-                page.evaluate((name) => {
-                    const state = window.__everydashcam.state;
-                    const trip = state.active ? state.trips[state.active.trip] : undefined;
-                    return trip?.frames.some((frame) =>
-                        Object.values(frame.channels).some((candidate) => candidate.file.name === name),
-                    );
-                }, recording.name),
-            )
-            .toBe(true);
+        await openTripWithRecording(page, recording.name);
         await pausePlayback(page);
         await expect(page.locator("#trip-analysis-status")).toBeHidden();
         await expect(page.locator(".player-no-gps")).toBeHidden();
         await expect(page.locator("#player-chart-canvas")).toBeVisible();
         if (recording.mode === "event") {
+            // The card just opened is the active one.
+            const tripCard = page.locator('li.trip[aria-current="true"]');
             await tripCard.locator('[data-action="chevron"]').click();
             await expect(tripCard.locator(".vendor-chip", { hasText: "Event" })).toBeVisible();
         }
