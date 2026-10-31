@@ -8,7 +8,13 @@ import { readLocalStorageJson, writeLocalStorageJson } from "./local-storage.js"
 import { isValidGpsFix, recordsHaveGps } from "./parser.js";
 import { usableCandidateRecords } from "./stale-gps.js";
 import { fileIdentityKey } from "./persist/identity.js";
-import { applyGpsSyncToTrip, rawTripGpsRecords, type Trip, tripAllCandidates } from "./trips.js";
+import {
+    applyGpsSyncToFreshTrip,
+    applyGpsSyncToTrip,
+    rawTripGpsRecords,
+    type Trip,
+    tripAllCandidates,
+} from "./trips.js";
 
 const TRIP_SYNC_STORAGE_KEY = "everydashcam:trips:gpsSync";
 const MAX_STORED_TRIPS = 200;
@@ -162,11 +168,19 @@ export function applyStoredGpsSyncToTrip(trip: Trip): void {
     applyGpsSyncToTrip(trip, sync.offsetSec, sync.trimToVideo);
 }
 
-export function applyStoredGpsSyncToTrips(trips: readonly Trip[]): void {
+/** Stored calibration for a trip just built by finalizeTrip; see
+ *  applyGpsSyncToFreshTrip for why the default needs no rebuild. */
+export function applyStoredGpsSyncToFreshTrip(trip: Trip): void {
+    const sync = resolvedGpsSyncForTrip(trip);
+    applyGpsSyncToFreshTrip(trip, sync.offsetSec, sync.trimToVideo);
+}
+
+/** Bulk applyStoredGpsSyncToFreshTrip over one stored-entry snapshot. */
+export function applyStoredGpsSyncToFreshTrips(trips: readonly Trip[]): void {
     const entries = loadEntries();
     for (const trip of trips) {
         const sync = resolvedGpsSyncForTripFromEntries(entries, trip);
-        applyGpsSyncToTrip(trip, sync.offsetSec, sync.trimToVideo);
+        applyGpsSyncToFreshTrip(trip, sync.offsetSec, sync.trimToVideo);
     }
 }
 

@@ -1616,7 +1616,7 @@ function trimGpsRecordsToFootage(records: GpsRecord[], timeline: TripTimeline): 
  *  records, with one presentation-time offset. Positive values move the track
  *  later in the video. This mutates only the derived Trip object. */
 export function applyGpsSyncToTrip(trip: Trip, offsetSec: number, trimToVideo: boolean): void {
-    const normalized = Number.isFinite(offsetSec) ? Math.round(offsetSec * 1000) / 1000 : 0;
+    const normalized = normalizeAppliedGpsOffset(offsetSec);
     const raw = rawTripGpsRecords(trip);
     const shifted =
         normalized === 0 ? raw : raw.map((record) => ({ ...record, unixSeconds: record.unixSeconds + normalized }));
@@ -1631,6 +1631,27 @@ export function applyGpsSyncToTrip(trip: Trip, offsetSec: number, trimToVideo: b
         trip.startUtc,
         trip.timeline,
     );
+}
+
+function normalizeAppliedGpsOffset(offsetSec: number): number {
+    return Number.isFinite(offsetSec) ? Math.round(offsetSec * 1000) / 1000 : 0;
+}
+
+/**
+ * applyGpsSyncToTrip for a trip just built by finalizeTrip. Its aggregates
+ * already are the raw-clock, untrimmed result, so the default calibration only
+ * records itself instead of repeating the whole GPS pipeline (dedup, sort,
+ * outlier filter, distance, events) - a regroup would otherwise run it twice
+ * per trip. A trip that may carry an earlier calibration needs
+ * applyGpsSyncToTrip, which always rebuilds from the raw records.
+ */
+export function applyGpsSyncToFreshTrip(trip: Trip, offsetSec: number, trimToVideo: boolean): void {
+    if (normalizeAppliedGpsOffset(offsetSec) === 0 && !trimToVideo) {
+        trip.gpsOffsetSec = 0;
+        trip.gpsTrimToVideo = false;
+        return;
+    }
+    applyGpsSyncToTrip(trip, offsetSec, trimToVideo);
 }
 
 /**

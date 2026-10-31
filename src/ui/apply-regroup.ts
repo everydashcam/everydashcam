@@ -5,7 +5,7 @@
 // call, so every regroup uses this single commit boundary instead of assigning
 // state.trips directly.
 
-import { applyStoredGpsSyncToTrips } from "../gps-sync.js";
+import { applyStoredGpsSyncToFreshTrips } from "../gps-sync.js";
 import { frameChannels, frameMediaOffset, groupTrips } from "../trips.js";
 import type { Trip, VideoCandidate } from "../trips.js";
 
@@ -115,7 +115,7 @@ export function remapActiveAndExpanded(oldTrips: Trip[], newTrips: Trip[]): void
 export function applyRegroup(candidates: VideoCandidate[]): void {
     const oldTrips = state.trips;
     const newTrips = groupTrips(candidates);
-    applyStoredGpsSyncToTrips(newTrips);
+    applyStoredGpsSyncToFreshTrips(newTrips);
     remapActiveAndExpanded(oldTrips, newTrips);
     carryOverTripPreviews(oldTrips, newTrips);
     // The event-cycle cursor is keyed by positional trip index; groupTrips just

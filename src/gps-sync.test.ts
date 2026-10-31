@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
     _resetForTests,
+    applyStoredGpsSyncToFreshTrip,
+    applyStoredGpsSyncToFreshTrips,
     applyStoredGpsSyncToTrip,
-    applyStoredGpsSyncToTrips,
     gpsSyncPeerTrips,
     gpsTrackOverhangSec,
     normalizeGpsOffsetSec,
@@ -13,7 +14,7 @@ import {
     setTripGpsTrimToVideo,
 } from "./gps-sync.js";
 import type { GpsRecord } from "./parsers/types.js";
-import { groupTrips, type Trip, type VideoCandidate } from "./trips.js";
+import { applyGpsSyncToTrip, groupTrips, type Trip, type VideoCandidate } from "./trips.js";
 
 const storage = new Map<string, string>();
 vi.stubGlobal("localStorage", {
@@ -102,6 +103,27 @@ describe("GPS synchronization", () => {
         applyStoredGpsSyncToTrip(value);
         expect(value.records.map((item) => item.unixSeconds)).toEqual([1005, 1020]);
         expect(value.frames[0]!.channels.front!.records.map((item) => item.unixSeconds)).toEqual(rawTimes);
+    });
+
+    it("keeps a fresh trip's finalized aggregates under the default calibration", () => {
+        const fresh = trip();
+        const finalizedRecords = fresh.records;
+        applyStoredGpsSyncToFreshTrip(fresh);
+        expect(fresh.records, "default calibration reuses the finalized records").toBe(finalizedRecords);
+
+        const rebuilt = trip();
+        applyGpsSyncToTrip(rebuilt, 0, false);
+        expect(fresh).toEqual(rebuilt);
+    });
+
+    it("rebuilds a fresh trip when a calibration is stored", () => {
+        const fresh = trip();
+        setTripGpsOffsetSec(fresh, 5);
+        setTripGpsTrimToVideo(fresh, true);
+        applyStoredGpsSyncToFreshTrip(fresh);
+        expect(fresh.gpsOffsetSec).toBe(5);
+        expect(fresh.gpsTrimToVideo).toBe(true);
+        expect(fresh.records.map((item) => item.unixSeconds)).toEqual([1000, 1005, 1015]);
     });
 
     it("lets the user keep or hide GPS outside the footage window", () => {
@@ -265,7 +287,7 @@ describe("GPS synchronization", () => {
         _resetForTests();
         const reopenedFirst = trip(2001);
         const reopenedSecond = trip(2002);
-        applyStoredGpsSyncToTrips([reopenedFirst, reopenedSecond]);
+        applyStoredGpsSyncToFreshTrips([reopenedFirst, reopenedSecond]);
         expect(reopenedFirst.gpsOffsetSec, "the first pending calibration survives reload").toBe(5);
         expect(reopenedFirst.gpsTrimToVideo).toBe(true);
         expect(reopenedSecond.gpsOffsetSec, "the second pending calibration survives reload").toBe(9);
@@ -278,7 +300,7 @@ describe("GPS synchronization", () => {
         setTripGpsOffsetSec(second, 9);
 
         const getItemSpy = vi.spyOn(localStorage, "getItem");
-        applyStoredGpsSyncToTrips([first, second]);
+        applyStoredGpsSyncToFreshTrips([first, second]);
 
         const syncReads = getItemSpy.mock.calls.filter(([key]) => key === "everydashcam:trips:gpsSync");
         expect(syncReads).toHaveLength(1);

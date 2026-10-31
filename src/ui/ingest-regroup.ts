@@ -1,4 +1,4 @@
-import { applyStoredGpsSyncToTrip } from "../gps-sync.js";
+import { applyStoredGpsSyncToFreshTrip } from "../gps-sync.js";
 import { applyStoredCameraTimezones, setCameraTimezoneForRecordings } from "../camera-timezone.js";
 import { attachRecordsToCandidates } from "../gps-association.js";
 import { bindRecordingLogs } from "../gps-time-association.js";
@@ -85,7 +85,7 @@ export function refreshRecordingTrip(tripIdx: number): void {
     const old = state.trips[tripIdx];
     if (!old) return;
     const refreshed = finalizeTripFromFrames(old.frames);
-    applyStoredGpsSyncToTrip(refreshed);
+    applyStoredGpsSyncToFreshTrip(refreshed);
     carryOverTripPreviews([old], [refreshed]);
     state.trips[tripIdx] = refreshed;
     // Same frames mean the same content timeline; blur keyframes remain valid.
