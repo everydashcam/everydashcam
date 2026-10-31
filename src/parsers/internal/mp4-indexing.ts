@@ -184,8 +184,9 @@ export async function indexMp4FileWithMoov(file: File, captureMoov: boolean): Pr
 /**
  * Non-ISOBMFF path (MPEG-TS, Matroska): no mvhd, no display matrix, no embedded
  * wall-clock. Single mediabunny Input call yields durationSec and codec. moov
- * bytes are N/A (these containers have no moov). computeDuration scans the whole
- * container, so the same cold-SD-card abort concern as TS applies to MKV too.
+ * bytes are N/A (these containers have no moov). computeDuration has to locate
+ * the last packet without an index (TS: a binary search over 5 MiB chunks;
+ * Matroska: a cluster lookup), so both still issue random reads on a cold SD card.
  */
 export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Promise<IndexedWithMoov> {
     let input: Input | null = null;
@@ -195,10 +196,10 @@ export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Pro
         // whole cards read as "empty folder"); clamp reads to the clean stream.
         input = new Input({ source: await createBlobSource(file, signal), formats: VIDEO_INPUT_FORMATS });
         // mediabunny has no InputOptions.signal - dispose() is the documented way
-        // to cancel in-flight reads. computeDuration scans the whole TS container
-        // (no moov) and is 10+ s on a cold SD card; without this an ingest cancel
-        // waits out every in-flight scan. dispose() surfaces as InputDisposedError,
-        // which the catch below already handles as a clean abort.
+        // to cancel in-flight reads. computeDuration searches the container for its
+        // last packet (no moov), which is slow on a cold SD card; without this an
+        // ingest cancel waits out every in-flight search. dispose() surfaces as
+        // InputDisposedError, which the catch below already handles as a clean abort.
         if (signal) {
             const inp = input;
             onAbort = () => {
