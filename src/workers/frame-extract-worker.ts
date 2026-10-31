@@ -16,6 +16,7 @@
 // already be aborted by the time the gate releases - extractFrames checks
 // at every iteration boundary.
 
+import { createSerialQueue } from "../serial-queue.js";
 import type { FrameExtractWorkerContract } from "./frame-extract-protocol.js";
 
 import { CanvasSink, Input, InputDisposedError, type InputVideoTrack, type WrappedCanvas } from "mediabunny";
@@ -148,41 +149,76 @@ async function extractFrames(file: File, timestamps: number[], signal: AbortSign
     if (!entry) return bitmaps;
     if (signal.aborted) return bitmaps;
 
-    for (let i = 0; i < timestamps.length; i++) {
-        if (signal.aborted) return dropAndReturn();
-        const t = timestamps[i];
-        if (t === undefined || t === null || !Number.isFinite(t)) continue;
-        let bitmap: ImageBitmap | null = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-                const wrapped = await getCanvasNearestForward(entry.sink, t + entry.timeOrigin);
-                if (signal.aborted) return dropAndReturn();
-                if (!wrapped) break;
-                bitmap = await canvasToImageBitmap(wrapped);
-                if (bitmap) break;
-            } catch (err) {
-                const isDisposed = err instanceof InputDisposedError;
-                if (isDisposed) break;
-                log.debug("extract failed", { file: file.name, t, attempt, err: String(err) });
-                // Evict the poisoned decoder; reopen on the retry.
-                const key = decoderCacheKey(file);
-                if (decoderCache.get(key) === entry) {
-                    decoderCache.delete(key);
-                    disposeEntry(entry);
-                }
-                const fresh = await getOrOpenDecoder(file);
-                if (!fresh) {
-                    // Reopen failed - the file is likely inaccessible or
-                    // broken. Returning bitmaps as-is (with nulls for the
-                    // remaining slots) avoids wasting a 80-ms PMT scan
-                    // per remaining timestamp on a file we already know
-                    // cannot be opened.
-                    return bitmaps;
-                }
-                entry = fresh;
-            }
+    // Sparse monotonic requests share one decoder pass through each GOP. Keep
+    // random-access order for descending requests; invalid slots remain null.
+    const validTimes = timestamps.filter(Number.isFinite);
+    const timeOrigin = entry.timeOrigin;
+    let batch =
+        validTimes.length > 1 && validTimes.every((time, i) => i === 0 || time >= validTimes[i - 1]!)
+            ? entry.sink.canvasesAtTimestamps(validTimes.map((time) => time + timeOrigin))
+            : null;
+    const closeBatch = async (): Promise<void> => {
+        const iterator = batch;
+        batch = null;
+        try {
+            await iterator?.return(undefined);
+        } catch (err) {
+            log.debug("batch decoder cleanup failed", { err: String(err) });
         }
-        bitmaps[i] = bitmap;
+    };
+    try {
+        for (let i = 0; i < timestamps.length; i++) {
+            if (signal.aborted) return dropAndReturn();
+            const t = timestamps[i];
+            if (t === undefined || t === null || !Number.isFinite(t)) continue;
+            let bitmap: ImageBitmap | null = null;
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    let wrapped: WrappedCanvas | null = null;
+                    if (batch && attempt === 0) {
+                        const next = await batch.next();
+                        if (next.done) await closeBatch();
+                        else wrapped = next.value;
+                    }
+                    if (signal.aborted) return dropAndReturn();
+                    // Preserve forward-first/whole-track recovery for edit-list
+                    // pre-roll and missing frames, including a null batch slot.
+                    if (!wrapped) wrapped = await getCanvasNearestForward(entry.sink, t + entry.timeOrigin);
+                    if (signal.aborted) return dropAndReturn();
+                    if (!wrapped) break;
+                    bitmap = await canvasToImageBitmap(wrapped);
+                    // The bitmap was created after the last cancellation check.
+                    // Own and close it before returning, even for the final slot.
+                    if (signal.aborted) {
+                        bitmap?.close();
+                        return dropAndReturn();
+                    }
+                    if (bitmap) break;
+                } catch (err) {
+                    // Release the failed batch before disposing its input. The
+                    // retry and remaining slots use isolated fallback seeks.
+                    await closeBatch();
+                    if (signal.aborted) return dropAndReturn();
+                    const isDisposed = err instanceof InputDisposedError;
+                    if (isDisposed) break;
+                    log.debug("extract failed", { file: file.name, t, attempt, err: String(err) });
+                    const key = decoderCacheKey(file);
+                    if (decoderCache.get(key) === entry) {
+                        decoderCache.delete(key);
+                        disposeEntry(entry);
+                    }
+                    const fresh = await getOrOpenDecoder(file);
+                    if (!fresh) return bitmaps;
+                    entry = fresh;
+                }
+            }
+            bitmaps[i] = bitmap;
+        }
+    } finally {
+        // Returning early from cancellation or an unrecoverable reopen must
+        // release the iterator's decoder and prefetched samples too.
+        await closeBatch();
+        if (signal.aborted) dropAndReturn();
     }
 
     // The final decode can be cancelled without another loop iteration.
@@ -203,12 +239,7 @@ function disposeAllDecoders(): void {
 // concurrent CanvasSink access; defensive choice is one-at-a-time.
 // dispose-all goes through the same gate so it waits for an in-flight
 // extract to finish instead of yanking the decoder out from under it.
-let opQueue: Promise<unknown> = Promise.resolve();
-function serialize<T>(fn: () => Promise<T>): Promise<T> {
-    const next = opQueue.then(fn, fn);
-    opQueue = next.catch(() => undefined);
-    return next;
-}
+const serialize = createSerialQueue();
 
 createTypedWorkerServer<FrameExtractWorkerContract>(self, {
     onRequest: {
