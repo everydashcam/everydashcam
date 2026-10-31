@@ -4,9 +4,9 @@
 // plate zone is a ~25x9 px featureless smudge the model cannot hold onto, while
 // the source video has 2-4x more pixels on it. Small seeds therefore analyze at
 // a higher decode width. Decode itself is native-res regardless (the width only
-// scales the sink's output canvas) and inference cost is unchanged (fixed crop
+// scales the analysis canvas) and inference cost is unchanged (fixed crop
 // sizes) - the price is canvas bandwidth, bounded by the cap below and by the
-// sink's canvas pool (tracker-worker passes poolSize).
+// single reused analysis canvas in tracker-worker.
 
 import type { CropRect } from "../transcode/compose.js";
 
@@ -36,4 +36,18 @@ export function chooseAnalysisWidth(seedRect: CropRect, displayW: number, displa
     const needed = sqrtAreaPerPx > 0 ? TARGET_SEED_SQRT_AREA_PX / sqrtAreaPerPx : ANALYSIS_WIDTH_CAP;
     const clamped = Math.min(Math.max(ANALYSIS_BASE_WIDTH, needed), ANALYSIS_WIDTH_CAP, displayW);
     return Math.floor(clamped / 2) * 2;
+}
+
+/** Analysis frame height for `width`, by mediabunny CanvasSink's rule for a
+ *  missing height: the square-pixel display aspect after the track rotation,
+ *  rounded to whole pixels. Follow tracking stays on that pixel grid. */
+export function analysisFrameHeight(
+    width: number,
+    squarePixelWidth: number,
+    squarePixelHeight: number,
+    rotation: number,
+): number {
+    const [rotatedWidth, rotatedHeight] =
+        rotation % 180 === 0 ? [squarePixelWidth, squarePixelHeight] : [squarePixelHeight, squarePixelWidth];
+    return Math.round(width / (rotatedWidth / rotatedHeight));
 }

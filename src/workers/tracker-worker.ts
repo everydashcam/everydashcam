@@ -15,14 +15,14 @@ import { createSerialQueue } from "../serial-queue.js";
 import { throwIfCancelled } from "../abort-signals.js";
 import type { TrackerWorkerContract } from "./tracker-protocol.js";
 
-import { CanvasSink, EncodedPacketSink, Input, type VideoSample, VideoSampleSink } from "mediabunny";
+import { EncodedPacketSink, Input, type InputVideoTrack, type VideoSample, VideoSampleSink } from "mediabunny";
 import { getInputTimeOrigin } from "../media-time.js";
 
 import { boxToRect, visibleBoxRect } from "../tracking/box-geometry.js";
 import { FollowEdgeLoss } from "../tracking/follow-edge-loss.js";
 import { finalizeFollowEndReason, followEdgeEndReason } from "../tracking/follow-end.js";
 import { createFollowSampler } from "../tracking/follow-sampling.js";
-import { chooseAnalysisWidth } from "../tracking/analysis-resolution.js";
+import { analysisFrameHeight, chooseAnalysisWidth } from "../tracking/analysis-resolution.js";
 import { type RawDetection, type TileRect } from "../tracking/detect-common.js";
 import { DetectionTileCache } from "../tracking/detection-tile-cache.js";
 import { DetectionScanCache, type DetectionScanEntry } from "../tracking/detection-scan-cache.js";
@@ -133,6 +133,46 @@ function rectToBox(rect: CropRect, frameW: number, frameH: number): TrackBox {
     };
 }
 
+/**
+ * Returns a renderer that draws a decoded frame onto one reused analysis
+ * canvas `width` wide with the same pixels CanvasSink(track, { width })
+ * produces, but only for the frames the caller hands it - the Follow pass
+ * skips most decoded frames, and a CanvasSink would downscale every one.
+ * Display-matrix rotation and flip are applied (the canvas matches what the
+ * user marked on), the height follows the square-pixel aspect, and
+ * VideoSample.transform runs mediabunny's mipmapped fill downscale, the same
+ * routine as CanvasSink. The final same-size copy of the opaque result does
+ * not resample. One reused canvas keeps VRAM constant at the wider analysis
+ * widths; every read of it happens before the next frame is drawn.
+ */
+async function createAnalysisFrameRenderer(
+    track: InputVideoTrack,
+    width: number,
+): Promise<(sample: VideoSample) => Promise<OffscreenCanvas>> {
+    const height = analysisFrameHeight(
+        width,
+        await track.getSquarePixelWidth(),
+        await track.getSquarePixelHeight(),
+        await track.getRotation(),
+    );
+    const canvas = new OffscreenCanvas(width, height);
+    // Default (alpha) context, as in tracking-frame.ts: drawing a VideoFrame
+    // into an opaque canvas can produce incorrect pixels in Firefox.
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("follow: analysis canvas context is unavailable");
+    return async (sample) => {
+        // "discard" paints onto black, so the frame is opaque on every engine.
+        const resized = await sample.transform({ width, height, fit: "fill", alpha: "discard" });
+        try {
+            // Rotation and flip are already baked in: a plain same-size blit.
+            context.drawImage(resized.toCanvasImageSource(), 0, 0, width, height);
+        } finally {
+            resized.close();
+        }
+        return canvas;
+    };
+}
+
 async function runTrackPass(
     req: TrackRequestData & { regionId?: string },
     signal: AbortSignal,
@@ -173,24 +213,32 @@ async function runTrackPass(
             // Small seeds decode wider so the crops see real pixels, not smudge
             // (see analysis-resolution.ts).
             const width = chooseAnalysisWidth(req.seedRect, Math.round(displayW), Math.round(displayH));
-            // CanvasSink folds display-matrix rotation into the decode, so the
-            // canvas matches what the user marked on (same as frame-extract).
-            // poolSize 1: every canvas is fully consumed (all pixel reads happen
-            // inside its loop iteration, before the next frame is pulled), so one
-            // reused canvas keeps VRAM constant at the wider decode widths.
-            const sink = new CanvasSink(track, { width, poolSize: 1 });
+            const drawAnalysisFrame = await createAnalysisFrameRenderer(track, width);
+            const sink = new VideoSampleSink(track);
             const timeOrigin = await getInputTimeOrigin(input);
-            for await (const wrapped of sink.canvases(seedLocal + timeOrigin, endLocal + timeOrigin)) {
-                throwIfCancelled(signal);
-                const contentSec = seg.tripStart + wrapped.timestamp - timeOrigin;
-                // Progress tracks decode position, so the bar stays smooth over the
-                // frames we skip for inference.
-                const now = performance.now();
-                if (now - lastProgressAt >= PROGRESS_THROTTLE_MS) {
-                    lastProgressAt = now;
-                    notifyProgress(Math.min(1, (contentSec - req.seedContentSec) / span));
+            for await (const sample of sink.samples(seedLocal + timeOrigin, endLocal + timeOrigin)) {
+                const contentSec = seg.tripStart + sample.timestamp - timeOrigin;
+                let frame: OffscreenCanvas | null = null;
+                try {
+                    throwIfCancelled(signal);
+                    // Progress tracks decode position, so the bar stays smooth over the
+                    // frames we skip for inference.
+                    const now = performance.now();
+                    if (now - lastProgressAt >= PROGRESS_THROTTLE_MS) {
+                        lastProgressAt = now;
+                        notifyProgress(Math.min(1, (contentSec - req.seedContentSec) / span));
+                    }
+                    // Only the seed frame and the sampler's picks reach the tracker,
+                    // so only those pay for the downscale. Preserve the seed's grid
+                    // across segments: rounded timestamps must not accumulate delay or
+                    // replay an overlapping frame.
+                    if (!initialized || sampleFollowFrame!(contentSec)) frame = await drawAnalysisFrame(sample);
+                } finally {
+                    // The tracker reads the analysis canvas, not the decoded frame, so
+                    // the decoder gets every frame back before inference runs.
+                    sample.close();
                 }
-                const frame = wrapped.canvas as OffscreenCanvas;
+                if (!frame) continue;
                 if (!initialized) {
                     sampleFollowFrame = createFollowSampler(ANALYSIS_INTERVAL_SEC, contentSec);
                     vitTrack.init(frame, frame.width, frame.height, rectToBox(req.seedRect, frame.width, frame.height));
@@ -200,9 +248,6 @@ async function runTrackPass(
                     appendTrackObservation(keyframes, pendingHold, lastGoodSec, req.seedRect);
                     continue;
                 }
-                // Preserve the seed's grid across segments. Rounded timestamps
-                // must not accumulate delay or replay an overlapping frame.
-                if (!sampleFollowFrame!(contentSec)) continue;
                 const dtSec = contentSec - lastAnalyzedSec;
                 lastAnalyzedSec = contentSec;
 
