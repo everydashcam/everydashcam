@@ -95,6 +95,12 @@ import {
     OSM_SHORTBREAD_SOURCE_ID,
 } from "./osm-fallback-style.js";
 import { buildMercatorCumulativeDistances, buildSpeedGradient } from "./speed-gradient.js";
+import {
+    isProjectionOf,
+    nearestProjectedRecordIndex,
+    projectTrack,
+    type ProjectedTrack,
+} from "./map-nearest-record.js";
 import { addSpeedTrack, removeSpeedTrack, speedTrackOuterWidth } from "./map-track.js";
 import { buildLucideIcon } from "./icons.js";
 import { mapPositionAt } from "./map-position.js";
@@ -169,11 +175,15 @@ interface MapCallbacks {
     onSeekTripTime: (targetSec: number) => void;
     /** refreshMap flips state.hasTrack - chart layout needs updating. */
     onChartLayoutChange: () => void;
+    /** Map or mini-map hover moved the chart's hover cursor to `relSec` on the
+     *  footage axis (state.chartHoverX already holds it); null hides it. */
+    onHoverTripTime: (relSec: number | null) => void;
 }
 
 let callbacks: MapCallbacks = {
     onSeekTripTime: () => {},
     onChartLayoutChange: () => {},
+    onHoverTripTime: () => {},
 };
 
 // 10 s timeout for style.json fetch. The file is same-origin (CF Pages) and
@@ -854,6 +864,15 @@ export function ensureMap(): maplibregl.Map | null {
     const unsubscribeScaleUnits = subscribeUnitsChange((unit) => scaleControl.setUnit(unit));
     map.once("remove", unsubscribeScaleUnits);
 
+    // Track and event-dot hover (see processMapHover). A units change makes the
+    // open popup's speed stale, so the next move rewrites it.
+    map.on("mousemove", onMapMouseMove);
+    map.on("mouseout", onMapMouseOut);
+    const unsubscribeHoverUnits = subscribeUnitsChange(() => {
+        trackHoverShown = null;
+    });
+    map.once("remove", unsubscribeHoverUnits);
+
     // Custom attribution stays visible in the bottom-right. Replaces the
     // default AttributionControl (see attributionControl:false above).
     map.addControl(mapAttributionControl, "bottom-right");
@@ -1246,9 +1265,9 @@ export function refreshMap(trip: Trip | null, preserveCamera = false): void {
         state.endMarker.remove();
         state.endMarker = null;
     }
-    // Hover artifacts must not survive a trip switch. With a mouse the layer
-    // mouseleave cleans them on the way out, but on touch (tap shows the
-    // popup, no mouseleave ever fires) the old trip's popup stays anchored at
+    // Hover artifacts must not survive a trip switch. With a mouse, leaving
+    // the track cleans them up (leaveTrack), but on touch (tap shows the
+    // popup, nothing may ever leave the track) the old trip's popup stays anchored at
     // stale coords and the chart keeps re-showing the leftover hover cursor.
     if (state.hoverPopup) {
         state.hoverPopup.remove();
@@ -1374,33 +1393,77 @@ export function refreshMap(trip: Trip | null, preserveCamera = false): void {
     if (!preserveCamera) ensureChaseEngaged();
 }
 
-// -- Named handlers for delegated map.on(type, layerId) listeners. -----------
-// Must be stable references so map.off() can remove them by identity.
+// -- Pointer hover over the track and event dots. ----------------------------
+// One map-level mousemove, coalesced to one frame and answered with a single
+// queryRenderedFeatures for both layers. Layer-delegated listeners
+// (map.on(type, layerId)) each run their own query on every DOM mousemove -
+// five per move for track and event hover - and the popup work ran
+// unthrottled on top. Enter/leave transitions are derived here instead.
 
-function onTrackEnter(): void {
-    state.map?.getCanvas().style.setProperty("cursor", "pointer");
+/** Latest pointer position not yet handled; the frame callback consumes it. */
+let pendingMapHover: { point: maplibregl.Point; lngLat: maplibregl.LngLat } | null = null;
+let mapHoverRaf = 0;
+/** The pointer is over the trip line, so the popup and chart cursor follow it. */
+let hoveringTrack = false;
+/** The canvas shows the pointer cursor (over the track or an event dot). */
+let showingPointerCursor = false;
+/** What the open popup shows; an unchanged nearest fix skips all DOM work. */
+let trackHoverShown: { records: readonly GpsRecord[]; recordIndex: number; lon: number } | null = null;
+
+function onMapMouseMove(ev: maplibregl.MapMouseEvent): void {
+    pendingMapHover = { point: ev.point, lngLat: ev.lngLat };
+    if (mapHoverRaf === 0) mapHoverRaf = requestAnimationFrame(processMapHover);
 }
 
-function onTrackLeave(): void {
+/** The pointer left the map canvas: end every hover state. */
+function onMapMouseOut(): void {
+    pendingMapHover = null;
+    if (mapHoverRaf !== 0) {
+        cancelAnimationFrame(mapHoverRaf);
+        mapHoverRaf = 0;
+    }
+    setMapPointerCursor(false);
+    leaveTrack();
+}
+
+function processMapHover(): void {
+    mapHoverRaf = 0;
+    const hover = pendingMapHover;
+    pendingMapHover = null;
     const map = state.map;
-    if (!map) return;
-    map.getCanvas().style.cursor = "";
+    if (!hover || !map) return;
+    // Either layer may be absent: no trip, a trip without events, or the
+    // moment between a style swap and the redraw that re-adds them.
+    const layers = [TRIP_SOURCE_ID, EVENTS_LAYER_ID].filter((layerId) => map.getLayer(layerId));
+    const features = layers.length > 0 ? map.queryRenderedFeatures(hover.point, { layers }) : [];
+    setMapPointerCursor(features.length > 0);
+    if (features.some((feature) => feature.layer.id === TRIP_SOURCE_ID)) {
+        hoveringTrack = true;
+        showTrackHover(hover.lngLat);
+    } else {
+        leaveTrack();
+    }
+}
+
+function setMapPointerCursor(show: boolean): void {
+    if (showingPointerCursor === show) return;
+    showingPointerCursor = show;
+    state.map?.getCanvas().style.setProperty("cursor", show ? "pointer" : "");
+}
+
+/** Ends track hover: removes the popup and hides the chart cursor it drove. */
+function leaveTrack(): void {
+    if (!hoveringTrack) return;
+    hoveringTrack = false;
+    trackHoverShown = null;
     if (state.hoverPopup) {
         state.hoverPopup.remove();
         state.hoverPopup = null;
     }
     if (state.chartHoverX !== null) {
         state.chartHoverX = null;
-        if (state.chart) state.chart.draw();
+        callbacks.onHoverTripTime(null);
     }
-}
-
-function onEventsEnter(): void {
-    state.map?.getCanvas().style.setProperty("cursor", "pointer");
-}
-
-function onEventsLeave(): void {
-    if (state.map) state.map.getCanvas().style.cursor = "";
 }
 
 function onEventsClick(e: maplibregl.MapLayerMouseEvent): void {
@@ -1411,29 +1474,21 @@ function onEventsClick(e: maplibregl.MapLayerMouseEvent): void {
     callbacks.onSeekTripTime(Math.max(0, props.relSec - 5));
 }
 
+// Clicks stay layer-delegated: one query per click is cheap. The handlers must
+// be stable references so map.off() can remove them by identity.
 function addTrackListeners(map: maplibregl.Map): void {
     map.on("click", TRIP_SOURCE_ID, onTrackClick);
-    map.on("mousemove", TRIP_SOURCE_ID, onTrackHover);
-    map.on("mouseenter", TRIP_SOURCE_ID, onTrackEnter);
-    map.on("mouseleave", TRIP_SOURCE_ID, onTrackLeave);
 }
 
 function removeTrackListeners(map: maplibregl.Map): void {
     map.off("click", TRIP_SOURCE_ID, onTrackClick);
-    map.off("mousemove", TRIP_SOURCE_ID, onTrackHover);
-    map.off("mouseenter", TRIP_SOURCE_ID, onTrackEnter);
-    map.off("mouseleave", TRIP_SOURCE_ID, onTrackLeave);
 }
 
 function addEventsListeners(map: maplibregl.Map): void {
-    map.on("mouseenter", EVENTS_LAYER_ID, onEventsEnter);
-    map.on("mouseleave", EVENTS_LAYER_ID, onEventsLeave);
     map.on("click", EVENTS_LAYER_ID, onEventsClick);
 }
 
 function removeEventsListeners(map: maplibregl.Map): void {
-    map.off("mouseenter", EVENTS_LAYER_ID, onEventsEnter);
-    map.off("mouseleave", EVENTS_LAYER_ID, onEventsLeave);
     map.off("click", EVENTS_LAYER_ID, onEventsClick);
 }
 
@@ -1597,26 +1652,18 @@ function setMarkerHidden(m: maplibregl.Marker, hidden: boolean): void {
     if (el.style.visibility !== visibility) el.style.visibility = visibility;
 }
 
+// Projection of the last queried record array. Hover, mini-map hover and track
+// clicks all query the active trip, so one slot serves them all; it is rebuilt
+// when the trip's records are replaced or grow.
+let projectedTrack: ProjectedTrack | null = null;
+
 /**
  * Finds the nearest active GPS record in the map's projected coordinate space.
  * Returns the index in trip.records or -1.
  */
 function nearestActiveRecordIndex(trip: Trip, lat: number, lng: number): number {
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    const targetY = mercatorY(lat);
-    for (let i = 0; i < trip.records.length; i++) {
-        const r = trip.records[i]!;
-        if (!isValidGpsFix(r)) continue;
-        const dLat = mercatorY(r.lat) - targetY;
-        const dLon = wrapDegrees(r.lon - lng);
-        const d = dLat * dLat + dLon * dLon;
-        if (d < bestDist) {
-            bestDist = d;
-            bestIdx = i;
-        }
-    }
-    return bestIdx;
+    if (!isProjectionOf(projectedTrack, trip.records)) projectedTrack = projectTrack(trip.records);
+    return nearestProjectedRecordIndex(projectedTrack, lat, lng);
 }
 
 /** Track click: seek to the video moment corresponding to the nearest GPS point. */
@@ -1633,17 +1680,30 @@ function onTrackClick(ev: maplibregl.MapMouseEvent): void {
 }
 
 /**
- * Track hover: shows a popup with time, speed and coordinates for the nearest
- * GPS point. The popup instance is reused (one per state) to avoid DOM churn.
+ * Track hover: shows a popup with time, speed and coordinates for the GPS point
+ * nearest to `lngLat` and moves the chart cursor to the same moment. The popup
+ * instance is reused (one per state), and nothing is rewritten while the nearest
+ * point and the world copy it is drawn in stay the same.
  */
-function onTrackHover(ev: maplibregl.MapMouseEvent): void {
-    if (!state.active || !state.map) return;
+function showTrackHover(lngLat: maplibregl.LngLat): void {
+    const map = state.map;
+    if (!state.active || !map) return;
     const trip = state.trips[state.active.trip];
     if (!trip || trip.records.length === 0) return;
 
-    const idx = nearestActiveRecordIndex(trip, ev.lngLat.lat, ev.lngLat.lng);
+    const idx = nearestActiveRecordIndex(trip, lngLat.lat, lngLat.lng);
     if (idx === -1) return;
     const rec = trip.records[idx]!;
+    const lon = unwrapLongitude(rec.lon, lngLat.lng);
+    // Footage axis, same as chart hover.
+    const relSec = wallToContentSec(trip.timeline, rec.unixSeconds);
+    const shown = trackHoverShown;
+    const sameRecord =
+        state.hoverPopup?.isOpen() === true &&
+        shown !== null &&
+        shown.records === trip.records &&
+        shown.recordIndex === idx;
+    if (sameRecord && shown?.lon === lon && state.chartHoverX === relSec) return;
 
     if (!state.hoverPopup) {
         state.hoverPopup = new mlg!.Popup({
@@ -1657,14 +1717,17 @@ function onTrackHover(ev: maplibregl.MapMouseEvent): void {
             className: "ez-popup",
         });
     }
-    state.hoverPopup
-        .setLngLat([unwrapLongitude(rec.lon, ev.lngLat.lng), rec.lat])
-        .setHTML(buildRecordPopupHtml(rec, trip))
-        .addTo(state.map);
+    const popup = state.hoverPopup;
+    popup.setLngLat([lon, rec.lat]);
+    if (!sameRecord) popup.setHTML(buildRecordPopupHtml(rec, trip));
+    // addTo on an open popup removes and rebuilds its whole container.
+    if (!popup.isOpen()) popup.addTo(map);
+    trackHoverShown = { records: trip.records, recordIndex: idx, lon };
 
-    // Sync the chart cursor to the same moment (footage axis, same as chart hover).
-    state.chartHoverX = wallToContentSec(trip.timeline, rec.unixSeconds);
-    if (state.chart) state.chart.draw();
+    // The chart cursor is a DOM overlay: move it directly instead of redrawing
+    // the whole chart just to run its afterDraw sync.
+    state.chartHoverX = relSec;
+    callbacks.onHoverTripTime(relSec);
 }
 
 /**
@@ -2358,34 +2421,50 @@ function initMiniMapDrag(): void {
 /**
  * Mini-map hover sync: while the cursor is over the mini-map, project the
  * pixel coord to LngLat, snap to the nearest GPS record, and drive the chart
- * cursor. Mirrors what onTrackHover does on the main map but without a popup
+ * cursor. Mirrors what showTrackHover does on the main map but without a popup
  * (the thumbnail is too small to read one). interactive:false on the
  * mini-map blocks MapLibre's own listeners; we attach to the DOM container
- * directly and use mini.unproject() for coordinate conversion.
+ * directly and use mini.unproject() for coordinate conversion. Moves are
+ * coalesced to one per frame, like the main map's.
  */
 function initMiniMapHover(): void {
-    let lastHoverIdx = -1;
-    dom.miniMap.addEventListener("pointermove", (e) => {
-        // Drag of the mini-map widget (positioning) takes priority over
-        // hover - is-dragging class is added on pointerdown in initMiniMapDrag.
-        if (dom.miniMap.classList.contains("is-dragging")) return;
-        if (!state.active || !state.miniMap) return;
+    let lastHover: { records: readonly GpsRecord[]; recordIndex: number } | null = null;
+    let pendingPointer: { clientX: number; clientY: number } | null = null;
+    let hoverRaf = 0;
+    // Drag of the mini-map widget (positioning) takes priority over hover -
+    // is-dragging class is added on pointerdown in initMiniMapDrag.
+    const isDragging = (): boolean => dom.miniMap.classList.contains("is-dragging");
+    const processHover = (): void => {
+        hoverRaf = 0;
+        const pointer = pendingPointer;
+        pendingPointer = null;
+        if (!pointer || isDragging() || !state.active || !state.miniMap) return;
         const trip = state.trips[state.active.trip];
         if (!trip || trip.records.length === 0) return;
         const rect = dom.miniMap.getBoundingClientRect();
-        const lngLat = state.miniMap.unproject([e.clientX - rect.left, e.clientY - rect.top]);
+        const lngLat = state.miniMap.unproject([pointer.clientX - rect.left, pointer.clientY - rect.top]);
         const idx = nearestActiveRecordIndex(trip, lngLat.lat, lngLat.lng);
-        if (idx === -1 || idx === lastHoverIdx) return;
-        lastHoverIdx = idx;
+        if (idx === -1 || (lastHover?.records === trip.records && lastHover.recordIndex === idx)) return;
+        lastHover = { records: trip.records, recordIndex: idx };
         const rec = trip.records[idx]!;
         state.chartHoverX = wallToContentSec(trip.timeline, rec.unixSeconds);
-        if (state.chart) state.chart.draw();
+        callbacks.onHoverTripTime(state.chartHoverX);
+    };
+    dom.miniMap.addEventListener("pointermove", (e) => {
+        if (isDragging()) return;
+        pendingPointer = { clientX: e.clientX, clientY: e.clientY };
+        if (hoverRaf === 0) hoverRaf = requestAnimationFrame(processHover);
     });
     dom.miniMap.addEventListener("pointerleave", () => {
-        lastHoverIdx = -1;
+        pendingPointer = null;
+        if (hoverRaf !== 0) {
+            cancelAnimationFrame(hoverRaf);
+            hoverRaf = 0;
+        }
+        lastHover = null;
         if (state.chartHoverX !== null) {
             state.chartHoverX = null;
-            if (state.chart) state.chart.draw();
+            callbacks.onHoverTripTime(null);
         }
     });
 }

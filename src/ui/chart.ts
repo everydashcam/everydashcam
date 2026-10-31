@@ -760,11 +760,11 @@ export function initChart(cb: ChartCallbacks): void {
         afterDraw(): void {
             // The hover cursor is a DOM overlay, not drawn on the canvas. Sync
             // it from the single source of truth (state.chartHoverX) on every
-            // redraw so EXTERNAL draw() callers move it too - map/mini-map hover
-            // set state.chartHoverX and call state.chart.draw(), but cannot reach
-            // setHoverCursorRelSec directly (chart depends on map, not the other
-            // way round). The chart's own mousemove still calls it directly and
-            // skips the redraw for perf; this closes the map->chart direction.
+            // redraw so a zoom, pan or resize re-positions it on the new
+            // x-scale. Pointer moves never redraw for it: the chart's own
+            // mousemove calls setHoverCursorRelSec directly, and map/mini-map
+            // hover reach it through the onHoverTripTime map callback (chart
+            // depends on map, not the other way round).
             setHoverCursorRelSec(state.chartHoverX);
         },
     };

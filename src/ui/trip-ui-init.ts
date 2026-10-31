@@ -15,7 +15,7 @@
 // later. The sidebar play-callback (app.ts) awaits this promise before playFrame, so a trip never
 // renders against a half-initialized viewer.
 
-import { applyChartLayout, initChart, loadChart } from "./chart.js";
+import { applyChartLayout, initChart, loadChart, setHoverCursorRelSec } from "./chart.js";
 import { dom } from "./dom.js";
 import {
     applyMapLayout,
@@ -79,6 +79,7 @@ async function runTripUiInit(): Promise<void> {
     initMap({
         onSeekTripTime: (sec) => seekTripTime(sec),
         onChartLayoutChange: () => applyChartLayout(),
+        onHoverTripTime: setHoverCursorRelSec,
     });
     applyMapLayout();
     // At startup hasTrack = false - applyChartLayout adds no-gps to player-wrap so the chart is not visible before a trip is selected.
