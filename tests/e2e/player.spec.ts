@@ -1811,3 +1811,51 @@ test.describe("player scrub seeks", () => {
             .toBe(true);
     });
 });
+
+test.describe("chart hover preview", () => {
+    test.beforeEach(async ({ page }) => {
+        await presetLocalStorage(page);
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+    });
+
+    test("a touch tap does not open it while a mouse still does", async ({ page }) => {
+        await pausePlayback(page);
+        const hoverAfter = (pointerType: "touch" | "mouse") =>
+            page.evaluate(async (pointerType) => {
+                const canvas = document.getElementById("player-chart-canvas")!;
+                const rect = canvas.getBoundingClientRect();
+                const at = {
+                    clientX: rect.left + rect.width * 0.6,
+                    clientY: rect.top + rect.height / 2,
+                    bubbles: true,
+                };
+                // Mobile browsers follow a tap with compatibility mouse events and
+                // keep the emulated mouse hovering until the next tap elsewhere.
+                // Playwright's touch emulation ends with a mouseleave instead, so
+                // the device sequence is replayed directly.
+                if (pointerType === "touch") {
+                    canvas.dispatchEvent(new PointerEvent("pointerdown", { ...at, pointerType, isPrimary: true }));
+                    canvas.dispatchEvent(new PointerEvent("pointerup", { ...at, pointerType, isPrimary: true }));
+                } else {
+                    canvas.dispatchEvent(new PointerEvent("pointermove", { ...at, pointerType, isPrimary: true }));
+                }
+                canvas.dispatchEvent(new MouseEvent("mousemove", at));
+                // Hover is processed in an animation frame after its mousemove.
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                return {
+                    tooltipShown: document.querySelector<HTMLElement>(".ez-chart-tooltip")?.style.opacity === "1",
+                    hoverCursorShown: !(document.getElementById("player-chart-hover-cursor") as HTMLElement).hidden,
+                };
+            }, pointerType);
+        expect(await hoverAfter("touch"), "a tap leaves no sticky hover preview").toEqual({
+            tooltipShown: false,
+            hoverCursorShown: false,
+        });
+        expect(await hoverAfter("mouse"), "mouse hover keeps its preview").toEqual({
+            tooltipShown: true,
+            hoverCursorShown: true,
+        });
+    });
+});

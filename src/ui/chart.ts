@@ -976,7 +976,29 @@ export function initChart(cb: ChartCallbacks): void {
             renderNoGpsTooltip(e, trip, x);
         }
     };
+    // Hover belongs to pointers that can hover. A tap on a touch screen is
+    // followed by compatibility mouse events, and its synthetic mousemove
+    // opened the tooltip (and decoded a thumbnail) that no mouseleave ever
+    // closed, covering the chart the user had just tapped to seek. Pointer
+    // events precede their compatibility mouse events, so the last pointer
+    // type seen on the row classifies each mousemove, the strip's forwarded
+    // ones included.
+    let lastChartPointerType = "mouse";
+    const notePointerType = (e: PointerEvent): void => {
+        lastChartPointerType = e.pointerType;
+    };
+    dom.playerChartEl?.addEventListener("pointermove", notePointerType, { capture: true });
+    dom.playerChartEl?.addEventListener(
+        "pointerdown",
+        (e) => {
+            notePointerType(e);
+            // A hybrid device may still show the mouse's tooltip.
+            if (e.pointerType === "touch") dom.chartCanvas.dispatchEvent(new MouseEvent("mouseleave"));
+        },
+        { capture: true },
+    );
     dom.chartCanvas.addEventListener("mousemove", (e) => {
+        if (lastChartPointerType === "touch") return;
         pendingChartMouseEvent = e;
         if (!chartHoverRafScheduled) {
             chartHoverRafScheduled = true;
