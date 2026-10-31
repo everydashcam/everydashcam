@@ -11,12 +11,9 @@
 import { dom } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { flipCollapse } from "./flip.js";
+import { MOBILE_LAYOUT_QUERY } from "./media-queries.js";
 import { focusableWithin } from "./modal-helper.js";
 import { state } from "./state.js";
-
-// Must match the mobile breakpoint in sidebar.css / topbar.css (portrait width
-// OR short landscape) so JS and CSS agree on when the drawer/full-screen list applies.
-const MOBILE_MEDIA = "(max-width: 767px), (max-height: 500px) and (orientation: landscape)";
 
 const COLLAPSE_MS = 380;
 const COLLAPSE_EASE = "cubic-bezier(0.22, 1, 0.36, 1)"; // ease-out-quint
@@ -27,7 +24,7 @@ const COLLAPSE_EASE = "cubic-bezier(0.22, 1, 0.36, 1)"; // ease-out-quint
 let collapseShown = false;
 
 function isMobileViewport(): boolean {
-    return window.matchMedia(MOBILE_MEDIA).matches;
+    return window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
 }
 
 // Toggle the standard `inert` attribute (removes from tab order + a11y tree).
@@ -191,7 +188,7 @@ export function initMobileDrawer(): void {
     // the drawer CSS applies under (width OR short-landscape) - a width-only
     // listener missed the short-landscape -> desktop transition (window grows
     // taller without crossing 767px) and left the drawer stuck open.
-    window.matchMedia(MOBILE_MEDIA).addEventListener("change", (e) => {
+    window.matchMedia(MOBILE_LAYOUT_QUERY).addEventListener("change", (e) => {
         if (!e.matches) setDrawerOpen(false);
         // Reconcile on every boundary crossing: entering mobile must inert the
         // closed off-canvas sidebar; leaving it must clear all inert state.

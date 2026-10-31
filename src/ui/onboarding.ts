@@ -43,6 +43,7 @@ import { tripChannels } from "../trips.js";
 import type { Trip } from "../trips.js";
 
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
+import { MOBILE_LAYOUT_QUERY } from "./media-queries.js";
 
 const log = createLogger("onboarding");
 
@@ -70,11 +71,6 @@ interface OnboardTour {
      */
     delayMs: number;
 }
-
-// Mirror of the mobile breakpoint used by sidebar.css / mobile-drawer.ts:
-// narrow portrait OR short landscape. Kept in sync by hand (CSS cannot read a
-// custom property in a media query).
-const MOBILE_MEDIA = "(max-width: 767px), (max-height: 500px) and (orientation: landscape)";
 
 function storageKey(id: OnboardTourId): string {
     return `everydashcam:onboarding:${id}`;
@@ -252,7 +248,7 @@ function clearPendingTour(): void {
 }
 
 function isMobile(): boolean {
-    return window.matchMedia(MOBILE_MEDIA).matches;
+    return window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
 }
 
 /**

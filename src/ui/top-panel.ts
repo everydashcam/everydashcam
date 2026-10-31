@@ -37,6 +37,7 @@ import { dom } from "./dom.js";
 import { channelDisplayLabel, formatDuration } from "./format.js";
 import { notifyExportStateChanged, subscribeExportState } from "./export-state.js";
 import { persistCurrentLayout } from "./player-layout-pref.js";
+import { MOBILE_LAYOUT_QUERY } from "./media-queries.js";
 import {
     activeTrip,
     defaultLayoutForCount,
@@ -88,7 +89,7 @@ export function initTopPanel(opts: { onCompositionApply: () => void; resetZoom?:
     onCompositionApply = opts.onCompositionApply;
     if (opts.resetZoom) resetZoom = opts.resetZoom;
     const controls = document.querySelector<HTMLDetailsElement>("#top-panel-controls");
-    const mobile = window.matchMedia("(max-width: 767px), (max-height: 500px) and (orientation: landscape)");
+    const mobile = window.matchMedia(MOBILE_LAYOUT_QUERY);
     const syncControls = (): void => {
         if (controls) controls.open = !mobile.matches;
     };

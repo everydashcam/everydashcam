@@ -22,11 +22,10 @@ import { getTripCameraTimezoneState, setTripCameraTimezone } from "./camera-time
 import { dom } from "./dom.js";
 import { initGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { requestGpsSyncSurfaceRefresh } from "./gps-sync-refresh.js";
+import { MOBILE_LAYOUT_QUERY } from "./media-queries.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 import { notify } from "./notifications.js";
 import { activeTrip, state } from "./state.js";
-
-const GPS_SYNC_MODAL_QUERY = "(max-width: 767px), (max-height: 500px) and (orientation: landscape)";
 
 let getTripCurrentTime: () => number = () => 0;
 let initialized = false;
@@ -54,7 +53,7 @@ function refreshGpsSyncSurfaces(): void {
 function shouldUseModalPresentation(): boolean {
     return (
         (document.fullscreenElement ?? document.querySelector(".player-expanded")) !== null ||
-        window.matchMedia(GPS_SYNC_MODAL_QUERY).matches
+        window.matchMedia(MOBILE_LAYOUT_QUERY).matches
     );
 }
 
@@ -220,7 +219,7 @@ export function initGpsSyncModal(opts: { getTripCurrentTime: () => number }): vo
     dom.gpsSyncTimezoneReset.addEventListener("click", () => applyTimezone(null));
     dom.gpsSyncClose.addEventListener("click", closeGpsSync);
     wireBackdropDismiss(dom.gpsSyncModal, closeGpsSync, { cardSelector: ".gps-sync-card" });
-    window.matchMedia(GPS_SYNC_MODAL_QUERY).addEventListener("change", syncPresentationMode);
+    window.matchMedia(MOBILE_LAYOUT_QUERY).addEventListener("change", syncPresentationMode);
     document.addEventListener("fullscreenchange", syncPresentationMode);
     document.addEventListener("playerexpansionchange", syncPresentationMode);
     document.addEventListener(

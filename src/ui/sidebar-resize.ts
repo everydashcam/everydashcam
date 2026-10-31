@@ -4,16 +4,11 @@
 // collapse is the other way the user manages the same column's width.
 
 import { dom } from "./dom.js";
+import { isMobileLayout } from "./media-queries.js";
 
 const SIDEBAR_WIDTH_KEY = "everydashcam:sidebar-width";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 600;
-
-// Defense-in-depth: sidebar-resize is hidden via display:none on mobile,
-// but DevTools touch emulation can still fire pointer events.
-// In drawer mode --sidebar-width is not used by CSS so resizing would be meaningless.
-const isMobileLayout = (): boolean =>
-    window.matchMedia("(max-width: 767px), (max-height: 500px) and (orientation: landscape)").matches;
 
 function maxSidebarWidth(): number {
     // Match layout.css's viewport cap so keyboard steps start at the visible edge.
