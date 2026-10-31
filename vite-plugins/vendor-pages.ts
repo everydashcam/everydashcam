@@ -255,7 +255,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerPrivacy: "Privacy policy",
         footerTerms: "Terms of use",
         footerHome: "everydashcam.app",
-        notListedText: "Don't see your camera? Send us a sample — we add support from real recordings.",
+        notListedText: "Don't see your camera? Send me a sample — I add support from real recordings.",
         notListedCta: "Add your dashcam",
     },
     ru: {
@@ -275,7 +275,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerPrivacy: "Политика конфиденциальности",
         footerTerms: "Условия использования",
         footerHome: "everydashcam.app",
-        notListedText: "Не нашёл свой регистратор? Пришли пример — мы добавляем поддержку по реальным записям.",
+        notListedText: "Не нашёл свой регистратор? Пришли пример — я добавляю поддержку по реальным записям.",
         notListedCta: "Добавить свой регистратор",
     },
     de: {
@@ -296,7 +296,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerTerms: "Nutzungsbedingungen",
         footerHome: "everydashcam.app",
         notListedText:
-            "Deine Dashcam nicht dabei? Schick uns eine Beispielaufnahme — damit können wir neue Formate unterstützen.",
+            "Deine Dashcam nicht dabei? Schick mir eine Beispielaufnahme — damit kann ich neue Formate unterstützen.",
         notListedCta: "Deine Dashcam hinzufügen",
     },
     es: {
@@ -316,8 +316,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerPrivacy: "Política de privacidad",
         footerTerms: "Términos de uso",
         footerHome: "everydashcam.app",
-        notListedText:
-            "¿No ves tu cámara? Envíanos una muestra — añadimos compatibilidad a partir de grabaciones reales.",
+        notListedText: "¿No ves tu cámara? Envíame una muestra — añado compatibilidad a partir de grabaciones reales.",
         notListedCta: "Añade tu cámara de coche",
     },
     fr: {
@@ -338,7 +337,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerTerms: "Conditions d'utilisation",
         footerHome: "everydashcam.app",
         notListedText:
-            "Tu ne vois pas ta dashcam ? Envoie-nous un exemple — on ajoute la prise en charge à partir de vrais enregistrements.",
+            "Tu ne vois pas ta dashcam ? Envoie-moi un exemple — j’ajoute la prise en charge à partir de vrais enregistrements.",
         notListedCta: "Ajouter ta dashcam",
     },
     pl: {
@@ -359,7 +358,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerTerms: "Warunki korzystania",
         footerHome: "everydashcam.app",
         notListedText:
-            "Nie widzisz swojego wideorejestratora? Wyślij nam próbkę — dodajemy obsługę na podstawie prawdziwych nagrań.",
+            "Nie widzisz swojego wideorejestratora? Wyślij mi próbkę — dodaję obsługę na podstawie prawdziwych nagrań.",
         notListedCta: "Dodaj swój wideorejestrator",
     },
     pt: {
@@ -379,7 +378,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerPrivacy: "Política de privacidade",
         footerTerms: "Termos de uso",
         footerHome: "everydashcam.app",
-        notListedText: "Não encontrou sua câmera? Envie uma amostra — adicionamos suporte a partir de gravações reais.",
+        notListedText: "Não encontrou sua câmera? Envie uma amostra — adiciono suporte a partir de gravações reais.",
         notListedCta: "Adicione sua dashcam",
     },
     zh: {
@@ -399,7 +398,7 @@ const SHARED_LABELS: Record<Lang, SharedLabels> = {
         footerPrivacy: "隐私政策",
         footerTerms: "使用条款",
         footerHome: "everydashcam.app",
-        notListedText: "没看到你的行车记录仪？请发给我们一段样例 — 我们会根据真实录像添加支持。",
+        notListedText: "没看到你的行车记录仪？请发给我一段样例 — 我会根据真实录像添加支持。",
         notListedCta: "添加你的行车记录仪",
     },
     ja: {

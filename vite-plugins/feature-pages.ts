@@ -163,7 +163,7 @@ const FEATURE_PAGES: FeaturePage[] = [
                     },
                     {
                         q: "Which dashcams does it support?",
-                        a: "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro and many more — anything that writes standard .mp4, .mov or .ts files. If your camera isn't read yet, send a sample to feedback@everydashcam.app and we'll add it.",
+                        a: "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro and many more — anything that writes standard .mp4, .mov or .ts files. If your camera isn't read yet, send a sample to feedback@everydashcam.app and I'll add it.",
                     },
                     {
                         q: "Is it free?",

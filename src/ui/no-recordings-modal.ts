@@ -1,4 +1,4 @@
-// "We couldn't read this card" modal - shown after a zero-trips ingest that
+// "Couldn't read this card" modal - shown after a zero-trips ingest that
 // still contained recording-like files (the unrecognised-camera case). It is a
 // thin router, not a report generator: the primary CTA is a .feedback-link that
 // opens the feedback form (which auto-attaches the byte-free folder-structure

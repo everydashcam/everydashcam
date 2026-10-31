@@ -807,7 +807,7 @@ test.describe("progressive ingest", () => {
         await expect(page.locator("#trip-analysis-progressbar")).toHaveAttribute("aria-valuenow", "0");
         await expect(page.locator("#trip-analysis-progress")).toHaveText("Time and duration · 0 of 30 recordings");
         await expect(analysisStatus).toContainText(
-            "You can open any trip now — we'll prepare the one you choose first.",
+            "You can open any trip now — the one you choose will be prepared first.",
         );
         // Background work is explained once above the list. Individual cards
         // use a stable preview placeholder and facts instead of presenting an
@@ -881,9 +881,9 @@ test.describe("progressive ingest", () => {
                 { timeout: 10_000 },
             )
             .toEqual({
-                title: "Уточняем детали поездок",
+                title: "Уточнение деталей поездок",
                 progress: "Время и длительность · 0 из 6 записей",
-                hint: "Поездки уже можно открывать — выбранную подготовим первой.",
+                hint: "Поездки уже можно открывать — выбранная будет подготовлена первой.",
             });
     });
 
@@ -943,7 +943,7 @@ test.describe("progressive ingest", () => {
         // fails. The standard skipped-file summary and recovery modal explain it.
         await expect(trips).toHaveCount(0);
         await expect(page.locator("li.trip.unindexed-note")).toBeVisible();
-        await expect(page.getByRole("dialog", { name: "We couldn't read this card" })).toBeVisible();
+        await expect(page.getByRole("dialog", { name: "Couldn't read this card" })).toBeVisible();
     });
 
     test("trip header skips a damaged leading clip and opens the first playable one", async ({ page }) => {

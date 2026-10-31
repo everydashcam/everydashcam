@@ -3,7 +3,7 @@
 Thanks for helping make everydashcam better. You do not need to write code to
 make a useful contribution:
 
-- **Found a bug or have an idea?** Open a GitHub issue and tell us what you
+- **Found a bug or have an idea?** Open a GitHub issue and tell me what you
   expected to happen.
 - **Want to add a camera?** Start at
   [everydashcam.app/add-my-camera](https://everydashcam.app/add-my-camera) or open a

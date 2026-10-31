@@ -4,13 +4,41 @@ paths:
   - "vite-plugins/**/*"
   - "index.html"
   - "public/*.html"
+  - "README.md"
+  - "CONTRIBUTING.md"
+  - "SECURITY.md"
+  - ".github/ISSUE_TEMPLATE/**/*"
+  - "src/migrate/i18n.ts"
+  - "src/ui/feedback.ts"
 ---
 
 # Tone of voice
 
-This file owns user-visible wording in the UI, errors and marketing pages.
+This file owns user-visible wording in the UI, errors, marketing pages and
+repository contribution guides.
 English owns meaning; localization mechanics and translation completeness
 follow [CLAUDE.md](../../CLAUDE.md#localization).
+
+## Speaker
+
+everydashcam is developed and maintained by one author. Keep the speaker clear
+across the UI, public documentation, marketing pages and their translations:
+
+- Describe product behavior neutrally: “Couldn't read this card”, “Reading your
+  recordings”, “everydashcam groups clips into trips”. The app does not speak as
+  “I” or “we”.
+- Use “I” and “me” for the author's work, feedback and personal appeals:
+  “Send me a sample”, “I'll look into it”, “From the author”. A short neutral
+  action such as “Report a problem” or “Send a sample” is also appropriate.
+- Keep privacy policies and terms neutral. Use headings such as “Data
+  collection”, refer to the operator as “the developer”, and attribute automatic
+  processing to the app. Preserve legal meaning across translations.
+- Do not use “we”, “us” or “our” to imply a development or support team. An
+  inclusive “we” is appropriate when it clearly means the author and a
+  contributor working together.
+- Preserve first-person labels that speak for the user, such as “I've got a
+  link”, and apply the same speaker distinction to implicit subjects and verb
+  forms in translations.
 
 ## Audience and vocabulary
 
@@ -66,7 +94,7 @@ If no user action can help, point to feedback.
 
 | Raw failure | User-facing message |
 | --- | --- |
-| Decode error 0x80004005 | Can't play this video. Send us a sample and we'll look into it. |
+| Decode error 0x80004005 | Can't play this video. Send me a sample and I'll look into it. |
 | NotAllowedError | Couldn't save the file — the download was blocked. |
 
 Use friendly `*.error.*` keys and error classifiers. The export `onError`
@@ -95,7 +123,7 @@ Published locales and reviewed camera-specific copy follow
 Honest competitor comparisons are welcome. Frame unsupported cameras as an
 invitation to contribute a real sample rather than ending on a concession:
 “If everydashcam doesn't read your camera yet, send a sample to
-feedback@everydashcam.app — we add formats from real recordings.”
+feedback@everydashcam.app — I add formats from real recordings.”
 
 ## Review
 

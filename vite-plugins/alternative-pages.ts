@@ -112,7 +112,7 @@ const ALTERNATIVES: Competitor[] = [
                     "Dashcam Viewer is a mature desktop app. everydashcam is the free, no-install browser alternative for everyday dashcam review.",
                 h1: "A free Dashcam Viewer alternative — in your browser, nothing to install",
                 lead: "Dashcam Viewer by Earthshine is a polished cross-brand desktop player with free and paid plans. everydashcam covers the everyday review workflow for free in your browser: open the SD card, see the trip on a GPS map with speed and G-force charts, play multiple cameras in sync and trim a clip. No install, account or upload.",
-                cardHint: "Mature desktop viewer; we cover everyday review in the browser",
+                cardHint: "Mature desktop viewer; everydashcam handles everyday review in the browser",
                 whatItIs:
                     "Dashcam Viewer by Earthshine Software is an actively maintained Windows and macOS app with Free, Plus and Pro plans. It supports a broad catalogue of dashcam models, synchronized video, an OpenStreetMap route map, detailed plots such as speed, distance, altitude and satellite count, and multi-format GPS export. It is the deeper desktop analysis tool; everydashcam focuses on quick local review without installing an app.",
                 comparisonIntro:
@@ -176,7 +176,7 @@ const ALTERNATIVES: Competitor[] = [
                     "Dashcam Viewer — зрелая программа для компьютера. everydashcam — бесплатная браузерная альтернатива для повседневного просмотра.",
                 h1: "Бесплатная альтернатива Dashcam Viewer — в браузере, без установки",
                 lead: "Dashcam Viewer от Earthshine — хорошо сделанный мультибрендовый плеер для Windows и macOS с бесплатным и платными тарифами. everydashcam бесплатно закрывает повседневный просмотр в браузере: открой SD-карту, посмотри маршрут и графики скорости и перегрузок, синхронно включи несколько камер и вырежи фрагмент. Без установки, аккаунта и загрузки файлов на сервер.",
-                cardHint: "Зрелый десктопный плеер; мы закрываем быстрый просмотр в браузере",
+                cardHint: "Зрелый десктопный плеер; everydashcam подходит для быстрого просмотра в браузере",
                 whatItIs:
                     "Dashcam Viewer от Earthshine Software — активно поддерживаемое приложение для Windows и macOS с тарифами Free, Plus и Pro. Оно работает с широким каталогом регистраторов, синхронизирует видео, показывает маршрут на OpenStreetMap и подробные графики скорости, дистанции, высоты и числа спутников, а также экспортирует GPS в нескольких форматах. Это инструмент для более подробного анализа на компьютере; everydashcam сосредоточен на быстром локальном просмотре без установки.",
                 comparisonIntro:
@@ -247,7 +247,7 @@ const ALTERNATIVES: Competitor[] = [
                     "CamGeoPlayer is a free indie Windows viewer that shows your dashcam GPS on a map. everydashcam does that in the browser — plus a speed chart and clip export.",
                 h1: "A free CamGeoPlayer alternative — in your browser, and it does more",
                 lead: "CamGeoPlayer is a free Windows app that reads GPS from dashcam videos and plots the route on a map. everydashcam does that in your browser and adds speed and G-force charts, synchronized cameras, automatic trip grouping and clip export with GPS retained. CamGeoPlayer remains a focused offline viewer; everydashcam covers a broader review workflow without a download.",
-                cardHint: "Free Windows GPS viewer; we add charts, sync and export",
+                cardHint: "Free Windows GPS viewer; everydashcam adds charts, sync and export",
                 whatItIs:
                     "CamGeoPlayer is a free Windows app that requires .NET 4.8. It queues videos, plays them in sequence, extracts embedded GPS with ExifTool and draws the journey on an OpenStreetMap map using Leaflet. There is no installer: the official download is a zip that you unpack and run. Its official page lists Beta 1.1, dated January 30, 2024.",
                 comparisonIntro:
@@ -304,7 +304,7 @@ const ALTERNATIVES: Competitor[] = [
                     "CamGeoPlayer — бесплатный плеер для Windows от независимого разработчика, показывающий GPS регистратора на карте. everydashcam делает это в браузере — плюс график скорости и экспорт клипа.",
                 h1: "Бесплатная альтернатива CamGeoPlayer — больше возможностей прямо в браузере",
                 lead: "CamGeoPlayer — бесплатная программа для Windows, которая читает GPS из видео регистратора и рисует маршрут на карте. everydashcam делает это прямо в браузере и добавляет графики скорости и перегрузок, синхронный просмотр камер, автоматическую группировку записей в поездки и экспорт клипа с GPS. CamGeoPlayer остаётся локальным плеером для одной задачи; everydashcam закрывает более широкий сценарий просмотра без скачивания программы.",
-                cardHint: "Бесплатный плеер с GPS для Windows; у нас ещё графики, синхронизация и экспорт",
+                cardHint: "Бесплатный плеер с GPS для Windows; в everydashcam ещё графики, синхронизация и экспорт",
                 whatItIs:
                     "CamGeoPlayer — бесплатная программа для Windows, которой нужен .NET 4.8. Она ставит видео в очередь, проигрывает их по порядку, извлекает встроенный GPS через ExifTool и рисует маршрут на OpenStreetMap с помощью Leaflet. Установщика нет: официальный zip нужно распаковать и запустить. На сайте проекта последней указана Beta 1.1 от 30 января 2024 года.",
                 comparisonIntro:
@@ -372,7 +372,7 @@ const ALTERNATIVES: Competitor[] = [
                     "Telemetry Overlay is a paid desktop overlay tool. For dashcam footage, everydashcam reads the GPS and burns a speed/map overlay free, in your browser.",
                 h1: "A free, in-browser alternative to Telemetry Overlay — for dashcam footage",
                 lead: "Telemetry Overlay is a powerful, paid desktop tool for burning gauges onto action-cam video. If your footage is from a dashcam and you just want to see the route, speed and G-force — and maybe burn a simple speed-and-map overlay — everydashcam does that free, in your browser, reading the GPS straight off the card. No license, no install. For deep gauge production, Telemetry Overlay is still the more capable tool.",
-                cardHint: "Paid desktop overlay tool; we read dashcam GPS free in the browser",
+                cardHint: "Paid desktop overlay tool; everydashcam reads dashcam GPS free in the browser",
                 whatItIs:
                     "Telemetry Overlay by Goprotelemetryextractor is a paid desktop app for Windows, macOS and Linux. It combines video with telemetry from action cameras and external files such as GPX, FIT and NMEA, offers hundreds of customizable gauges, and exports a rendered result. The official trial lasts three days and adds a watermark. It is a production tool for building overlays; everydashcam is an interactive viewer and simple clip exporter.",
                 comparisonIntro:
@@ -413,7 +413,8 @@ const ALTERNATIVES: Competitor[] = [
                     "Telemetry Overlay — платная десктоп-программа для оверлеев. Для записей регистратора everydashcam читает GPS и наносит оверлей скорости/карты бесплатно, в браузере.",
                 h1: "Бесплатная браузерная альтернатива Telemetry Overlay — для записей регистратора",
                 lead: "Telemetry Overlay — мощная платная программа для компьютера, которая добавляет показания датчиков на видео с экшн-камер. Если у тебя запись с видеорегистратора и нужно увидеть маршрут, скорость и перегрузки или добавить на видео скорость и карту, everydashcam сделает это бесплатно прямо в браузере, прочитав GPS с карты памяти. Без лицензии и установки. Для сложной работы с данными датчиков Telemetry Overlay всё же мощнее.",
-                cardHint: "Платная десктоп-программа оверлеев; мы читаем GPS регистратора бесплатно в браузере",
+                cardHint:
+                    "Платная десктоп-программа оверлеев; everydashcam читает GPS регистратора бесплатно в браузере",
                 whatItIs:
                     "Telemetry Overlay от Goprotelemetryextractor — платное приложение для Windows, macOS и Linux. Оно совмещает видео с телеметрией экшн-камер и внешними файлами GPX, FIT и NMEA, предлагает сотни настраиваемых индикаторов и экспортирует готовое видео. Официальная пробная версия работает три дня и добавляет водяной знак. Это инструмент для создания видео с наложенными данными; everydashcam — интерактивный плеер с простым экспортом фрагментов.",
                 comparisonIntro:

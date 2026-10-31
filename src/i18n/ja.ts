@@ -250,7 +250,7 @@ export const jaDict = {
     "sidebar.title": "走行",
     "sidebar.analysis.title": "走行の詳細を確認しています",
     "sidebar.analysis.progress": "時刻と長さ · {total} 本中 {done} 本",
-    "sidebar.analysis.hint": "どの走行も今すぐ開けます。選んだ走行を優先して準備します。",
+    "sidebar.analysis.hint": "どの走行も今すぐ開けます。選んだ走行が優先して準備されます。",
     "sidebar.filter.kind": "走行の種類",
     "sidebar.filter.options": "走行フィルター",
     "sidebar.filter.all": "すべて",
@@ -671,7 +671,7 @@ export const jaDict = {
     "switchLang.cancel": "キャンセル",
 
     "dropOverlay.title": "SD カードのフォルダーをここにドロップ",
-    "dropOverlay.hint": "録画を見つけて、走行ごとにまとめます",
+    "dropOverlay.hint": "アプリが録画を見つけて、走行ごとにまとめます",
     "dropOverlay.bullet.folder": "ドラレコの SD カードのフォルダー",
     "dropOverlay.bullet.pair": "動画 + 同じフォルダー内の GPS ファイル",
     "dropOverlay.bullet.multi": "複数フォルダーをまとめて OK",

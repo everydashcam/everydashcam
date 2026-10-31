@@ -165,7 +165,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Welche Dashcams werden unterstützt?",
-                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro und viele mehr — alles, was normale .mp4-, .mov- oder .ts-Dateien schreibt. Wird deine Kamera noch nicht gelesen, schick ein Beispiel an feedback@everydashcam.app und wir bauen sie ein."
+                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro und viele mehr — alles, was normale .mp4-, .mov- oder .ts-Dateien schreibt. Wird deine Kamera noch nicht gelesen, schick ein Beispiel an feedback@everydashcam.app und ich baue sie ein."
                 },
                 {
                     "q": "Ist es kostenlos?",
@@ -235,7 +235,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "¿Qué dashcams admite?",
-                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro y muchas más — cualquiera que escriba archivos .mp4, .mov o .ts estándar. Si tu cámara aún no se lee, envía una muestra a feedback@everydashcam.app y la añadimos."
+                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro y muchas más — cualquiera que escriba archivos .mp4, .mov o .ts estándar. Si tu cámara aún no se lee, envía una muestra a feedback@everydashcam.app y la añadiré."
                 },
                 {
                     "q": "¿Es gratis?",
@@ -305,7 +305,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Quelles dashcams sont compatibles ?",
-                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro et bien d'autres — tout ce qui écrit des fichiers .mp4, .mov ou .ts standard. Si ta caméra n'est pas encore lue, envoie un échantillon à feedback@everydashcam.app et on l'ajoutera."
+                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro et bien d'autres — tout ce qui écrit des fichiers .mp4, .mov ou .ts standard. Si ta caméra n'est pas encore lue, envoie un échantillon à feedback@everydashcam.app et je l'ajouterai."
                 },
                 {
                     "q": "Est-ce gratuit ?",
@@ -515,7 +515,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Które wideorejestratory są obsługiwane?",
-                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro i wiele innych — wszystko, co zapisuje standardowe pliki .mp4, .mov lub .ts. Jeśli twoja kamera nie jest jeszcze odczytywana, wyślij próbkę na feedback@everydashcam.app, a ją dodamy."
+                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro i wiele innych — wszystko, co zapisuje standardowe pliki .mp4, .mov lub .ts. Jeśli twoja kamera nie jest jeszcze odczytywana, wyślij próbkę na feedback@everydashcam.app, a ją dodam."
                 },
                 {
                     "q": "Czy to za darmo?",
@@ -585,7 +585,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Quais dashcams têm suporte?",
-                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro e muitas outras — qualquer uma que grave arquivos .mp4, .mov ou .ts padrão. Se a sua câmera ainda não for lida, mande um exemplo pra feedback@everydashcam.app que a gente adiciona."
+                    "a": "70mai, BlackVue, Viofo, Garmin, Vantrue, Thinkware, GoPro e muitas outras — qualquer uma que grave arquivos .mp4, .mov ou .ts padrão. Se a sua câmera ainda não for lida, mande um exemplo pra feedback@everydashcam.app que eu adiciono."
                 },
                 {
                     "q": "É grátis?",
@@ -655,7 +655,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "它支持哪些行车记录仪？",
-                    "a": "70mai、BlackVue、Viofo、Garmin、Vantrue、Thinkware、GoPro 还有很多 — 只要是写标准 .mp4、.mov 或 .ts 文件的设备都行。如果你的记录仪暂时还读不了，发个样本到 feedback@everydashcam.app，我们就加上。"
+                    "a": "70mai、BlackVue、Viofo、Garmin、Vantrue、Thinkware、GoPro 还有很多 — 只要是写标准 .mp4、.mov 或 .ts 文件的设备都行。如果你的记录仪暂时还读不了，发个样本到 feedback@everydashcam.app，我就加上。"
                 },
                 {
                     "q": "免费吗？",

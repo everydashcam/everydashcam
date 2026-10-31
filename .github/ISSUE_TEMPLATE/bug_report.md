@@ -7,9 +7,9 @@ labels: bug
 
 ## What happened?
 
-<!-- Tell us what you saw and what you expected instead. -->
+<!-- Tell me what you saw and what you expected instead. -->
 
-## How can we reproduce it?
+## Steps to reproduce
 
 1.
 2.
@@ -31,7 +31,7 @@ labels: bug
 
 everydashcam keeps a diagnostic log on your device. You can download it from
 **Settings → DevTools**. The app has no server-side copy, so this is the only
-log available to us.
+log available for investigating the problem.
 
 The log is not anonymized and may contain file or folder names, paths,
 coordinates and other details from your recordings. Review and redact it before

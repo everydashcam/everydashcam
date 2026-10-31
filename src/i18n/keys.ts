@@ -511,7 +511,7 @@ export type I18nKey =
     | "unsupported.modal.entry"
     | "unsupported.modal.note"
     | "unsupported.modal.close"
-    // "We couldn't read this card" modal - shown after a zero-trips ingest that
+    // "Couldn't read this card" modal - shown after a zero-trips ingest that
     // still contained recording-like files (the unrecognised-camera case). Its
     // primary CTA routes into the feedback form (which auto-attaches the byte-free
     // folder-structure report); the secondary link opens the public help page.
@@ -1355,7 +1355,7 @@ export type I18nKey =
     // Footer link to the source repository. Short label next to a GitHub mark,
     // so it does not have to carry the word "GitHub" in every locale.
     | "footer.source"
-    // Link to the "help us add your dashcam" page (public/add-my-camera.html).
+    // Link to the "help me add your dashcam" page (public/add-my-camera.html).
     | "footer.addCamera"
     // Footer credit line - leads into the open-source projects we build on
     // (Mediabunny, MapLibre, Chart.js, OpenFreeMap). Names stay literal across

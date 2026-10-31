@@ -120,7 +120,7 @@ test.describe("migration arrival notice", () => {
             await expect(banner).toBeVisible();
             await expect(page).toHaveURL(`https://everydashcam.app/${locale}/?keep=a%20b&keep=2#test-anchor`);
             await expect(page.locator("#settings-modal")).toBeHidden();
-            await expect(banner).toContainText(locale === "ru" ? "Ты на новом адресе" : "You're at our new address");
+            await expect(banner).toContainText(locale === "ru" ? "Ты на новом адресе" : "You're at the new address");
             await page.setViewportSize({ width: 390, height: 844 });
             await expect(page.locator("#migration-banner-transfer")).toBeInViewport();
             await expect(page.locator("#migration-banner-dismiss")).toBeInViewport();

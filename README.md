@@ -36,9 +36,9 @@ and operating system.
 See [GPS format coverage](docs/gps-format-coverage.md) for cameras tested with
 real recordings and formats implemented from open-source references.
 
-Don't see your camera yet? You can help us add it:
+Don't see your camera yet? You can help me add it:
 
-- In the app, turn the card's file list into a report you can send us — see
+- In the app, turn the card's file list into a report you can send me — see
   [everydashcam.app/add-my-camera](https://everydashcam.app/add-my-camera).
 - On GitHub, open a camera-support issue.
 

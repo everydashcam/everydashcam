@@ -21,7 +21,7 @@ Use [everydashcam.app/add-my-camera](https://everydashcam.app/add-my-camera) to
 create a report from the card, then attach it here. The report contains file and
 folder names, not your recordings.
 
-If you already know how the camera stores GPS data, tell us here. A screenshot
+If you already know how the camera stores GPS data, tell me here. A screenshot
 or short example of the card's folder layout can also help.
 
 ## Sample recording
@@ -42,7 +42,7 @@ A useful sample contains:
 - no trimming, conversion or re-encoding.
 
 If the camera can show coordinates or speed on the video, turn that option on.
-It gives us a reference for checking the result.
+It gives me a reference for checking the result.
 
 By sharing a sample, you confirm that it is yours to share and may be used to
 build and test camera support. The original recording is never committed to the
