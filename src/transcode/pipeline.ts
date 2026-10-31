@@ -36,6 +36,7 @@
 //    (limit ~60 in the decoder queue); forgetting close stalls the decoder.
 //  - canvas - one OffscreenCanvas for the entire exec, reused.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { resolveOutputFps } from "./frame-rate.js";
 import { createVideoEncodingDiagnostics } from "./encoder-diagnostics.js";
 import { hasCameraFlip } from "../camera-flip.js";
@@ -54,14 +55,7 @@ import { createRegionBlurResolver } from "../blur-region-resolver.js";
 import { computeOutputSize, createBlurHelper, createRegionBlurHelper, drawMain } from "./compose.js";
 import { drawWatermark } from "./watermark.js";
 import type { BlurHelper, RegionBlurHelper } from "./compose.js";
-import {
-    clampSpeedFactor,
-    framesForSpeed,
-    resolveBitrate,
-    type CapturedMoovBytes,
-    type TranscodeArgs,
-    type TranscodeResult,
-} from "./types.js";
+import { clampSpeedFactor, framesForSpeed, resolveBitrate, type TranscodeArgs, type TranscodeResult } from "./types.js";
 import { ensureWatermarkFontReady } from "./watermark.js";
 import { createOverlayFrameResolver, hasAnyOverlay } from "./overlay-pipeline-helpers.js";
 import { ensureOverlayFontsReady } from "./overlay-styles.js";
@@ -72,7 +66,8 @@ import {
     consumeMapSnapshot,
     createH264SampleSource,
     createH264VideoSource,
-    createMp4StreamOutput,
+    createTranscodeOutput,
+    startTranscodeOutput,
     createTranscodeProgressReporter,
     discardOutputQuietly,
     feedSegmentAudio,
@@ -98,7 +93,7 @@ const log = createLogger("transcode");
  */
 export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
     const { source, output, writable, signal, onProgress, mapSnapshotter } = args;
-    if (signal.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
 
     const startMs = performance.now();
 
@@ -152,19 +147,8 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
     });
 
     // === Output muxer ===
-    let totalBytesWritten = 0;
-    let capturedMoov: CapturedMoovBytes | undefined;
-    const out = createMp4StreamOutput(
-        writable,
-        signal,
-        (sizeBytes, position) => {
-            totalBytesWritten = Math.max(totalBytesWritten, position + sizeBytes);
-        },
-        (bytes, position) => {
-            // Copy: mediabunny may reuse the buffer after the callback.
-            capturedMoov = { position, bytes: bytes.slice() };
-        },
-    );
+    const outputSession = createTranscodeOutput(writable, signal);
+    const out = outputSession.out;
 
     // Composition canvas: created up front because the canvas-flavour video
     // source binds to it (mediabunny captures the canvas on each add()).
@@ -296,16 +280,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                   })
                 : null;
 
-        onProgress({
-            stage: "preparing",
-            stageProgress: 1,
-            totalProgress: 0,
-            framesDone: 0,
-            framesTotal,
-            etaSec: -1,
-            bytesWritten: 0,
-        });
-        await out.start();
+        await startTranscodeOutput(out, onProgress, framesTotal);
 
         // === Main loop ===
         // videoAccumOutSec accumulates SOURCE seconds across segments. The muxer
@@ -373,7 +348,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             // handler attached at issue time keeps a late failure from surfacing
             // as unhandled.
             try {
-                if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 if (sampleSource && frameNeedsNoComposite(p.sample, widthPx, heightPx)) {
                     // Untouched frame: retime it onto the output axis and hand it
                     // straight to the encoder. Mutating the sample is safe - we own
@@ -385,7 +360,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                     sampleClosed = true;
                     framesDirect++;
                     framesDone++;
-                    reportProgress(framesDone, totalBytesWritten, false);
+                    reportProgress(framesDone, outputSession.bytesWritten, false);
                     return;
                 }
                 // Privacy blur rects for this frame's content time (empty -> null,
@@ -431,7 +406,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                 sampleClosed = true;
                 await encodeCanvas(p.outTs, p.duration);
                 framesDone++;
-                reportProgress(framesDone, totalBytesWritten, false);
+                reportProgress(framesDone, outputSession.bytesWritten, false);
             } finally {
                 if (!sampleClosed) p.sample.close();
             }
@@ -439,7 +414,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
 
         try {
             for (let segIdx = 0; segIdx < mainSegments.length; segIdx++) {
-                if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 const seg = mainSegments[segIdx]!;
                 const segDur = seg.endInFile - seg.startInFile;
 
@@ -533,9 +508,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                                 let framePos: FramePos | null = null;
                                 let snapPromise: Promise<ImageBitmap> | null = null;
                                 try {
-                                    if (signal.aborted) {
-                                        throw new DOMException("aborted", "AbortError");
-                                    }
+                                    throwIfCancelled(signal);
 
                                     // Source-relative timestamp. Guard: drop samples whose
                                     // timestamp is before startInFile (mediabunny snapped to
@@ -730,7 +703,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             onProgress,
             framesDone,
             framesTotal,
-            getBytesWritten: () => totalBytesWritten,
+            getBytesWritten: () => outputSession.bytesWritten,
             durationSec: outputDurationSec,
         });
 
@@ -742,10 +715,10 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             framesEncoded: framesDone,
             framesDirect,
             durationSec: round2(outputDurationSec),
-            sizeBytes: totalBytesWritten,
+            sizeBytes: outputSession.bytesWritten,
             // The file rate includes audio and container overhead; packet statistics isolate video.
             bitrateKbps: Math.round(bitrate / 1000),
-            achievedKbps: achievedKbps(totalBytesWritten, outputDurationSec),
+            achievedKbps: achievedKbps(outputSession.bytesWritten, outputDurationSec),
             ...encoderDiagnostics.summarize(),
             elapsedMs: Math.round(performance.now() - startMs),
             // Render vs reuse split of the map snapshots: tells a "slow export
@@ -769,7 +742,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             audioDroppedHeterogeneous,
             audioDroppedNoEncoder,
             audioReencodedToOpus,
-            capturedMoov,
+            capturedMoov: outputSession.capturedMoov,
         };
     } catch (err) {
         if (out.state !== "canceled") await discardOutputQuietly(out, writable);

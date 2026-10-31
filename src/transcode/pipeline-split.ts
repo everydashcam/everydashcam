@@ -9,6 +9,7 @@
 //  - if decoder is not open or is past the active segment: swap;
 //  - getSample(localTime) for that tripTime, one composition via drawSplitScreen.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { resolveOutputFps } from "./frame-rate.js";
 import { createVideoEncodingDiagnostics } from "./encoder-diagnostics.js";
 import type { CameraFlip } from "../camera-flip.js";
@@ -41,7 +42,6 @@ import {
     framesForSpeed,
     resolveBitrate,
     type AspectId,
-    type CapturedMoovBytes,
     type TranscodeProgress,
     type TranscodeResult,
     type WatermarkAnchor,
@@ -57,7 +57,8 @@ import {
     discardOutputQuietly,
     consumeMapSnapshot,
     createH264VideoSource,
-    createMp4StreamOutput,
+    createTranscodeOutput,
+    startTranscodeOutput,
     createTranscodeProgressReporter,
     emitSilence,
     feedSegmentAudio,
@@ -136,7 +137,7 @@ export interface TranscodeSplitArgs {
 
 export async function transcodeSplit(args: TranscodeSplitArgs): Promise<TranscodeResult> {
     const { source, output, writable, signal, onProgress, mapSnapshotter } = args;
-    if (signal.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
 
     const expectedSlotCount = getSplitSlotCount(output.layout);
     if (source.slotChannels.length !== expectedSlotCount) {
@@ -244,19 +245,8 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         framesTotal,
     });
 
-    let totalBytesWritten = 0;
-    let capturedMoov: CapturedMoovBytes | undefined;
-    const out = createMp4StreamOutput(
-        writable,
-        signal,
-        (sizeBytes, position) => {
-            totalBytesWritten = Math.max(totalBytesWritten, position + sizeBytes);
-        },
-        (bytes, position) => {
-            // Copy: mediabunny may reuse the buffer after the callback.
-            capturedMoov = { position, bytes: bytes.slice() };
-        },
-    );
+    const outputSession = createTranscodeOutput(writable, signal);
+    const out = outputSession.out;
 
     try {
         // Composition canvas: created up front because the video source is now a
@@ -345,16 +335,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                   })
                 : null;
 
-        onProgress({
-            stage: "preparing",
-            stageProgress: 1,
-            totalProgress: 0,
-            framesDone: 0,
-            framesTotal,
-            etaSec: -1,
-            bytesWritten: 0,
-        });
-        await out.start();
+        await startTranscodeOutput(out, onProgress, framesTotal);
 
         // Slot runtime: pipelined decoder via iter `sink.samples(start, end)` -
         // mediabunny pipelines decode with the consumer, decoding each source packet
@@ -605,7 +586,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             const srcStep = frameDur * speedFactor;
             const runVideoTicks = async (): Promise<void> => {
                 for (let f = 0; f < framesTotal; f++) {
-                    if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                    throwIfCancelled(signal);
                     const outTs = f * frameDur;
                     const tripTimeSec = source.startTripSec + f * srcStep;
 
@@ -703,7 +684,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                     // advance or in the slots' finally), so there is nothing to close here.
                     await videoSource.add(outTs, frameDur);
                     framesDone++;
-                    reportProgress(framesDone, totalBytesWritten, false);
+                    reportProgress(framesDone, outputSession.bytesWritten, false);
                 }
             };
 
@@ -723,7 +704,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                         let audioCopyLastEndSec = 0;
                         let audioConfigPushed = false;
                         for (const seg of masterSegments) {
-                            if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                            throwIfCancelled(signal);
                             const segBaseOutSec = Math.max(0, seg.tripStart + seg.startInFile - source.startTripSec);
                             const input = new Input({
                                 source: createRetryingBlobSource(seg.file, signal),
@@ -756,7 +737,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                         const silenceFormat = audioPlan.silenceFormat;
                         let nextExpectedOutSec = 0;
                         for (const seg of masterSegments) {
-                            if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                            throwIfCancelled(signal);
                             const segDur = seg.endInFile - seg.startInFile;
                             const segBaseOutSec = Math.max(0, seg.tripStart + seg.startInFile - source.startTripSec);
                             if (segBaseOutSec > nextExpectedOutSec + 1e-3) {
@@ -843,7 +824,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             onProgress,
             framesDone,
             framesTotal,
-            getBytesWritten: () => totalBytesWritten,
+            getBytesWritten: () => outputSession.bytesWritten,
             durationSec: framesDone * (1 / outputFps),
         });
 
@@ -854,9 +835,9 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         log.info("split transcode done", {
             framesEncoded: framesDone,
             durationSec: round2(framesDone * (1 / outputFps)),
-            sizeBytes: totalBytesWritten,
+            sizeBytes: outputSession.bytesWritten,
             bitrateKbps: Math.round(bitrate / 1000),
-            achievedKbps: achievedKbps(totalBytesWritten, framesDone / outputFps),
+            achievedKbps: achievedKbps(outputSession.bytesWritten, framesDone / outputFps),
             ...encoderDiagnostics.summarize(),
             elapsedMs: Math.round(performance.now() - startMs),
             ...(mapSnapshots ? { mapSnapshots: mapSnapshots.stats() } : {}),
@@ -877,7 +858,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             audioDroppedHeterogeneous,
             audioDroppedNoEncoder,
             audioReencodedToOpus,
-            capturedMoov,
+            capturedMoov: outputSession.capturedMoov,
         };
     } catch (err) {
         if (out.state !== "canceled") await discardOutputQuietly(out, writable);

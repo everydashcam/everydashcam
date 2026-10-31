@@ -3,6 +3,7 @@
 // decode/compose loops on purpose - those access patterns differ - but the
 // muxer plumbing and a few tiny utilities are identical, so they live here.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import {
     AudioSample,
     AudioSampleSink,
@@ -29,7 +30,7 @@ import type { AudioTrackFormat } from "../export-range.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./capabilities.js";
 import { drawMapOverlay } from "./map-overlay.js";
-import type { OverlayMapPipelineOpts, TranscodeProgress, TranscodeResult } from "./types.js";
+import type { CapturedMoovBytes, OverlayMapPipelineOpts, TranscodeProgress, TranscodeResult } from "./types.js";
 
 const log = createLogger("transcode:finalize");
 
@@ -294,7 +295,7 @@ export async function feedSegmentAudio(opts: {
             // close(). The source reads the sample throughout its (awaited) add,
             // so closing only after it resolves is safe.
             try {
-                if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 // Track the real decoded format so silence for later gaps matches it
                 // (the container probe can misreport HE-AAC/SBR - see SilenceFormat).
                 if (
@@ -409,7 +410,7 @@ export async function feedSegmentAudioCopy(opts: {
     let configPushed = false;
     let pkt: EncodedPacket | null = startPacket;
     while (pkt) {
-        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         if (pkt.timestamp >= rangeEnd) break;
         const timestamp = segBaseOutSec + pkt.timestamp - rangeStart;
         // Encoded boundary packets cannot be trimmed. Omit an overlapping packet
@@ -616,7 +617,7 @@ export async function emitSilence(
     const totalFrames = Math.floor(durationSec * sampleRate);
     let elapsedFrames = 0;
     while (elapsedFrames < totalFrames) {
-        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const thisFrames = Math.min(framesPerChunk, totalFrames - elapsedFrames);
         const sample = new AudioSample({
             data: thisFrames === framesPerChunk ? data : data.subarray(0, thisFrames * channels),
@@ -760,7 +761,7 @@ export function createMp4StreamOutput(
 ): Output {
     const targetWritable = new WritableStream<{ type: "write"; position: number; data: Uint8Array }>({
         async write(chunk) {
-            if (signal.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             const sizeBytes = chunk.data.byteLength;
             await writable.write({
                 type: "write",
@@ -785,6 +786,50 @@ export function createMp4StreamOutput(
         format: new Mp4OutputFormat({ fastStart: false, onMoov }),
         target: new StreamTarget(targetWritable, { chunked: true, chunkSize: 4 * 1024 * 1024 }),
     });
+}
+
+/** Per-run muxer accounting shared by both pipelines. Rewritten headers count
+ * toward file extent once; captured moov bytes outlive the muxer's callback. */
+export function createTranscodeOutput(writable: FileSystemWritableFileStream, signal: AbortSignal) {
+    let bytesWritten = 0;
+    let capturedMoov: CapturedMoovBytes | undefined;
+    const out = createMp4StreamOutput(
+        writable,
+        signal,
+        (sizeBytes, position) => {
+            bytesWritten = Math.max(bytesWritten, position + sizeBytes);
+        },
+        (bytes, position) => {
+            capturedMoov = { position, bytes: bytes.slice() };
+        },
+    );
+    return {
+        out,
+        get bytesWritten(): number {
+            return bytesWritten;
+        },
+        get capturedMoov(): CapturedMoovBytes | undefined {
+            return capturedMoov;
+        },
+    };
+}
+
+/** Publish the completed preparation stage before starting either muxer. */
+export async function startTranscodeOutput(
+    out: Output,
+    onProgress: (progress: TranscodeProgress) => void,
+    framesTotal: number,
+): Promise<void> {
+    onProgress({
+        stage: "preparing",
+        stageProgress: 1,
+        totalProgress: 0,
+        framesDone: 0,
+        framesTotal,
+        etaSec: -1,
+        bytesWritten: 0,
+    });
+    await out.start();
 }
 
 /**
