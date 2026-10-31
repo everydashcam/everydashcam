@@ -60,30 +60,50 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
         let previousHasFix: boolean | undefined;
         let previousRecord: GpsRecord | undefined;
         let previousSegment: SourceSegment | undefined;
+        let previousIdentity: TripGpsSource | string | undefined;
+        let previousFixRun = -1;
         return source.records.map((record) => {
             const hasFix = isValidGpsFix(record);
             if (previousHasFix !== undefined && previousHasFix !== hasFix) fixRun++;
             previousHasFix = hasFix;
             const identity = record.externalTrackKey ?? source;
-            let segments = bySource.get(identity);
-            if (!segments) {
-                segments = new Map();
-                bySource.set(identity, segments);
+            let segment: SourceSegment | undefined;
+            // Consecutive records nearly always continue the previous segment;
+            // reuse it without building the lookup key. Anything not provably
+            // identical falls through to the keyed lookup, which also decides
+            // values the key conflates (undefined and NaN segments, -0 and 0).
+            if (
+                previousSegment &&
+                previousRecord &&
+                previousIdentity === identity &&
+                previousFixRun === fixRun &&
+                previousRecord.trackSegmentSource === record.trackSegmentSource &&
+                Object.is(previousRecord.trackSegment, record.trackSegment)
+            ) {
+                segment = previousSegment;
+            } else {
+                let segments = bySource.get(identity);
+                if (!segments) {
+                    segments = new Map();
+                    bySource.set(identity, segments);
+                }
+                const key = JSON.stringify([record.trackSegmentSource, record.trackSegment, fixRun]);
+                segment = segments.get(key);
+                if (!segment) {
+                    segment = {
+                        source: identity,
+                        trackSegmentSource: record.trackSegmentSource,
+                        trackSegment: record.trackSegment,
+                        start: record.unixSeconds,
+                        end: record.unixSeconds,
+                        hasFix,
+                        parent: null,
+                    };
+                    segments.set(key, segment);
+                }
             }
-            const key = JSON.stringify([record.trackSegmentSource, record.trackSegment, fixRun]);
-            let segment = segments.get(key);
-            if (!segment) {
-                segment = {
-                    source: identity,
-                    trackSegmentSource: record.trackSegmentSource,
-                    trackSegment: record.trackSegment,
-                    start: record.unixSeconds,
-                    end: record.unixSeconds,
-                    hasFix,
-                    parent: null,
-                };
-                segments.set(key, segment);
-            }
+            previousIdentity = identity;
+            previousFixRun = fixRun;
             segment.start = Math.min(segment.start, record.unixSeconds);
             segment.end = Math.max(segment.end, record.unixSeconds);
             // A daily log rollover can occur inside one video. Scope counters
@@ -167,6 +187,12 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
                 id = ids.size;
                 ids.set(root, id);
             }
+            // Always a copy: candidate records are mutated in place later
+            // (local clock corrections), and trips must not move with them.
+            // A plain spread clones on the engine's fast path; rest
+            // destructuring with an excluded key does not, so it only runs
+            // for the records that actually carry the key.
+            if (!("trackSegmentSource" in record)) return { ...record, trackSegment: id };
             const { trackSegmentSource: _source, ...normalized } = record;
             return { ...normalized, trackSegment: id };
         }),
