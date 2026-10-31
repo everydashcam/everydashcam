@@ -90,10 +90,7 @@ function pauseSec(a: Trip, b: Trip): number {
  * nodes. A lone parking trip stays a trip node. `identity` returns a trip's
  * recording identity, which keys the run for its expanded state.
  */
-export function foldParkingRuns(
-    entries: readonly TripListEntry[],
-    identity: (trip: Trip) => string,
-): TripListNode[] {
+export function foldParkingRuns(entries: readonly TripListEntry[], identity: (trip: Trip) => string): TripListNode[] {
     const nodes: TripListNode[] = [];
     let run: TripListEntry[] = [];
     const flushRun = (): void => {
