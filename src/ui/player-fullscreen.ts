@@ -112,8 +112,10 @@ function fullscreenEntryFocusTarget(): HTMLElement {
 
 function isolateViewportPlayer(): void {
     releaseBackground?.();
-    // Dialog roots are adopted into the visible player by the modal manager.
-    releaseBackground = isolateBackground(dom.playerWrap, (element) => element.matches(".modal-overlay"));
+    // Dialogs and notifications are adopted into the visible player.
+    releaseBackground = isolateBackground(dom.playerWrap, (element) =>
+        element.matches(".modal-overlay, #toast-container"),
+    );
 }
 
 function syncExpandedState(expanded: boolean): void {

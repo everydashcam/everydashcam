@@ -88,6 +88,92 @@ export async function verifyModalIsolation(page: Page): Promise<void> {
     await expect(page.locator("#late-background")).not.toHaveAttribute("inert");
 }
 
+export async function verifyModalNotifications(page: Page): Promise<void> {
+    await page.locator("#settings-btn").click();
+    const settings = page.locator("#settings-modal");
+    const invalidBackup = { name: "invalid-notes.json", mimeType: "application/json", buffer: Buffer.from("{}") };
+    await page.locator("#settings-notes-import-input").setInputFiles(invalidBackup);
+    const toast = page.locator("#toast-container .dc-toast");
+    await expect(toast).toBeVisible();
+    const message = await toast.locator(".dc-toast__body").innerText();
+    expect(message).not.toBe("");
+    expect(await page.locator("body").ariaSnapshot()).toContain(message);
+    expect(await toast.evaluate((element) => !!element.closest("[inert]"))).toBe(false);
+    const dismiss = toast.getByRole("button");
+    await dismiss.focus();
+    await expect(dismiss).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#settings-modal-header-close")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(dismiss).toBeFocused();
+    // Keyboard dismissal preserves focus even where pointer clicks blur buttons.
+    await dismiss.press("Enter");
+    await expect(toast).toHaveCount(0);
+    await expect(settings).toBeVisible();
+    await expect(page.locator("#settings-modal-header-close")).toBeFocused();
+
+    await page.locator("#settings-notes-import-input").setInputFiles(invalidBackup);
+    await expect(toast).toBeVisible();
+    await page.locator("#player-help").evaluate((button: HTMLElement) => button.click());
+    const help = page.locator("#hotkeys-modal");
+    await expect(help.locator("#toast-container .dc-toast")).toBeVisible();
+    await page.locator("#settings-modal-header-close").evaluate((button: HTMLElement) => button.click());
+    await expect(settings).toBeHidden();
+    expect(await page.locator("body").ariaSnapshot()).toContain(message);
+    await dismiss.click();
+    await expect(toast).toHaveCount(0);
+    await expect(help).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(help).toBeHidden();
+    await expect(page.locator("body > #toast-container")).toHaveCount(1);
+}
+
+export async function verifyExpandedNotifications(page: Page, nativeFullscreen = false): Promise<void> {
+    // Deliver an asynchronous background error before any dialog has opened.
+    await page.locator("#settings-notes-import-input").setInputFiles({
+        name: "invalid-notes.json",
+        mimeType: "application/json",
+        buffer: Buffer.from("{}"),
+    });
+    const toast = page.locator("#toast-container .dc-toast");
+    await expect(toast).toBeVisible();
+    await page.locator("#player-fullscreen").click();
+    const player = page.locator("#player-wrap");
+    await expect(player).toHaveClass(/player-expanded/);
+    await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(nativeFullscreen);
+    await expect(player.locator(":scope > #toast-container .dc-toast")).toBeVisible();
+    expect(await toast.evaluate((element) => !!element.closest("[inert]"))).toBe(false);
+    await page.locator("#player-help").click();
+    const help = page.locator("#hotkeys-modal");
+    await expect(help.locator("#toast-container .dc-toast")).toBeVisible();
+    if (nativeFullscreen) {
+        const dismiss = toast.getByRole("button");
+        await dismiss.focus();
+        // The browser can leave native fullscreen while a dialog owns input.
+        await page.evaluate(() => document.exitFullscreen());
+        await expect(player).not.toHaveClass(/player-expanded/);
+        await expect(page.locator("body > #hotkeys-modal #toast-container .dc-toast")).toBeVisible();
+        await expect(dismiss).toBeFocused();
+        expect(await toast.evaluate((element) => !!element.closest("[inert]"))).toBe(false);
+        expect(await page.locator("#settings-btn").evaluate((element) => !!element.closest("[inert]"))).toBe(true);
+        await page.keyboard.press("Escape");
+        await expect(help).toBeHidden();
+        await expect(page.locator("body > #toast-container")).toHaveCount(1);
+        await dismiss.click();
+        await expect(toast).toHaveCount(0);
+        return;
+    }
+    await page.keyboard.press("Escape");
+    await expect(help).toBeHidden();
+    await expect(player.locator(":scope > #toast-container .dc-toast")).toBeVisible();
+    await toast.getByRole("button").click();
+    await expect(toast).toHaveCount(0);
+    await expect(player).toHaveClass(/player-expanded/);
+    await page.locator("#player-fullscreen-exit").click();
+    await expect(player).not.toHaveClass(/player-expanded/);
+    await expect(page.locator("body > #toast-container")).toHaveCount(1);
+}
+
 export async function verifyPopoverOwnership(page: Page, secondaryMenu = "#lang-toggle"): Promise<void> {
     await loadTrip(page);
     await pausePlayback(page);

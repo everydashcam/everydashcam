@@ -1,5 +1,5 @@
 import { expect, gotoApp, loadTrip, pausePlayback, presetLocalStorage, test } from "./_fixtures.js";
-import { verifyModalIsolation, verifyPopoverOwnership } from "./_ui-lifecycle.js";
+import { verifyModalIsolation, verifyModalNotifications, verifyPopoverOwnership } from "./_ui-lifecycle.js";
 
 test.beforeEach(async ({ page }) => {
     await presetLocalStorage(page);
@@ -8,6 +8,12 @@ test.beforeEach(async ({ page }) => {
 
 test("dialogs preserve native Tab order and isolate nested backgrounds", { tag: "@webkit-ui" }, async ({ page }) => {
     await verifyModalIsolation(page);
+});
+
+test("notifications stay accessible and dismissible through nested dialogs", { tag: "@webkit-ui" }, async ({
+    page,
+}) => {
+    await verifyModalNotifications(page);
 });
 
 test("menus share dismissal and focus ownership", { tag: "@webkit-ui" }, async ({ page }) => {

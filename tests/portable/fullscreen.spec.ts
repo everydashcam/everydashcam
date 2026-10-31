@@ -1,7 +1,20 @@
 import { SAMPLE_70MAI, boxOf, loadTrip, masterVideoTime, pausePlayback, presetLocalStorage } from "../e2e/_fixtures.js";
 import { expect } from "@playwright/test";
+import { verifyExpandedNotifications } from "../e2e/_ui-lifecycle.js";
 
 import { openPortable, test } from "./_fixtures.js";
+
+test("file-origin notifications follow the expanded player and its dialogs", async ({ page }, info) => {
+    await presetLocalStorage(page);
+    await page.addInitScript(() => {
+        Object.defineProperty(Element.prototype, "requestFullscreen", { configurable: true, value: undefined });
+        Object.defineProperty(Document.prototype, "fullscreenEnabled", { configurable: true, get: () => false });
+    });
+    await openPortable(page, info.outputPath("fullscreen-notifications"));
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    await verifyExpandedNotifications(page);
+});
 
 test("file playback keeps its context and remembers panels below the video after reload", async ({ page }, info) => {
     await presetLocalStorage(page, { preferences: { "everydashcam:hotkeys:seekStepSec": "0.5" } });

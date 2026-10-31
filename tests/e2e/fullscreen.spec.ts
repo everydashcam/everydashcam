@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+import { verifyExpandedNotifications } from "./_ui-lifecycle.js";
 
 import {
     DESKTOP,
@@ -16,6 +17,17 @@ import {
 } from "./_fixtures.js";
 
 test.use({ viewerMap: "route-only" });
+
+for (const mode of ["native", "fallback"] as const) {
+    test(`notifications follow the ${mode} fullscreen player and its dialogs`, async ({ page }) => {
+        if (mode === "fallback") await disableNativeFullscreen(page);
+        await presetLocalStorage(page);
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+        await pausePlayback(page);
+        await verifyExpandedNotifications(page, mode === "native");
+    });
+}
 
 async function startLoopingPlayback(page: Page): Promise<void> {
     await pausePlayback(page);

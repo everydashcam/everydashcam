@@ -1,5 +1,5 @@
 import { presetLocalStorage } from "../e2e/_fixtures.js";
-import { verifyModalIsolation, verifyPopoverOwnership } from "../e2e/_ui-lifecycle.js";
+import { verifyModalIsolation, verifyModalNotifications, verifyPopoverOwnership } from "../e2e/_ui-lifecycle.js";
 import { openPortable, test } from "./_fixtures.js";
 
 test.beforeEach(async ({ page }, info) => {
@@ -9,6 +9,10 @@ test.beforeEach(async ({ page }, info) => {
 
 test("file-origin dialogs preserve Tab order and background isolation", async ({ page }) => {
     await verifyModalIsolation(page);
+});
+
+test("file-origin notifications remain accessible through nested dialogs", async ({ page }) => {
+    await verifyModalNotifications(page);
 });
 
 test("file-origin menus share dismissal and focus ownership", async ({ page }) => {

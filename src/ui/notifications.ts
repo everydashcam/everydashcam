@@ -16,6 +16,7 @@
 // final warnings and stuck them in a tiny mono font that scrolled off in
 // narrow PWA windows.
 
+import { tabbable } from "tabbable";
 import { createPopover } from "./popover-lifecycle.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
@@ -90,6 +91,26 @@ let bellDot: HTMLSpanElement | null = null;
 let drawerEl: HTMLElement | null = null;
 let drawerList: HTMLElement | null = null;
 let toastContainer: HTMLElement | null = null;
+let notificationModal: HTMLElement | null = null;
+
+/** Toast controls belong to the active dialog's focus and accessibility tree. */
+export function setNotificationModal(modal: HTMLElement | null): void {
+    notificationModal = modal;
+    syncToastHost();
+}
+
+function syncToastHost(): void {
+    if (!toastContainer) return;
+    const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
+    const host =
+        notificationModal ??
+        (fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement) ? fullscreen : document.body);
+    if (toastContainer.parentElement === host) return;
+    const focused = document.activeElement;
+    const restoreFocus = focused instanceof HTMLElement && toastContainer.contains(focused);
+    host.appendChild(toastContainer);
+    if (restoreFocus) focused.focus({ preventScroll: true });
+}
 
 let drawerPopover: ReturnType<typeof createPopover> | null = null;
 let drawerOpen = false;
@@ -178,6 +199,10 @@ export function initNotifications(): void {
         log.warn("notifications DOM nodes missing - check index.html");
         return;
     }
+
+    document.addEventListener("fullscreenchange", syncToastHost);
+    document.addEventListener("playerexpansionchange", syncToastHost);
+    syncToastHost();
 
     bellBtn.addEventListener("click", toggleDrawer);
 
@@ -269,8 +294,12 @@ function removeToast(id: string): void {
     const entry = activeToasts.get(id);
     if (!entry) return;
     if (entry.timer !== null) clearTimeout(entry.timer);
+    const hadFocus = entry.el.contains(document.activeElement);
     entry.el.remove();
     activeToasts.delete(id);
+    if (hadFocus && notificationModal) {
+        (tabbable(notificationModal)[0] ?? notificationModal).focus({ preventScroll: true });
+    }
 }
 
 /** Restarts a visible toast's auto-dismiss timer. Used when a duplicate

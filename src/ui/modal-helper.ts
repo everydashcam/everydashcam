@@ -14,6 +14,7 @@
 
 import { tabbable } from "tabbable";
 import { isolateBackground } from "./inert-background.js";
+import { setNotificationModal } from "./notifications.js";
 import { closeActivePopover } from "./popover-lifecycle.js";
 
 interface ModalEntry {
@@ -33,15 +34,25 @@ const stack: ModalEntry[] = [];
 let keydownBound = false;
 
 let releaseBackground: (() => void) | null = null;
+let backgroundObserver: MutationObserver | null = null;
 
 export function focusableWithin(el: HTMLElement): (HTMLElement | SVGElement)[] {
     return tabbable(el);
 }
 
 function syncModalBackground(): void {
+    backgroundObserver?.disconnect();
     releaseBackground?.();
     const top = stack.at(-1);
+    setNotificationModal(top?.el ?? null);
     releaseBackground = top ? isolateBackground(top.el) : null;
+    if (!top) return;
+    backgroundObserver ??= new MutationObserver(syncModalBackground);
+    // Only new siblings along this path need isolation. Changes within the
+    // dialog or an already-inert subtree cannot expose background controls.
+    for (let parent = top.el.parentElement; parent; parent = parent.parentElement) {
+        backgroundObserver.observe(parent, { childList: true });
+    }
 }
 
 /** True while at least one modal is tracked (open). Feature-level global
@@ -114,13 +125,6 @@ export function activateModal(
         document.addEventListener("keydown", onKeydown, true);
         document.addEventListener("fullscreenchange", syncModalParents);
         document.addEventListener("playerexpansionchange", syncModalParents);
-        const children = new MutationObserver((records) => {
-            const top = stack.at(-1);
-            if (top && records.some((record) => record.target instanceof Element && record.target.contains(top.el))) {
-                syncModalBackground();
-            }
-        });
-        children.observe(document.body, { childList: true, subtree: true });
         keydownBound = true;
     }
 
@@ -218,6 +222,8 @@ function syncModalParents(): void {
 export function wireBackdropDismiss(el: HTMLElement, onClose: () => void, opts: { cardSelector?: string } = {}): void {
     const { cardSelector } = opts;
     el.addEventListener("click", (ev) => {
+        // Toast handlers may remove their button before this event bubbles.
+        if (ev.composedPath().some((target) => target instanceof Element && target.id === "toast-container")) return;
         if (cardSelector) {
             if (ev.target instanceof Element && !ev.target.closest(cardSelector)) onClose();
         } else if (ev.target === el) {

@@ -125,7 +125,7 @@ test("reports failed writes and durably retries the same backup in the same tab"
         .toBeGreaterThan(0);
     await expect(page.locator("#settings-notes-import-btn")).toBeEnabled();
     await expect(
-        page.getByText("This browser couldn't save your latest changes.", { exact: false }).first(),
+        page.locator("#toast-container").getByText("This browser couldn't save your latest changes.", { exact: false }),
     ).toBeVisible();
     await expect(page.locator("#toast-container").getByText(RESTORED_MESSAGE, { exact: true })).not.toBeVisible();
 
