@@ -1,3 +1,4 @@
+import { renderMarketingHead, renderMarketingFooter } from "./marketing-chrome.js";
 // Use-case ("how to do X") landing pages. Each targets a high-intent search
 // task that the homepage's generic "dashcam player" framing buries: combining
 // a dashcam's cameras into one video, and burning a speed/GPS/map overlay onto
@@ -26,28 +27,15 @@ import { resolve } from "node:path";
 import type { Plugin } from "vite";
 import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import type { Lang } from "../src/i18n/index.js";
-import {
-    REPO_URL,
-    getDefaultSeoLocale,
-    getIndexableSeoLocales,
-    getSeoLocaleByLang,
-} from "../src/i18n/seo-config.js";
-import {
-    canonicalLocaleUrl,
-    canonicalOriginForLocale,
-    searchIndexingMeta,
-} from "./deployment-profile.js";
+import { getDefaultSeoLocale, getIndexableSeoLocales, getSeoLocaleByLang } from "../src/i18n/seo-config.js";
+import { canonicalLocaleUrl, canonicalOriginForLocale } from "./deployment-profile.js";
 import { COMMUNITY_FEATURE_CONTENT, COMMUNITY_FEATURE_LABELS } from "./feature-pages-content.js";
-import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
+import { escapeText, stringifyJsonLd } from "./html-utils.js";
 import type { SeoBuildOptions } from "./seo-prerender.js";
 import { renderBreadcrumbs, renderSeoLanguageLinks } from "./seo-navigation.js";
 // Shared page chrome - reused from vendor-pages.ts rather than duplicated
 // (CLAUDE.md: abstractions against duplicates), exactly like alternative-pages.
-import {
-    BRAND_MARK_HTML,
-    buildOgLocaleAlternatesHtml,
-    pathPrefixFor,
-} from "./vendor-pages.js";
+import { BRAND_MARK_HTML, buildOgLocaleAlternatesHtml, pathPrefixFor } from "./vendor-pages.js";
 
 // Slugs of the use-case pages. The slug is intentionally general (not
 // "front-and-rear", not "speed-gps") so it survives the feature growing:
@@ -133,7 +121,10 @@ const FEATURE_PAGES: FeaturePage[] = [
                         desc: "Two cameras next to each other — a side-by-side split screen with front and rear at equal size.",
                     },
                     { name: "Stacked", desc: "Two cameras one above the other, for tall screens or portrait clips." },
-                    { name: "Grid", desc: "Up to four cameras in a 2×2 grid — front, rear, cabin and a side camera together." },
+                    {
+                        name: "Grid",
+                        desc: "Up to four cameras in a 2×2 grid — front, rear, cabin and a side camera together.",
+                    },
                     {
                         name: "Picture-in-picture",
                         desc: "One camera fills the frame; the others sit in small rounded insets you can move and resize.",
@@ -202,8 +193,14 @@ const FEATURE_PAGES: FeaturePage[] = [
                         name: "Рядом",
                         desc: "Две камеры бок о бок — раздельный экран с передней и задней одного размера.",
                     },
-                    { name: "Стопкой", desc: "Две камеры одна над другой — для высоких экранов или вертикальных роликов." },
-                    { name: "Сетка", desc: "До четырёх камер сеткой 2×2 — передняя, задняя, салонная и боковая вместе." },
+                    {
+                        name: "Стопкой",
+                        desc: "Две камеры одна над другой — для высоких экранов или вертикальных роликов.",
+                    },
+                    {
+                        name: "Сетка",
+                        desc: "До четырёх камер сеткой 2×2 — передняя, задняя, салонная и боковая вместе.",
+                    },
                     {
                         name: "Картинка в картинке",
                         desc: "Одна камера на весь кадр, остальные — в маленьких скруглённых вставках, которые можно перемещать и изменять по размеру.",
@@ -684,43 +681,18 @@ ${content.faq
 
     return `<!doctype html>
 <html lang="${lang}">
-<head>
-${searchIndexingMeta(seoLocale, Boolean(options.noIndex))}
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title>${escapeText(content.title)}</title>
-<meta name="description" content="${escapeAttr(content.metaDescription)}">
-<meta http-equiv="content-language" content="${seoLocale.contentLanguage}">
-<link rel="canonical" href="${url}">
-${hreflangBlock}
-<meta property="og:type" content="website">
-<meta property="og:url" content="${url}">
-<meta property="og:site_name" content="everydashcam">
-<meta property="og:title" content="${escapeAttr(content.ogTitle)}">
-<meta property="og:description" content="${escapeAttr(content.ogDescription)}">
-<meta property="og:image" content="${ogImageUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta property="og:locale" content="${seoLocale.ogLocale}">
-${ogLocaleAlternatesBlock}
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${escapeAttr(content.ogTitle)}">
-<meta name="twitter:description" content="${escapeAttr(content.ogDescription)}">
-<meta name="twitter:image" content="${ogImageUrl}">
-<link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
-<link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="/fonts.css">
-<link rel="stylesheet" href="/vendor-page.css">
-<link rel="stylesheet" href="/brand-mark.css">
-<script type="application/ld+json">${breadcrumb.jsonLd}</script>
+${renderMarketingHead({
+    seoLocale,
+    noIndex: options.noIndex,
+    content,
+    url,
+    hreflangBlock,
+    ogImageUrl,
+    ogLocaleAlternatesBlock,
+    structuredData: `<script type="application/ld+json">${breadcrumb.jsonLd}</script>
 <script type="application/ld+json">${stringifyJsonLd(howTo)}</script>
-${faqJsonLd}
-</head>
+${faqJsonLd}`,
+})}
 <body>
 <header class="vp-header">
 <a href="${localHome}" class="vp-brand" aria-label="everydashcam">
@@ -774,28 +746,14 @@ ${faqSectionHtml}
 <aside class="vp-other-vendors">
 <h3 class="vp-h3">${escapeText(labels.relatedHeading)}</h3>
 <ul>
-${otherPages
-    .map((other) => `<li><a href="${pathPrefix}/${other.slug}/">${escapeText(other.name)}</a></li>`)
-    .join("\n")}
+${otherPages.map((other) => `<li><a href="${pathPrefix}/${other.slug}/">${escapeText(other.name)}</a></li>`).join("\n")}
 <li><a href="${pathPrefix}/cameras/">${escapeText(labels.camerasLink)}</a></li>
 <li><a href="${pathPrefix}/alternatives/">${escapeText(labels.alternativesLink)}</a></li>
 </ul>
 </aside>
 </main>
 
-<footer class="vp-footer">
-${languageLinks}
-<p class="vp-disclaimer">${escapeText(FEATURE_DISCLAIMER[lang])}</p>
-<div class="vp-footer-links">
-<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
-<span>·</span>
-<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
-<span>·</span>
-<a href="${localHome}">${escapeText(labels.footerHome)}</a>
-<span>·</span>
-<a href="${REPO_URL}">GitHub</a>
-</div>
-</footer>
+${renderMarketingFooter({ seoLocale, localHome, languageLinks, labels, disclaimer: FEATURE_DISCLAIMER[lang] })}
 </body>
 </html>
 `;
@@ -836,7 +794,9 @@ export function assertFeatureLocaleParity(): void {
                 );
             }
             if (resolved.faq.length !== en.faq.length) {
-                problems.push(`page "${page.slug}" [${lang}]: faq length ${resolved.faq.length} != en ${en.faq.length}`);
+                problems.push(
+                    `page "${page.slug}" [${lang}]: faq length ${resolved.faq.length} != en ${en.faq.length}`,
+                );
             }
         }
     }

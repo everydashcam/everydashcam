@@ -1,3 +1,4 @@
+import { renderMarketingHead, renderMarketingFooter } from "./marketing-chrome.js";
 // Competitor "alternative-to" landing pages. Each targets the navigational
 // search demand of a named dashcam tool (Dashcam Viewer, CamGeoPlayer or
 // Telemetry Overlay) and offers everydashcam as a free, in-browser alternative. Static HTML at
@@ -28,22 +29,9 @@ import { resolve } from "node:path";
 import type { Plugin } from "vite";
 import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import type { Lang } from "../src/i18n/index.js";
-import {
-    REPO_URL,
-    getDefaultSeoLocale,
-    getIndexableSeoLocales,
-    getSeoLocaleByLang,
-} from "../src/i18n/seo-config.js";
-import {
-    canonicalLocaleUrl,
-    canonicalOriginForLocale,
-    searchIndexingMeta,
-} from "./deployment-profile.js";
-import {
-    COMMUNITY_ALT_CONTENT,
-    COMMUNITY_ALT_INDEX,
-    COMMUNITY_ALT_LABELS,
-} from "./alternative-pages-content.js";
+import { getDefaultSeoLocale, getIndexableSeoLocales, getSeoLocaleByLang } from "../src/i18n/seo-config.js";
+import { canonicalLocaleUrl, canonicalOriginForLocale } from "./deployment-profile.js";
+import { COMMUNITY_ALT_CONTENT, COMMUNITY_ALT_INDEX, COMMUNITY_ALT_LABELS } from "./alternative-pages-content.js";
 import { renderFeatureLinksHtml } from "./feature-links.js";
 import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
 import { renderHubCta } from "./hub-cta.js";
@@ -51,21 +39,14 @@ import type { SeoBuildOptions } from "./seo-prerender.js";
 import { renderBreadcrumbs, renderSeoLanguageLinks } from "./seo-navigation.js";
 // Shared page chrome - one source, reused from vendor-pages.ts rather than
 // duplicated (CLAUDE.md: abstractions against duplicates).
-import {
-    BRAND_MARK_HTML,
-    buildOgLocaleAlternatesHtml,
-    pathPrefixFor,
-} from "./vendor-pages.js";
+import { BRAND_MARK_HTML, buildOgLocaleAlternatesHtml, pathPrefixFor } from "./vendor-pages.js";
 
 // Slugs of the competitor pages. Drives VendorContent-style discrimination and
 // the dev/route matcher. Order = sitemap order + "other tools" cross-link order.
 // Two viewer comparisons and one overlay-editor comparison remain. The latter
 // is a different category, so the copy explicitly concedes its production and
 // gauge depth instead of presenting the products as interchangeable.
-export type AltSlug =
-    | "dashcam-viewer"
-    | "camgeoplayer"
-    | "telemetry-overlay";
+export type AltSlug = "dashcam-viewer" | "camgeoplayer" | "telemetry-overlay";
 
 // A comparison-table cell. `mark` renders the ✓ / ✕ / ~ glyph (CSS
 // .alt-yes/.alt-no/.alt-partial); `note` is the short localized text after it.
@@ -164,7 +145,10 @@ const ALTERNATIVES: Competitor[] = [
                     },
                     {
                         dimension: "Cameras supported",
-                        us: { mark: "partial", note: "70mai, Viofo, BlackVue, GoPro, Garmin, Vantrue, Thinkware + more" },
+                        us: {
+                            mark: "partial",
+                            note: "70mai, Viofo, BlackVue, GoPro, Garmin, Vantrue, Thinkware + more",
+                        },
                         them: { mark: "yes", note: "Very wide catalogue" },
                     },
                     {
@@ -225,7 +209,10 @@ const ALTERNATIVES: Competitor[] = [
                     },
                     {
                         dimension: "Поддержка камер",
-                        us: { mark: "partial", note: "70mai, Viofo, BlackVue, GoPro, Garmin, Vantrue, Thinkware и другие" },
+                        us: {
+                            mark: "partial",
+                            note: "70mai, Viofo, BlackVue, GoPro, Garmin, Vantrue, Thinkware и другие",
+                        },
                         them: { mark: "yes", note: "Очень широкий каталог" },
                     },
                     {
@@ -323,7 +310,11 @@ const ALTERNATIVES: Competitor[] = [
                 comparisonIntro:
                     "Оба приложения бесплатны и показывают GPS-маршрут на карте. Вот что everydashcam добавляет — и где его проще запустить.",
                 compareRows: [
-                    { dimension: "Цена", us: { mark: "yes", note: "Бесплатно" }, them: { mark: "yes", note: "Бесплатно" } },
+                    {
+                        dimension: "Цена",
+                        us: { mark: "yes", note: "Бесплатно" },
+                        them: { mark: "yes", note: "Бесплатно" },
+                    },
                     {
                         dimension: "Работает на Mac, Linux и мобильном",
                         us: { mark: "yes", note: "Любой современный браузер" },
@@ -456,7 +447,6 @@ const ALTERNATIVES: Competitor[] = [
             },
         },
     },
-
 ];
 
 // Per-locale chrome labels (section headings, breadcrumbs, etc.). {name} is
@@ -658,7 +648,10 @@ export function renderAlternativePage(competitor: Competitor, lang: Lang, option
 
     const hreflangBlock = renderSeoAlternates(`alternatives/${competitor.slug}/`);
     const ogLocaleAlternatesBlock = buildOgLocaleAlternatesHtml(lang);
-    const languageLinks = renderSeoLanguageLinks(lang, (locale) => `/${locale.urlSegment}/alternatives/${competitor.slug}/`);
+    const languageLinks = renderSeoLanguageLinks(
+        lang,
+        (locale) => `/${locale.urlSegment}/alternatives/${competitor.slug}/`,
+    );
 
     const breadcrumb = renderBreadcrumbs(lang, [
         { name: labels.breadcrumbHome, url: homeUrl },
@@ -668,41 +661,7 @@ export function renderAlternativePage(competitor: Competitor, lang: Lang, option
 
     return `<!doctype html>
 <html lang="${lang}">
-<head>
-${searchIndexingMeta(seoLocale, Boolean(options.noIndex))}
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title>${escapeText(content.title)}</title>
-<meta name="description" content="${escapeAttr(content.metaDescription)}">
-<meta http-equiv="content-language" content="${seoLocale.contentLanguage}">
-<link rel="canonical" href="${url}">
-${hreflangBlock}
-<meta property="og:type" content="website">
-<meta property="og:url" content="${url}">
-<meta property="og:site_name" content="everydashcam">
-<meta property="og:title" content="${escapeAttr(content.ogTitle)}">
-<meta property="og:description" content="${escapeAttr(content.ogDescription)}">
-<meta property="og:image" content="${ogImageUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta property="og:locale" content="${seoLocale.ogLocale}">
-${ogLocaleAlternatesBlock}
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${escapeAttr(content.ogTitle)}">
-<meta name="twitter:description" content="${escapeAttr(content.ogDescription)}">
-<meta name="twitter:image" content="${ogImageUrl}">
-<link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
-<link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="/fonts.css">
-<link rel="stylesheet" href="/vendor-page.css">
-<link rel="stylesheet" href="/brand-mark.css">
-<script type="application/ld+json">${breadcrumb.jsonLd}</script>
-</head>
+${renderMarketingHead({ seoLocale, noIndex: options.noIndex, content, url, hreflangBlock, ogImageUrl, ogLocaleAlternatesBlock, structuredData: `<script type="application/ld+json">${breadcrumb.jsonLd}</script>` })}
 <body>
 <header class="vp-header">
 <a href="${localHome}" class="vp-brand" aria-label="everydashcam">
@@ -748,29 +707,14 @@ ${renderFeatureLinksHtml(lang, pathPrefix)}
 <h3 class="vp-h3">${escapeText(labels.otherToolsHeading)}</h3>
 <ul>
 ${otherTools
-    .map(
-        (other) =>
-            `<li><a href="${pathPrefix}/alternatives/${other.slug}/">${escapeText(other.displayName)}</a></li>`,
-    )
+    .map((other) => `<li><a href="${pathPrefix}/alternatives/${other.slug}/">${escapeText(other.displayName)}</a></li>`)
     .join("\n")}
 <li><a href="${pathPrefix}/cameras/">${escapeText(labels.camerasLink)}</a></li>
 </ul>
 </aside>
 </main>
 
-<footer class="vp-footer">
-${languageLinks}
-<p class="vp-disclaimer">${escapeText(ALT_DISCLAIMER[lang])}</p>
-<div class="vp-footer-links">
-<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
-<span>·</span>
-<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
-<span>·</span>
-<a href="${localHome}">${escapeText(labels.footerHome)}</a>
-<span>·</span>
-<a href="${REPO_URL}">GitHub</a>
-</div>
-</footer>
+${renderMarketingFooter({ seoLocale, localHome, languageLinks, labels, disclaimer: ALT_DISCLAIMER[lang] })}
 </body>
 </html>
 `;
@@ -825,42 +769,17 @@ export function renderAlternativesIndexPage(lang: Lang, options: SeoBuildOptions
 
     return `<!doctype html>
 <html lang="${lang}">
-<head>
-${searchIndexingMeta(seoLocale, Boolean(options.noIndex))}
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title>${escapeText(content.title)}</title>
-<meta name="description" content="${escapeAttr(content.metaDescription)}">
-<meta http-equiv="content-language" content="${seoLocale.contentLanguage}">
-<link rel="canonical" href="${url}">
-${hreflangBlock}
-<meta property="og:type" content="website">
-<meta property="og:url" content="${url}">
-<meta property="og:site_name" content="everydashcam">
-<meta property="og:title" content="${escapeAttr(content.ogTitle)}">
-<meta property="og:description" content="${escapeAttr(content.ogDescription)}">
-<meta property="og:image" content="${ogImageUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta property="og:locale" content="${seoLocale.ogLocale}">
-${ogLocaleAlternatesBlock}
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${escapeAttr(content.ogTitle)}">
-<meta name="twitter:description" content="${escapeAttr(content.ogDescription)}">
-<meta name="twitter:image" content="${ogImageUrl}">
-<link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
-<link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="/fonts.css">
-<link rel="stylesheet" href="/vendor-page.css">
-<link rel="stylesheet" href="/brand-mark.css">
-<script type="application/ld+json">${breadcrumb.jsonLd}</script>
-<script type="application/ld+json">${stringifyJsonLd(collection)}</script>
-</head>
+${renderMarketingHead({
+    seoLocale,
+    noIndex: options.noIndex,
+    content,
+    url,
+    hreflangBlock,
+    ogImageUrl,
+    ogLocaleAlternatesBlock,
+    structuredData: `<script type="application/ld+json">${breadcrumb.jsonLd}</script>
+<script type="application/ld+json">${stringifyJsonLd(collection)}</script>`,
+})}
 <body>
 <header class="vp-header">
 <a href="${localHome}" class="vp-brand" aria-label="everydashcam">
@@ -880,19 +799,7 @@ ${cards}
 ${renderHubCta(lang, pathPrefix)}
 </article>
 </main>
-<footer class="vp-footer">
-${languageLinks}
-<p class="vp-disclaimer">${escapeText(ALT_DISCLAIMER[lang])}</p>
-<div class="vp-footer-links">
-<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
-<span>·</span>
-<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
-<span>·</span>
-<a href="${localHome}">${escapeText(labels.footerHome)}</a>
-<span>·</span>
-<a href="${REPO_URL}">GitHub</a>
-</div>
-</footer>
+${renderMarketingFooter({ seoLocale, localHome, languageLinks, labels, disclaimer: ALT_DISCLAIMER[lang] })}
 </body>
 </html>
 `;
@@ -962,10 +869,7 @@ export function alternativePagesPlugin(options: SeoBuildOptions = {}): Plugin {
                 for (const competitor of ALTERNATIVES) {
                     const targetDir = resolve(distDir, `${prefix}alternatives/${competitor.slug}`);
                     mkdirSync(targetDir, { recursive: true });
-                    writeFileSync(
-                        resolve(targetDir, "index.html"),
-                        renderAlternativePage(competitor, lang, options),
-                    );
+                    writeFileSync(resolve(targetDir, "index.html"), renderAlternativePage(competitor, lang, options));
                 }
             }
         },

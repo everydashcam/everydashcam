@@ -1,3 +1,4 @@
+import { renderMarketingHead, renderMarketingFooter } from "./marketing-chrome.js";
 // Vendor landing pages for the top dashcam brands - every SUPPORTED_BRANDS
 // entry with hasLandingPage=true (see supported-brands.ts for the source of
 // truth). Each gets static HTML at /<lang>/cameras/<slug>/ for its explicit
@@ -30,15 +31,14 @@ import type { Plugin } from "vite";
 import { BRAND_DISCLAIMER } from "../src/i18n/brand-disclaimer.js";
 import type { Lang } from "../src/i18n/index.js";
 import {
-    REPO_URL,
     getDefaultSeoLocale,
     getIndexableSeoLocales,
     getSeoLocaleByLang,
     type SeoLocale,
 } from "../src/i18n/seo-config.js";
-import { canonicalLocaleUrl, canonicalOriginForLocale, searchIndexingMeta } from "./deployment-profile.js";
+import { canonicalLocaleUrl, canonicalOriginForLocale } from "./deployment-profile.js";
 import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
-import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
+import { escapeText, stringifyJsonLd } from "./html-utils.js";
 import { renderHubCta } from "./hub-cta.js";
 import { cameraCatalogAnchor, renderCameraBrandCard } from "./camera-catalog.js";
 import type { SeoBuildOptions } from "./seo-prerender.js";
@@ -540,41 +540,7 @@ export function renderVendorPage(vendor: VendorContent, lang: Lang, options: Seo
 
     return `<!doctype html>
 <html lang="${lang}">
-<head>
-${searchIndexingMeta(seoLocale, Boolean(options.noIndex))}
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title>${escapeText(content.title)}</title>
-<meta name="description" content="${escapeAttr(content.metaDescription)}">
-<meta http-equiv="content-language" content="${seoLocale.contentLanguage}">
-<link rel="canonical" href="${url}">
-${hreflangBlock}
-<meta property="og:type" content="website">
-<meta property="og:url" content="${url}">
-<meta property="og:site_name" content="everydashcam">
-<meta property="og:title" content="${escapeAttr(content.ogTitle)}">
-<meta property="og:description" content="${escapeAttr(content.ogDescription)}">
-<meta property="og:image" content="${ogImageUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta property="og:locale" content="${seoLocale.ogLocale}">
-${ogLocaleAlternatesBlock}
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${escapeAttr(content.ogTitle)}">
-<meta name="twitter:description" content="${escapeAttr(content.ogDescription)}">
-<meta name="twitter:image" content="${ogImageUrl}">
-<link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
-<link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="/fonts.css">
-<link rel="stylesheet" href="/vendor-page.css">
-<link rel="stylesheet" href="/brand-mark.css">
-<script type="application/ld+json">${breadcrumb.jsonLd}</script>
-</head>
+${renderMarketingHead({ seoLocale, noIndex: options.noIndex, content, url, hreflangBlock, ogImageUrl, ogLocaleAlternatesBlock, structuredData: `<script type="application/ld+json">${breadcrumb.jsonLd}</script>` })}
 <body>
 <header class="vp-header">
 <a href="${localHome}" class="vp-brand" aria-label="everydashcam">
@@ -615,16 +581,7 @@ ${renderFeatureLinksHtml(lang, pathPrefix, vendor.features)}
 </aside>
 </main>
 
-<footer class="vp-footer">
-${languageLinks}
-<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
-<span>·</span>
-<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
-<span>·</span>
-<a href="${localHome}">${escapeText(labels.footerHome)}</a>
-<span>·</span>
-<a href="${REPO_URL}">GitHub</a>
-</footer>
+${renderMarketingFooter({ seoLocale, localHome, languageLinks, labels })}
 </body>
 </html>
 `;
@@ -684,42 +641,17 @@ export function renderCamerasIndexPage(lang: Lang, options: SeoBuildOptions): st
 
     return `<!doctype html>
 <html lang="${lang}">
-<head>
-${searchIndexingMeta(seoLocale, Boolean(options.noIndex))}
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light">
-<title>${escapeText(content.title)}</title>
-<meta name="description" content="${escapeAttr(content.metaDescription)}">
-<meta http-equiv="content-language" content="${seoLocale.contentLanguage}">
-<link rel="canonical" href="${url}">
-${hreflangBlock}
-<meta property="og:type" content="website">
-<meta property="og:url" content="${url}">
-<meta property="og:site_name" content="everydashcam">
-<meta property="og:title" content="${escapeAttr(content.ogTitle)}">
-<meta property="og:description" content="${escapeAttr(content.ogDescription)}">
-<meta property="og:image" content="${ogImageUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta property="og:locale" content="${seoLocale.ogLocale}">
-${ogLocaleAlternatesBlock}
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${escapeAttr(content.ogTitle)}">
-<meta name="twitter:description" content="${escapeAttr(content.ogDescription)}">
-<meta name="twitter:image" content="${ogImageUrl}">
-<link rel="icon" type="image/vnd.microsoft.icon" href="/favicon.ico" sizes="16x16 32x32">
-<link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="/fonts.css">
-<link rel="stylesheet" href="/vendor-page.css">
-<link rel="stylesheet" href="/brand-mark.css">
-<script type="application/ld+json">${breadcrumb.jsonLd}</script>
-<script type="application/ld+json">${stringifyJsonLd(collection)}</script>
-</head>
+${renderMarketingHead({
+    seoLocale,
+    noIndex: options.noIndex,
+    content,
+    url,
+    hreflangBlock,
+    ogImageUrl,
+    ogLocaleAlternatesBlock,
+    structuredData: `<script type="application/ld+json">${breadcrumb.jsonLd}</script>
+<script type="application/ld+json">${stringifyJsonLd(collection)}</script>`,
+})}
 <body>
 <header class="vp-header">
 <a href="${localHome}" class="vp-brand" aria-label="everydashcam">
@@ -747,16 +679,7 @@ ${SUPPORTED_BRANDS.map((brand) => {
 ${renderHubCta(lang, pathPrefix)}
 </article>
 </main>
-<footer class="vp-footer">
-${languageLinks}
-<a href="/${seoLocale.urlSegment}/privacy/">${escapeText(labels.footerPrivacy)}</a>
-<span>·</span>
-<a href="/${seoLocale.urlSegment}/terms/">${escapeText(labels.footerTerms)}</a>
-<span>·</span>
-<a href="${localHome}">${escapeText(labels.footerHome)}</a>
-<span>·</span>
-<a href="${REPO_URL}">GitHub</a>
-</footer>
+${renderMarketingFooter({ seoLocale, localHome, languageLinks, labels })}
 </body>
 </html>
 `;
