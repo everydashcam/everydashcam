@@ -48,19 +48,14 @@ async function zoomVideo(page: Page): Promise<void> {
     }
     await expect.poll(() => zoomScale(page)).toBeGreaterThan(1);
     await expectResetHitArea(page.locator(".zoom-badge"));
-    // Reset detaches the duplicate decoder; wait for its first frame before
-    // reviewing another zoom screenshot, especially with WebKit's async load.
+    // Wait for the preview's first mirrored frame before reviewing another
+    // zoom screenshot, especially with WebKit's async frame presentation.
     await expect
         .poll(() =>
-            page.locator("#video-minimap-video").evaluate((preview: HTMLVideoElement) => {
-                const master = document.querySelector<HTMLVideoElement>(
-                    ".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)",
-                )!;
-                return (
-                    preview.readyState >= 2 &&
-                    !preview.seeking &&
-                    Math.abs(preview.currentTime - master.currentTime) < 0.1
-                );
+            page.locator("#video-minimap-canvas").evaluate((canvas: HTMLCanvasElement) => {
+                if (canvas.width === 0 || canvas.height === 0) return false;
+                const pixel = canvas.getContext("2d")!.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data;
+                return pixel[3] === 255;
             }),
         )
         .toBe(true);

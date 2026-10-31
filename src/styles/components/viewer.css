@@ -857,7 +857,7 @@ body.export-mode .tile-drag-handle {
     white-space: nowrap;
 }
 
-/* Birds-eye zoom preview: a mirrored <video> + yellow viewport frame on top.
+/* Birds-eye zoom preview: a canvas mirroring the active video + yellow viewport frame on top.
    Absolute inside .video-frame, TOP-RIGHT corner. The top-left is owned by
    the GPS mini-map (map.css .mini-map): its default anchor is baked into the
    drag/persistence math in ui/map.ts, so the zoom preview is the one that
@@ -882,12 +882,11 @@ body.export-mode .tile-drag-handle {
 .video-minimap[hidden] {
     display: none;
 }
-.video-minimap-video {
+.video-minimap-canvas {
     width: 100%;
     height: 100%;
     display: block;
     pointer-events: none;
-    object-fit: fill;
 }
 .video-minimap-frame {
     position: absolute;

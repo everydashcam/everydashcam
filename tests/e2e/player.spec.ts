@@ -64,6 +64,19 @@ async function seekToTripStart(page: Page): Promise<void> {
         .toBe(true);
 }
 
+/** Whether the zoom preview canvas holds a drawn, opaque video frame. */
+async function minimapPainted(page: Page): Promise<boolean> {
+    return page.locator("#video-minimap-canvas").evaluate((canvas: HTMLCanvasElement) => {
+        if (canvas.width === 0 || canvas.height === 0) return false;
+        const pixel = canvas.getContext("2d")!.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data;
+        return pixel[3] === 255;
+    });
+}
+
+async function minimapBackingWidth(page: Page): Promise<number> {
+    return page.locator("#video-minimap-canvas").evaluate((canvas: HTMLCanvasElement) => canvas.width);
+}
+
 async function wheelVideoZoom(page: Page, deltaY: number): Promise<void> {
     await page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)").hover();
     await page.mouse.wheel(0, deltaY);
@@ -94,11 +107,10 @@ test.describe("player", () => {
         await shot(page, "player-01-playpause");
     });
 
-    test("wheel zoom-out releases the duplicate video and zoom-in restores playback", async ({ page }) => {
+    test("wheel zoom-out releases the zoom preview and zoom-in mirrors the video again", async ({ page }) => {
         await pausePlayback(page);
         await seekToTripStart(page);
         const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
-        const preview = page.locator("#video-minimap-video");
         // Keep the short fixture away from a file boundary during UI assertions.
         await master.evaluate(async (video: HTMLVideoElement) => {
             video.playbackRate = 0.25;
@@ -107,19 +119,11 @@ test.describe("player", () => {
         });
         await wheelVideoZoom(page, -120);
         await expect(page.locator("#video-minimap")).toBeVisible();
-        await expect
-            .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState >= 2 && !video.paused))
-            .toBe(true);
+        await expect.poll(() => minimapPainted(page)).toBe(true);
 
         await wheelVideoZoom(page, 120);
         await expect(page.locator("#video-minimap")).toBeHidden();
-        await expect
-            .poll(() =>
-                preview.evaluate(
-                    (video: HTMLVideoElement) => video.paused && !video.hasAttribute("src") && video.readyState === 0,
-                ),
-            )
-            .toBe(true);
+        expect(await minimapBackingWidth(page), "zoom-out releases the preview canvas").toBe(0);
         expect(
             await master.evaluate((video: HTMLVideoElement) => video.paused),
             "zoom-out keeps the main video playing",
@@ -127,41 +131,30 @@ test.describe("player", () => {
 
         await wheelVideoZoom(page, -120);
         await expect(page.locator("#video-minimap")).toBeVisible();
-        await expect
-            .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState >= 2 && !video.paused))
-            .toBe(true);
-        await master.evaluate((video: HTMLVideoElement) => video.pause());
-        await expect.poll(() => preview.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+        await expect.poll(() => minimapPainted(page)).toBe(true);
+        expect(
+            await page.locator("#video-minimap video").count(),
+            "the preview mirrors the master instead of adding a decoder",
+        ).toBe(0);
     });
 
     test("export releases the zoom preview and permits zooming again on close", async ({ page }) => {
         await pausePlayback(page);
         await seekToTripStart(page);
-        const preview = page.locator("#video-minimap-video");
         await wheelVideoZoom(page, -120);
         await expect(page.locator("#video-minimap")).toBeVisible();
-        await expect
-            .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState >= 2 && video.paused))
-            .toBe(true);
+        await expect.poll(() => minimapPainted(page)).toBe(true);
 
         await openExport(page, false);
         await expect(page.locator("#video-minimap")).toBeHidden();
-        await expect
-            .poll(() =>
-                preview.evaluate(
-                    (video: HTMLVideoElement) => video.paused && !video.hasAttribute("src") && video.readyState === 0,
-                ),
-            )
-            .toBe(true);
+        expect(await minimapBackingWidth(page), "export releases the preview canvas").toBe(0);
 
         await page.locator("#export-panel-close").click();
         await expect(page.locator("#video-minimap")).toBeHidden();
         expect(await page.evaluate(() => window.__everydashcam.state.videoZoom.scale)).toBe(1);
         await wheelVideoZoom(page, -120);
         await expect(page.locator("#video-minimap")).toBeVisible();
-        await expect
-            .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState >= 2 && video.paused))
-            .toBe(true);
+        await expect.poll(() => minimapPainted(page)).toBe(true);
         expect(await page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(true);
     });
 

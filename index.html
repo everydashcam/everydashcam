@@ -1426,13 +1426,13 @@
                     </div>
 
                     <!-- Birds-eye mini-preview for digital zoom on the active video.
-                         A duplicate <video> + a yellow viewport frame. Visible only
-                         at scale > 1 in focus mode. JS manages visibility and
-                         syncs src/currentTime with the active master <video>. -->
+                         A canvas mirroring the active <video>'s presented frames +
+                         a yellow viewport frame. Visible only at scale > 1 in focus
+                         mode. JS manages visibility and drawing. -->
                     <div id="video-minimap" class="video-minimap" hidden
                          data-i18n-attr="aria-label:player.zoom.minimap.aria,title:player.zoom.minimap.title"
                          aria-label="Click or drag to pan zoomed area" title="Click or drag to pan zoomed area">
-                        <video id="video-minimap-video" class="video-minimap-video" muted playsinline disablepictureinpicture disableremoteplayback></video>
+                        <canvas id="video-minimap-canvas" class="video-minimap-canvas"></canvas>
                         <div id="video-minimap-frame" class="video-minimap-frame"></div>
                     </div>
                     <!-- Mini-map is positioned absolute relative to .video-frame, so it

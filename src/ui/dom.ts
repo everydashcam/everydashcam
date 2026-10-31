@@ -297,7 +297,7 @@ export const dom = {
     playerMapBtn: $id<HTMLButtonElement>("player-map"),
     miniMap: $id<HTMLDivElement>("mini-map"),
     videoMinimap: $id<HTMLDivElement>("video-minimap"),
-    videoMinimapVideo: $id<HTMLVideoElement>("video-minimap-video"),
+    videoMinimapCanvas: $id<HTMLCanvasElement>("video-minimap-canvas"),
     videoMinimapFrame: $id<HTMLDivElement>("video-minimap-frame"),
     videoLoadingOverlay: $id<HTMLDivElement>("video-loading-overlay"),
     viewer: $sel<HTMLElement>(".viewer"),

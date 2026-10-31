@@ -5,14 +5,13 @@
 // Owns: state.videoZoom geometry + offsets (read/written here),
 // mainDrag/minimapDrag local pointer state, the two-finger pinch gesture (touch
 // equivalent of wheel zoom), the wasDragging click-suppression flag, and the
-// mini-preview <video> sync (separate decoder, mirrors master currentTime /
-// play / pause / rate).
+// mini-preview canvas, which mirrors the master's presented frames.
 //
-// Boundary: zoom does not touch the master <video>.src. The mini-preview's
-// src goes through setVideoSrcFromFile (player-video-src) - same blob URL
-// management as the main pipeline. requiresMseBackend gates the mini-map:
-// HEVC remux / MPEG-TS files have no native-decodable blob URL, so the
-// duplicate <video> cannot play them - we hide the mini-preview instead.
+// Boundary: zoom never touches any <video>.src. The mini-preview draws
+// whatever the master element displays instead of decoding the file a second
+// time: no second decoder (a phone's second 4K HEVC decode often falls back to
+// software), no reload at every file boundary, and MSE-backed sources (HEVC
+// remux, MPEG-TS) get a preview too.
 
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
 import { containRect } from "./video-geometry.js";
@@ -24,15 +23,14 @@ import {
     dom,
     forEachVideoSlot,
     onActivePlayerEvent,
-    SLAVE_DRIFT_MAX_SEC,
 } from "./dom.js";
 import { t } from "../i18n/index.js";
 import { formatNumber } from "./format.js";
 import { attachPointerDrag, type PointerDragController } from "./pointer-drag.js";
 import { attachPinchGesture, type PinchGeometry, type PinchGesture } from "./pinch-gesture.js";
 import { isMobileLayout } from "./media-queries.js";
-import { clearVideoSrc, requiresMseBackend, setVideoSrcFromFile, videoAttachedFile } from "./player-video-src.js";
-import { activeCandidate, isFocusLayout, state } from "./state.js";
+import { videoAttachedFile } from "./player-video-src.js";
+import { isFocusLayout, state } from "./state.js";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
@@ -269,20 +267,71 @@ export function consumeDragClickSuppress(): boolean {
     return true;
 }
 
+// The master element the preview mirrors, and its pending frame callback.
+let mirroredVideo: HTMLVideoElement | null = null;
+let mirrorFrameRequest: number | null = null;
+let mirrorAnimationRequest = 0;
+
+function drawMirrorFrame(): void {
+    const video = mirroredVideo;
+    const canvas = dom.videoMinimapCanvas;
+    if (!video || video.readyState < 2 || canvas.width === 0) return;
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+}
+
+/** Redraws on every frame the master presents, including the single frame of
+ *  a paused seek. Without requestVideoFrameCallback, animation frames cover
+ *  playback and the seeked listener covers paused seeks. */
+function armMirror(): void {
+    const video = mirroredVideo;
+    if (!video) return;
+    if (typeof video.requestVideoFrameCallback === "function") {
+        if (mirrorFrameRequest !== null) return;
+        mirrorFrameRequest = video.requestVideoFrameCallback(() => {
+            mirrorFrameRequest = null;
+            drawMirrorFrame();
+            armMirror();
+        });
+        return;
+    }
+    if (mirrorAnimationRequest !== 0 || video.paused) return;
+    mirrorAnimationRequest = requestAnimationFrame(() => {
+        mirrorAnimationRequest = 0;
+        drawMirrorFrame();
+        armMirror();
+    });
+}
+
+function stopMirror(): void {
+    if (mirroredVideo && mirrorFrameRequest !== null) mirroredVideo.cancelVideoFrameCallback(mirrorFrameRequest);
+    if (mirrorAnimationRequest !== 0) cancelAnimationFrame(mirrorAnimationRequest);
+    mirrorFrameRequest = null;
+    mirrorAnimationRequest = 0;
+    mirroredVideo = null;
+}
+
+function mirrorVideo(master: HTMLVideoElement): void {
+    if (mirroredVideo !== master) {
+        stopMirror();
+        mirroredVideo = master;
+    }
+    drawMirrorFrame();
+    armMirror();
+}
+
 function hideMinimap(): void {
     dom.videoMinimap.hidden = true;
-    const video = dom.videoMinimapVideo;
-    // Hidden native videos can keep decoding the full-resolution source.
-    if (!video.paused) video.pause();
-    if (videoAttachedFile.has(video) || video.hasAttribute("src")) clearVideoSrc(video);
-    if (video.srcObject) video.srcObject = null;
+    stopMirror();
+    // Release the backing store; the next show sizes it again.
+    dom.videoMinimapCanvas.width = 0;
+    dom.videoMinimapCanvas.height = 0;
 }
 
 /** Syncs the mini-preview source, playback and geometry with the zoomed view. */
 function syncMinimap(): void {
     const z = state.videoZoom;
     const minimap = dom.videoMinimap;
-    const mv = dom.videoMinimapVideo;
+    const canvas = dom.videoMinimapCanvas;
     const frame = dom.videoMinimapFrame;
 
     if (state.exportModeOpen || z.scale <= 1 || !isFocusLayout(state.composition.layout) || !state.active) {
@@ -295,51 +344,30 @@ function syncMinimap(): void {
         return;
     }
     const master = activePlayer();
-    const masterFile = videoAttachedFile.get(master);
-    if (!masterFile) {
+    if (!videoAttachedFile.has(master)) {
         // Codec overlay is active or no file is attached - nothing to show.
-        hideMinimap();
-        return;
-    }
-    // Master via MSE (hev1 remux or MPEG-TS): master blob URL is from
-    // MediaSource, and MSE forbids attaching one MS to two media elements.
-    // Native createObjectURL(file) wouldn't decode either (hev1 -> black; .ts
-    // -> not supported). Hide mini-map.
-    const cand = activeCandidate();
-    if (cand && requiresMseBackend(cand)) {
         hideMinimap();
         return;
     }
     minimap.hidden = false;
     const flip = cameraFlipForChannel(effectiveMasterChannel());
-    mv.style.transform = `scale(${flip.horizontal ? -1 : 1}, ${flip.vertical ? -1 : 1})`;
+    canvas.style.transform = `scale(${flip.horizontal ? -1 : 1}, ${flip.vertical ? -1 : 1})`;
     minimap.style.aspectRatio = `${geom.vW} / ${geom.vH}`;
 
-    // Mini-map plays the same file as master with its own blob URL + decoder.
-    // Revoking the master URL doesn't break the mini-map - it has its own blob URL.
-    if (mv.srcObject) mv.srcObject = null;
-    const beforeFile = videoAttachedFile.get(mv);
-    setVideoSrcFromFile(mv, masterFile);
-    if (
-        beforeFile === masterFile &&
-        mv.readyState >= 2 &&
-        Math.abs(mv.currentTime - master.currentTime) > SLAVE_DRIFT_MAX_SEC
-    ) {
-        // Same file, src unchanged - apply a drift fix if needed. If the file
-        // changed, currentTime is applied in the loadedmetadata listener
-        // installed below.
-        mv.currentTime = master.currentTime;
+    const miniW = minimap.clientWidth;
+    if (miniW <= 0) return;
+    // Backing store at device pixels of the preview, in the video's aspect.
+    const pixelRatio = window.devicePixelRatio || 1;
+    const canvasW = Math.max(1, Math.round(miniW * pixelRatio));
+    const canvasH = Math.max(1, Math.round((canvasW * geom.vH) / geom.vW));
+    if (canvas.width !== canvasW || canvas.height !== canvasH) {
+        canvas.width = canvasW;
+        canvas.height = canvasH;
     }
-    if (master.paused !== mv.paused) {
-        if (master.paused) mv.pause();
-        else mv.play().catch(() => {});
-    }
-    mv.playbackRate = master.playbackRate;
+    mirrorVideo(master);
 
     // Yellow viewport frame: map coordinates from displayed-frame space to
     // minimap.
-    const miniW = minimap.clientWidth;
-    if (miniW <= 0) return;
     const k = miniW / geom.dispW;
     const vpLeftFrame = -z.offsetX / z.scale - geom.padX;
     const vpTopFrame = -z.offsetY / z.scale - geom.padY;
@@ -571,32 +599,13 @@ export function initPlayerZoom(): void {
         onMove: panFromMinimapToCursor,
     });
 
-    // Mirror master playback state into the duplicate video. Channel swap
-    // automatically redirects via onActivePlayerEvent.
+    // The frame-callback mirror needs no playback events; these keep the
+    // animation-frame fallback running and catch its paused seeks.
     onActivePlayerEvent("play", () => {
-        if (state.videoZoom.scale > 1 && !dom.videoMinimap.hidden) {
-            dom.videoMinimapVideo.play().catch(() => {});
-        }
-    });
-    onActivePlayerEvent("pause", () => {
-        dom.videoMinimapVideo.pause();
+        if (!dom.videoMinimap.hidden) armMirror();
     });
     onActivePlayerEvent("seeked", () => {
-        if (state.videoZoom.scale > 1) {
-            const master = activePlayer();
-            if (dom.videoMinimapVideo.readyState >= 1) {
-                dom.videoMinimapVideo.currentTime = master.currentTime;
-            }
-        }
-    });
-    dom.videoMinimapVideo.addEventListener("loadedmetadata", () => {
-        if (dom.videoMinimap.hidden || state.exportModeOpen) return;
-        const master = activePlayer();
-        dom.videoMinimapVideo.currentTime = master.currentTime;
-        dom.videoMinimapVideo.playbackRate = master.playbackRate;
-        if (!master.paused && state.videoZoom.scale > 1) {
-            dom.videoMinimapVideo.play().catch(() => {});
-        }
+        if (!dom.videoMinimap.hidden) drawMirrorFrame();
     });
 
     // Tile resize -> clamp offsets to new geometry. ResizeObserver on the

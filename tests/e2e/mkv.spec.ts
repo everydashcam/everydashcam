@@ -67,6 +67,30 @@ test.describe("mkv (matroska) container", () => {
         await shot(page, "mkv-01-playing");
     });
 
+    test("zoom preview mirrors an MSE-backed video", async ({ page }) => {
+        // A second <video> cannot attach the master's MediaSource; the canvas
+        // mirror draws whatever the master presents instead.
+        await loadTrip(page, SAMPLE_MKV);
+        await expect
+            .poll(() => page.evaluate(() => (document.getElementById("player") as HTMLVideoElement).readyState))
+            .toBeGreaterThanOrEqual(2);
+        await pausePlayback(page);
+        await page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)").hover();
+        await page.mouse.wheel(0, -120);
+        await expect(page.locator("#video-minimap")).toBeVisible();
+        await expect
+            .poll(() =>
+                page.locator("#video-minimap-canvas").evaluate((canvas: HTMLCanvasElement) => {
+                    if (canvas.width === 0 || canvas.height === 0) return false;
+                    const pixel = canvas
+                        .getContext("2d")!
+                        .getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data;
+                    return pixel[3] === 255;
+                }),
+            )
+            .toBe(true);
+    });
+
     test("plays through ManagedMediaSource when classic MediaSource is absent", async ({ page }) => {
         // iPhone Safari exposes only ManagedMediaSource. Chromium lacks it, so
         // the classic constructor stands in under the managed name; this covers
