@@ -16,7 +16,7 @@ import { syncGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { activeCandidate, activeFrame } from "./state.js";
 import { type FixState, resolvePlayerMetrics } from "./player-metrics-data.js";
 
-// timeupdate fires up to ~15 Hz during playback; Intl.DateTimeFormat
+// timeupdate fires every 15-250 ms (Chromium: 250 ms); Intl.DateTimeFormat
 // construction (locale-data resolution + ICU pattern compile) is the only
 // expensive op in refreshMetrics. Memoize it, keyed by locale - the langchange
 // subscription re-runs the refresh after the locale flips, so a new key
@@ -222,7 +222,7 @@ function currentClipIsTimelapse(trip: Trip, tripCurrentSec: number): boolean {
     return Object.values(frame.channels).some((c) => c?.isTimelapse);
 }
 
-// Last-applied flag: timeupdate calls this up to ~15 Hz - skip the DOM writes
+// Last-applied flag: timeupdate calls this several times a second - skip the DOM writes
 // and the t() lookup when nothing changed. No one else touches the class/title.
 let timelapseClockShown = false;
 

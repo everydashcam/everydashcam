@@ -84,7 +84,7 @@ import { captureCurrentFrame, syncCaptureButton } from "./player-capture.js";
 import { hideLoadingOverlay, showLoadingOverlay } from "./player-loading-overlay.js";
 import { initFrameStep } from "./player-frame-step.js";
 import { initSeekButtons } from "./player-seek-buttons.js";
-import { channelPresentedFrame, initPlayerFrameTimes } from "./player-frame-time.js";
+import { channelPresentedFrame, initPlayerFrameTimes, subscribePlayerFrames } from "./player-frame-time.js";
 import { initPlayerHotkeys } from "./player-hotkeys.js";
 import { initPlayerScrubber, updatePlayerProgressUi } from "./player-scrubber.js";
 import { syncCropPreviews } from "./player-crop.js";
@@ -2918,6 +2918,20 @@ function initPlayerControls(): void {
     onActivePlayerEvent("emptied", syncCaptureButton);
 
     initPlayerLoop();
+
+    // Chromium fires timeupdate every 250 ms, so a playhead driven only by it
+    // steps visibly while the map marker already follows presented frames.
+    // Presented frames repaint the playhead, clock and progress thumb once per
+    // display frame (all slots coalesce into one rAF); timeupdate below keeps
+    // the range, loop and metrics logic.
+    let progressFrameRequest = 0;
+    subscribePlayerFrames(() => {
+        if (progressFrameRequest !== 0) return;
+        progressFrameRequest = requestAnimationFrame(() => {
+            progressFrameRequest = 0;
+            updatePlayerProgressUi();
+        });
+    });
 
     // timeupdate: update progress UI and metrics.
     onActivePlayerEvent("timeupdate", () => {
