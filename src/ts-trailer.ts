@@ -227,6 +227,12 @@ export function findTsGpsTrailer(blob: Blob): Promise<TsGpsTrailer | null> {
 async function detectTsGpsTrailer(blob: Blob): Promise<TsGpsTrailer | null> {
     const direct = (await findStandardTsGpsTrailer(blob, blob.size)) ?? (await findPairedTsGpsTrailer(blob, blob.size));
     if (direct) return direct;
+    // A table always follows the last whole packet, and only the table and
+    // zero preallocation can follow it. A file that still ends in a valid sync
+    // run on the 188-byte grid therefore carries neither: skip the bisection
+    // (one read per halving, ~25 on a long recording) and the zero scan. Plain
+    // .ts recordings take this path in every worker that opens them.
+    if (await endsWithTsPackets(blob)) return null;
     const behindLastPacket = await findTsGpsTrailerBehindLastPacket(blob);
     if (behindLastPacket) return behindLastPacket;
     const dataEnd = await findZeroPaddedEnd(blob);
@@ -291,6 +297,14 @@ async function findTsGpsTrailerBehindLastPacket(blob: Blob): Promise<TsGpsTraile
     const windowEnd = Math.min(size, trailerEnd + TRAILER_ZERO_WINDOW_BYTES);
     const window = new Uint8Array(await blob.slice(trailerEnd, windowEnd).arrayBuffer());
     return window.every((byte) => byte === 0) ? trailer : null;
+}
+
+/** Whether the blob ends on the byte-zero packet grid with a valid sync run. */
+async function endsWithTsPackets(blob: Blob): Promise<boolean> {
+    const size = blob.size;
+    if (size < TS_SYNC_RUN_BYTES || size % TS_PACKET !== 0) return false;
+    const tail = new Uint8Array(await blob.slice(size - TS_SYNC_RUN_BYTES, size).arrayBuffer());
+    return hasTsSyncRun(tail, 0);
 }
 
 function hasTsSyncRun(bytes: Uint8Array, start: number): boolean {

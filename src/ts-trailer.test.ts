@@ -396,16 +396,19 @@ describe("trailer detection behind zero padding", () => {
     const cleanLength = realPaired.length - 1024 - 17360;
     const TS_PACKET = 188;
 
-    /** Counts bytes materialized through Blob.arrayBuffer until restored. */
-    function countBlobReads(): { bytes: () => number; restore: () => void } {
+    /** Counts bytes and reads materialized through Blob.arrayBuffer until restored. */
+    function countBlobReads(): { bytes: () => number; reads: () => number; restore: () => void } {
         const original = Blob.prototype.arrayBuffer;
         let bytes = 0;
+        let reads = 0;
         Blob.prototype.arrayBuffer = function (this: Blob) {
             bytes += this.size;
+            reads++;
             return original.call(this);
         };
         return {
             bytes: () => bytes,
+            reads: () => reads,
             restore: () => {
                 Blob.prototype.arrayBuffer = original;
             },
@@ -442,6 +445,17 @@ describe("trailer detection behind zero padding", () => {
             trailerLength: 17360,
             unindexedRecordsOffset: 8772,
         });
+    });
+
+    it("settles a stream that ends on whole packets without bisecting it", async () => {
+        const file = new File([Uint8Array.from(realPaired.subarray(0, cleanLength))], "plain.ts");
+        const reads = countBlobReads();
+        try {
+            expect(await findTsGpsTrailer(file)).toBeNull();
+            expect(reads.reads(), "two terminator probes and one sync-run check").toBe(3);
+        } finally {
+            reads.restore();
+        }
     });
 
     it("answers a repeated lookup on the same blob without reading it again", async () => {
