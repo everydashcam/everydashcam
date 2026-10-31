@@ -1,3 +1,4 @@
+import { setImmediate as nextTurn } from "node:timers/promises";
 // Mock endpoints for protocol tests. Avoids spinning up real Workers in
 // vitest (environment: node) - the tests exercise our framing/correlation,
 // not the browser's Worker API.
@@ -104,7 +105,8 @@ export function makePairedEndpoints(): PairedEndpoints {
     };
 }
 
-/** Resolves once all queued microtasks have run. Tests await this between actions. */
+/** A task boundary drains recursively queued promise continuations too. A single
+ * queueMicrotask marker can run before the handlers those continuations enqueue. */
 export function flushMicrotasks(): Promise<void> {
-    return new Promise((resolve) => queueMicrotask(resolve));
+    return nextTurn();
 }
