@@ -407,10 +407,9 @@ export default defineConfig(({ command }) => {
         // harness can only see main-thread JS heap - tests for tracking memory
         // regressions in transcode/preview/gps-extract workers are blind.
         //
-        // Production gets the same pair from public/_headers, and the service
-        // worker adds it to every response it serves. Preview does not read
-        // _headers, so other preview runs stay non-isolated until the service
-        // worker controls the page; most e2e specs block it.
+        // Production gets the same pair from public/_headers. Preview does not
+        // read _headers, and the service worker adds only COEP
+        // (src/sw-policy.ts), so other preview runs stay non-isolated.
         headers:
             process.env.PERF_TEST === "1"
                 ? {
