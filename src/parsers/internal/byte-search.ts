@@ -1,3 +1,19 @@
+/** Compares a complete marker without reading beyond a view or a record boundary. */
+export function matchesBytesAt(
+    bytes: Uint8Array | DataView,
+    offset: number,
+    marker: ArrayLike<number>,
+    end = bytes.byteLength,
+): boolean {
+    if (offset < 0 || offset + marker.length > Math.min(end, bytes.byteLength)) return false;
+    if (bytes instanceof DataView) {
+        for (let i = 0; i < marker.length; i++) if (bytes.getUint8(offset + i) !== marker[i]) return false;
+    } else {
+        for (let i = 0; i < marker.length; i++) if (bytes[offset + i] !== marker[i]) return false;
+    }
+    return true;
+}
+
 /** Finds a complete nonempty marker in [from, to), relative to the supplied view. */
 export function findByteSequence(bytes: Uint8Array, marker: Uint8Array, from = 0, to = bytes.length): number {
     const end = Math.min(to, bytes.length);

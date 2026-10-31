@@ -19,7 +19,7 @@
 
 import { type GpsRecord, KMH_TO_MS } from "../types.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
-import { utcSecondsFromYmdhms } from "./freegps.js";
+import { utcSecondsFromYmdhms } from "./calendar.js";
 
 /** Encrypted "XKZD\xfe\xfe" - present in every carrier at its own offset. */
 export const XOR_ASCII_SIGNATURE = [0xf2, 0xe1, 0xf0, 0xee, 0x54, 0x54] as const;

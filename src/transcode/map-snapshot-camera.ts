@@ -4,7 +4,7 @@
 // worker can import it and the thresholds below stay in one place with the
 // zoom math they are derived from.
 
-import { haversineMeters } from "./frame-pos.js";
+import { haversineMeters, wrapDegrees } from "../coordinates.js";
 import type { MapSnapshotRequest, MapSnapshotter } from "./map-snapshotter-types.js";
 
 /** Logical size (CSS px) of the off-screen snapshot canvas. Picked so a
@@ -31,19 +31,7 @@ export function exportAdaptiveZoomDelta(speedMs: number | undefined): number {
     return -ADAPTIVE_MAX_ZOOM_OUT * f;
 }
 
-/** Computes a maplibre zoom level so the visible diameter (across viewportWidthPx)
- *  is ~diameterKm. Uses 78271.5, the meters-per-pixel-at-zoom-0 for MapLibre's
- *  512 px tiles - NOT the 256-tile 156543.03. With the 256 constant the zoom came
- *  out one level too high (2x too zoomed in), so a "100 m" slot actually showed
- *  ~50 m. */
-export function zoomForDiameterKm(lat: number, diameterKm: number, viewportWidthPx: number): number {
-    // Floor the DIAMETER at 1 metre (not 1 km). Clamping the kilometre value
-    // collapsed the entire 100 m..1 km slider range to a single 1 km zoom.
-    const diameterM = Math.max(1, diameterKm * 1000);
-    const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
-    const metersPerPx = diameterM / viewportWidthPx;
-    return Math.log2((78271.5 * cosLat) / metersPerPx);
-}
+export { zoomForDiameterKm } from "../coordinates.js";
 
 /** The chase-camera settings that decide how a pose change shows up in pixels.
  *  Carried to the worker as plain data (the render itself stays on the main
@@ -77,8 +65,7 @@ const REUSE_MAX_BEARING_DEG_HEADING_UP = 0.05;
 const REUSE_MAX_ZOOM_DELTA = 0.0014;
 
 function bearingDeltaDeg(a: number, b: number): number {
-    const d = Math.abs(((a - b) % 360) + 360) % 360;
-    return d > 180 ? 360 - d : d;
+    return Math.abs(wrapDegrees(a - b));
 }
 
 /**

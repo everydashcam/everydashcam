@@ -11,11 +11,12 @@
 // Viidure plaintext is validated against real INNOVV N2 recordings.
 // Reuse one carrier scan because reading the media dominates parsing cost.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import { type GpsRecord, type ParsedRecords, type SkippedLine, type VendorFile, WrongFormatError } from "../types.js";
 import { hasViidureBody, parseViidureBody } from "./viidure.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { hasInnovvRecordSignature, parseInnovvRecord } from "./freegps.js";
-import { collectPesBody, createTsPesScanPlanner, pesBodyExtent, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import { pesStartPid, collectPesBody, createTsPesScanPlanner, pesBodyExtent, TS_SIZE, TS_SYNC } from "./ts-walk.js";
 
 type Dialect = "innovv" | "dod" | "viidure";
 
@@ -93,7 +94,7 @@ function decodeDodBody(body: Uint8Array, mp4Filename: string, skipped: SkippedLi
         const minute = body[at + 11]!;
         // Stored in tenths; GpsRecord is whole seconds, so the fraction is lost.
         const second = Math.floor(u16be(body, at + 12) / 10);
-        if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) {
+        if (!isDashcamYear(year) || month < 1 || month > 12 || day < 1 || day > 31) {
             skipped.push({ line: records.length + 1, raw: `${year}-${month}-${day}`, reason: "date out of range" });
             continue;
         }
@@ -163,9 +164,8 @@ export function findTsPesGpsStream(bytes: Uint8Array): { pid: number; dialect: D
     const limit = bytes.length - TS_SIZE;
     for (let off = 0; off <= limit; off += TS_SIZE) {
         if (bytes[off] !== TS_SYNC) return null;
-        const b1 = bytes[off + 1]!;
-        if ((b1 & 0x40) === 0) continue; // PUSI=0
-        const pid = ((b1 & 0x1f) << 8) | bytes[off + 2]!;
+        const pid = pesStartPid(bytes, off);
+        if (pid === null) continue;
         const body = bodyAt(bytes, off, pid);
         if (!body) continue;
         if (hasInnovvPesBody(body)) return { pid, dialect: "innovv" };
@@ -211,7 +211,7 @@ export async function extractTsPesGps(
     const planner = createTsPesScanPlanner(file.file, { pid, prefix: headerBytes, signal });
     let range = await planner.next(0);
     while (range !== null) {
-        if (signal?.aborted) throw new DOMException("ts-pes-gps scan aborted", "AbortError");
+        throwIfCancelled(signal, "ts-pes-gps scan aborted");
         const { start, buf } = range;
         let off = 0;
         let desyncRun = 0;
@@ -222,9 +222,8 @@ export async function extractTsPesGps(
                 continue;
             }
             desyncRun = 0;
-            const b1 = buf[off + 1]!;
-            const packetPid = ((b1 & 0x1f) << 8) | buf[off + 2]!;
-            if ((pid !== null && packetPid !== pid) || (b1 & 0x40) === 0) {
+            const packetPid = pesStartPid(buf, off);
+            if (packetPid === null || (pid !== null && packetPid !== pid)) {
                 off += TS_SIZE;
                 continue;
             }

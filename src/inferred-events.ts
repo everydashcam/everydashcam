@@ -1,3 +1,4 @@
+import { wrapDegrees } from "./coordinates.js";
 // Inferred (synthetic) event segments derived from speed and bearing.
 //
 // Stand-alone from events.ts (which produces discrete TripEvent markers from
@@ -302,9 +303,7 @@ function flushStop(
 
 /** Reduces a raw degree delta to the signed shortest arc in [-180, 180]. */
 function shortestBearingArc(deltaDeg: number): number {
-    let d = ((deltaDeg + 180) % 360) - 180;
-    if (d < -180) d += 360;
-    return d;
+    return wrapDegrees(deltaDeg);
 }
 
 function clamp01(x: number): number {

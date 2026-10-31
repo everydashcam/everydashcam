@@ -3,6 +3,7 @@
 // commit 492240a16766bc68755b11b2e9af5fb1699b6169. The clock has no timezone;
 // associate by local filename windows and keep it out of UTC calibration.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import { forwardFillBearingsIfAllZero } from "../../parser.js";
 import { matchDailyCsvVideoPath, parseDailyCsvTimestamp, parseDailyCsvVideoName } from "../internal/daily-csv-path.js";
 import { ddmmToDegrees, isCoordinateInRange } from "../internal/ddmm.js";
@@ -139,7 +140,7 @@ export const dailyCsvGpsPrimitive: Primitive = {
         return lines[0] === "#" && lines.some((line) => parseRow(line, name[1]!) !== null);
     },
     async parse(file, _index, signal, context): Promise<ParsedRecords> {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const date = RX_LOG_NAME.exec(file.file.name)?.[1];
         if (!date) throw new WrongFormatError("not a daily csv log filename");
         const lines = (await file.file.text()).replace(/^\uFEFF/, "").split(/\r?\n/);
@@ -156,7 +157,7 @@ export const dailyCsvGpsPrimitive: Primitive = {
         let nextWindow = 0;
         let activeWindows: VideoWindow[] = [];
         for (let i = 0; i < lines.length; i++) {
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             const raw = lines[i]!.trim();
             if (raw === "") continue;
             if (raw === "#") {

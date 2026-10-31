@@ -1,3 +1,4 @@
+import { lowerBoundBy, nearestIndexBy } from "./sorted-search.js";
 // Generic utilities for GpsRecord arrays: distance, binary search for the
 // nearest record, position interpolation. Vendor-agnostic.
 //
@@ -19,7 +20,7 @@ import type {
 } from "./parsers/types.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 import { interpolateSpeed, isSameTrackSegment } from "./gps-telemetry.js";
-import { wrapDegrees } from "./coordinates.js";
+import { haversineKm, wrapDegrees } from "./coordinates.js";
 
 /**
  * Dynamic-acceleration magnitude from a gravity-removed accel triple. Single
@@ -614,18 +615,7 @@ export function dropTeleportOutliers(
     return out;
 }
 
-/**
- * Haversine great-circle distance in km. Mean Earth radius 6371 km.
- * Ellipsoidal model is unnecessary given GPS fix accuracy.
- */
-export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R_KM = 6371;
-    const toRad = (deg: number): number => (deg * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-    return 2 * R_KM * Math.asin(Math.min(1, Math.sqrt(a)));
-}
+export { haversineKm } from "./coordinates.js";
 
 /**
  * Binary search for the record nearest to targetUnixSeconds in a sorted array.
@@ -636,27 +626,7 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
  * or -1 for an empty array.
  */
 export function findNearestIndex(sortedRecords: GpsRecord[], targetUnixSeconds: number): number {
-    if (sortedRecords.length === 0) return -1;
-
-    let lo = 0;
-    let hi = sortedRecords.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (sortedRecords[mid]!.unixSeconds < targetUnixSeconds) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    // lo is the first index with timestamp >= target; compare with previous to pick the nearest.
-    if (lo > 0) {
-        const prev = sortedRecords[lo - 1]!;
-        const cur = sortedRecords[lo]!;
-        if (Math.abs(prev.unixSeconds - targetUnixSeconds) <= Math.abs(cur.unixSeconds - targetUnixSeconds)) {
-            return lo - 1;
-        }
-    }
-    return lo;
+    return nearestIndexBy(sortedRecords, targetUnixSeconds, (record) => record.unixSeconds, "earlier");
 }
 
 export const GPS_POSITION_TOLERANCE_SEC = 5;
@@ -686,13 +656,10 @@ export function interpolatePosition(
     if (sortedRecords.length === 0 || !Number.isFinite(targetUnixSeconds)) return null;
 
     // Binary search for the first index with unixSeconds >= target.
-    let lo = 0;
-    let hi = sortedRecords.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (sortedRecords[mid]!.unixSeconds < targetUnixSeconds) lo = mid + 1;
-        else hi = mid;
-    }
+    const lo = Math.min(
+        lowerBoundBy(sortedRecords, targetUnixSeconds, (record) => record.unixSeconds),
+        sortedRecords.length - 1,
+    );
 
     const nextIndex = validPositionIndexAt(sortedRecords, lo);
     if (nextIndex < 0) return null;

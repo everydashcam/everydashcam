@@ -31,6 +31,7 @@
 // memory. Writing the tail (samples + new moov) is also megabytes. We do not
 // rewrite the main mdat (tens of GB for 4K) - mdat is not touched at all.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { findBox, findMoovInFile, type Box } from "../parsers/internal/mp4-walker.js";
 import { ascii, box, concat, fourCC, fullBox, identityMatrix, u16, u32 } from "./iso-write.js";
 import { type GpmfSample, packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
@@ -159,7 +160,7 @@ interface GpmdTail {
 }
 
 function throwIfAbortedSignal(signal: AbortSignal | undefined): void {
-    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
 }
 
 /**

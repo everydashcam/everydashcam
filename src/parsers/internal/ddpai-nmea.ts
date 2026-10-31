@@ -1,4 +1,4 @@
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { parseCompactTimestamp } from "./calendar.js";
 import { dedupByUnixSeconds, parseNmeaText } from "./nmea.js";
 import { type GpsRecord, WrongFormatError } from "../types.js";
 
@@ -14,19 +14,6 @@ export function matchDdpaiVideo(gpsFilename: string, knownVideos: Iterable<strin
         if (videoBase === `${base}_a`) rear = name;
     }
     return rear;
-}
-
-function cameraTime(value: string): number | null {
-    if (!/^\d{14}$/.test(value)) return null;
-    const ms = utcMillisecondsFromParts(
-        Number(value.slice(0, 4)),
-        Number(value.slice(4, 6)),
-        Number(value.slice(6, 8)),
-        Number(value.slice(8, 10)),
-        Number(value.slice(10, 12)),
-        Number(value.slice(12, 14)),
-    );
-    return ms === null ? null : ms / 1000;
 }
 
 // Preallocated files keep the previous recording's bytes after the current
@@ -54,9 +41,9 @@ export function parseDdpaiNmea(text: string, gpsFilename: string, mp4Filename: s
     const end = trimmed.search(RX_SECTION_END);
     const gps = end < 0 ? trimmed : trimmed.slice(0, end);
     const header = /^\$GPSCAMTIME (\d{14})(?:\r?\n|$)/.exec(gps);
-    const headerStart = header ? cameraTime(header[1]!) : null;
+    const headerStart = header ? parseCompactTimestamp(header[1]!) : null;
     const name = RX_DDPAI_GPX_NAME.exec(gpsFilename);
-    const namedStart = name ? cameraTime(name[1]!) : null;
+    const namedStart = name ? parseCompactTimestamp(name[1]!) : null;
     const durationSec = name ? Number(name[2]) : 0;
     // A reused temporary file can contain an entirely different clip. The
     // header may lag the filename until logging starts; rounding can put it

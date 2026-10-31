@@ -1,3 +1,4 @@
+import { rectangleIou } from "../rectangle-geometry.js";
 // Shared normalized geometry and output types for automatic detection and
 // manual Follow. Automatic confirmation lives in detection-propagation.ts;
 // Follow accumulates tracker observations through track-observations.ts.
@@ -22,18 +23,7 @@ export interface DetectedTrack {
 
 /** Intersection-over-union of two normalized rects (0..1). */
 export function iou(a: CropRect, b: CropRect): number {
-    const ax2 = a.xPct + a.wPct;
-    const ay2 = a.yPct + a.hPct;
-    const bx2 = b.xPct + b.wPct;
-    const by2 = b.yPct + b.hPct;
-    const ix = Math.max(a.xPct, b.xPct);
-    const iy = Math.max(a.yPct, b.yPct);
-    const iw = Math.min(ax2, bx2) - ix;
-    const ih = Math.min(ay2, by2) - iy;
-    if (iw <= 0 || ih <= 0) return 0;
-    const inter = iw * ih;
-    const union = a.wPct * a.hPct + b.wPct * b.hPct - inter;
-    return union > 0 ? inter / union : 0;
+    return rectangleIou(a.xPct, a.yPct, a.wPct, a.hPct, b.xPct, b.yPct, b.wPct, b.hPct);
 }
 
 /** Keeps every observed change. Only stationary interiors can be removed without

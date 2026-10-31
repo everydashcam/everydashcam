@@ -29,11 +29,12 @@
 // non-standard Type-3 base offsets dynamically. The registry architecture
 // keeps additions purely additive - existing variants are not modified.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import { extendArray } from "../../array-extend.js";
 import { concat } from "../../bytes.js";
 import { type GpsRecord, KMH_TO_MS, KNOTS_TO_MS, type ParsedRecords, type SkippedLine } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
-import { findByteSequence } from "./byte-search.js";
+import { utcMillisecondsFromParts, utcSecondsFromYmdhms } from "./calendar.js";
+import { matchesBytesAt, findByteSequence } from "./byte-search.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 import { hasAsxtFreeGpsSignature, parseAsxtFreeGps, readAsxtWallClock } from "./freegps-asxt.js";
 import { decodeXorAsciiGpsText, decryptXorAscii } from "./xor-ascii-gps.js";
@@ -410,31 +411,6 @@ function readKenwoodAccel(payload: DataView): [number, number, number] {
     ];
 }
 
-/**
- * Shared datetime validation for binary freeGPS variants: expands a 2-digit
- * year (21 -> 2021, ExifTool's `$yr += 2000 if $yr < 2000` tail at
- * QuickTimeStream.pl:2462), range-gates every calendar field and returns
- * unix seconds UTC, or null when any field is out of range (the caller skips
- * the record - a bad date means the bytes are not this layout).
- *
- * Exported for sibling extractors (kenwood, ligo-json) - one validation, one
- * set of calendar bounds across formats.
- */
-export function utcSecondsFromYmdhms(
-    yearRaw: number,
-    month: number,
-    day: number,
-    hour: number,
-    minute: number,
-    second: number,
-): number | null {
-    if (![yearRaw, month, day, hour, minute, second].every(Number.isFinite)) return null;
-    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
-    if (year < 2000 || year > 2099) return null;
-    const ms = utcMillisecondsFromParts(year, month, day, hour, minute, second);
-    return ms === null ? null : ms / 1000;
-}
-
 // ===== Rexing V1-4K affine deobfuscation (ExifTool GPSType 17b) =====
 //
 // Rexing V1-4K / JMSPlayer firmware writes LAYOUT_DEFAULT blocks whose float
@@ -670,7 +646,7 @@ function parseType3Block(
 const variantViofoType3: FreeGpsVariant = {
     name: "VIOFO Type 3",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         return pickLayout(payload) !== null;
     },
     parse(payload, mp4Filename, options, boxSizeDword) {
@@ -697,7 +673,7 @@ const variantViofoType3: FreeGpsVariant = {
 const variantYouqing: FreeGpsVariant = {
     name: "YOUQINGGPS",
     matches(payload) {
-        return startsWithMagic(payload) && hasAsciiAt(payload, 12, "YOUQINGGPS");
+        return matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES) && hasAsciiAt(payload, 12, "YOUQINGGPS");
     },
     parse(payload, mp4Filename) {
         if (payload.byteLength < 100) return [];
@@ -767,7 +743,7 @@ const variantYouqing: FreeGpsVariant = {
 const variantAkasoType8Encrypted: FreeGpsVariant = {
     name: "Akaso/Redtiger Type 8 (encrypted, recognize-and-bail)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         return isType8EncryptedShape(payload);
     },
     parse() {
@@ -823,7 +799,7 @@ export const VANTRUE_NMEA_VARIANT_NAME = "Vantrue NMEA-embedded";
 const variantVantrueNmea: FreeGpsVariant = {
     name: VANTRUE_NMEA_VARIANT_NAME,
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         return findNmeaRmcStart(payload) !== null;
     },
     parse(payload, mp4Filename) {
@@ -994,7 +970,7 @@ export const GRAVITY_INCLUDED_VARIANT_NAMES: ReadonlySet<string> = new Set([
 const variantAzdomeXor: FreeGpsVariant = {
     name: AZDOME_XOR_VARIANT_NAME,
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < AZDOME_XOR_START + AZDOME_SIGNATURE.length) return false;
         for (let i = 0; i < AZDOME_SIGNATURE.length; i++) {
             if (payload.getUint8(AZDOME_XOR_START + i) !== AZDOME_SIGNATURE[i]) return false;
@@ -1032,7 +1008,7 @@ const HORSONTECH_MIN_PAYLOAD = 120;
 const variantHorsontech: FreeGpsVariant = {
     name: "Vantrue S1 horsontech (Type 10)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < HORSONTECH_MIN_PAYLOAD) return false;
         if (!hasAsciiAt(payload, HORSONTECH_MARKER_OFFSET, "horsontech")) return false;
         if (payload.getUint8(60) !== 0x41) return false; // 'A' (upstream regex has no 'V' form)
@@ -1107,7 +1083,7 @@ const SUB16_MIN_PAYLOAD = 136; // ExifTool: length >= 140 atom-relative
 const variantSub16Rmc: FreeGpsVariant = {
     name: "sub-16 RMC cipher (Type 7/9)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < SUB16_MIN_PAYLOAD) return false;
         for (let i = 0; i < SUB16_SIGNATURE.length; i++) {
             if (payload.getUint8(SUB16_TEXT_OFFSET + i) !== SUB16_SIGNATURE[i]) return false;
@@ -1147,7 +1123,7 @@ const XGODY_TEXT_OFFSET = 12; // mode prefix start (atom 16)
 const variantXgodyText: FreeGpsVariant = {
     name: "XGODY ASCII text (Type 18)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < XGODY_DATE_OFFSET + 21) return false;
         return XGODY_DATE_SHAPE.test(readLatin1(payload, XGODY_DATE_OFFSET, 21));
     },
@@ -1299,7 +1275,7 @@ function stripTrailingNuls(field: string): string {
 const variantEaceRc4: FreeGpsVariant = {
     name: "E-ACE luckychip RC4 (Type 4)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < EACE_MIN_PAYLOAD) return false;
         const fix = payload.getUint8(36);
         if (fix !== 0x41 && fix !== 0x56) return false; // 'A'/'V'
@@ -1405,7 +1381,7 @@ const AKASO6_MIN_PAYLOAD = 108; // accel triple ends at literal 108
 const variantAkasoType6: FreeGpsVariant = {
     name: "Akaso plain-float (Type 6)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < AKASO6_MIN_PAYLOAD) return false;
         if (payload.getUint8(56) !== 0x41) return false; // 'A' (no 'V' form upstream)
         const ns = payload.getUint8(64);
@@ -1495,7 +1471,7 @@ const NOVATEK_DOUBLES_MIN_PAYLOAD = 132; // ExifTool dirLen >= 0x88 atom-relativ
 const variantNovatekDoubles: FreeGpsVariant = {
     name: "Novatek doubles (Type 12)",
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < NOVATEK_DOUBLES_MIN_PAYLOAD) return false;
         if (payload.getUint32(56, true) !== 0x41) return false; // 'A' int32-boxed (no 'V' form upstream)
         const ns = payload.getUint8(68);
@@ -1603,7 +1579,7 @@ const variantNextbase512gBE: FreeGpsVariant = {
     name: "Nextbase 512G $S (Type 20)",
     needsWholeAtom: true,
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         if (payload.byteLength < NEXTBASE_RECORD_START + NEXTBASE_RECORD_MIN_BYTES) return false;
         if (payload.getUint16(NEXTBASE_RECORD_START, false) !== NEXTBASE_RECORD_MAGIC) return false;
         // A 2-byte magic alone is too weak ('$S' occurs in random bytes once
@@ -1784,7 +1760,7 @@ const variantInnovv: FreeGpsVariant = {
     name: "INNOVV Type 13",
     needsWholeAtom: true,
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         return hasInnovvRecordSignature(payload, INNOVV_MARKER_OFFSET);
     },
     parse(payload, mp4Filename, _options, boxSizeDword) {
@@ -1912,7 +1888,7 @@ const variantAtc: FreeGpsVariant = {
     name: "ATC Type 11",
     needsWholeAtom: true,
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         return hasAsciiAt(payload, ATC_MARKER_OFFSET, "ATC");
     },
     parse(payload, mp4Filename, _options, boxSizeDword) {
@@ -1998,7 +1974,7 @@ const variantXbht: FreeGpsVariant = {
     name: "XBHT XB702 Type 14",
     needsWholeAtom: true,
     matches(payload) {
-        if (!startsWithMagic(payload)) return false;
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
         // Upstream anchors the block on the FIRST record sitting at literal 12.
         return hasXbhtRecordSignature(payload, 12);
     },
@@ -2045,15 +2021,6 @@ const FREE_GPS_VARIANTS: readonly FreeGpsVariant[] = [
     variantNovatekDoubles,
     variantNextbase512gBE,
 ];
-
-/** Returns true if the DataView starts with the 8-byte "freeGPS " magic. */
-function startsWithMagic(dv: DataView): boolean {
-    if (dv.byteLength < FREE_GPS_MAGIC_BYTES.length) return false;
-    for (let i = 0; i < FREE_GPS_MAGIC_BYTES.length; i++) {
-        if (dv.getUint8(i) !== FREE_GPS_MAGIC_BYTES[i]) return false;
-    }
-    return true;
-}
 
 /**
  * Parses one freeGPS block through the strict variant registry. Returns the
@@ -2332,7 +2299,7 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
         }
         // Fallback runs ONLY for blocks every strict variant rejected, so
         // supported formats can never regress through it.
-        if (!startsWithMagic(payload)) return [];
+        if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return [];
 
         // Unclaimed block: while the file is still in its cold-start window,
         // remember its datetime candidates for the jump measurement.
@@ -2485,7 +2452,7 @@ export async function streamScanFreeGps(
     let blockIndex = 0;
 
     const checkAbort = (): void => {
-        if (signal?.aborted) throw new DOMException("freegps scan aborted", "AbortError");
+        throwIfCancelled(signal, "freegps scan aborted");
     };
     const lastHit = (): number => (hits.length > 0 ? hits[hits.length - 1]! : -1);
     // A linear run resumes right past the last literal, not past its payload
@@ -2996,7 +2963,7 @@ async function parseEntries(
     // Between batches we sequentially parse and push results to keep
     // skipped[].line in deterministic order.
     for (let batchStart = preflightCount; batchStart < entries.length; batchStart += STRUCTURAL_PARALLEL_DEPTH) {
-        if (signal?.aborted) throw new DOMException("freegps structural scan aborted", "AbortError");
+        throwIfCancelled(signal, "freegps structural scan aborted");
         const batchEnd = Math.min(batchStart + STRUCTURAL_PARALLEL_DEPTH, entries.length);
         const batchBuffers = await Promise.all(
             entries

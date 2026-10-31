@@ -22,6 +22,7 @@
 //     lands accel*g at ~0 at rest for ANY mounting/model. Same DC-block the
 //     subtitle-embedded accel formats use.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import { createLogger } from "../../log.js";
 import { RX_70MAI } from "../filename/_patterns.js";
 import { subtractAxisMean } from "../internal/accel-baseline.js";
@@ -102,9 +103,9 @@ export const csv70maiPrimitive: Primitive = {
         // mid-parse signal.aborted is invisible - the contract documents
         // this. We catch the most common case: abort fired before we even
         // started, or while we were waiting on file.text().
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const text = await file.file.text();
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         return parseSingleLog(text, file.file.name, file.relativePath || file.file.name, file.sourceKey);
     },
 };

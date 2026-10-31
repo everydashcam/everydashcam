@@ -8,7 +8,7 @@
 // the orchestrator converts to true UTC via per-fingerprint TZ estimation.
 
 import type { VendorFile } from "../types.js";
-import { utcMillisecondsFromParts } from "../internal/calendar.js";
+import { isDashcamYear, parseCompactTimestamp, utcMillisecondsFromParts } from "../internal/calendar.js";
 import {
     RX_DATETIME_CHANNEL_TS,
     RX_70MAI,
@@ -51,7 +51,7 @@ import {
 import type { FilenameTimeTechnique } from "./types.js";
 
 function ymdhms(y: number, mo: number, d: number, h: number, mi: number, s: number): Date | null {
-    if (y < 2000 || y > 2099) return null;
+    if (!isDashcamYear(y)) return null;
     const ms = utcMillisecondsFromParts(y, mo, d, h, mi, s);
     return ms === null ? null : new Date(ms);
 }
@@ -61,14 +61,9 @@ function ymdhms(y: number, mo: number, d: number, h: number, mi: number, s: numb
 // year split off). Once both runs are isolated the slice math is identical,
 // so every such technique funnels through here instead of repeating it.
 function ymdHmsFromSplit(ymd: string, hms: string): Date | null {
-    return ymdhms(
-        Number(ymd.slice(0, 4)),
-        Number(ymd.slice(4, 6)),
-        Number(ymd.slice(6, 8)),
-        Number(hms.slice(0, 2)),
-        Number(hms.slice(2, 4)),
-        Number(hms.slice(4, 6)),
-    );
+    if (!isDashcamYear(Number(ymd.slice(0, 4)))) return null;
+    const seconds = parseCompactTimestamp(ymd + hms);
+    return seconds === null ? null : new Date(seconds * 1000);
 }
 
 const novatekViofoTime: FilenameTimeTechnique = {
@@ -241,7 +236,7 @@ const escortTime: FilenameTimeTechnique = {
         const d = Number(date.slice(6, 8));
         const h = Number(hhmm.slice(0, 2));
         const mi = Number(hhmm.slice(2, 4));
-        if (y < 2000 || y > 2099) return null;
+        if (!isDashcamYear(y)) return null;
         const ms = utcMillisecondsFromParts(y, mo, d, h, mi, 0);
         return ms === null ? null : new Date(ms);
     },

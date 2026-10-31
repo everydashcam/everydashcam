@@ -47,12 +47,13 @@
 // preserve later gaps. private_stream_2 has no PTS, so a delay before the
 // first PES remains unrecoverable.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types.js";
 import { KMH_TO_MS, KNOTS_TO_MS, WrongFormatError } from "../types.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
-import { utcSecondsFromYmdhms } from "./freegps.js";
+import { isDashcamYear, utcSecondsFromYmdhms } from "./calendar.js";
 import type { Mp4Index } from "./mp4-index.js";
-import { collectPesBody, createTsPesScanPlanner, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import { pesStartPid, collectPesBody, createTsPesScanPlanner, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
 
 const RECORD_SIZE = 44;
 
@@ -87,11 +88,10 @@ export function findNovatekTsGpsPid(bytes: Uint8Array): number | null {
     const limit = bytes.length - TS_SIZE;
     for (let off = 0; off <= limit; off += TS_SIZE) {
         if (bytes[off] !== TS_SYNC) return null;
-        const b1 = bytes[off + 1]!;
-        if ((b1 & 0x40) === 0) continue; // PUSI=0
+        const pid = pesStartPid(bytes, off);
+        if (pid === null) continue;
         const bodyOff = pesBodyOffset(bytes, off);
         if (bodyOff === null) continue;
-        const pid = ((b1 & 0x1f) << 8) | bytes[off + 2]!;
         if (isNovatekTsRecordAt(bytes, bodyOff, off + TS_SIZE)) return pid;
         // B4K: the anchor sits past the end of this packet, so the pre-filter
         // decides whether reassembly is worth it. Without this branch the whole
@@ -139,7 +139,7 @@ function isNovatekTsRecordAt(bytes: Uint8Array, off: number, end: number): boole
     const mo = u32le(bytes, off + 16);
     const d = u32le(bytes, off + 20);
     if (h > 23 || mi > 59 || s > 59) return false;
-    if (!((y <= 99 || (y >= 2000 && y <= 2099)) && mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) return false;
+    if (!((y <= 99 || isDashcamYear(y)) && mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) return false;
     return true;
 }
 
@@ -311,7 +311,7 @@ export async function extractNovatekTsGps(
     const planner = createTsPesScanPlanner(file.file, { pid: gpsPid, prefix: index?.headerBytes, signal });
     let range = await planner.next(0);
     while (range !== null) {
-        if (signal?.aborted) throw new DOMException("novatek-ts scan aborted", "AbortError");
+        throwIfCancelled(signal, "novatek-ts scan aborted");
         const { start, buf } = range;
         let off = 0;
         // Consecutive non-sync bytes seen while resyncing (see below).
@@ -327,15 +327,8 @@ export async function extractNovatekTsGps(
                 continue;
             }
             desyncRun = 0;
-            const b1 = buf[off + 1]!;
-            const pid = ((b1 & 0x1f) << 8) | buf[off + 2]!;
-            if (gpsPid !== null && pid !== gpsPid) {
-                off += TS_SIZE;
-                continue;
-            }
-            // Records live only in PES-start packets; continuations of the
-            // GPS PES carry zero padding (see header).
-            if ((b1 & 0x40) === 0) {
+            const pid = pesStartPid(buf, off);
+            if (pid === null || (gpsPid !== null && pid !== gpsPid)) {
                 off += TS_SIZE;
                 continue;
             }

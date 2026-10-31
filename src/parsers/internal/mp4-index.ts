@@ -1,3 +1,4 @@
+import { readMp4BoxHeader } from "./mp4-box-header.js";
 // Mp4Index - single pass over the moov section of a file, results shared by
 // all plugins during classifyByContent and parseVideoEmbeddedGps. Eliminates
 // repeated re-reads of the header (previously each plugin called loadHeader
@@ -681,19 +682,10 @@ async function freeBoxOpensWithTelemetryChildren(
     try {
         for (let i = 0; i < FREE_CHILD_WALK_MAX && pos + 8 <= end; i++) {
             const hdr = new DataView(await file.slice(pos, Math.min(pos + 16, end)).arrayBuffer());
-            if (hdr.byteLength < 8) return false;
-            let size = hdr.getUint32(0);
-            let header = 8;
-            const type = String.fromCharCode(hdr.getUint8(4), hdr.getUint8(5), hdr.getUint8(6), hdr.getUint8(7));
+            const box = readMp4BoxHeader(hdr, 0, end - pos);
+            if (box === null) return false;
+            const { type, size } = box;
             if (!/^[\x20-\x7e]{4}$/.test(type)) return false;
-            if (size === 1) {
-                if (hdr.byteLength < 16) return false;
-                size = hdr.getUint32(8) * 0x100000000 + hdr.getUint32(12);
-                header = 16;
-            } else if (size === 0) {
-                size = end - pos;
-            }
-            if (size < header || pos + size > end) return false;
             if (type === "gps " || type === "3gf ") return true;
             pos += size;
         }

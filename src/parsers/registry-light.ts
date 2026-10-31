@@ -1,3 +1,4 @@
+import { nearestIndexBy } from "../sorted-search.js";
 // Dependency-light subset of registry.ts, safe to import from EAGER main-thread
 // modules (ingest plumbing, progressive recording reads). registry.ts itself imports every
 // primitive and internal extractor (~90 KB min), so a value import of it from
@@ -191,18 +192,5 @@ export function mergeAccelSamples(
 }
 
 function nearestSampleIndex(samples: readonly AccelSample[], startUtc: number, target: number): number {
-    if (samples.length === 0) return -1;
-    let lo = 0;
-    let hi = samples.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (startUtc + samples[mid]!.msSinceStart / 1000 < target) lo = mid + 1;
-        else hi = mid;
-    }
-    if (lo > 0) {
-        const prevDist = target - (startUtc + samples[lo - 1]!.msSinceStart / 1000);
-        const curDist = startUtc + samples[lo]!.msSinceStart / 1000 - target;
-        if (prevDist < curDist) return lo - 1;
-    }
-    return lo;
+    return nearestIndexBy(samples, target, (sample) => startUtc + sample.msSinceStart / 1000, "later");
 }

@@ -1,3 +1,4 @@
+import { matchesBytesAt } from "./byte-search.js";
 // Enciphered, fuzzed LigoGPS in an MPEG-TS private PES. Layout and evidence:
 // docs/format-ligogps-ts-pes.md.
 //
@@ -26,7 +27,15 @@ import {
     LIGO_TS_DIALECT_OPTIONS,
     parseLigoGpsRecord,
 } from "./ligogps.js";
-import { collectPesBody, createTsPesScanPlanner, looksLikeMpegTs, pesBodyExtent, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import {
+    pesStartPid,
+    collectPesBody,
+    createTsPesScanPlanner,
+    looksLikeMpegTs,
+    pesBodyExtent,
+    TS_SIZE,
+    TS_SYNC,
+} from "./ts-walk.js";
 
 const LIGO_PES_STREAM_TYPE = 0x82;
 
@@ -54,14 +63,6 @@ const CHUNK_OFFSET = SETTLED_CHUNK_HEADER.length - 4;
 // field from asking for megabytes.
 const MAX_PES_BODY = 1024;
 
-function startsWithSettledHeader(bytes: Uint8Array, at: number, end: number): boolean {
-    if (at + SETTLED_CHUNK_HEADER.length > end) return false;
-    for (let i = 0; i < SETTLED_CHUNK_HEADER.length; i++) {
-        if (bytes[at + i] !== SETTLED_CHUNK_HEADER[i]) return false;
-    }
-    return true;
-}
-
 /**
  * GPS PID of the settled dialect in `headerBytes` (a prefix of the file), or
  * null. Requires a PMT entry of type 0x82 whose first PES in the prefix opens
@@ -77,16 +78,15 @@ export function findLigoGpsTsPesPid(headerBytes: Uint8Array): number | null {
     if (candidates.size === 0) return null;
     for (let off = 0; off + TS_SIZE <= headerBytes.length; off += TS_SIZE) {
         if (headerBytes[off] !== TS_SYNC) return null;
-        const flags = headerBytes[off + 1]!;
-        if ((flags & 0x40) === 0) continue;
-        const pid = ((flags & 0x1f) << 8) | headerBytes[off + 2]!;
+        const pid = pesStartPid(headerBytes, off);
+        if (pid === null) continue;
         if (!candidates.has(pid)) continue;
         const extent = pesBodyExtent(headerBytes, off);
         if (extent === null) continue;
         // The first PES of a candidate decides it; a stream that opens with a
         // different header is a different dialect even if later bytes match.
         const bodyEnd = Math.min(extent.bodyOff + extent.bodyLen, off + TS_SIZE);
-        if (startsWithSettledHeader(headerBytes, extent.bodyOff, bodyEnd)) return pid;
+        if (matchesBytesAt(headerBytes, extent.bodyOff, SETTLED_CHUNK_HEADER, bodyEnd)) return pid;
         candidates.delete(pid);
         if (candidates.size === 0) return null;
     }
@@ -128,8 +128,7 @@ export async function extractLigoGpsTsPes(
                 continue;
             }
             desyncRun = 0;
-            const flags = buf[off + 1]!;
-            if ((flags & 0x40) === 0 || (((flags & 0x1f) << 8) | buf[off + 2]!) !== pid) {
+            if (pesStartPid(buf, off) !== pid) {
                 off += TS_SIZE;
                 continue;
             }
@@ -151,7 +150,7 @@ export async function extractLigoGpsTsPes(
             // Reassembly includes the last TS packet's remaining payload;
             // bytes outside PES_packet_length cannot complete a short cipher.
             const body = assembled.body.subarray(0, extent.bodyLen);
-            if (!startsWithSettledHeader(body, 0, body.length)) {
+            if (!matchesBytesAt(body, 0, SETTLED_CHUNK_HEADER)) {
                 skip("ligogps pes header differs from the settled dialect", bytesToAscii(body.subarray(0, 24)));
                 continue;
             }

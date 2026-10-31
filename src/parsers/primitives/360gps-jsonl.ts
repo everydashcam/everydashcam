@@ -1,3 +1,5 @@
+import { throwIfCancelled } from "../../abort-signals.js";
+import { upperBoundBy } from "../../sorted-search.js";
 // Whole-card GPS log used by the 360CARDVR firmware family. The file is a
 // preallocated JSON-lines buffer: meaningful rows end at the first NUL byte,
 // and a `360GPSINFO` footer near EOF records the used-byte count.
@@ -9,7 +11,7 @@
 // emitted timeUnsynced + relStartSeconds so the normal video clock pipeline
 // anchors it without mistaking the camera-local timestamp for UTC.
 
-import { utcMillisecondsFromParts } from "../internal/calendar.js";
+import { parseCompactTimestamp, utcMillisecondsFromParts } from "../internal/calendar.js";
 import { KNOTS_TO_MS, type GpsRecord, type ParsedRecords, type SkippedLine, type VendorFile } from "../types.js";
 import { WrongFormatError } from "../types.js";
 import type { Primitive, PrimitiveParseContext, PrimitiveVideoRef } from "./types.js";
@@ -55,9 +57,9 @@ export const threeSixtyGpsJsonlPrimitive: Primitive = {
     },
 
     async parse(file: VendorFile, _index, signal, context): Promise<ParsedRecords> {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const text = await file.file.text();
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         return parseLog(text, file, context, signal);
     },
 };
@@ -90,7 +92,7 @@ function parseLog(
     let sampleIndex = 0;
 
     for (let i = 0; i < lines.length; i++) {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const raw = lines[i]!.trim();
         if (raw === "") continue;
 
@@ -181,20 +183,6 @@ function parseJsonRow(raw: string): { row: SourceRow } | { error: string } {
     };
 }
 
-function parseCompactTimestamp(value: string): number | null {
-    if (!/^\d{14}$/.test(value)) return null;
-    const ms = utcMillisecondsFromParts(
-        Number(value.slice(0, 4)),
-        Number(value.slice(4, 6)),
-        Number(value.slice(6, 8)),
-        Number(value.slice(8, 10)),
-        Number(value.slice(10, 12)),
-        Number(value.slice(12, 14)),
-        true,
-    );
-    return ms === null ? null : ms / 1000;
-}
-
 function parseLocalTime(value: string): number | null {
     const match = RX_LOCAL_TIME.exec(value);
     if (!match) return null;
@@ -222,7 +210,7 @@ function buildVideoSlots(names: readonly string[]): VideoSlot[] {
     for (const name of names) {
         const match = RX_VIDEO_NAME.exec(name);
         if (!match) continue;
-        const startNaiveSec = parseCompactTimestamp(match[1]!);
+        const startNaiveSec = parseCompactTimestamp(match[1]!, true);
         if (startNaiveSec === null) continue;
         let candidates = byStart.get(startNaiveSec);
         if (!candidates) {
@@ -307,15 +295,9 @@ function videoNamesForLog(source: VendorFile, videos: readonly PrimitiveVideoRef
 }
 
 function findVideoSlot(slots: readonly VideoSlot[], timestamp: number): VideoSlot | null {
-    let lo = 0;
-    let hi = slots.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (slots[mid]!.startNaiveSec <= timestamp) lo = mid + 1;
-        else hi = mid;
-    }
-    if (lo === 0) return null;
-    const slot = slots[lo - 1]!;
+    const index = upperBoundBy(slots, timestamp, (slot) => slot.startNaiveSec) - 1;
+    if (index < 0) return null;
+    const slot = slots[index]!;
     return timestamp < slot.endNaiveSec ? slot : null;
 }
 

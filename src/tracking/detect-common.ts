@@ -1,3 +1,4 @@
+import { rectangleIou } from "../rectangle-geometry.js";
 // Shared plumbing for the frame detectors (plate-detector.ts, face-detector.ts):
 // tile geometry, letterboxing into a fixed square model input, and IoU-greedy
 // suppression of overlapping boxes. Pure canvas/math, no ort - unit-testable.
@@ -120,13 +121,7 @@ export function packRgbPlanarNormalized(rgba: Uint8ClampedArray, target: Float32
 
 /** Intersection-over-union of two frame-pixel boxes. */
 export function iouOf(a: RawDetection, b: RawDetection): number {
-    const x1 = Math.max(a.x, b.x);
-    const y1 = Math.max(a.y, b.y);
-    const x2 = Math.min(a.x + a.w, b.x + b.w);
-    const y2 = Math.min(a.y + a.h, b.y + b.h);
-    const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-    const union = a.w * a.h + b.w * b.h - inter;
-    return union > 0 ? inter / union : 0;
+    return rectangleIou(a.x, a.y, a.w, a.h, b.x, b.y, b.w, b.h);
 }
 
 /** Preserve full score precision. Exact ties use geometry so processing tiles

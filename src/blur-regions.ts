@@ -1,3 +1,4 @@
+import { upperBoundBy } from "./sorted-search.js";
 // Blur-region tracks: user-marked rectangles over the video, blurred in the
 // exported clip (privacy: plates / faces). Pure logic shared by the UI editor,
 // the live preview and the transcode worker - keep it free of UI/DOM deps.
@@ -133,19 +134,7 @@ export function createBlurRegion(
 /** Index of the last keyframe with contentSec <= sec, or -1 when sec precedes
  *  all keyframes. Binary search - keyframes are kept sorted by upsertKeyframe. */
 function lowerKeyframeIndex(keyframes: readonly BlurKeyframe[], sec: number): number {
-    let lo = 0;
-    let hi = keyframes.length - 1;
-    let ans = -1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (keyframes[mid]!.contentSec <= sec) {
-            ans = mid;
-            lo = mid + 1;
-        } else {
-            hi = mid - 1;
-        }
-    }
-    return ans;
+    return upperBoundBy(keyframes, sec, (keyframe) => keyframe.contentSec) - 1;
 }
 
 /** Manual zones active at an export boundary also cover its retained preceding

@@ -3,6 +3,7 @@
 // the clip start but not its filename, so records carry a temporary
 // recordingAssociation until MP4 creation metadata becomes available.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import { forwardFillBearingsIfAllZero } from "../../parser.js";
 import { utcMillisecondsFromParts } from "../internal/calendar.js";
 import { parseNmeaText } from "../internal/nmea.js";
@@ -37,9 +38,9 @@ export const sectionedNmeaLogPrimitive: Primitive = {
     },
 
     async parse(file: VendorFile, _index, signal): Promise<ParsedRecords> {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const text = await file.file.text();
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         return parseSectionedNmeaLog(text, file, signal);
     },
 };
@@ -55,7 +56,7 @@ function parseSectionedNmeaLog(text: string, file: VendorFile, signal?: AbortSig
 
     const flush = (): void => {
         if (!current) return;
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
 
         // The source scope alone identifies one picker/drop, not one log. Keep
         // the path too so two card copies selected under one parent cannot

@@ -31,7 +31,7 @@
 // foreign-source-only. Fixtures: __fixtures__/supported-gps.
 
 import { type GpsRecord, KNOTS_TO_MS, type ParsedRecords, type SkippedLine } from "../types.js";
-import { utcSecondsFromYmdhms } from "./freegps.js";
+import { utcSecondsFromYmdhms } from "./calendar.js";
 
 /** Sync literal opening every record (and the LigoJSON udta payload). */
 export const LIGO_JSON_MARKER = "LIGOGPSINFO {";

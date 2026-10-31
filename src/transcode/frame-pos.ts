@@ -1,3 +1,5 @@
+import { wrapDegrees } from "../coordinates.js";
+import { upperBoundBy } from "../sorted-search.js";
 // Per-frame telemetry derivation for the burned-in overlays. The base
 // (lat/lon/speed/heading) comes from interpolatePosition; this module adds the
 // derived quantities the new widgets need - longitudinal/lateral G, trip
@@ -17,9 +19,6 @@ import { cumulativeDistanceKm, isValidGpsFix } from "../parser.js";
 
 /** Standard gravity (m/s^2) - converts m/s^2 to g. */
 const G = 9.80665;
-
-/** Earth mean radius (m) for haversine. */
-const EARTH_R = 6_371_000;
 
 /** Half-window (seconds) for the centered finite differences. ~1.5 s smooths
  *  the 1 Hz GPS sampling without lagging a real brake noticeably. */
@@ -56,14 +55,7 @@ export interface FramePos extends SpeedSample {
  *  short gaps keep the smooth interpolation. */
 export const FIX_TOLERANCE_SEC = 5;
 
-/** Great-circle distance between two lat/lon points, meters. */
-export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const toRad = Math.PI / 180;
-    const dLat = (lat2 - lat1) * toRad;
-    const dLon = (lon2 - lon1) * toRad;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
-    return 2 * EARTH_R * Math.asin(Math.min(1, Math.sqrt(a)));
-}
+export { haversineMeters } from "../coordinates.js";
 
 /**
  * Cumulative travelled distance (meters) at each record. Same length as
@@ -77,19 +69,7 @@ export function computeCumulativeDistanceM(records: GpsRecord[]): number[] {
 /** Index of the last record with unixSeconds <= target (binary search). -1 if
  *  target precedes the first record. */
 function lastLeq(records: GpsRecord[], target: number): number {
-    let lo = 0;
-    let hi = records.length - 1;
-    let ans = -1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >>> 1;
-        if (records[mid]!.unixSeconds <= target) {
-            ans = mid;
-            lo = mid + 1;
-        } else {
-            hi = mid - 1;
-        }
-    }
-    return ans;
+    return upperBoundBy(records, target, (record) => record.unixSeconds) - 1;
 }
 
 /**
@@ -161,9 +141,9 @@ function interpHeading(records: GpsRecord[], target: number): number {
     const span = b.unixSeconds - a.unixSeconds;
     if (span <= 0) return a.bearingDeg;
     const t = (target - a.unixSeconds) / span;
-    let d = b.bearingDeg - a.bearingDeg;
-    if (d > 180) d -= 360;
-    else if (d < -180) d += 360;
+    const rawDelta = b.bearingDeg - a.bearingDeg;
+    // Preserve the signed +180 tie used by the lateral-acceleration derivative.
+    const d = rawDelta === 180 ? 180 : wrapDegrees(rawDelta);
     let h = a.bearingDeg + d * t;
     if (h < 0) h += 360;
     if (h >= 360) h -= 360;
@@ -199,9 +179,8 @@ export function deriveGLat(records: GpsRecord[], target: number): number {
     if (!hasMeasuredSpeedWindow(records, target)) return 0;
     const hBefore = interpHeading(records, target - DERIV_HALF_WINDOW_SEC);
     const hAfter = interpHeading(records, target + DERIV_HALF_WINDOW_SEC);
-    let dh = hAfter - hBefore;
-    if (dh > 180) dh -= 360;
-    else if (dh < -180) dh += 360;
+    const rawDelta = hAfter - hBefore;
+    const dh = rawDelta === 180 ? 180 : wrapDegrees(rawDelta);
     const omega = (dh * (Math.PI / 180)) / (2 * DERIV_HALF_WINDOW_SEC); // rad/s
     const speed = speedAt(records, target);
     if (!hasMeasuredSpeed(speed)) return 0;

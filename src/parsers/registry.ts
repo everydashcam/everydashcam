@@ -17,6 +17,7 @@
 // primitives live in primitives/index.ts. Filename classification lives in
 // filename/index.ts and is called directly by ingest.ts / trips.ts.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { extendArray } from "../array-extend.js";
 import { createLogger } from "../log.js";
 import { forwardFillBearingsIfAllZero } from "../parser.js";
@@ -691,7 +692,7 @@ export async function dispatchParseVideoEmbeddedGps(
         }
     });
     await Promise.all(workers);
-    if (signal?.aborted) throw new DOMException("ingest aborted", "AbortError");
+    throwIfCancelled(signal, "ingest aborted");
 
     return {
         appliedExtractors: [...used],

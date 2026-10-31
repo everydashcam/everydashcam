@@ -1,3 +1,4 @@
+import { matchesBytesAt } from "./byte-search.js";
 // 70mai embedded freeGPS - the layout newer 4K 70mai models (A810, M500, ...)
 // write INSIDE the MP4, instead of the older $V02 CSV sidecar (csv-70mai).
 //
@@ -77,14 +78,6 @@ function isValidDdmm(ddmm: number, maxDegrees: number): boolean {
 // defensively so the parser is safe to call directly (tests, future callers).
 const MAGIC = [0x66, 0x72, 0x65, 0x65, 0x47, 0x50, 0x53, 0x20];
 
-function startsWithMagic(view: DataView): boolean {
-    if (view.byteLength < MAGIC.length) return false;
-    for (let i = 0; i < MAGIC.length; i++) {
-        if (view.getUint8(i) !== MAGIC[i]) return false;
-    }
-    return true;
-}
-
 /**
  * Whether the block is a 70mai-dialect freeGPS block. The signature is the
  * self-referential tag (u16@8 == u16@14, u16@10 == 0) plus an active/void byte
@@ -95,7 +88,7 @@ function startsWithMagic(view: DataView): boolean {
  */
 export function is70maiFreeGpsBlock(view: DataView): boolean {
     if (view.byteLength < MIN_BLOCK_LEN) return false;
-    if (!startsWithMagic(view)) return false;
+    if (!matchesBytesAt(view, 0, MAGIC)) return false;
     if (view.getUint16(OFF_TAG, true) !== view.getUint16(OFF_TAG_MIRROR, true)) return false;
     if (view.getUint16(OFF_TAG_ZERO, true) !== 0) return false;
     const active = view.getUint8(OFF_ACTIVE);

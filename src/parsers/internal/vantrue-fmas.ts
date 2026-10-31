@@ -42,7 +42,7 @@
 // for a whole second - records are deduped to the first per unixSeconds.
 
 import { type GpsRecord, MPH_TO_MS, type ParsedRecords, type VendorFile } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { loadTrackSampleBuffers, type Mp4Index, type TrackInfo } from "./mp4-index.js";
 
 // Decoder anchor; in every known record it sits at sample offset 0x48.
@@ -117,7 +117,7 @@ export function decodeFmasSample(dv: DataView, mp4Filename: string): GpsRecord |
     const hour = dv.getUint8(magic + 28);
     const minute = dv.getUint8(magic + 29);
     const second = dv.getUint8(magic + 30);
-    if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    if (!isDashcamYear(year) || month < 1 || month > 12 || day < 1 || day > 31) return null;
     if (hour > 23 || minute > 59 || second > 59) return null;
 
     // Status re-checked magic-relative (same byte as the gate when the magic

@@ -1,3 +1,5 @@
+import { wrapDegrees } from "../../coordinates.js";
+import { matchesBytesAt } from "./byte-search.js";
 // Extractor for the `gps0` tail atom (Navitel R-series and compatible
 // Ambarella-tail firmware). Format-agnostic utility wrapped by the
 // navitel-tail primitive.
@@ -65,7 +67,7 @@
 import { fillForwardBearings, haversineKm } from "../../parser.js";
 import { KMH_TO_MS, KNOTS_TO_MS } from "../types.js";
 import type { AccelSample, GpsRecord, ParsedRecords, SkippedLine } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 import { removeGravityBaselineOrZero } from "./accel-baseline.js";
 import { decodeXorAsciiGpsText, decryptXorAscii } from "./xor-ascii-gps.js";
@@ -217,7 +219,7 @@ export function parseIditDate(payload: Uint8Array): IditDate | null {
     const minute = Number(m[5]);
     const second = Number(m[6]);
     if (![year, month, day, hour, minute, second].every(Number.isFinite)) return null;
-    if (year < 2000 || year > 2099) return null;
+    if (!isDashcamYear(year)) return null;
     if (utcMillisecondsFromParts(year, month, day, hour, minute, second) === null) return null;
     return { year, month, day, hour, minute, second };
 }
@@ -552,7 +554,7 @@ const RAW_COURSE_WIN_MARGIN_DEG = 10;
 
 /** Shortest angular distance between two headings, degrees in [0, 180]. */
 function angularGapDeg(a: number, b: number): number {
-    return Math.abs(((a - b + 540) % 360) - 180);
+    return Math.abs(wrapDegrees(a - b));
 }
 
 /** Middle element of a sorted copy; callers guarantee a non-empty array. */
@@ -698,7 +700,7 @@ function isMiltonaGps0Dialect(gps0Bytes: Uint8Array, payloadStart: number): bool
     const hasMagicAt = (recordStart: number): boolean => {
         const off = payloadStart + recordStart + MILTONA_MAGIC_OFFSET;
         if (off + MILTONA_MAGIC.length > gps0Bytes.byteLength) return false;
-        return MILTONA_MAGIC.every((b, i) => gps0Bytes[off + i] === b);
+        return matchesBytesAt(gps0Bytes, off, MILTONA_MAGIC);
     };
     if (!hasMagicAt(0)) return false;
     // Single-record payloads: one magic match is all the evidence there is.
@@ -718,7 +720,7 @@ const LAMAX_S9_SIGNATURE_OFFSET = 2;
 function isLamaxS9Gps0Dialect(gps0Bytes: Uint8Array, payloadStart: number): boolean {
     const off = payloadStart + LAMAX_S9_SIGNATURE_OFFSET;
     if (off + LAMAX_S9_SIGNATURE.length > gps0Bytes.byteLength) return false;
-    return LAMAX_S9_SIGNATURE.every((b, i) => gps0Bytes[off + i] === b);
+    return matchesBytesAt(gps0Bytes, off, LAMAX_S9_SIGNATURE);
 }
 
 // Record stride of that dialect - upstream re-checks the signature at every

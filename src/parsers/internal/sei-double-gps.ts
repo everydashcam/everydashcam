@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../../abort-signals.js";
 import { fillForwardBearings } from "../../parser.js";
 import { estimateSpeedSegments, type SpeedEstimationPoint } from "./position-speed.js";
 import type { GpsRecord, ParsedRecords, VendorFile } from "../types.js";
@@ -68,7 +69,7 @@ export async function extractSeiDoubleGps(
     const baseUnix = index.createdUtc?.getTime() ?? file.file.lastModified;
 
     for (let i = 0; i < buffers.length; i++) {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         const view = new DataView(buffers[i]!);
         if (!hasPacketHeader(view) || (!isFixPacket(view) && !isNoFixPacket(view))) {
             skipped.push({ line: i + 1, raw: `<sei sample ${i + 1}>`, reason: "invalid sei gps packet" });

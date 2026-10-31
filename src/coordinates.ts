@@ -54,3 +54,35 @@ export function projectTrackToViewport(
     const offsetY = (height - spanY * scale) / 2;
     return projected.map(([x, y]) => [offsetX + (x - minX) * scale, offsetY + (y - minY) * scale]);
 }
+
+/**
+ * Haversine great-circle distance in km. Mean Earth radius 6371 km.
+ * Ellipsoidal model is unnecessary given GPS fix accuracy.
+ */
+export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R_KM = 6371;
+    const toRad = (deg: number): number => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** Great-circle distance in meters, using the same mean radius as trip distances. */
+export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    return haversineKm(lat1, lon1, lat2, lon2) * 1000;
+}
+
+/** Computes a maplibre zoom level so the visible diameter (across viewportWidthPx)
+ *  is ~diameterKm. Uses 78271.5, the meters-per-pixel-at-zoom-0 for MapLibre's
+ *  512 px tiles - NOT the 256-tile 156543.03. With the 256 constant the zoom came
+ *  out one level too high (2x too zoomed in), so a "100 m" slot actually showed
+ *  ~50 m. */
+export function zoomForDiameterKm(lat: number, diameterKm: number, viewportWidthPx: number): number {
+    // Floor the DIAMETER at 1 metre (not 1 km). Clamping the kilometre value
+    // collapsed the entire 100 m..1 km slider range to a single 1 km zoom.
+    const diameterM = Math.max(1, diameterKm * 1000);
+    const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
+    const metersPerPx = diameterM / viewportWidthPx;
+    return Math.log2((78271.5 * cosLat) / metersPerPx);
+}

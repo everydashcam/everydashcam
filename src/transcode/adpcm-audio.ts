@@ -1,3 +1,5 @@
+import { throwIfCancelled } from "../abort-signals.js";
+import { upperBoundBy } from "../sorted-search.js";
 // Transcode-side reader for Mio/Navman MiVue audio, which is IMA ADPCM (WAVE
 // 0x11) in a QuickTime `ms ` sample entry. mediabunny does not recognise the
 // codec (getCodec() -> null) and cannot stream-copy it, so we decode it
@@ -176,7 +178,7 @@ export async function openAdpcmAudio(file: File): Promise<AdpcmAudioReader | nul
         let emitted = 0;
         let firstAddDone = false;
         for (let b = bi0; b < bi1; b += DECODE_BATCH_BLOCKS) {
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             const bEnd = Math.min(b + DECODE_BATCH_BLOCKS, bi1);
             const blocks = await readChunkRanges(file, ranges!, b, bEnd, signal);
 
@@ -195,7 +197,7 @@ export async function openAdpcmAudio(file: File): Promise<AdpcmAudioReader | nul
             // Emit ~1 s AudioSamples; each carries its first frame's mapped
             // timestamp, the rest follow at the sample rate -> monotonic.
             for (let f = clipStart; f < clipEnd; f += sampleRate) {
-                if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 const n = Math.min(sampleRate, clipEnd - f);
                 const local = (f - batchStartFrame) * channels;
                 const data = pcm.subarray(local, local + n * channels);
@@ -258,14 +260,8 @@ function clampFrame(frame: number, lo: number, hi: number): number {
 
 /** Last block index `i` with `cumFrames[i] <= frame` (binary search). */
 function blockIndexForFrame(cumFrames: readonly number[], frame: number): number {
-    let lo = 0;
-    let hi = cumFrames.length - 2; // last entry is the total, not a block start
-    while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (cumFrames[mid]! <= frame) lo = mid;
-        else hi = mid - 1;
-    }
-    return Math.max(0, lo);
+    // The final cumulative count is a sentinel, never a block start.
+    return Math.max(0, Math.min(cumFrames.length - 2, upperBoundBy(cumFrames, frame, (count) => count) - 1));
 }
 
 /**
@@ -285,7 +281,7 @@ async function readChunkRanges(
         for (;;) {
             const i = next++;
             if (i >= to) return;
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             const r = ranges[i]!;
             const buf = await file.slice(r.offset, r.offset + r.length).arrayBuffer();
             out[i - from] = new Uint8Array(buf);

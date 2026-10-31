@@ -31,7 +31,7 @@
 
 import type { AccelSample, GpsRecord, ParsedRecords, SkippedLine } from "../types.js";
 import { KNOTS_TO_MS } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 
 const CHUNK_HEADER_SIZE = 8;
@@ -108,7 +108,7 @@ function parseGpsRecord(view: DataView, at: number, mp4Filename: string): GpsRec
     const hour = view.getUint8(at + 0x1d);
     const minute = view.getUint8(at + 0x1e);
     const second = view.getUint8(at + 0x1f);
-    if (year < 2000 || year > 2099) return "fields-invalid";
+    if (!isDashcamYear(year)) return "fields-invalid";
     const timestampMs = utcMillisecondsFromParts(year, month, day, hour, minute, second);
     if (timestampMs === null) return "fields-invalid";
 

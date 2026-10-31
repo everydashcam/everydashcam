@@ -54,7 +54,7 @@
 
 import type { GpsRecord, ParsedRecords, SkippedLine } from "../types.js";
 import { ddmmToDegrees } from "./ddmm.js";
-import { utcSecondsFromYmdhms } from "./freegps.js";
+import { utcSecondsFromYmdhms } from "./calendar.js";
 import type { Mp4Index } from "./mp4-index.js";
 import { type Box, iterBoxes } from "./mp4-walker.js";
 

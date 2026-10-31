@@ -29,7 +29,7 @@ import { findTsGpsTrailer, isTsGpsTrailerTerminator, TS_TRAILER_SLOTS_OFFSET } f
 import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types.js";
 import { KNOTS_TO_MS, WrongFormatError } from "../types.js";
 import { removeGravityBaselineInUnknownUnits } from "./accel-baseline.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { findByteSequence } from "./byte-search.js";
 import { loadSamples, readSampleTable } from "./mp4-walker.js";
 import type { Mp4Index } from "./mp4-index.js";
@@ -251,7 +251,7 @@ export function parseLigoGpsRecord(
     const minute = Number(dtMatch[5]);
     const second = Number(dtMatch[6]);
     if (![year, month, day, hour, minute, second].every(Number.isFinite)) return null;
-    if (year < 2000 || year > 2099) return null;
+    if (!isDashcamYear(year)) return null;
     const timestampMs = utcMillisecondsFromParts(year, month, day, hour, minute, second);
     if (timestampMs === null) return null;
 

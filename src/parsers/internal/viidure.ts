@@ -1,3 +1,4 @@
+import { matchesBytesAt } from "./byte-search.js";
 import { type GpsRecord, KMH_TO_MS } from "../types.js";
 import { utcMillisecondsFromParts } from "./calendar.js";
 
@@ -7,7 +8,7 @@ const RECORD =
     /^Viidure(20\d{2})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2}) ([NS]):(\d+(?:\.\d+)?) ([EW]):(\d+(?:\.\d+)?) (\d+(?:\.\d+)?) km\/h (\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (\d+) x:(-?\d+(?:\.\d+)?) y:(-?\d+(?:\.\d+)?) z:(-?\d+(?:\.\d+)?)$/;
 
 export function hasViidureBody(body: Uint8Array): boolean {
-    return MAGIC.every((byte, i) => body[i] === byte);
+    return matchesBytesAt(body, 0, MAGIC);
 }
 
 export function parseViidureBody(body: Uint8Array, mp4Filename: string): GpsRecord | null {

@@ -3,6 +3,7 @@
 // cancelled ingest stops at the seam instead of parsing a file nobody is
 // waiting for - the checks live here so a handler cannot forget one of them.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import type { VendorFile } from "../types.js";
 
 /** Reads a sidecar's text, optionally limited to a prefix, with the standard abort seams. */
@@ -24,5 +25,5 @@ export async function readSidecarBytes(file: VendorFile, signal?: AbortSignal): 
 // Hand-rolled instead of the native signal.throwIfAborted() to keep the
 // exact DOMException message the handlers have always thrown.
 function throwIfAborted(signal?: AbortSignal): void {
-    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
 }

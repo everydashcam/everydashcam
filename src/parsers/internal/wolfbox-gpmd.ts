@@ -38,7 +38,7 @@
 // observation), so stts durations must not be trusted here.
 
 import { type GpsRecord, KNOTS_TO_MS, type ParsedRecords, type SkippedLine, type VendorFile } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { ddmmToDegrees } from "./ddmm.js";
 import { findTrackBySampleFormat, loadTrackSampleBuffers, type Mp4Index, type TrackInfo } from "./mp4-index.js";
 
@@ -116,8 +116,7 @@ export function detectWolfboxVariant(dv: DataView): WolfboxVariant | null {
             day <= 31 &&
             month >= 1 &&
             month <= 12 &&
-            year >= 2000 &&
-            year <= 2099 &&
+            isDashcamYear(year) &&
             validHms(hour, minute, second)
         ) {
             return "block2-exiftool";
@@ -149,7 +148,7 @@ function decodeVariantB(dv: DataView, mp4Filename: string): GpsRecord | null {
     const hour = dv.getUint32(B_OFF_TIME, true);
     const minute = dv.getUint32(B_OFF_TIME + 4, true);
     const second = dv.getUint32(B_OFF_TIME + 8, true);
-    if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2000 || year > 2099) return null;
+    if (day < 1 || day > 31 || month < 1 || month > 12 || !isDashcamYear(year)) return null;
     if (!validHms(hour, minute, second)) return null;
 
     const lat = ddmmToDegrees(rational(dv, B_OFF_LAT, 1));

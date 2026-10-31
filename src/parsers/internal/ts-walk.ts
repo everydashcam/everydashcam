@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../../abort-signals.js";
 // Shared MPEG-TS packet/PES plumbing. Three GPS formats ride private PES
 // streams in TS containers (novatek-ts, juscar-ts, ts-pes-gps) and all of them
 // need to step packets and locate the PES body; the two whose records outgrow
@@ -12,6 +13,13 @@
 
 export const TS_SIZE = 188;
 export const TS_SYNC = 0x47;
+
+/** PID of a payload-unit-start packet, or null for a continuation. The caller
+ * has already checked packet bounds and sync using its own resync policy. */
+export function pesStartPid(bytes: Uint8Array, offset: number): number | null {
+    const flags = bytes[offset + 1]!;
+    return (flags & 0x40) === 0 ? null : ((flags & 0x1f) << 8) | bytes[offset + 2]!;
+}
 
 /** Cheap container gate: two aligned sync bytes reject non-TS carriers while
  * keeping detection independent of the filename and extension. */
@@ -209,8 +217,7 @@ function findPesStarts(buf: Uint8Array, start: number, pid: number): PesStartHit
             continue;
         }
         desyncRun = 0;
-        const b1 = buf[off + 1]!;
-        if ((b1 & 0x40) !== 0 && (((b1 & 0x1f) << 8) | buf[off + 2]!) === pid) {
+        if (pesStartPid(buf, off) === pid) {
             found.push({ abs: start + off, cc: buf[off + 3]! & 0x0f });
         }
         off += TS_SIZE;
@@ -244,7 +251,7 @@ export function createTsPesScanPlanner(
     let pending: TsScanRange | null = null;
 
     const read = async (start: number, end: number): Promise<Uint8Array> => {
-        if (signal?.aborted) throw new DOMException("ts scan aborted", "AbortError");
+        throwIfCancelled(signal, "ts scan aborted");
         // The probe is the same length as a chunk, so the leading chunk comes
         // from memory with the same boundary a file read would have had; a
         // range reaching past the probe is read whole from the file.

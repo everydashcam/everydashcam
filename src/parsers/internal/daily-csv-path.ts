@@ -1,4 +1,4 @@
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { parseCompactTimestamp } from "./calendar.js";
 
 export interface DailyCsvVideoName {
     startLocalSec: number;
@@ -12,16 +12,7 @@ export interface DailyCsvVideoPath extends DailyCsvVideoName {
 
 /** Camera-local calendar fields represented without applying the host timezone. */
 export function parseDailyCsvTimestamp(value: string): number | null {
-    if (!/^\d{14}$/.test(value)) return null;
-    const ms = utcMillisecondsFromParts(
-        Number(value.slice(0, 4)),
-        Number(value.slice(4, 6)),
-        Number(value.slice(6, 8)),
-        Number(value.slice(8, 10)),
-        Number(value.slice(10, 12)),
-        Number(value.slice(12, 14)),
-    );
-    return ms === null ? null : ms / 1000;
+    return parseCompactTimestamp(value);
 }
 
 /** Duration suffixes are unpadded; padded counters in this layout also occur

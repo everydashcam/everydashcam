@@ -13,6 +13,7 @@
 // stalls on large cards. The worker also hands moov bytes straight through to
 // GPS extraction, avoiding a second cold-storage read.
 
+import { throwIfCancelled } from "./abort-signals.js";
 import type { IndexerWorkerContract } from "./workers/indexer-protocol.js";
 
 import { createLogger } from "./log.js";
@@ -188,7 +189,7 @@ export async function indexAllMp4Files(
             requests.push(
                 (async () => {
                     while (cursor < containerScans.length) {
-                        if (signal?.aborted) throw new DOMException("ingest aborted", "AbortError");
+                        throwIfCancelled(signal, "ingest aborted");
                         const file = containerScans[cursor++]!;
                         await requestIndexBatch([file], 1, withMoovBytes, progress, signal);
                     }

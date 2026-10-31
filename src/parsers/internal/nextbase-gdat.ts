@@ -32,7 +32,7 @@
 // both are accepted here.
 
 import { type GpsRecord, MPH_TO_MS, type ParsedRecords, type SkippedLine } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { parseIsoCalendarTime } from "./calendar.js";
 
 /**
  * Base64 of a JSON object starts "e" + one of w/x/y/z: `{` alone fixes the
@@ -147,8 +147,6 @@ function decodeBase64Json(payload: Uint8Array): string | null {
     }
 }
 
-const ISO_DATETIME_RX = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
-
 /**
  * ISO-shaped datetime -> unix seconds. Assembled through Date.UTC rather than
  * Date.parse on purpose: for a date-time with no zone, Date.parse applies the
@@ -158,31 +156,8 @@ const ISO_DATETIME_RX = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\
  */
 function parseIsoDatetime(value: unknown): number | null {
     if (typeof value !== "string") return null;
-    const m = ISO_DATETIME_RX.exec(value.trim());
-    if (!m) return null;
-
-    const [, y, mo, d, h, mi, s, fraction = "", zone] = m;
-    const year = Number(y);
-    const month = Number(mo);
-    const day = Number(d);
-    const hour = Number(h);
-    const minute = Number(mi);
-    const second = Number(s);
-    const timestampMs = utcMillisecondsFromParts(year, month, day, hour, minute, second);
-    if (timestampMs === null) return null;
-    const fractionalSeconds = fraction === "" ? 0 : Number(fraction);
-    if (!Number.isFinite(fractionalSeconds)) return null;
-    let seconds = timestampMs / 1000 + fractionalSeconds;
-    if (zone && zone !== "Z") {
-        const sign = zone.startsWith("-") ? -1 : 1;
-        const digits = zone.slice(1).replace(":", "");
-        const offsetHours = Number(digits.slice(0, 2));
-        const offsetMinutePart = Number(digits.slice(2));
-        if (offsetHours > 23 || offsetMinutePart > 59) return null;
-        const offsetMinutes = offsetHours * 60 + offsetMinutePart;
-        seconds -= sign * offsetMinutes * 60;
-    }
-    return seconds;
+    const parsed = parseIsoCalendarTime(value);
+    return parsed === null ? null : parsed.baseMilliseconds / 1000 + parsed.fractionalSeconds - parsed.offsetSeconds;
 }
 
 /** JSON number or numeric string -> number; null for anything else. */

@@ -1,3 +1,4 @@
+import { nearestIndexBy } from "../../sorted-search.js";
 // RVMI metadata-track extraction. Vendor-agnostic utility used in genericPlugin
 // as one of the fallback attempts for files exported through RegistratorViewer.
 //
@@ -280,18 +281,5 @@ function oleDaysToUtcUnixSec(oleDays: number): number {
 
 /** Binary search for the accel sample nearest to the target unixSeconds. */
 function nearestAccelIndex(accels: ReadonlyArray<{ unixSeconds: number }>, target: number): number {
-    if (accels.length === 0) return -1;
-    let lo = 0;
-    let hi = accels.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (accels[mid]!.unixSeconds < target) lo = mid + 1;
-        else hi = mid;
-    }
-    if (lo > 0) {
-        const prevDist = target - accels[lo - 1]!.unixSeconds;
-        const curDist = accels[lo]!.unixSeconds - target;
-        if (prevDist < curDist) return lo - 1;
-    }
-    return lo;
+    return nearestIndexBy(accels, target, (sample) => sample.unixSeconds, "later");
 }

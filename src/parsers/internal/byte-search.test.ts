@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { findByteSequence } from "./byte-search.js";
+import { findByteSequence, matchesBytesAt } from "./byte-search.js";
 import { findFreeGpsOffsets, hasFreeGpsMarker } from "./freegps.js";
 
 const fixture = readFileSync(
@@ -36,6 +36,12 @@ describe("byte marker search", () => {
         expect(findByteSequence(view.subarray(1), marker)).toBe(-1);
         expect(findByteSequence(view.subarray(0, marker.length - 1), marker)).toBe(-1);
         expect(findByteSequence(view, marker, view.length)).toBe(-1);
+        const dataView = new DataView(view.buffer, view.byteOffset, view.byteLength);
+        expect(matchesBytesAt(view, 0, marker)).toBe(true);
+        expect(matchesBytesAt(dataView, 0, marker)).toBe(true);
+        expect(matchesBytesAt(dataView, 0, marker, marker.length - 1)).toBe(false);
+        expect(matchesBytesAt(view, 0, marker, marker.length - 1)).toBe(false);
+        expect(matchesBytesAt(view, -1, marker)).toBe(false);
     });
 
     it("continues after a matching prefix and finds adjacent markers", () => {

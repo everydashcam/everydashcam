@@ -24,6 +24,7 @@
 // ad-hoc copy can slip through. Same-source, same-metadata re-drops still match
 // its session identity; retained raw aliases remain valid comparison sources.
 
+import { throwIfCancelled } from "./abort-signals.js";
 import { cameraFingerprint } from "./parsers/camera-fingerprint.js";
 import {
     classifyFilenameTimelapse,
@@ -130,7 +131,7 @@ async function sameSampledContent(a: File, b: File, readProbe: ProbeReader, sign
         const end = Math.min(a.size, start + PROBE_BYTES);
         // Settle both reads before moving on, even if one fails immediately.
         const [chunkA, chunkB] = await Promise.allSettled([readProbe(a, start, end), readProbe(b, start, end)]);
-        if (signal?.aborted) throw new DOMException("ingest aborted", "AbortError");
+        throwIfCancelled(signal, "ingest aborted");
         for (const chunk of [chunkA, chunkB]) {
             if (chunk.status === "rejected" && chunk.reason instanceof Error && chunk.reason.name === "AbortError") {
                 throw chunk.reason;
@@ -174,7 +175,7 @@ export async function dropDuplicateFiles(
     alreadyLoaded: VideoWithRecordingCopies[],
     signal?: AbortSignal,
 ): Promise<DedupResult> {
-    if (signal?.aborted) throw new DOMException("ingest aborted", "AbortError");
+    throwIfCancelled(signal, "ingest aborted");
     const keyCache = new WeakMap<File, string>();
     const keyOf = (file: File): string => {
         const cached = keyCache.get(file);
@@ -343,7 +344,7 @@ export async function dropDuplicateFiles(
         const uniques: VendorFile[] = loaded ? [...loaded] : [];
         const readProbe = createProbeReader();
         for (const vf of ordered) {
-            if (signal?.aborted) throw new DOMException("ingest aborted", "AbortError");
+            throwIfCancelled(signal, "ingest aborted");
             let duplicateOf: VendorFile | null = null;
             for (const unique of uniques) {
                 // A path is only identity inside one source, and dashcams reuse
@@ -364,7 +365,7 @@ export async function dropDuplicateFiles(
                             // failure. If none match, indexing reports the error.
                             equal = false;
                         }
-                        if (signal?.aborted) throw new DOMException("ingest aborted", "AbortError");
+                        throwIfCancelled(signal, "ingest aborted");
                         if (equal) break;
                     }
                 }

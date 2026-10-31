@@ -23,6 +23,8 @@
 
 import type { VideoCodec } from "mediabunny";
 
+import { readMp4BoxHeader } from "./mp4-box-header.js";
+
 import { createLogger } from "../../log.js";
 
 const loadSamplesLog = createLogger("load-samples");
@@ -78,25 +80,10 @@ export function findBox(dv: DataView, start: number, end: number, type: string):
 export function* iterBoxes(dv: DataView, start: number, end: number): Generator<Box> {
     let pos = start;
     while (pos + 8 <= end) {
-        let size = dv.getUint32(pos);
-        const t = String.fromCharCode(
-            dv.getUint8(pos + 4),
-            dv.getUint8(pos + 5),
-            dv.getUint8(pos + 6),
-            dv.getUint8(pos + 7),
-        );
-        let header = 8;
-        if (size === 1) {
-            if (pos + 16 > end) return;
-            const hi = dv.getUint32(pos + 8);
-            const lo = dv.getUint32(pos + 12);
-            size = hi * 0x100000000 + lo;
-            header = 16;
-        } else if (size === 0) {
-            size = end - pos;
-        }
-        if (size < header || pos + size > end) return; // corrupt box - stop
-        yield { type: t, start: pos, end: pos + size, payloadStart: pos + header };
+        const box = readMp4BoxHeader(dv, pos, end - pos);
+        if (box === null) return;
+        const { type, size, headerSize } = box;
+        yield { type, start: pos, end: pos + size, payloadStart: pos + headerSize };
         pos += size;
     }
 }
@@ -980,27 +967,9 @@ export async function findMoovInFile(file: File): Promise<FoundMoov | null> {
     while (pos + 8 <= fileSize) {
         const probeBytes = await file.slice(pos, Math.min(pos + HEADER_PROBE, fileSize)).arrayBuffer();
         const dv = new DataView(probeBytes);
-        if (dv.byteLength < 8) return null;
-
-        let size = dv.getUint32(0);
-        let header = 8;
-        const type = String.fromCharCode(dv.getUint8(4), dv.getUint8(5), dv.getUint8(6), dv.getUint8(7));
-
-        if (size === 1) {
-            // 64-bit largesize in the next 8 bytes of the header (16-byte header).
-            if (dv.byteLength < 16) return null;
-            header = 16;
-            const hi = dv.getUint32(8);
-            const lo = dv.getUint32(12);
-            size = hi * 0x100000000 + lo;
-        } else if (size === 0) {
-            // Box extends to end of file.
-            size = fileSize - pos;
-        }
-
-        // size must cover its own header (16 for a 64-bit box) or the walk
-        // desyncs when pos advances by fewer bytes than the header consumed.
-        if (size < header || pos + size > fileSize) return null; // corrupt
+        const box = readMp4BoxHeader(dv, 0, fileSize - pos);
+        if (box === null) return null;
+        const { type, size } = box;
 
         if (type === "moov") {
             const moovBuf = await file.slice(pos, pos + size).arrayBuffer();
@@ -1045,33 +1014,13 @@ export async function listTopLevelBoxes(file: File): Promise<TopLevelBox[]> {
     while (pos + 8 <= fileSize) {
         const probeBytes = await file.slice(pos, Math.min(pos + HEADER_PROBE, fileSize)).arrayBuffer();
         const dv = new DataView(probeBytes);
-        if (dv.byteLength < 8) break;
-
-        let size = dv.getUint32(0);
-        let header: 8 | 16 = 8;
-        const type = String.fromCharCode(dv.getUint8(4), dv.getUint8(5), dv.getUint8(6), dv.getUint8(7));
-
-        // A type outside printable ASCII is not a box - it is trailing junk
-        // (or a non-ISOBMFF vendor trailer). Stop like on any corrupt header
-        // so lastTopLevelBoxEnd marks where the trailer begins. Without this,
-        // a zero-padded trailer (size 0 + NUL type reads as "box to EOF" -
-        // Beferich LigoGPS trailer) would swallow the whole trailing region.
+        const box = readMp4BoxHeader(dv, 0, fileSize - pos);
+        if (box === null) break;
+        const { type, size, headerSize } = box;
+        // Non-printable types mark vendor trailers, including zero padding.
+        // Keep this stricter gate out of the generic in-memory walker.
         if (!/^[\x20-\x7e]{4}$/.test(type)) break;
-
-        if (size === 1) {
-            if (dv.byteLength < 16) break;
-            header = 16;
-            const hi = dv.getUint32(8);
-            const lo = dv.getUint32(12);
-            size = hi * 0x100000000 + lo;
-        } else if (size === 0) {
-            size = fileSize - pos;
-        }
-
-        // size must cover its own header (16 for a 64-bit box) - see findMoovInFile.
-        if (size < header || pos + size > fileSize) break;
-
-        out.push({ type, offset: pos, size, headerSize: header });
+        out.push({ type, offset: pos, size, headerSize });
         pos += size;
     }
     return out;

@@ -81,7 +81,7 @@
 
 import { haversineKm } from "../../parser.js";
 import { KMH_TO_MS, type GpsRecord, type ParsedRecords, type SkippedLine, type VendorFile } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { ddmmToDegrees } from "./ddmm.js";
 import { getFirstSampleOfTrack, type Mp4Index, type TrackInfo } from "./mp4-index.js";
 import { loadSamples, readMediaTimescale, readSampleStartsInTicks, readSampleTable } from "./mp4-walker.js";
@@ -347,7 +347,7 @@ export function localDateAnchorMsFromFilename(name: string): number | null {
     const year = Number(m[1]);
     const month = Number(m[2]);
     const day = Number(m[3]);
-    if (year < 2000 || year > 2099) return null;
+    if (!isDashcamYear(year)) return null;
     return utcMillisecondsFromParts(year, month, day, 0, 0, 0);
 }
 
@@ -409,7 +409,7 @@ function localNaiveSecondsFromMatch(m: RegExpExecArray | null): number | null {
     const hour = Number(h);
     const minute = Number(mi);
     const second = Number(s);
-    if (year < 2000 || year > 2099) return null;
+    if (!isDashcamYear(year)) return null;
     const timestampMs = utcMillisecondsFromParts(year, month, day, hour, minute, second);
     return timestampMs === null ? null : timestampMs / 1000;
 }

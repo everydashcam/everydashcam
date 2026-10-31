@@ -3,7 +3,7 @@
 // Offsets here start at the freeGPS literal, four bytes after the box size.
 
 import { type GpsRecord, KNOTS_TO_MS } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import { ddmmToDegrees, isCoordinateInRange } from "./ddmm.js";
 
 const HEADER_LENGTH = 120;
@@ -36,7 +36,7 @@ export function readAsxtWallClock(payload: DataView): number | null {
     const status = payload.getUint8(68);
     if ((status !== 0x41 && status !== 0x56) || payload.getUint8(71) !== 0) return null;
     const year = payload.getUint32(144, true);
-    if (year < 2000 || year > 2099) return null;
+    if (!isDashcamYear(year)) return null;
     const milliseconds = utcMillisecondsFromParts(
         year,
         payload.getUint32(148, true),

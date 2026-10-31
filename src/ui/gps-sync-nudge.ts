@@ -1,3 +1,4 @@
+import { lowerBoundBy } from "../sorted-search.js";
 import { directoryGpsRecordsForFile, directoryGpsScopeKeysForFile } from "../camera-timezone.js";
 import { tripHasRawGps } from "../gps-sync.js";
 import { isValidGpsFix } from "../parser.js";
@@ -39,14 +40,7 @@ function validDirectoryTimes(candidate: VideoCandidate, log: ParsedLog): number[
 }
 
 function firstAtOrAfter(times: readonly number[], target: number): number {
-    let lo = 0;
-    let hi = times.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (times[mid]! < target) lo = mid + 1;
-        else hi = mid;
-    }
-    return lo;
+    return lowerBoundBy(times, target, (time) => time);
 }
 
 /** This is only a reason to offer calibration, never evidence to bind a route.

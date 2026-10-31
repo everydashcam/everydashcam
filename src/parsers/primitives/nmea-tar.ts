@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../../abort-signals.js";
 import { matchDdpaiVideo, parseDdpaiNmea, RX_DDPAI_GPX_NAME } from "../internal/ddpai-nmea.js";
 import { type ParsedRecords, type VendorFile, WrongFormatError } from "../types.js";
 import type { Primitive, PrimitiveVideoRef } from "./types.js";
@@ -73,7 +74,7 @@ export const nmeaTarPrimitive: Primitive = {
         let position = 0;
         let members = 0;
         while (position + TAR_BLOCK_BYTES <= file.file.size) {
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             const bytes = new Uint8Array(await file.file.slice(position, position + TAR_BLOCK_BYTES).arrayBuffer());
             // End-of-archive padding may itself be followed by recycled bytes.
             if (bytes.every((value) => value === 0)) break;
@@ -87,7 +88,7 @@ export const nmeaTarPrimitive: Primitive = {
             // Only flat, regular GPX entries are meaningful; never resolve archive paths.
             if (!header.isFile || !RX_DDPAI_GPX_NAME.test(header.name)) continue;
             const text = await file.file.slice(start, end).text();
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             if (!text.startsWith("$GPSCAMTIME ")) continue;
             members++;
             const owner =

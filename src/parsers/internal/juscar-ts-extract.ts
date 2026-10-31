@@ -1,3 +1,4 @@
+import { matchesBytesAt } from "./byte-search.js";
 // LigoGPS-TS extractor for Juscar dashcams (and any look-alike with a
 // plaintext LigoGPS stream embedded in an MPEG-TS private-data PES).
 //
@@ -33,9 +34,9 @@
 
 import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types.js";
 import { KMH_TO_MS, WrongFormatError } from "../types.js";
-import { utcMillisecondsFromParts } from "./calendar.js";
+import { isDashcamYear, utcMillisecondsFromParts } from "./calendar.js";
 import type { Mp4Index } from "./mp4-index.js";
-import { createTsPesScanPlanner, pesBodyExtent, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
+import { pesStartPid, createTsPesScanPlanner, pesBodyExtent, pesBodyOffset, TS_SIZE, TS_SYNC } from "./ts-walk.js";
 
 // PID seen in our only sample. Used as a fallback if the probe could not
 // find the real PID (e.g. on a heavily truncated file).
@@ -93,17 +94,8 @@ export async function extractJuscarTsGps(file: VendorFile, index: Mp4Index): Pro
                 off++;
                 continue;
             }
-            const b1 = buf[off + 1]!;
-            const pid = ((b1 & 0x1f) << 8) | buf[off + 2]!;
-            if (pid !== gpsPid) {
-                off += TS_SIZE;
-                continue;
-            }
-            // PES start only (PUSI=1). Continuation packets for our PES do not
-            // exist - one PES always fits inside one TS packet, see the file
-            // header. Skipping PUSI=0 guards against an accidental multi-packet
-            // PES in non-standard firmware (there we just get a skipped entry).
-            if ((b1 & 0x40) === 0) {
+            // This dialect fits in one PES-start packet; continuations carry no records.
+            if (pesStartPid(buf, off) !== gpsPid) {
                 off += TS_SIZE;
                 continue;
             }
@@ -178,9 +170,8 @@ function findGpsPidByProbe(headerBytes: Uint8Array): number | null {
             // We do not resync byte-by-byte in the probe, it is too expensive.
             return null;
         }
-        const b1 = headerBytes[off + 1]!;
-        if ((b1 & 0x40) === 0) continue;
-        const pid = ((b1 & 0x1f) << 8) | headerBytes[off + 2]!;
+        const pid = pesStartPid(headerBytes, off);
+        if (pid === null) continue;
         // Offset only: the probe reads a fixed-size signature, so an odd or
         // absent PES_packet_length must not cost it the stream.
         const bodyOff = pesBodyOffset(headerBytes, off);
@@ -188,7 +179,7 @@ function findGpsPidByProbe(headerBytes: Uint8Array): number | null {
         const tsEnd = off + TS_SIZE;
         if (bodyOff + 11 > tsEnd) continue;
 
-        if (matchAt(headerBytes, bodyOff, LIGO_MAGIC)) {
+        if (matchesBytesAt(headerBytes, bodyOff, LIGO_MAGIC)) {
             return pid;
         }
         // Plaintext: first byte is a lowercase ASCII letter, then up to 8
@@ -210,14 +201,6 @@ function findGpsPidByProbe(headerBytes: Uint8Array): number | null {
         }
     }
     return null;
-}
-
-function matchAt(buf: Uint8Array, off: number, pattern: readonly number[]): boolean {
-    if (off + pattern.length > buf.length) return false;
-    for (let i = 0; i < pattern.length; i++) {
-        if (buf[off + i] !== pattern[i]) return false;
-    }
-    return true;
 }
 
 /** PES body as ASCII up to the first NUL or to the end of the body. */
@@ -252,7 +235,7 @@ function parsePlaintextLine(text: string, mp4Filename: string): GpsRecord | null
     const hour = Number(m[5]);
     const minute = Number(m[6]);
     const second = Number(m[7]);
-    if (year < 2000 || year > 2099) return null;
+    if (!isDashcamYear(year)) return null;
     const timestampMs = utcMillisecondsFromParts(year, month, day, hour, minute, second);
     if (timestampMs === null) return null;
 

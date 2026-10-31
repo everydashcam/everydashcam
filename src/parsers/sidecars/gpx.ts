@@ -13,7 +13,7 @@ import type { GpsRecord, SidecarHandler, VendorFile } from "../types.js";
 import { escapeXml } from "../../escape.js";
 import { forwardFillBearingsIfAllZero, isValidGpsFix } from "../../parser.js";
 import { hasSpeed, isSameTrackSegment } from "../../gps-telemetry.js";
-import { utcMillisecondsFromParts } from "../internal/calendar.js";
+import { parseIsoCalendarTime } from "../internal/calendar.js";
 import { isCoordinateInRange } from "../internal/ddmm.js";
 import { matchByBasename } from "./_basename.js";
 import { readSidecarText } from "./_read.js";
@@ -22,7 +22,6 @@ import { type SpeedEstimationPoint, estimateSpeedSegments } from "../internal/po
 const RX_GPX = /\.gpx$/i;
 const GPX_EXTENSION_NS = "https://everydashcam.app/xmlschemas/gpx/1";
 const LEGACY_GPX_EXTENSION_NS = "https://dashcamigo.app/xmlschemas/gpx/1";
-const RX_GPX_TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/i;
 // A source segment can still contain a device-off gap. Do not treat an
 // unobserved span longer than this as evidence that the GPX overlaps a trip.
 const TIME_RANGE_GAP_SEC = 5 * 60;
@@ -180,29 +179,10 @@ function parseGpxTime(raw: string): { ms: number; hasExplicitTimezone: boolean }
     if (trimmed === "") return null;
     // 70mai-style trailing Z after an offset.
     const fixed = trimmed.replace(/([+-]\d{2}:?\d{2})Z$/i, "$1");
-    const m = RX_GPX_TIME.exec(fixed);
-    if (!m) return null;
-
-    const [, y, mo, d, h, mi, s, fraction = "", zone] = m;
-    const baseMs = utcMillisecondsFromParts(Number(y), Number(mo), Number(d), Number(h), Number(mi), Number(s), true);
-    if (baseMs === null) return null;
-
-    const fractionMs = fraction === "" ? 0 : Number(fraction) * 1000;
-    if (!Number.isFinite(fractionMs)) return null;
-    let ms = baseMs + fractionMs;
-
-    // GPX requires a zone, but some exports omit it. Treat that wall-clock as
-    // UTC deterministically; interpreting it in the browser's host zone makes
-    // the same file move when opened on another computer.
-    if (zone && zone.toUpperCase() !== "Z") {
-        const digits = zone.slice(1).replace(":", "");
-        const offsetHours = Number(digits.slice(0, 2));
-        const offsetMinutes = Number(digits.slice(2));
-        if (offsetHours > 23 || offsetMinutes > 59) return null;
-        const direction = zone.startsWith("-") ? -1 : 1;
-        ms -= direction * (offsetHours * 60 + offsetMinutes) * 60_000;
-    }
-    return Number.isFinite(ms) ? { ms, hasExplicitTimezone: zone !== undefined } : null;
+    const parsed = parseIsoCalendarTime(fixed, { allowLeapSecond: true, caseInsensitive: true });
+    if (!parsed) return null;
+    const ms = parsed.baseMilliseconds + parsed.fractionalSeconds * 1000 - parsed.offsetSeconds * 1000;
+    return Number.isFinite(ms) ? { ms, hasExplicitTimezone: parsed.hasExplicitTimezone } : null;
 }
 
 function elementsByLocalName(root: Document | Element, name: string): Element[] {
