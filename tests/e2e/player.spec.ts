@@ -846,7 +846,9 @@ test.describe("player", () => {
             const normalFloorSec = normalFloorPct * duration;
             const span = normalFloorSec / 4;
             const min = duration * 0.4;
-            st.chart.zoomScale("x", { min, max: min + span }, "none");
+            st.chart.options.scales.x.min = min;
+            st.chart.options.scales.x.max = min + span;
+            st.chart.update("none");
             st.chartZoomed = true;
             st.isPreviewZoom = true;
             return { min, span, normalFloorSec };

@@ -12,24 +12,17 @@
 import { hasSpeed, isSameTrackSegment } from "../gps-telemetry.js";
 import type { Chart, ChartDataset } from "chart.js";
 
-// Keep Chart.js and the zoom plugin behind the viewer's lazy boundary.
+// Keep Chart.js behind the viewer's lazy boundary.
 // chart-library registers only the components used by the timeline through
 // static named imports, so the bundler can remove the other chart types.
 // runTripUiInit awaits loadChart before initChart creates an instance.
 type ChartCtor = typeof import("chart.js")["Chart"];
 let ChartClass: ChartCtor | null = null;
 
-// Loads chart.js + the zoom plugin (in parallel) and registers the plugin once,
-// memoized. The dynamic import() is what moves both libs out of the eager graph.
+// The dynamic import keeps the chart runtime out of the eager graph.
 export async function loadChart(): Promise<void> {
     if (ChartClass) return;
-    const [chartMod, zoomMod] = await Promise.all([import("./chart-library.js"), import("chartjs-plugin-zoom")]);
-    // The plugin is the module's default export; normalize CJS/ESM interop the
-    // same way as the maplibre loader (.default present under raw CJS, absent
-    // when the bundler already unwrapped to the namespace).
-    const zoomPlugin = (zoomMod as { default?: unknown }).default ?? zoomMod;
-    chartMod.Chart.register(zoomPlugin as Parameters<typeof chartMod.Chart.register>[0]);
-    ChartClass = chartMod.Chart;
+    ChartClass = (await import("./chart-library.js")).Chart;
 }
 
 import { gMagnitude, hasAccelData } from "../events.js";
@@ -545,18 +538,20 @@ function syncTimelineAfterViewChange(): void {
 }
 
 /**
- * Applies a new xScale.min/max via zoomScale (same path as the drag-zoom plugin
- * so that state.chartZoomed stays accurate). fullView=true resets zoom to [0, durationSec].
+ * Applies the visible x window for every timeline gesture. Full view uses the
+ * active trip's bounds, so changing trips never restores a previous trip's range.
  */
 function applyChartXRange(min: number, max: number, fullView: boolean): void {
     if (!state.chart || !state.active) return;
     const trip = state.trips[state.active.trip];
     if (!trip) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const chartAny = state.chart as any;
+    const xOptions = state.chart.options.scales?.x;
+    if (!xOptions) return;
+    xOptions.min = fullView ? 0 : min;
+    xOptions.max = fullView ? trip.timeline.contentDurationSec || 1 : max;
+    state.chart.update("none");
     if (fullView) {
         if (state.chartZoomed) {
-            state.chart.resetZoom("none");
             state.chartZoomed = false;
             // No window left - clear the preview mark and the follow grace.
             state.isPreviewZoom = false;
@@ -564,10 +559,6 @@ function applyChartXRange(min: number, max: number, fullView: boolean): void {
             callbacks.onSelectionChange?.();
         }
     } else {
-        // The zoom plugin is registered (loadChart is awaited before initChart),
-        // so zoomScale is always present - same assumption as the unguarded
-        // resetZoom() calls on the fullView path and in resetTimelineZoom.
-        chartAny.zoomScale("x", { min, max }, "none");
         if (!state.chartZoomed) {
             state.chartZoomed = true;
             callbacks.onSelectionChange?.();
@@ -592,14 +583,7 @@ export function applyChartLayout(): void {
  *  when not zoomed. */
 export function resetTimelineZoom(): void {
     if (!state.chart || !state.chartZoomed) return;
-    state.chart.resetZoom();
-    state.chartZoomed = false;
-    state.isPreviewZoom = false;
-    resetFollowTimelinePause();
-    callbacks.onSelectionChange?.();
-    // Window snapped back to full view: re-anchor overlays, then repaint.
-    syncTimelineAfterViewChange();
-    state.chart.draw();
+    applyChartXRange(0, 0, true);
 }
 
 /**
@@ -850,7 +834,6 @@ export function initChart(cb: ChartCallbacks): void {
                     // speed curve; a semi-transparent fill would obscure the frames.
                     fill: false,
                     spanGaps: false,
-                    parsing: false,
                     // tension + monotone mode smooth the 1 Hz "fence" into a
                     // continuous curve. Monotone does not overshoot beyond the data
                     // (cubic spline can exceed max(y) at steep transitions).
@@ -868,7 +851,6 @@ export function initChart(cb: ChartCallbacks): void {
                     pointHitRadius: 8,
                     fill: false,
                     spanGaps: true,
-                    parsing: false,
                     tension: 0.3,
                     cubicInterpolationMode: "monotone",
                 },
@@ -876,6 +858,8 @@ export function initChart(cb: ChartCallbacks): void {
         },
         options: {
             animation: false,
+            // Decimation checks the chart-level option, not dataset.parsing.
+            parsing: false,
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: "nearest", intersect: false, axis: "x" },
@@ -916,12 +900,8 @@ export function initChart(cb: ChartCallbacks): void {
                 // Built-in legend disabled - it consumes vertical space at the top.
                 // Replaced by inline overlay .player-chart-legend in HTML.
                 legend: { display: false },
-                // Point decimation for long trips (1 h+ at 1 Hz GPS = 3600 pts;
-                // on a compressed chart that's just noise). LTTB preserves curve
-                // shape better than min-max, which left sharp spikes that turned the
-                // |G| curve into a "fence" even on full overview. Does not touch
-                // source data - only what is rendered. Accuracy improves automatically
-                // on zoom (decimation operates on the visible window).
+                // LTTB reduces dense finite series in the visible window. Trip
+                // rebuild disables it when gaps require every source point.
                 decimation: { enabled: true, algorithm: "lttb", samples: 200 },
                 // Tooltip plugin fully disabled. Previously `enabled:false, external:`
                 // still subscribed Chart.js to canvas mousemove and `notifyPlugins.afterEvent`
@@ -929,20 +909,6 @@ export function initChart(cb: ChartCallbacks): void {
                 // hovering). We now render tooltip DOM ourselves in processChartHover;
                 // Chart.js does no work on mousemove through the tooltip plugin.
                 tooltip: false,
-                zoom: {
-                    // All built-in zoom gestures are off. Zoom is driven entirely
-                    // by our custom wheel handler on the whole #player-chart wrap
-                    // (vertical wheel = zoom-around-cursor, horizontal = pan) via
-                    // applyChartXRange. The plugin stays registered only for its
-                    // zoomScale / resetZoom API. Drag-to-zoom is disabled (wheel-only interaction); this also frees plain
-                    // drag on the chart and stops it fighting the export range pull-tabs.
-                    zoom: {
-                        drag: { enabled: false },
-                        wheel: { enabled: false },
-                        pinch: { enabled: false },
-                        mode: "x",
-                    },
-                },
             },
             // options.onClick is intentionally not set: Chart.js v4 _handleEvent
             // only calls it when inChartArea === true (i.e. inside the
@@ -1085,10 +1051,7 @@ export function initChart(cb: ChartCallbacks): void {
     // event.relatedTarget tells us where it went.
     const stripCanvas = dom.chartInferredStrip;
     if (stripCanvas) {
-        // Skip forwarding when chart canvas is hidden via the view-menu:
-        // drag-to-zoom from chartjs-plugin-zoom would attach global
-        // mouse listeners and try to render a selection rect inside a
-        // hidden canvas - user sees nothing but the gesture persists.
+        // A hidden canvas has no hover geometry to forward to.
         const chartCanvasInteractive = (): boolean => !dom.chartCanvas.hidden;
         stripCanvas.addEventListener("mousemove", (ev) => {
             if (!chartCanvasInteractive()) return;
@@ -1105,10 +1068,6 @@ export function initChart(cb: ChartCallbacks): void {
                 dom.chartCanvas.dispatchEvent(new MouseEvent("mouseleave"));
             }
         });
-        // No mousedown forwarding: drag-to-zoom is disabled in the plugin
-        // (zoom.drag/wheel/pinch all enabled:false), so it removes its canvas
-        // mousedown handler - a forwarded synthetic mousedown would reach no
-        // consumer. Zoom is driven by the custom wheel handler instead.
     }
 
     // The single seek-click for the whole .player-chart row. Covers zones with
@@ -1145,7 +1104,6 @@ export function initChart(cb: ChartCallbacks): void {
     }
 
     // Double-click on the canvas resets zoom.
-    // Double-click is the standard gesture for chartjs-plugin-zoom.
     dom.chartCanvas.addEventListener("dblclick", resetTimelineZoom);
     // Keyboard activation has detail=0. When an action reaches its limit and
     // disables itself, keep focus on the remaining usable zoom control.
@@ -1802,15 +1760,14 @@ function initEventPopupListeners(): void {
             const chartX = xScale.getValueForPixel(cx);
             const bestEv = chartX == null ? null : findVisibleEventNearX(trip, chartX);
             if (!bestEv) return;
-            // Capture and stop propagation: otherwise chart.options.onClick fires
-            // and seeks the player to this point - unexpected when the user clicked a marker.
+            // Keep the enclosing chart-row click from seeking through the marker.
             e.stopImmediatePropagation();
             eventPopupSticky = true;
             const anchor = { x: rect.left + xScale.getPixelForValue(bestEv.relSec), y: rect.top + top };
             showEventPopup(bestEv, anchor);
         },
         true,
-    ); // capture-phase: before zoom-plugin's onClick
+    ); // Capture phase precedes the enclosing chart-row seek handler.
 
     // Esc / outside-click close the sticky popup.
     document.addEventListener("keydown", (e) => {
@@ -2089,11 +2046,8 @@ function syncSpeedAxisUnitLabel(): void {
 export function rebuildChartFromTrip(trip: Trip): void {
     if (!state.chart) return;
 
-    // Reset zoom first so the zoom plugin does not interpret the subsequent
-    // scales.x.min/max changes as "already zoomed". Without this the plugin
-    // remembered the old bounds and broke rendering.
+    // Rebuilding telemetry restores the active trip's full range below.
     if (state.chartZoomed) {
-        state.chart.resetZoom("none");
         state.chartZoomed = false;
         state.isPreviewZoom = false;
         resetFollowTimelinePause();
@@ -2120,12 +2074,38 @@ export function rebuildChartFromTrip(trip: Trip): void {
         accelData.push({ x, y: gMagnitude(r) });
     }
     state.chart.data.datasets[0]!.data = speedData;
-    const speedDataset = state.chart.data.datasets[0]! as ChartDataset<"line">;
-    speedDataset.segment = {
-        borderDash: (context) =>
-            estimatedIndices.has(context.p0DataIndex) || estimatedIndices.has(context.p1DataIndex) ? [4, 3] : [],
-    };
+    const speedDataset = state.chart.data.datasets[0]! as ChartDataset<"line", Array<{ x: number; y: number }>>;
+    if (estimatedIndices.size) {
+        // LTTB retains source point objects but changes their dataset indices.
+        // Count estimates over the original span so a discarded short estimate
+        // still marks the rendered segment that crosses it.
+        const sourceIndices = new Map(speedData.map((point, index) => [point, index]));
+        const estimatedCounts = new Uint32Array(speedData.length + 1);
+        for (let i = 0; i < speedData.length; i++) {
+            estimatedCounts[i + 1] = estimatedCounts[i]! + (estimatedIndices.has(i) ? 1 : 0);
+        }
+        speedDataset.segment = {
+            borderDash: (context) => {
+                const start = sourceIndices.get(speedDataset.data[context.p0DataIndex]!);
+                const end = sourceIndices.get(speedDataset.data[context.p1DataIndex]!);
+                return start !== undefined && end !== undefined && estimatedCounts[end + 1]! > estimatedCounts[start]!
+                    ? [4, 3]
+                    : [];
+            },
+        };
+    } else {
+        speedDataset.segment = undefined;
+    }
     state.chart.data.datasets[1]!.data = accelData;
+    // Chart.js LTTB averages y values without guarding NaN. It can lose a GPS
+    // break or emit undefined points when a bucket contains one. Keep gapped
+    // trips at source resolution; never draw a fabricated bridge across a gap.
+    const decimation = state.chart.options.plugins?.decimation;
+    if (decimation) {
+        decimation.enabled =
+            speedData.every((point) => Number.isFinite(point.y)) &&
+            accelData.every((point) => Number.isFinite(point.y));
+    }
     // options.scales.x comes as ScaleOptions | undefined; we know it was configured in initChart.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const xOpts = state.chart.options.scales!.x as any;

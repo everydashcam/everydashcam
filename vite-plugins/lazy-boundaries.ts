@@ -4,8 +4,7 @@ import type { OutputChunk } from "rolldown";
 import { normalizePath, type Plugin, type ResolvedConfig } from "vite";
 
 // Match source identities, not generated chunk names or minified signatures.
-const LAZY_PACKAGES =
-    /\/node_modules\/(maplibre-gl|chart\.js|chartjs-plugin-zoom|mediabunny|onnxruntime-web|@sentry\/[^/]+)\//;
+const LAZY_PACKAGES = /\/node_modules\/(maplibre-gl|chart\.js|mediabunny|onnxruntime-web|@sentry\/[^/]+)\//;
 // These metadata helpers are shared with the eager ingest/cache UI.
 const EAGER_PARSER_HELPERS = new Set([
     "cache-revisions.ts",
@@ -45,7 +44,7 @@ export function lazyBoundariesPlugin(): Plugin {
         generateBundle: {
             order: "post",
             handler(_options, bundle) {
-                const fail = (message: string): never => {
+                const fail: (message: string) => never = (message) => {
                     // closeBundle publishers can fail on missing output and mask the original error.
                     logger.error(`[lazy-boundaries] ${message}`);
                     return this.error(message);
@@ -62,7 +61,7 @@ export function lazyBoundariesPlugin(): Plugin {
                     if (eager.has(fileName)) return;
                     const path = [...parents, fileName];
                     const chunk = chunks.get(fileName);
-                    if (!chunk) return fail(`unbundled eager import: ${path.join(" -> ")}`);
+                    if (!chunk) fail(`unbundled eager import: ${path.join(" -> ")}`);
                     eager.set(fileName, path);
                     // Dynamic imports and separately built worker assets are deferred.
                     for (const imported of chunk.imports) visit(imported, path);

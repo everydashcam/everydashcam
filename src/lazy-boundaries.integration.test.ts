@@ -56,22 +56,17 @@ describe("landing lazy boundaries in bundled output", () => {
         expect(entry.dynamicImports.length).toBeGreaterThan(0);
     });
 
-    it.each([
-        "maplibre-gl",
-        "chart.js",
-        "chartjs-plugin-zoom",
-        "mediabunny",
-        "onnxruntime-web",
-        "@sentry/browser",
-        "@sentry/core",
-    ])("rejects %s even when it adds only a few bytes to the entry", async (packageName) => {
-        await expect(
-            bundleFixture({
-                "entry.js": `import { viewer } from './node_modules/${packageName}/index.js'; window.viewer = viewer;`,
-                [`node_modules/${packageName}/index.js`]: `export const viewer = 'heavy capability';`,
-            }),
-        ).rejects.toThrow(`contains node_modules/${packageName}/index.js`);
-    });
+    it.each(["maplibre-gl", "chart.js", "mediabunny", "onnxruntime-web", "@sentry/browser", "@sentry/core"])(
+        "rejects %s even when it adds only a few bytes to the entry",
+        async (packageName) => {
+            await expect(
+                bundleFixture({
+                    "entry.js": `import { viewer } from './node_modules/${packageName}/index.js'; window.viewer = viewer;`,
+                    [`node_modules/${packageName}/index.js`]: `export const viewer = 'heavy capability';`,
+                }),
+            ).rejects.toThrow(`contains node_modules/${packageName}/index.js`);
+        },
+    );
 
     it("follows transitive static chunk imports and reports the eager path", async () => {
         await expect(
