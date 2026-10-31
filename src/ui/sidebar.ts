@@ -42,7 +42,8 @@ import type { TripLoadingState } from "./format.js";
 import { setTripMeta, tripMetaFor } from "./annotations.js";
 import { isTripSortKey, state } from "./state.js";
 import { scheduleRecognitionHelp } from "./recognition-help.js";
-import { initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
+import { focusTripFilterStart, initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
+import { tripSearchText } from "./trip-search.js";
 import { readTripDensity, writeTripDensity } from "./trip-density-pref.js";
 import { dayStripSegments, foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
@@ -187,7 +188,7 @@ export function renderTrips(): void {
     // The physical order of state.trips is NOT changed - state.active.trip and state.expandedTrips indices depend on it.
     renderedFilterFacts.clear();
     const entries = state.trips.map((trip, idx) => {
-        const facts = tripFilterFacts(trip, tripMetaFor(trip));
+        const facts = filterFactsFor(trip);
         renderedFilterFacts.set(idx, facts);
         return { trip, idx, facts };
     });
@@ -923,6 +924,15 @@ function buildTripFileList(trip: Trip, tripIdx: number): HTMLUListElement {
 }
 
 /**
+ * Filter facts for one trip. The search text costs several date formats per
+ * trip, so it is built only while a search is active.
+ */
+function filterFactsFor(trip: Trip): TripFilterFacts {
+    const meta = tripMetaFor(trip);
+    return tripFilterFacts(trip, meta, state.tripFilters.query.trim() ? tripSearchText(trip, meta) : "");
+}
+
+/**
  * Rebuilds ONE trip card in place (no full-list teardown), used when a single
  * trip's metadata completes so the rest of the list does not flicker. Preserves
  * keyboard focus if it was inside this card.
@@ -931,7 +941,7 @@ export function refreshTripCard(tripIdx: number): void {
     const trip = state.trips[tripIdx];
     if (!trip) return;
     const before = renderedFilterFacts.get(tripIdx);
-    const after = tripFilterFacts(trip, tripMetaFor(trip));
+    const after = filterFactsFor(trip);
     // Metadata can establish a recording mode after the card first appears.
     // Reconcile even hidden trips so counts and membership stay current.
     if (
@@ -940,7 +950,8 @@ export function refreshTripCard(tripIdx: number): void {
         before.event !== after.event ||
         before.manual !== after.manual ||
         before.notes !== after.notes ||
-        before.favorites !== after.favorites
+        before.favorites !== after.favorites ||
+        before.searchText !== after.searchText
     ) {
         renderTrips();
         return;
@@ -1373,7 +1384,7 @@ export function initSidebar(cb: SidebarCallbacks): void {
         if (action === "reset-trip-filters") {
             resetTripFilters();
             renderTrips();
-            dom.tripFilterKinds.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+            focusTripFilterStart();
             return;
         }
         if (action === "toggle-group") {

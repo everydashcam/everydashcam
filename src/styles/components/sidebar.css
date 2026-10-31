@@ -23,6 +23,88 @@
 .trip-filters {
     margin-bottom: var(--dc-space-2);
 }
+/* Search field with the filter-tray toggle beside it. */
+.trip-search-bar {
+    display: flex;
+    align-items: stretch;
+    gap: var(--dc-space-1);
+}
+.trip-search {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+    min-width: 0;
+    height: 28px;
+    padding: 0 var(--dc-space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-sm);
+    background: var(--bg-elev-2);
+    color: var(--fg-mute);
+    cursor: text;
+}
+.trip-search:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    outline-offset: 0;
+}
+.trip-search svg {
+    flex: none;
+}
+.trip-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--dc-text-xs);
+}
+.trip-search input::placeholder {
+    color: var(--fg-mute);
+}
+.trip-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+.trip-filter-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+.trip-filter-toggle__count {
+    min-width: 15px;
+    padding: 0 4px;
+    border-radius: var(--dc-radius-pill);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-size: var(--dc-text-3xs);
+    font-weight: 700;
+    line-height: 15px;
+    font-variant-numeric: tabular-nums;
+}
+.trip-filter-tray {
+    margin-top: var(--dc-space-1);
+}
+.trip-filter-tray[hidden],
+.trip-filter-toggle__count[hidden] {
+    display: none;
+}
+@media (pointer: coarse) {
+    .trip-search {
+        height: 44px;
+    }
+    /* 16px keeps iOS from zooming the page when the field takes focus. */
+    .trip-search input {
+        font-size: var(--dc-text-lg);
+    }
+    .trip-filter-toggle {
+        min-width: 44px;
+    }
+}
 .trip-filter-kinds,
 .trip-filter-options {
     display: flex;

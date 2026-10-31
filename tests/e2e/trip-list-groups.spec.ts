@@ -115,3 +115,23 @@ test("switches to compact rows and keeps the choice after a reload", async ({ pa
     await page.reload();
     await expect(page.locator("#trip-density")).toHaveAttribute("aria-pressed", "true");
 });
+
+test("searches trips by date and clears the search with the filters", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await addRecordings(page);
+    await expect(page.locator("#trip-filter-tray")).toBeHidden();
+
+    await page.locator("#trip-search").fill("oct 1");
+    await expect(page.locator(".trip-month")).toHaveCount(1);
+    await expect(page.locator("#trip-filter-result")).toHaveText("Showing 1 of 6");
+    // A one-digit day matches only that day, not every date with a 1 in it.
+    await page.locator("#trip-search").fill("sep 1");
+    await expect(page.locator(".trip-filter-empty")).toBeVisible();
+
+    await page.locator(".trip-filter-empty .trip-filter-reset").click();
+    await expect(page.locator("#trip-search")).toHaveValue("");
+    await expect(page.locator(".trip-month")).toHaveCount(2);
+    await expect(page.locator("#trip-search")).toBeFocused();
+});

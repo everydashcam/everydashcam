@@ -451,7 +451,7 @@ export const state: AppState = {
     tripSortKey: "date",
     tripSortDir: "desc",
     tripListDensity: "cards",
-    tripFilters: { kind: "all", event: false, manual: false, notes: false, favorites: false },
+    tripFilters: { kind: "all", event: false, manual: false, notes: false, favorites: false, query: "" },
     preferredPlaybackRate: 1,
     preferredVolume: 1,
     preferredMuted: false,

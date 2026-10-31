@@ -39,11 +39,19 @@ const kind = (page: Page, value: string) => page.locator(`[data-trip-filter-kind
 const recording = (page: Page, value: string) => page.locator(`[data-trip-filter-toggle="${value}"]`);
 const cards = (page: Page) => page.locator("#trip-list li.trip[data-trip-index]");
 
+/** The filter chips live in a tray behind the toggle next to the search field. */
+async function openFilters(page: Page): Promise<void> {
+    const toggle = page.locator("#trip-filter-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+    await expect(page.locator("#trip-filter-tray")).toBeVisible();
+}
+
 test("filters whole trips by recording type without changing playback", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
     await addRecordings(page, filenames);
+    await openFilters(page);
     await expect(cards(page)).toHaveCount(5);
     await expect(kind(page, "normal")).toHaveText("Normal2");
     await expect(kind(page, "parking")).toHaveText("Parking2");
@@ -100,6 +108,7 @@ test("keeps available filters in two compact rows", async ({ page }) => {
         page,
         filenames.filter((name) => !name.startsWith("Manual/")),
     );
+    await openFilters(page);
     await cards(page).first().locator(".trip-fav").click();
     await page.locator("#notes-storage-modal").getByRole("button", { name: "Only in this browser" }).click();
     await expect(page.locator("#notes-storage-modal")).toBeHidden();
@@ -113,7 +122,7 @@ test("keeps available filters in two compact rows", async ({ page }) => {
     const events = await boxOf(page, '[data-trip-filter-toggle="event"]');
     const favorites = await boxOf(page, '[data-trip-filter-toggle="favorites"]');
     expect(favorites.y).toBe(events.y);
-    expect((await boxOf(page, "#trip-filters")).height).toBeLessThan(70);
+    expect((await boxOf(page, "#trip-filter-tray")).height).toBeLessThan(70);
     await expect(kind(page, "unknown")).toHaveCount(0);
     await expect(recording(page, "manual")).toBeHidden();
     await expect(recording(page, "notes")).toBeHidden();
@@ -125,6 +134,7 @@ test("keeps filters and keyboard focus while more recordings arrive", async ({ p
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
     await addRecordings(page, filenames);
+    await openFilters(page);
     await recording(page, "event").focus();
     await page.keyboard.press("Space");
     await expect(cards(page)).toHaveCount(2);
@@ -147,6 +157,7 @@ test("combines note and favorite filters and updates them after edits", async ({
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
     await addRecordings(page, filenames);
+    await openFilters(page);
     await kind(page, "normal").click();
     await expect(cards(page)).toHaveCount(2);
     const notedIndex = await cards(page).nth(0).getAttribute("data-trip-index");
@@ -206,6 +217,7 @@ test.describe("touch filters", () => {
             page,
             filenames.filter((name) => name !== "clip-no-gps.mp4"),
         );
+        await openFilters(page);
         await expect(kind(page, "unknown")).toHaveCount(0);
         await expect(kind(page, "normal")).toHaveText("Обычные2");
         await page.locator("#sidebar-resize").focus();

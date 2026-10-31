@@ -31,17 +31,32 @@ function filterButton(): HTMLButtonElement {
     return button;
 }
 
+/**
+ * Moves focus to the first visible filter control: the "All" chip while the
+ * tray is open, the search field otherwise. Used when the focused control
+ * disappears (a chip whose count dropped to zero) or after a reset.
+ */
+export function focusTripFilterStart(): void {
+    const target = dom.tripFilterTray.hidden
+        ? dom.tripSearch
+        : dom.tripFilterKinds.querySelector<HTMLButtonElement>("button");
+    target?.focus({ preventScroll: true });
+}
+
 function addToggleButton(filter: TripToggleFilter, onChange: () => void): void {
     const button = filterButton();
     button.dataset.tripFilterToggle = filter;
     button.addEventListener("click", () => {
         state.tripFilters[filter] = !state.tripFilters[filter];
         onChange();
-        if (button.hidden)
-            dom.tripFilterKinds.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+        if (button.hidden) focusTripFilterStart();
     });
     dom.tripFilterOptions.append(button);
 }
+
+// Typing re-renders the whole list; one render per pause keeps keystrokes
+// responsive on a long library.
+const SEARCH_DEBOUNCE_MS = 150;
 
 export function initSidebarFilters(onChange: () => void): void {
     for (const kind of Object.keys(kindLabels) as TripFilterKind[]) {
@@ -59,7 +74,21 @@ export function initSidebarFilters(onChange: () => void): void {
     dom.tripFilterReset.addEventListener("click", () => {
         resetTripFilters();
         onChange();
-        dom.tripFilterKinds.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+        focusTripFilterStart();
+    });
+    dom.tripFilterToggle.addEventListener("click", () => {
+        const open = dom.tripFilterTray.hidden;
+        dom.tripFilterTray.hidden = !open;
+        dom.tripFilterToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    let searchTimer: ReturnType<typeof setTimeout> | undefined;
+    dom.tripSearch.addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            if (state.tripFilters.query === dom.tripSearch.value) return;
+            state.tripFilters.query = dom.tripSearch.value;
+            onChange();
+        }, SEARCH_DEBOUNCE_MS);
     });
 }
 
@@ -69,6 +98,8 @@ export function resetTripFilters(): void {
     state.tripFilters.manual = false;
     state.tripFilters.notes = false;
     state.tripFilters.favorites = false;
+    state.tripFilters.query = "";
+    dom.tripSearch.value = "";
 }
 
 function updateButton(button: HTMLButtonElement, key: I18nKey, count: number, pressed: boolean): void {
@@ -112,4 +143,11 @@ export function syncSidebarFilters(facts: readonly TripFilterFacts[]): void {
     dom.tripFilterReset.textContent = t("sidebar.filter.reset");
     dom.tripFilterReset.hidden = !hasTripFilters(state.tripFilters);
     dom.tripFilterResult.parentElement!.hidden = !hasTripFilters(state.tripFilters);
+    // Chip filters only: the query is visible in its own field.
+    const { kind, event, manual, notes, favorites } = state.tripFilters;
+    const activeChips = Number(kind !== "all") + Number(event) + Number(manual) + Number(notes) + Number(favorites);
+    dom.tripFilterCount.hidden = activeChips === 0;
+    dom.tripFilterCount.textContent = String(activeChips);
+    const toggleLabel = t("sidebar.filter.toggle");
+    dom.tripFilterToggle.setAttribute("aria-label", activeChips > 0 ? `${toggleLabel} · ${activeChips}` : toggleLabel);
 }

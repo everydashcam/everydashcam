@@ -792,8 +792,36 @@
                 </div>
             </div>
             <div id="trip-filters" class="trip-filters" hidden>
-                <div id="trip-filter-kinds" class="trip-filter-kinds" role="group"></div>
-                <div id="trip-filter-options" class="trip-filter-options" role="group"></div>
+                <!-- Search stays in view; the filter chips live in a tray behind the
+                     toggle, which counts the active ones while the tray is closed. -->
+                <div class="trip-search-bar">
+                    <label class="trip-search">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                        </svg>
+                        <input id="trip-search" type="search" autocomplete="off" spellcheck="false"
+                               enterkeyhint="search" aria-controls="trip-list"
+                               data-i18n-attr="placeholder:sidebar.search.placeholder,aria-label:sidebar.search.label"
+                               placeholder="Name, note, date or file" aria-label="Search trips">
+                    </label>
+                    <button id="trip-filter-toggle" class="sort-btn trip-filter-toggle" type="button"
+                            aria-expanded="false" aria-controls="trip-filter-tray"
+                            data-i18n-attr="title:sidebar.filter.toggle"
+                            aria-label="Filters" title="Filters">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/>
+                            <path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/>
+                            <path d="M8 12H3"/>
+                        </svg>
+                        <span id="trip-filter-count" class="trip-filter-toggle__count" aria-hidden="true" hidden></span>
+                    </button>
+                </div>
+                <div id="trip-filter-tray" class="trip-filter-tray" hidden>
+                    <div id="trip-filter-kinds" class="trip-filter-kinds" role="group"></div>
+                    <div id="trip-filter-options" class="trip-filter-options" role="group"></div>
+                </div>
                 <div class="trip-filter-summary">
                     <span id="trip-filter-result" role="status" aria-live="polite" aria-atomic="true"></span>
                     <button id="trip-filter-reset" class="trip-filter-reset" type="button" hidden></button>
