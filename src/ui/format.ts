@@ -132,29 +132,45 @@ function tripTitleFormatters(
 }
 
 /**
- * Maps a trip's startUtc to a date bucket label for the sidebar separator.
- * The trip's calendar day is taken on the display clock (camera clock when
- * known); "how long ago" compares against the viewer's own calendar day -
- * that is what "today"/"yesterday" mean to the person looking at the screen.
- * `now` is injectable so bucket boundaries are deterministically testable.
- *
- * "Future" keys on the INSTANT, not on the calendar difference: a camera set
- * far enough east of the viewer puts a clip recorded hours ago on tomorrow's
- * camera-clock date, and that is a zone gap, not the clock skew the bucket
- * warns about.
+ * Month section heading for the date-sorted trip list ("October 2026"). The
+ * month and year are display-clock calendar fields (see trip-list-layout.ts).
+ * Locales that write month names in lower case get a capital first letter,
+ * because the heading starts a line.
  */
-export function dateBucketLabel(unixTs: number, cameraTzSec: number | null, now: Date = new Date()): string {
-    if (unixTs > now.getTime() / 1000) return t("buckets.future");
-    const d = displayClockDate(unixTs, cameraTzSec);
-    const n = displayClockDate(now.getTime() / 1000, null);
-    const ds = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-    const ns = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
-    const dayDiff = Math.round((ns - ds) / 86400000);
-    if (dayDiff <= 0) return t("buckets.today");
-    if (dayDiff === 1) return t("buckets.yesterday");
-    if (dayDiff < 7) return t("buckets.thisWeek");
-    if (dayDiff < 30) return t("buckets.thisMonth");
-    return t("buckets.earlier");
+export function formatMonthHeading(year: number, month: number): string {
+    const locale = getDateLocale();
+    const text = cachedDateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(
+        new Date(Date.UTC(year, month, 1)),
+    );
+    return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}
+
+/**
+ * Day section heading parts: the weekday and date of a display-clock calendar
+ * day, plus "Today" / "Yesterday" when that day is the viewer's today or
+ * yesterday - those words mean the calendar of the person at the screen.
+ * A camera-clock day ahead of the viewer (a camera set to a zone further east)
+ * gets no relative word, only its date. `now` is injectable for tests.
+ */
+export function formatDayHeading(
+    year: number,
+    month: number,
+    day: number,
+    now: Date = new Date(),
+): { relative: string | null; date: string } {
+    const date = cachedDateTimeFormat(getDateLocale(), {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+    }).format(new Date(Date.UTC(year, month, day)));
+    const today = displayClockDate(now.getTime() / 1000, null);
+    const dayDiff = Math.round(
+        (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) - Date.UTC(year, month, day)) /
+            86_400_000,
+    );
+    const relative = dayDiff === 0 ? t("buckets.today") : dayDiff === 1 ? t("buckets.yesterday") : null;
+    return { relative, date };
 }
 
 /** Which recording fact is still being resolved for a trip card. */

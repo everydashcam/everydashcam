@@ -272,10 +272,6 @@ export const esDict = {
 
     "buckets.today": "Hoy",
     "buckets.yesterday": "Ayer",
-    "buckets.thisWeek": "Esta semana",
-    "buckets.thisMonth": "Este mes",
-    "buckets.future": "En el futuro",
-    "buckets.earlier": "Antes",
 
     "plurals.trip": "{n, plural, one {# trayecto} other {# trayectos}}",
     "plurals.file": "{n, plural, one {# archivo} other {# archivos}}",

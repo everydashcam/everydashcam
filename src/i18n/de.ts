@@ -270,10 +270,6 @@ export const deDict = {
 
     "buckets.today": "Heute",
     "buckets.yesterday": "Gestern",
-    "buckets.thisWeek": "Diese Woche",
-    "buckets.thisMonth": "Diesen Monat",
-    "buckets.future": "In der Zukunft",
-    "buckets.earlier": "Früher",
 
     "plurals.trip": "{n, plural, one {# Fahrt} other {# Fahrten}}",
     "plurals.file": "{n, plural, one {# Datei} other {# Dateien}}",

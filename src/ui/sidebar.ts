@@ -1,4 +1,4 @@
-// Trip sidebar: aggregate stats, sorting, date-bucket separators, trip headers with chevron, and expanded frame list.
+// Trip sidebar: aggregate stats, sorting, month/day sections, trip headers with chevron, and expanded frame list.
 //
 // The only reverse dependency is click-to-play. To avoid a sidebar→player→sidebar cycle,
 // trip and exact-clip playback arrive as callbacks in initSidebar().
@@ -24,8 +24,9 @@ import {
     channelDisplayLabel,
     channelDisplayShortLabel,
     comparatorFor,
-    dateBucketLabel,
+    formatDayHeading,
     formatDuration,
+    formatMonthHeading,
     formatFileMeta,
     formatTripMeta,
     formatTripDistance,
@@ -38,6 +39,8 @@ import { setTripMeta, tripMetaFor } from "./annotations.js";
 import { isTripSortKey, state } from "./state.js";
 import { scheduleRecognitionHelp } from "./recognition-help.js";
 import { initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
+import { dayStripSegments, groupByMonthDay } from "./trip-list-layout.js";
+import type { TripListDay, TripListMonth, TripListNode } from "./trip-list-layout.js";
 
 interface SidebarCallbacks {
     /** Opens the first playable frame, tolerating a damaged leading clip. */
@@ -68,6 +71,7 @@ const STAR_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
 const PENCIL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`;
 const FILM_ICON = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>`;
 const ALERT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+const CARET_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="trip-group-toggle__caret"><path d="m6 9 6 6 6-6"/></svg>`;
 const INFO_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 const parsedIcons = new Map<string, Element>();
 
@@ -128,6 +132,16 @@ function seedCardHeight(card: HTMLElement, heights: ReadonlyMap<string, number>)
     const height = key === undefined ? undefined : heights.get(key);
     if (height !== undefined) card.style.setProperty(CARD_HEIGHT_PROPERTY, `auto ${height}px`);
 }
+
+// Month and day sections the user collapsed. Session-only: a reload starts
+// with every section open. Keys come from trip-list-layout ("m:2026-10").
+const collapsedGroups = new Set<string>();
+// Section key per rendered section <li>, kept off the DOM like recordingFocusKeys.
+const groupKeys = new WeakMap<Element, string>();
+// Recording identity of the active trip the list last revealed (revealActiveTrip).
+let revealedActiveKey: string | null = null;
+// Section ids only need to be unique within the document for aria-controls.
+let groupIdCounter = 0;
 
 /**
  * Drops the per-trip event-cycle cursor. Called from applyRegroup: the cursor is
@@ -214,35 +228,33 @@ export function renderTrips(): void {
         displayed = [...displayed.filter(isFavoriteEntry), ...displayed.filter((d) => !isFavoriteEntry(d))];
     }
 
-    // Date bucket separators ("Today · Yesterday · This week · ...") only make sense when sorting by date.
-    const showDateBuckets = state.tripSortKey === "date";
-    let lastBucket: string | null = null;
+    const appendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element): void => {
+        for (const { trip, idx } of entries) {
+            const card = buildTripCard(trip, idx);
+            seedCardHeight(card, cardHeights);
+            parent.appendChild(card);
+        }
+    };
     // Click handling is delegated in initSidebar (see dom.list listener). data-action attributes on header/chevron/file-li are sufficient.
 
-    displayed.forEach(({ trip, idx: tripIdx }, displayIdx) => {
-        // The floated favorites always get their own labelled section - in
-        // every sort mode, or they read as trips mysteriously out of order.
-        // Under date sort the rest gets date buckets; under other sorts a
-        // single "everything else" label closes the favorites group.
-        let bucket: string | null = null;
-        if (displayIdx < favoriteCount) {
-            bucket = t("sidebar.bucket.favorites");
-        } else if (showDateBuckets) {
-            bucket = dateBucketLabel(trip.startUtc, trip.cameraTzSec);
-        } else if (favoriteCount > 0) {
-            bucket = t("sidebar.bucket.others");
+    // The floated favorites always get their own labelled section - in every
+    // sort mode, or they read as trips mysteriously out of order.
+    if (favoriteCount > 0) {
+        dom.list.appendChild(buildListSeparator(t("sidebar.bucket.favorites")));
+        appendCards(displayed.slice(0, favoriteCount), dom.list);
+    }
+    const rest = displayed.slice(favoriteCount);
+    if (state.tripSortKey === "date") {
+        // Month and day sections only make sense in date order.
+        const nodes: TripListNode[] = rest.map(({ trip, idx }) => ({ kind: "trip", entry: { trip, tripIdx: idx } }));
+        for (const month of groupByMonthDay(nodes)) {
+            dom.list.appendChild(buildMonthSection(month, (entries, parent) => appendCards(entries, parent)));
         }
-        if (bucket !== null && bucket !== lastBucket) {
-            const sep = document.createElement("li");
-            sep.className = "trip-date-sep";
-            sep.textContent = bucket;
-            dom.list.appendChild(sep);
-            lastBucket = bucket;
-        }
-        const card = buildTripCard(trip, tripIdx);
-        seedCardHeight(card, cardHeights);
-        dom.list.appendChild(card);
-    });
+    } else {
+        // Under other sorts a single "everything else" label closes the favorites group.
+        if (favoriteCount > 0 && rest.length > 0) dom.list.appendChild(buildListSeparator(t("sidebar.bucket.others")));
+        appendCards(rest, dom.list);
+    }
 
     if (state.unindexed.size > 0) {
         const note = document.createElement("li");
@@ -250,6 +262,8 @@ export function renderTrips(): void {
         note.innerHTML = `<div class="trip-header"><div class="trip-title">${t("sidebar.unindexed.title")}</div><div class="trip-meta">${t("sidebar.unindexed.note", { n: state.unindexed.size })}</div></div><button type="button" class="recognition-help-link feedback-link" data-feedback-preset="load">${t("recognition.contact")}</button>`;
         dom.list.appendChild(note);
     }
+
+    revealActiveTrip();
 
     // Cards are in the DOM now - reconcile body.browsing and, on the mobile
     // browse -> watch transition, fire the list-into-icon collapse. Must be last:
@@ -263,6 +277,159 @@ export function renderTrips(): void {
     // Tell assistive tech the list is still updating while any card is provisional.
     dom.list.setAttribute("aria-busy", state.trips.some(tripHasPending) ? "true" : "false");
     scheduleRecognitionHelp();
+}
+
+type AppendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element) => void;
+
+/** A plain heading row between top-level groups (favorites / everything else). */
+function buildListSeparator(label: string): HTMLLIElement {
+    const sep = document.createElement("li");
+    sep.className = "trip-date-sep";
+    sep.textContent = label;
+    return sep;
+}
+
+function textSpan(className: string, text: string): HTMLSpanElement {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    return span;
+}
+
+/**
+ * A collapsible section <li>: a sticky header whose toggle button controls the
+ * nested list. The collapsed state comes from collapsedGroups, so a full
+ * re-render keeps what the user folded.
+ */
+function buildGroupSection(
+    key: string,
+    className: string,
+    toggleContent: readonly Node[],
+    headerExtra: Node | null,
+): { section: HTMLLIElement; list: HTMLUListElement } {
+    const section = document.createElement("li");
+    section.className = `trip-group ${className}`;
+    groupKeys.set(section, key);
+    const collapsed = collapsedGroups.has(key);
+    section.classList.toggle("is-collapsed", collapsed);
+    const header = document.createElement("div");
+    header.className = `trip-group__header ${className}__header`;
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "trip-group-toggle";
+    toggle.dataset.action = "toggle-group";
+    const listId = `trip-group-${++groupIdCounter}`;
+    toggle.setAttribute("aria-controls", listId);
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.append(cloneIcon(CARET_ICON), ...toggleContent);
+    header.appendChild(toggle);
+    if (headerExtra) header.appendChild(headerExtra);
+    const list = document.createElement("ul");
+    list.className = "trip-group__list";
+    list.id = listId;
+    section.append(header, list);
+    return { section, list };
+}
+
+function nodeTrips(nodes: readonly TripListNode[]): Trip[] {
+    return nodes.map((node) => node.entry.trip);
+}
+
+function buildMonthSection(month: TripListMonth, appendCards: AppendCards): HTMLLIElement {
+    const trips = month.days.flatMap((day) => nodeTrips(day.nodes));
+    const { section, list } = buildGroupSection(
+        month.key,
+        "trip-month",
+        [
+            textSpan("trip-group-toggle__label", formatMonthHeading(month.year, month.month)),
+            textSpan("trip-group-toggle__stats", tripsSummaryText(trips)),
+        ],
+        null,
+    );
+    for (const day of month.days) list.appendChild(buildDaySection(day, appendCards));
+    return section;
+}
+
+function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElement {
+    const heading = formatDayHeading(day.year, day.month, day.day);
+    const content: Node[] = [textSpan("trip-group-toggle__label", heading.relative ?? heading.date)];
+    if (heading.relative) content.push(textSpan("trip-group-toggle__date", heading.date));
+    content.push(textSpan("trip-group-toggle__stats", tripsSummaryText(nodeTrips(day.nodes))));
+    const { section, list } = buildGroupSection(day.key, "trip-day", content, buildDayStrip(day));
+    appendCards(
+        day.nodes.map((node) => ({ trip: node.entry.trip, idx: node.entry.tripIdx })),
+        list,
+    );
+    return section;
+}
+
+/**
+ * The day's 24-hour overview under its heading: footage spans and event ticks.
+ * Decorative - the same trips are listed right below it.
+ */
+function buildDayStrip(day: TripListDay): HTMLElement {
+    const strip = document.createElement("div");
+    strip.className = "trip-day__strip";
+    strip.setAttribute("aria-hidden", "true");
+    const { segments, events } = dayStripSegments(day);
+    for (const segment of segments) {
+        const span = document.createElement("span");
+        span.className = segment.isParking ? "trip-day__span is-parking" : "trip-day__span";
+        span.style.left = `${segment.from * 100}%`;
+        span.style.width = `${(segment.to - segment.from) * 100}%`;
+        strip.appendChild(span);
+    }
+    for (const position of events) {
+        const tick = document.createElement("span");
+        tick.className = "trip-day__event";
+        tick.style.left = `${position * 100}%`;
+        strip.appendChild(tick);
+    }
+    return strip;
+}
+
+/**
+ * Folds or unfolds one month/day section in place and remembers the choice.
+ * Folding a section whose header is stuck to the top would leave the reader
+ * somewhere further down the list, so the section is scrolled back to its
+ * header.
+ */
+function setGroupCollapsed(section: HTMLElement, collapsed: boolean): void {
+    const key = groupKeys.get(section);
+    if (key === undefined) return;
+    if (collapsed) collapsedGroups.add(key);
+    else collapsedGroups.delete(key);
+    const header = section.querySelector<HTMLElement>(":scope > .trip-group__header");
+    const wasStuck =
+        collapsed && header !== null && section.getBoundingClientRect().top < header.getBoundingClientRect().top - 1;
+    section.classList.toggle("is-collapsed", collapsed);
+    header?.querySelector(".trip-group-toggle")?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    if (wasStuck) section.scrollIntoView({ block: "start", behavior: "instant" });
+}
+
+/**
+ * Opens every collapsed section around the active trip's card, once per
+ * activation: the trip that starts playing must be visible in the list, but a
+ * section the user folds afterwards stays folded.
+ */
+function revealActiveTrip(): void {
+    const active = state.active;
+    const trip = active ? state.trips[active.trip] : undefined;
+    if (!active || !trip) {
+        revealedActiveKey = null;
+        return;
+    }
+    const key = tripFocusKey(trip);
+    if (key === null || key === revealedActiveKey) return;
+    // A trip hidden by the filters has no card; a later render reveals it.
+    const card = dom.list.querySelector(`li.trip[data-trip-index="${active.trip}"]`);
+    if (!card) return;
+    revealedActiveKey = key;
+    let section = card.parentElement?.closest<HTMLElement>("li.trip-group");
+    while (section) {
+        if (section.classList.contains("is-collapsed")) setGroupCollapsed(section, false);
+        section = section.parentElement?.closest<HTMLElement>("li.trip-group");
+    }
 }
 
 /** The card's annotation controls - favorite star, name/note pencil - as one
@@ -777,7 +944,9 @@ type ListFocus =
     // filters, regroup) rebuilds every card - without this a keyboard user on
     // one of these controls drops to <body>. Not a fixed union, so a control
     // added later is covered without being named here.
-    | { kind: "action"; key: string; action: string };
+    | { kind: "action"; key: string; action: string }
+    // A month/day section toggle; the key is the section's layout key.
+    | { kind: "group"; key: string };
 
 const recordingFocusKeys = new WeakMap<Element, string>();
 
@@ -790,6 +959,11 @@ function tripFocusKey(trip: Trip): string | null {
 function captureListFocus(scope: Element): ListFocus | null {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || !scope.contains(el)) return null;
+    if (el.dataset.action === "toggle-group") {
+        const section = el.closest("li.trip-group");
+        const key = section ? groupKeys.get(section) : undefined;
+        return key === undefined ? null : { kind: "group", key };
+    }
     const card = el.closest("li.trip");
     if (!card || !scope.contains(card)) return null;
     const key = recordingFocusKeys.get(card);
@@ -811,6 +985,13 @@ function captureListFocus(scope: Element): ListFocus | null {
 
 function restoreListFocus(focus: ListFocus | null, root: Element): void {
     if (!focus) return;
+    if (focus.kind === "group") {
+        const section = Array.from(root.querySelectorAll("li.trip-group")).find(
+            (candidate) => groupKeys.get(candidate) === focus.key,
+        );
+        section?.querySelector<HTMLElement>(":scope > .trip-group__header > .trip-group-toggle")?.focus();
+        return;
+    }
     const candidates =
         focus.kind === "frame-action"
             ? root.querySelectorAll<HTMLElement>(".trip-files > li")
@@ -919,10 +1100,13 @@ function toggleFileDetails(tripIdx: number, frameIdx: number, btn: HTMLElement):
 function buildSummaryItem(trips: Trip[]): HTMLLIElement {
     const li = document.createElement("li");
     li.className = "trip-summary";
-    if (trips.some(tripHasProvisionalFacts)) {
-        li.textContent = t("plurals.trip", { n: trips.length });
-        return li;
-    }
+    li.textContent = tripsSummaryText(trips);
+    return li;
+}
+
+/** "8 trips · 3h 47m · 142 km"; only the count while any duration or distance is provisional. */
+function tripsSummaryText(trips: readonly Trip[]): string {
+    if (trips.some(tripHasProvisionalFacts)) return t("plurals.trip", { n: trips.length });
     let totalDuration = 0;
     let totalDistance = 0;
     for (const trip of trips) {
@@ -935,8 +1119,7 @@ function buildSummaryItem(trips: Trip[]): HTMLLIElement {
     if (totalDistance > 0) {
         parts.push(formatTripDistance(totalDistance));
     }
-    li.textContent = parts.join(" · ");
-    return li;
+    return parts.join(" · ");
 }
 
 /**
@@ -1028,6 +1211,7 @@ export function syncActiveTripHighlight(
     };
     if (prev && prev.trip !== next.trip) setTripActive(prev, false);
     setTripActive(next, true);
+    revealActiveTrip();
 }
 
 export function syncSortControls(): void {
@@ -1072,6 +1256,11 @@ export function initSidebar(cb: SidebarCallbacks): void {
             resetTripFilters();
             renderTrips();
             dom.tripFilterKinds.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+            return;
+        }
+        if (action === "toggle-group") {
+            const section = actionEl.closest<HTMLElement>("li.trip-group");
+            if (section) setGroupCollapsed(section, !section.classList.contains("is-collapsed"));
             return;
         }
         const tripIdxStr = actionEl.dataset.tripIndex;

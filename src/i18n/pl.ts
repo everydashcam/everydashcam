@@ -272,10 +272,6 @@ export const plDict = {
 
     "buckets.today": "Dzisiaj",
     "buckets.yesterday": "Wczoraj",
-    "buckets.thisWeek": "W tym tygodniu",
-    "buckets.thisMonth": "W tym miesiącu",
-    "buckets.future": "W przyszłości",
-    "buckets.earlier": "Wcześniej",
 
     "plurals.trip": "{n, plural, one {# przejazd} few {# przejazdy} many {# przejazdów} other {# przejazdu}}",
     "plurals.file": "{n, plural, one {# plik} few {# pliki} many {# plików} other {# pliku}}",

@@ -281,10 +281,6 @@ export const koDict = {
 
     "buckets.today": "오늘",
     "buckets.yesterday": "어제",
-    "buckets.thisWeek": "이번 주",
-    "buckets.thisMonth": "이번 달",
-    "buckets.future": "미래",
-    "buckets.earlier": "그 이전",
 
     "plurals.trip": "주행 {n}개",
     "plurals.file": "파일 {n}개",

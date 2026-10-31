@@ -273,10 +273,6 @@ export const enDict = {
 
     "buckets.today": "Today",
     "buckets.yesterday": "Yesterday",
-    "buckets.thisWeek": "This week",
-    "buckets.thisMonth": "This month",
-    "buckets.future": "In the future",
-    "buckets.earlier": "Earlier",
 
     "plurals.trip": "{n, plural, one {# trip} other {# trips}}",
     "plurals.file": "{n, plural, one {# file} other {# files}}",

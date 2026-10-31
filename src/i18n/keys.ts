@@ -359,10 +359,6 @@ export type I18nKey =
     // Date buckets
     | "buckets.today"
     | "buckets.yesterday"
-    | "buckets.thisWeek"
-    | "buckets.thisMonth"
-    | "buckets.future"
-    | "buckets.earlier"
 
     // Plurals
     | "plurals.trip"

@@ -271,10 +271,6 @@ export const zhDict = {
 
     "buckets.today": "今天",
     "buckets.yesterday": "昨天",
-    "buckets.thisWeek": "本周",
-    "buckets.thisMonth": "本月",
-    "buckets.future": "未来",
-    "buckets.earlier": "更早",
 
     "plurals.trip": "{n, plural, other {# 个行程}}",
     "plurals.file": "{n, plural, other {# 个文件}}",

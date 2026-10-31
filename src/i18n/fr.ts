@@ -272,10 +272,6 @@ export const frDict = {
 
     "buckets.today": "Aujourd'hui",
     "buckets.yesterday": "Hier",
-    "buckets.thisWeek": "Cette semaine",
-    "buckets.thisMonth": "Ce mois-ci",
-    "buckets.future": "Dans le futur",
-    "buckets.earlier": "Plus tôt",
 
     "plurals.trip": "{n, plural, one {# trajet} other {# trajets}}",
     "plurals.file": "{n, plural, one {# fichier} other {# fichiers}}",

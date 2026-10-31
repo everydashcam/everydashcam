@@ -4,11 +4,12 @@ import { describe, it, expect } from "vitest";
 import {
     cachedDateTimeFormat,
     clipBasename,
-    dateBucketLabel,
     eventLabel,
     formatBytes,
+    formatDayHeading,
     formatEventSeverity,
     formatFileMeta,
+    formatMonthHeading,
     formatRateBytes,
     formatTripTitle,
     formatTripDistance,
@@ -125,21 +126,32 @@ describe("formatTripTitle", () => {
     });
 });
 
-describe("dateBucketLabel", () => {
-    // TZ=UTC: local-midnight truncation matches UTC, so the day math is stable.
-    const now = new Date(2026, 5, 15, 12, 0, 0); // Mon Jun 15 2026, noon
+describe("formatDayHeading", () => {
+    // TZ=UTC: the viewer's display clock is UTC, so the day math is stable.
+    const now = new Date(Date.UTC(2026, 5, 15, 12, 0, 0)); // Mon Jun 15 2026, noon
 
-    it("buckets a timestamp by its day distance from now", () => {
+    it("adds Today and Yesterday on the viewer's calendar and nothing for other days", () => {
         // Comparing against t() (not a hard-coded string) keeps this locale-agnostic.
-        expect(dateBucketLabel(secOf(new Date(2026, 5, 15, 8, 0, 0)), null, now)).toBe(t("buckets.today"));
-        expect(dateBucketLabel(secOf(new Date(2026, 5, 14, 8, 0, 0)), null, now)).toBe(t("buckets.yesterday"));
-        expect(dateBucketLabel(secOf(new Date(2026, 5, 12, 8, 0, 0)), null, now)).toBe(t("buckets.thisWeek")); // 3d
-        expect(dateBucketLabel(secOf(new Date(2026, 5, 1, 8, 0, 0)), null, now)).toBe(t("buckets.thisMonth")); // 14d
-        expect(dateBucketLabel(secOf(new Date(2026, 2, 1, 8, 0, 0)), null, now)).toBe(t("buckets.earlier")); // >30d
+        expect(formatDayHeading(2026, 5, 15, now).relative).toBe(t("buckets.today"));
+        expect(formatDayHeading(2026, 5, 14, now).relative).toBe(t("buckets.yesterday"));
+        expect(formatDayHeading(2026, 5, 12, now).relative).toBeNull();
+        expect(formatDayHeading(2025, 5, 15, now).relative).toBeNull();
     });
 
-    it("labels a future timestamp explicitly (clock skew / bad mtime guard)", () => {
-        expect(dateBucketLabel(secOf(new Date(2026, 5, 20, 8, 0, 0)), null, now)).toBe(t("buckets.future"));
+    it("gives a camera-clock day ahead of the viewer only its date", () => {
+        const heading = formatDayHeading(2026, 5, 16, now);
+        expect(heading.relative).toBeNull();
+        expect(heading.date).toContain("16");
+    });
+
+    it("formats the weekday and the date of the given calendar day", () => {
+        expect(formatDayHeading(2026, 9, 31, now).date).toBe("Sat, Oct 31");
+    });
+});
+
+describe("formatMonthHeading", () => {
+    it("names the month and the year", () => {
+        expect(formatMonthHeading(2026, 9)).toBe("October 2026");
     });
 });
 
@@ -158,24 +170,6 @@ describe("display clock (camera clock when the trip carries a zone estimate)", (
         const trip = makeTrip(start);
         (trip as { cameraTzSec: number | null }).cameraTzSec = 3 * 3600;
         expect(clipBasename(trip, 0, 28)).toBe("everydashcam_20260429_222747-222815");
-    });
-
-    it("dateBucketLabel buckets by the camera-clock calendar day", () => {
-        // 23:00 UTC Jun 14 is already Jun 15 on a +2h camera clock -> "today"
-        // against a viewer now of Jun 15 noon (TZ=UTC pin); with a zero-zone
-        // estimate the same instant stays on Jun 14 -> "yesterday".
-        const now = new Date(Date.UTC(2026, 5, 15, 12, 0, 0));
-        const ts = Date.UTC(2026, 5, 14, 23, 0, 0) / 1000;
-        expect(dateBucketLabel(ts, 7200, now)).toBe(t("buckets.today"));
-        expect(dateBucketLabel(ts, 0, now)).toBe(t("buckets.yesterday"));
-    });
-
-    it("does not call a camera-clock day ahead of the viewer's a future trip", () => {
-        // Viewer at UTC (test pin), camera set to +13. A clip recorded an hour
-        // ago carries tomorrow's camera-clock date - a zone gap, not skew.
-        const now = new Date(Date.UTC(2026, 5, 15, 12, 0, 0));
-        const ts = Date.UTC(2026, 5, 15, 11, 0, 0) / 1000;
-        expect(dateBucketLabel(ts, 13 * 3600, now)).toBe(t("buckets.today"));
     });
 });
 

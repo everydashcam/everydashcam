@@ -331,6 +331,164 @@
     margin-top: 0;
 }
 
+/* Date-sorted list: month and day sections (buildGroupSection in sidebar.ts).
+   Both headers stick to the top of the sidebar while their section scrolls
+   under them, the day header right below the month header. Each sticky header
+   is bounded by its own section, so the next month pushes the previous one
+   out instead of stacking on it. Sticky offsets count from the sidebar's
+   content edge, so the headers shift up by its padding to cover the strip
+   above it instead of letting cards show through. */
+.trip-list {
+    --trip-month-header-h: 30px;
+    --trip-day-toggle-h: 26px;
+    --trip-sticky-top: calc(-1 * var(--dc-space-3));
+}
+.trip-group__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--dc-space-1);
+}
+.trip-group.is-collapsed > .trip-group__list {
+    display: none;
+}
+/* Above the cards: their corner controls carry z-index inside the same
+   stacking context. */
+.trip-group__header {
+    position: sticky;
+    background: var(--bg-elev);
+}
+.trip-month__header {
+    top: var(--trip-sticky-top);
+    z-index: 4;
+}
+.trip-day__header {
+    top: calc(var(--trip-sticky-top) + var(--trip-month-header-h));
+    z-index: 3;
+    padding-bottom: var(--dc-space-1);
+}
+/* Jumping to a day lands its header just under the stuck month header. */
+.trip-day {
+    scroll-margin-top: calc(var(--trip-sticky-top) + var(--trip-month-header-h));
+}
+.trip-month:not(:first-child) {
+    margin-top: var(--dc-space-2);
+}
+.trip-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+    width: 100%;
+    min-width: 0;
+    height: var(--trip-day-toggle-h);
+    padding: 0 var(--dc-space-1);
+    border: 0;
+    background: transparent;
+    color: var(--fg-dim);
+    font: inherit;
+    font-size: var(--dc-text-xs);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.trip-month__header .trip-group-toggle {
+    height: var(--trip-month-header-h);
+    border-bottom: 1px solid var(--border);
+    color: var(--fg);
+    font-family: var(--dc-font-heavy);
+    font-weight: 700;
+}
+.trip-group-toggle:hover {
+    color: var(--fg);
+}
+.trip-group-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    border-radius: var(--dc-radius-sm);
+}
+.trip-group-toggle__caret {
+    flex: none;
+    color: var(--fg-mute);
+}
+@media (prefers-reduced-motion: no-preference) {
+    .trip-group-toggle__caret {
+        transition: transform var(--dc-dur-base) var(--dc-ease);
+    }
+}
+.trip-group.is-collapsed > .trip-group__header .trip-group-toggle__caret {
+    transform: rotate(-90deg);
+}
+.trip-group-toggle__label,
+.trip-group-toggle__date {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trip-group-toggle__label {
+    flex: 0 1 auto;
+}
+.trip-day__header .trip-group-toggle__label {
+    color: var(--fg);
+    font-weight: 600;
+}
+.trip-group-toggle__date {
+    flex: 0 2 auto;
+    color: var(--fg-mute);
+}
+.trip-group-toggle__stats {
+    flex: 0 3 auto;
+    min-width: 0;
+    margin-left: auto;
+    padding-left: var(--dc-space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--fg-mute);
+    font-family: var(--dc-font-body);
+    font-size: var(--dc-text-2xs);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+/* The day's 24-hour overview: footage spans and event ticks, with faint marks
+   every six hours. Stays visible while the day is collapsed. */
+.trip-day__strip {
+    position: relative;
+    height: 6px;
+    margin: 0 var(--dc-space-1);
+    overflow: hidden;
+    border-radius: 2px;
+    background:
+        repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), var(--border) 0 25%),
+        color-mix(in srgb, var(--fg) 7%, transparent);
+}
+.trip-day__span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    min-width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+}
+/* Parking in the road-sign blue of the card's "P" chip. */
+.trip-day__span.is-parking {
+    background: color-mix(in srgb, var(--dc-blue) 70%, transparent);
+}
+.trip-day__event {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--err);
+}
+@media (pointer: coarse) {
+    .trip-list {
+        --trip-month-header-h: 44px;
+        --trip-day-toggle-h: 44px;
+    }
+}
+
 .trip {
     /* Shared by the hero's min-height and the off-screen height estimate below. */
     --trip-hero-min-height: 104px;

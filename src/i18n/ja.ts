@@ -282,10 +282,6 @@ export const jaDict = {
 
     "buckets.today": "今日",
     "buckets.yesterday": "昨日",
-    "buckets.thisWeek": "今週",
-    "buckets.thisMonth": "今月",
-    "buckets.future": "未来",
-    "buckets.earlier": "それ以前",
 
     "plurals.trip": "{n} 件の走行",
     "plurals.file": "{n} 件のファイル",

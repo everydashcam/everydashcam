@@ -277,10 +277,6 @@ export const ruDict = {
 
     "buckets.today": "Сегодня",
     "buckets.yesterday": "Вчера",
-    "buckets.thisWeek": "На этой неделе",
-    "buckets.thisMonth": "В этом месяце",
-    "buckets.future": "В будущем",
-    "buckets.earlier": "Раньше",
 
     "plurals.trip": "{n, plural, one {# поездка} few {# поездки} other {# поездок}}",
     "plurals.file": "{n, plural, one {# файл} few {# файла} other {# файлов}}",

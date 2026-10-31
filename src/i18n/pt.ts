@@ -272,10 +272,6 @@ export const ptDict = {
 
     "buckets.today": "Hoje",
     "buckets.yesterday": "Ontem",
-    "buckets.thisWeek": "Esta semana",
-    "buckets.thisMonth": "Este mês",
-    "buckets.future": "No futuro",
-    "buckets.earlier": "Antes",
 
     "plurals.trip": "{n, plural, one {# viagem} other {# viagens}}",
     "plurals.file": "{n, plural, one {# arquivo} other {# arquivos}}",

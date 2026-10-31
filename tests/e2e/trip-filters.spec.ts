@@ -37,7 +37,7 @@ test.afterAll(() => {
 
 const kind = (page: Page, value: string) => page.locator(`[data-trip-filter-kind="${value}"]`);
 const recording = (page: Page, value: string) => page.locator(`[data-trip-filter-toggle="${value}"]`);
-const cards = (page: Page) => page.locator("#trip-list > li.trip[data-trip-index]");
+const cards = (page: Page) => page.locator("#trip-list li.trip[data-trip-index]");
 
 test("filters whole trips by recording type without changing playback", async ({ page }) => {
     await presetLocalStorage(page);
