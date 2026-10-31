@@ -35,9 +35,14 @@ import { activeTrip, mainChannel, state } from "./state.js";
 let getTripCurrentTimeFn: () => number = () => {
     throw new Error("player-scrubber: initPlayerScrubber not called before use");
 };
-let seekTripTimeFn: (sec: number) => void = () => {
+let seekTripTimeFn: (sec: number, precision?: SeekPrecision) => void = () => {
     throw new Error("player-scrubber: initPlayerScrubber not called before use");
 };
+
+/** "exact" decodes up to the requested frame. "keyframe" lets the browser
+ *  land on the nearest key frame instead (HTMLMediaElement.fastSeek: Safari
+ *  and Firefox; Chromium has none and seeks exactly). */
+export type SeekPrecision = "exact" | "keyframe";
 
 /** Updates the progress text and DOM playhead on each timeupdate. */
 export function updatePlayerProgressUi(): void {
@@ -126,7 +131,7 @@ function updateMiniProgress(
  */
 export function initPlayerScrubber(deps: {
     getTripCurrentTime: () => number;
-    seekTripTime: (sec: number) => void;
+    seekTripTime: (sec: number, precision?: SeekPrecision) => void;
 }): void {
     getTripCurrentTimeFn = deps.getTripCurrentTime;
     seekTripTimeFn = deps.seekTripTime;
@@ -268,6 +273,9 @@ export function initPlayerScrubber(deps: {
     }
 
     let dragging = false;
+    // Drag moves seek to key frames, so a long-GOP 4K clip does not decode up
+    // to every intermediate frame; the release seeks exactly to the last spot.
+    let lastDragSec: number | null = null;
     // The bar spans the full row width, so a scrub started at the screen edge
     // is also an iOS swipe-back candidate. Seek runs on pointerdown (below),
     // not on click, so cancelling the edge touchstart loses nothing.
@@ -279,17 +287,22 @@ export function initPlayerScrubber(deps: {
             bar.classList.add("is-dragging");
             const sec = relSecAtClientX(e.clientX);
             if (sec !== null) seekTripTimeFn(sec);
+            lastDragSec = null;
             showTooltipAt(e.clientX);
             return true;
         },
         onMove: (e) => {
             showTooltipAt(e.clientX);
             const sec = relSecAtClientX(e.clientX);
-            if (sec !== null) seekTripTimeFn(sec);
+            if (sec === null) return;
+            lastDragSec = sec;
+            seekTripTimeFn(sec, "keyframe");
         },
         onEnd: (e, reason) => {
             dragging = false;
             bar.classList.remove("is-dragging");
+            if (lastDragSec !== null) seekTripTimeFn(lastDragSec);
+            lastDragSec = null;
             // Mouse keeps its hover preview after a normal release.
             if (e.pointerType !== "mouse" || reason !== "up") hideTooltip();
         },

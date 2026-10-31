@@ -1773,3 +1773,41 @@ test.describe("single-clip playback endings", () => {
         expect(restart, "Play resumes near the start").toBeLessThan(duration / 2);
     });
 });
+
+test.describe("player scrub seeks", () => {
+    test.beforeEach(async ({ page }) => {
+        await presetLocalStorage(page);
+        // Chromium has no fastSeek. A stand-in landing on whole seconds models
+        // the key-frame seek Safari and Firefox perform during a drag.
+        await page.addInitScript(() => {
+            const proto = HTMLMediaElement.prototype as HTMLMediaElement & { fastSeek(time: number): void };
+            proto.fastSeek = function (this: HTMLMediaElement, time: number) {
+                this.dataset.fastSeeks = String(Number(this.dataset.fastSeeks ?? "0") + 1);
+                this.currentTime = Math.floor(time);
+            };
+        });
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+    });
+
+    test("drag moves seek to key frames and the release lands exactly", async ({ page }) => {
+        await pausePlayback(page);
+        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const bar = await boxOf(page, "#player-mini-progress");
+        const y = bar.y + bar.height / 2;
+        await page.mouse.move(bar.x + bar.width * 0.1, y);
+        await page.mouse.down();
+        await page.mouse.move(bar.x + bar.width * 0.27, y, { steps: 6 });
+        expect(
+            Number(await master.getAttribute("data-fast-seeks")),
+            "drag moves use key-frame seeks where the browser offers them",
+        ).toBeGreaterThan(0);
+        await page.mouse.up();
+        await expect
+            .poll(() => master.evaluate((video: HTMLVideoElement) => !video.seeking && video.currentTime % 1 !== 0), {
+                message: "the release seeks exactly instead of staying on the key frame",
+            })
+            .toBe(true);
+    });
+});

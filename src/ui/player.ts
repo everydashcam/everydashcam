@@ -86,7 +86,7 @@ import { initFrameStep } from "./player-frame-step.js";
 import { initSeekButtons } from "./player-seek-buttons.js";
 import { channelPresentedFrame, initPlayerFrameTimes, subscribePlayerFrames } from "./player-frame-time.js";
 import { initPlayerHotkeys } from "./player-hotkeys.js";
-import { initPlayerScrubber, updatePlayerProgressUi } from "./player-scrubber.js";
+import { initPlayerScrubber, type SeekPrecision, updatePlayerProgressUi } from "./player-scrubber.js";
 import { syncCropPreviews } from "./player-crop.js";
 import { initPlayerTileInput } from "./player-tile-input.js";
 import { initTileReorder } from "./player-tile-reorder.js";
@@ -243,6 +243,8 @@ let pendingFileOffset = 0;
  *  loadedmetadata/seeked near the target, on error, or by a safety timeout) so
  *  the playhead jumps straight to the click and holds under the loading overlay. */
 let pendingSeekTripSec: number | null = null;
+// True while the pin above comes from a key-frame scrub seek (see seekTripTime).
+let keyframeSeekPinned = false;
 let pendingSeekClearTimer: ReturnType<typeof setTimeout> | null = null;
 
 // One-shot latch for seekThenPlay: once the next seek lands near this target,
@@ -2328,6 +2330,7 @@ function naturalTripCurrentTime(): number {
 /** Pins the reported trip position to `target` while a slow seek loads. */
 function setPendingSeek(target: number): void {
     pendingSeekTripSec = target;
+    keyframeSeekPinned = false;
     if (pendingSeekClearTimer !== null) clearTimeout(pendingSeekClearTimer);
     // Safety net: a failed / pathological load must never freeze the playhead
     // pinned at the target. 6s is well past any realistic SD-card file open.
@@ -2337,6 +2340,7 @@ function setPendingSeek(target: number): void {
 /** Releases the in-flight seek pin so the playhead tracks the real position. */
 function clearPendingSeek(): void {
     pendingSeekTripSec = null;
+    keyframeSeekPinned = false;
     if (pendingSeekClearTimer !== null) {
         clearTimeout(pendingSeekClearTimer);
         pendingSeekClearTimer = null;
@@ -2415,9 +2419,10 @@ export function playTripEvent(tripIdx: number, eventIndex: number): void {
  * Seeks to a position in the trip timeline. Switches src when landing in a different file
  * and applies the offset via pendingFileOffset. In MSE mode each channel seeks in its own
  * SourceBuffer within the unified trip timeline - frame transitions are transparent.
+ * "keyframe" precision only changes a same-file native seek (see SeekPrecision).
  * @param targetSec seconds from the start of the trip.
  */
-export function seekTripTime(targetSec: number): void {
+export function seekTripTime(targetSec: number, precision: SeekPrecision = "exact"): void {
     if (!state.active) return;
     const trip = state.trips[state.active.trip];
     if (!trip || trip.frames.length === 0) return;
@@ -2438,7 +2443,10 @@ export function seekTripTime(targetSec: number): void {
     // timeupdate's auto-end-of-selection calls seekTripTime(endTripSec) again, and in MSE
     // mode that becomes an infinite re-attach loop (each seek = new MediaSource + setInterval + feed).
     // 0.01s threshold is below any reasonable MSE seek precision.
-    const cur = getTripCurrentTime();
+    // A key-frame seek pins the reported position to its target while the
+    // element rests on the key frame, so compare an exact seek with the real
+    // position or the release of a scrub would short-circuit.
+    const cur = keyframeSeekPinned ? naturalTripCurrentTime() : getTripCurrentTime();
     if (Math.abs(target - cur) < 0.01) return;
 
     // Resolve the frame containing target + the offset inside it (footage axis).
@@ -2484,7 +2492,16 @@ export function seekTripTime(targetSec: number): void {
         updatePlayerProgressUi();
         return;
     }
-    dom.player.currentTime = masterOffsetSec;
+    if (precision === "keyframe" && typeof dom.player.fastSeek === "function") {
+        // The element lands on a key frame, possibly seconds away; keep the
+        // playhead on the requested position until the exact seek follows.
+        setPendingSeek(target);
+        keyframeSeekPinned = true;
+        dom.player.fastSeek(masterOffsetSec);
+    } else {
+        if (keyframeSeekPinned) clearPendingSeek();
+        dom.player.currentTime = masterOffsetSec;
+    }
     updatePlayerProgressUi();
 }
 
