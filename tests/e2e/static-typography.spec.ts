@@ -44,7 +44,7 @@ test.describe("standalone page typography", () => {
         });
     }
 
-    test("camera submission commands fit a narrow viewport in every language", async ({ page }) => {
+    test("camera help page fits a narrow viewport in every language", async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 640 });
         await page.goto("/en/add-my-camera/");
         const languages = await page
@@ -60,7 +60,7 @@ test.describe("standalone page typography", () => {
                     viewport: document.documentElement.clientWidth,
                 };
             });
-            expect(width.content, `${lang} command does not widen the page`).toBeLessThanOrEqual(width.viewport);
+            expect(width.content, `${lang} copy does not widen the page`).toBeLessThanOrEqual(width.viewport);
         }
     });
 });
