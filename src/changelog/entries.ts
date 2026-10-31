@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-01.1",
+        category: "improvement",
+        text: {
+            en: "Time-lapse exports are faster.",
+            ru: "Ускорен экспорт таймлапсов.",
+            de: "Zeitraffer-Exporte sind schneller.",
+            es: "Las exportaciones en timelapse son más rápidas.",
+            fr: "Les exports en accéléré sont plus rapides.",
+            pl: "Eksport przyspieszonych nagrań jest szybszy.",
+            pt: "As exportações em timelapse ficaram mais rápidas.",
+            zh: "延时视频导出更快了。",
+            ja: "タイムラプスの書き出しが速くなりました。",
+            ko: "타임랩스 내보내기가 더 빨라졌어요.",
+        },
+    },
+    {
         id: "2026-10-31.3",
         category: "fix",
         text: {

@@ -7,6 +7,10 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-11-01
+
+- **Improved:** Time-lapse exports are faster.
+
 ## 2026-10-31
 
 - **Fixed:** Fixed app launch and face and license plate detection failures after updates.
