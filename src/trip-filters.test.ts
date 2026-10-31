@@ -11,14 +11,18 @@ describe("trip search", () => {
         expect(matchesTripSearch(text, "cafe ноября")).toBe(false);
     });
 
-    it("matches a day or hour number only as a whole word and longer numbers at a word start", () => {
+    it("matches a day or hour number only as a whole word", () => {
         expect(matchesTripSearch(text, "31 окт")).toBe(true);
         expect(matchesTripSearch(text, "3 окт")).toBe(false);
         expect(matchesTripSearch(text, "2 октября")).toBe(false);
-        expect(matchesTripSearch(text, "202")).toBe(true);
-        expect(matchesTripSearch(text, "0800")).toBe(false);
-        expect(matchesTripSearch(text, "080000")).toBe(false);
+    });
+
+    it("finds any longer piece of a file name, including its tail", () => {
         expect(matchesTripSearch(text, "no2026")).toBe(true);
+        expect(matchesTripSearch(text, "080000")).toBe(true);
+        expect(matchesTripSearch(text, "0001f")).toBe(true);
+        expect(matchesTripSearch(text, "01F.mp4")).toBe(true);
+        expect(matchesTripSearch(text, "0002f")).toBe(false);
     });
 
     it("treats a blank query as no search", () => {

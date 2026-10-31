@@ -35,20 +35,18 @@ export function normalizeSearchText(text: string): string {
 
 /**
  * True when every word of `query` occurs in the already normalized
- * `searchText`. Numbers are stricter than letters, because every trip's text
- * is full of digits: a one- or two-digit number is a day or an hour and must
- * be a whole word ("sep 2" is not every September day of 2026), a longer one
- * must start a word ("oct 30" does not find the 31st through the "013000" of a
- * file name). A word of letters may sit anywhere ("work" finds "Roadworks").
+ * `searchText`, anywhere - so the tail of a file name finds its trip. The one
+ * exception is a bare one- or two-digit number: it is a day or an hour and
+ * must be a whole word, because every trip's text is full of digits and
+ * "sep 2" would otherwise match all of September 2026.
  */
 export function matchesTripSearch(searchText: string, query: string): boolean {
     const words = normalizeSearchText(query).split(/\s+/).filter(Boolean);
     let textWords: string[] | null = null;
     return words.every((word) => {
-        if (!/\d/.test(word)) return searchText.includes(word);
+        if (!/^\d{1,2}$/.test(word)) return searchText.includes(word);
         textWords ??= searchText.split(/[\s|,]+/);
-        if (/^\d{1,2}$/.test(word)) return textWords.includes(word);
-        return textWords.some((textWord) => textWord.startsWith(word));
+        return textWords.includes(word);
     });
 }
 
