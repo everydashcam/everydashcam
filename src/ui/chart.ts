@@ -50,6 +50,7 @@ import type { Trip, TripGap, VideoCandidate } from "../trips.js";
 import type { RecordingMode } from "../parsers/types.js";
 import { formatSpeedFromMs, subscribeUnitsChange } from "../units-pref.js";
 
+import { gapAwareDecimationPlugin } from "./chart-decimation.js";
 import { dom } from "./dom.js";
 import { openExportMode, setRange } from "./export-state.js";
 import { eventLabel, formatDuration, formatEventSeverity, formatNumber, formatTime } from "./format.js";
@@ -809,7 +810,7 @@ export function initChart(cb: ChartCallbacks): void {
         },
         options: {
             animation: false,
-            // Decimation checks the chart-level option, not dataset.parsing.
+            // Decimation reads raw {x, y} points; parsing would copy them.
             parsing: false,
             responsive: true,
             maintainAspectRatio: false,
@@ -851,9 +852,6 @@ export function initChart(cb: ChartCallbacks): void {
                 // Built-in legend disabled - it consumes vertical space at the top.
                 // Replaced by inline overlay .player-chart-legend in HTML.
                 legend: { display: false },
-                // LTTB reduces dense finite series in the visible window. Trip
-                // rebuild disables it when gaps require every source point.
-                decimation: { enabled: true, algorithm: "lttb", samples: 200 },
                 // Tooltip plugin fully disabled. Previously `enabled:false, external:`
                 // still subscribed Chart.js to canvas mousemove and `notifyPlugins.afterEvent`
                 // called our function - landing in the hot path (~12% CPU during active
@@ -872,7 +870,8 @@ export function initChart(cb: ChartCallbacks): void {
             // single handler below on the .player-chart wrap itself covers ALL
             // those zones via the bubble.
         },
-        plugins: [cursorPlugin],
+        // Gap-aware LTTB over the visible window; see chart-decimation.ts.
+        plugins: [gapAwareDecimationPlugin, cursorPlugin],
     };
     state.chart = new ChartClass!(ctx, chartConfig);
 
@@ -1984,15 +1983,6 @@ export function rebuildChartFromTrip(trip: Trip): void {
         speedDataset.segment = undefined;
     }
     state.chart.data.datasets[1]!.data = accelData;
-    // Chart.js LTTB averages y values without guarding NaN. It can lose a GPS
-    // break or emit undefined points when a bucket contains one. Keep gapped
-    // trips at source resolution; never draw a fabricated bridge across a gap.
-    const decimation = state.chart.options.plugins?.decimation;
-    if (decimation) {
-        decimation.enabled =
-            speedData.every((point) => Number.isFinite(point.y)) &&
-            accelData.every((point) => Number.isFinite(point.y));
-    }
     // options.scales.x comes as ScaleOptions | undefined; we know it was configured in initChart.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const xOpts = state.chart.options.scales!.x as any;

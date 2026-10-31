@@ -37,7 +37,6 @@ export async function verifyChartDecimation(page: Page): Promise<void> {
     await page.locator("#pm-speed-toggle").click();
     const overview = await chartSnapshot(page);
     expect(overview.parsing).toBe(false);
-    expect(overview.enabled).toBe(true);
     expect(overview.speedCount).toBe(200);
     expect(overview.accelCount).toBe(200);
     expect(overview.finite).toBe(true);
@@ -78,10 +77,11 @@ export async function verifyChartDecimation(page: Page): Promise<void> {
         };
     });
     await page.locator("#pm-speed-toggle").click();
+    // Gaps no longer force source resolution: each finite run is decimated on
+    // its own and the gap points stay, so the line still breaks at them.
     const gapped = await chartSnapshot(page);
-    expect(gapped.enabled).toBe(false);
-    expect(gapped.speedCount).toBe(sourceCount + 1);
-    expect(gapped.accelCount).toBe(sourceCount);
+    expect(gapped.speedCount).toBeLessThan(250);
+    expect(gapped.accelCount).toBe(200);
     expect(gapped.missing).toHaveLength(2);
     expect(gapped.missing[0]).toBeCloseTo(gaps.missingSec);
     expect(gapped.missing[1]).toBeCloseTo(gaps.boundarySec);
@@ -97,7 +97,6 @@ async function chartSnapshot(page: Page) {
         const line = chart.getDatasetMeta(0).dataset as LineElement;
         return {
             parsing: chart.options.parsing,
-            enabled: chart.options.plugins?.decimation?.enabled,
             speedCount: points.length,
             accelCount: chart.data.datasets[1]!.data.length,
             speedStart: points[0]!.x,
