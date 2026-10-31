@@ -24,12 +24,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findChrome, renderHtmlToPng } from "./_headless-chrome.mjs";
+import { renderHtmlToPng } from "./_headless-chrome.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
-
-const CHROME = findChrome();
 
 function assetB64(rel) {
     const path = resolve(ROOT, rel);
@@ -277,13 +275,11 @@ function coverHtml(loc) {
 for (const loc of COVERS) {
     const outPath = resolve(ROOT, loc.out);
     console.log(`rendering ${loc.lang} -> ${outPath}`);
-    renderHtmlToPng({
-        chrome: CHROME,
+    await renderHtmlToPng({
         html: coverHtml(loc),
         width: loc.width,
         height: loc.height,
         outPath,
-        tmpName: `everydashcam-og-cover-${loc.lang}-${loc.width}.html`,
     });
 }
 console.log("done");

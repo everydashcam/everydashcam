@@ -19,19 +19,17 @@
 //   The card is a self-contained HTML document (inline SVG mark + the Chakra
 //   Petch wordmark font embedded as a base64 data: URI, so there are no external
 //   subresources). Headless Chrome (via scripts/_headless-chrome.mjs) renders it
-//   from a file:// URL at each form factor and writes the PNG straight to
+//   at each form factor and writes the PNG straight to
 //   public/. No vite preview / dist needed - the card does not depend on the
 //   built app.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findChrome, renderHtmlToPng } from "./_headless-chrome.mjs";
+import { renderHtmlToPng } from "./_headless-chrome.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
-
-const CHROME = findChrome();
 
 // Wordmark font, embedded so the card needs no network/file subresources.
 // The lockup uses only Latin capitals.
@@ -53,11 +51,6 @@ const BRAND_ICON_SVG = readFileSync(resolve(ROOT, "public/assets/mark.svg"), "ut
 // (1280x800 = 1.60, 824x1464 = 1.78) and within 320-3840px per side. The card
 // layout is vmin-based, so the same HTML composes correctly at both sizes.
 //
-// WIDTH FLOOR: headless Chrome clamps the rendered page to a minimum width
-// (~500px). A narrower --window-size renders the page centered at that larger
-// width and then crops to the requested width, pushing the centered lockup off
-// to the right. Both cards therefore render well above that floor (the narrow
-// one at 2x of the old 412px) so the logo stays truly centered.
 const CARDS = [
     { out: "public/pwa-install-card-wide.png", width: 1280, height: 800 },
     { out: "public/pwa-install-card-narrow.png", width: 824, height: 1464 },
@@ -112,13 +105,11 @@ const cardHtml = `<!doctype html>
 for (const card of CARDS) {
     const outPath = resolve(ROOT, card.out);
     console.log(`rendering ${card.width}x${card.height} -> ${outPath}`);
-    renderHtmlToPng({
-        chrome: CHROME,
+    await renderHtmlToPng({
         html: cardHtml,
         width: card.width,
         height: card.height,
         outPath,
-        tmpName: "everydashcam-pwa-install-card.html",
     });
 }
 console.log("done");
