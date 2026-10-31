@@ -52,14 +52,17 @@ for (const mobile of [false, true]) {
                 };
             });
             await page.goto(`${origin}/ru/`);
-            await expect(page.locator("html")).not.toHaveClass(/is-loading/);
+            const modal = page.locator("#offline-use-modal");
+            // Prerendered HTML can reveal before the dev entry imports the app.
+            // This state is set after the chooser's click handler is attached.
+            await expect(modal).toHaveAttribute("data-install-state", "installed");
             if (mobile) {
                 await page.locator("#topbar-overflow").click();
                 await page.locator("#topbar-overflow-menu").getByRole("menuitem", { name: "Без интернета" }).click();
             } else {
                 await page.locator("#offline-use-btn").click();
             }
-            await expect(page.locator("#offline-use-modal")).toHaveAttribute("data-install-state", "installed");
+            await expect(modal).toBeVisible();
             await expect(page.locator("#install-btn")).toBeHidden();
             const downloadLink = page.locator("#portable-download");
             await expect(downloadLink).toBeVisible();
