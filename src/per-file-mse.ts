@@ -28,6 +28,7 @@
 // scope = ONE FILE. One worker -> one MediaSource -> one SourceBuffer.
 // At file end: worker emits feed-done, we call endOfStream.
 
+import { createSerialQueue } from "./serial-queue.js";
 import { createLogger } from "./log.js";
 import {
     MSE_NOTIFY_DROP_AUDIO,
@@ -186,14 +187,14 @@ export class PerFileMseBackend {
     private quotaBlocked = false;
     private quotaLastProgressAt = 0;
     private quotaLastCurrentTime = 0;
-    // Pending seek-done waiter. Single-valued because opQueue serializes
+    // Pending seek-done waiter. Single-valued because enqueueOp serializes
     // attach/seekTo: only one in-flight seek can exist at a time.
     private seekDoneResolver: (() => void) | null = null;
     // Serialization gate for attach/seekTo: rapid chart-drag seekTo() bursts
     // would otherwise interleave - each in-flight seek owns the single
     // seekDoneResolver and would clobber a parallel one. The queue keeps
     // ops strictly sequential.
-    private opQueue: Promise<unknown> = Promise.resolve();
+    private readonly enqueueOp = createSerialQueue();
     // Seek coalescing: chart-drag emits many seekTo() calls per second; we
     // only ever need to actually seek to the LATEST target. Concurrent
     // callers piggyback on the same in-flight promise and the impl reads
@@ -273,18 +274,6 @@ export class PerFileMseBackend {
      *  player must not read that pause as the user stopping playback. */
     get isPausedBySeek(): boolean {
         return this.pausedBySeek;
-    }
-
-    /**
-     * Enqueues an op behind any in-flight attach/seekTo. Errors are swallowed
-     * for the chain so a failed op does not poison subsequent ones - the
-     * caller of attach/seekTo still receives the rejected promise via the
-     * returned reference.
-     */
-    private enqueueOp<T>(fn: () => Promise<T>): Promise<T> {
-        const next = this.opQueue.then(fn, fn);
-        this.opQueue = next.catch(() => undefined);
-        return next;
     }
 
     /**

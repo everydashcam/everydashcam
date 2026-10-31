@@ -11,6 +11,8 @@
 // is ~200 ms; re-tracks after a correction are the common case). The DECODE
 // side opens fresh per request - files change between passes.
 
+import { createSerialQueue } from "../serial-queue.js";
+import { throwIfCancelled } from "../abort-signals.js";
 import type { TrackerWorkerContract } from "./tracker-protocol.js";
 
 import { CanvasSink, EncodedPacketSink, Input, type VideoSample, VideoSampleSink } from "mediabunny";
@@ -153,7 +155,7 @@ async function runTrackPass(
     let lastProgressAt = 0;
 
     outer: for (const seg of req.segments) {
-        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         // First segment starts at the seed; later segments decode whole windows.
         const seedLocal = Math.max(seg.startInFile, req.seedContentSec - seg.tripStart);
         const endLocal = Math.min(seg.endInFile, req.endContentSec - seg.tripStart);
@@ -179,7 +181,7 @@ async function runTrackPass(
             const sink = new CanvasSink(track, { width, poolSize: 1 });
             const timeOrigin = await getInputTimeOrigin(input);
             for await (const wrapped of sink.canvases(seedLocal + timeOrigin, endLocal + timeOrigin)) {
-                if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 const contentSec = seg.tripStart + wrapped.timestamp - timeOrigin;
                 // Progress tracks decode position, so the bar stays smooth over the
                 // frames we skip for inference.
@@ -1120,12 +1122,7 @@ async function runDetectPass(
 // chain so exactly one runs at a time; a queued pass still carries its own
 // AbortSignal, so a cancel while queued is honored at its first signal check.
 // Mirrors frame-extract-worker.
-let passQueue: Promise<unknown> = Promise.resolve();
-function serialize<T>(fn: () => Promise<T>): Promise<T> {
-    const next = passQueue.then(fn, fn);
-    passQueue = next.catch(() => undefined);
-    return next;
-}
+const serialize = createSerialQueue();
 
 const server = createTypedWorkerServer<TrackerWorkerContract>(self, {
     onRequest: {
@@ -1133,7 +1130,7 @@ const server = createTypedWorkerServer<TrackerWorkerContract>(self, {
             return await serialize(() => {
                 // A request can be cancelled while waiting behind another pass.
                 // Do not let it wake/load the model when its queue turn arrives.
-                if (ctx.signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(ctx.signal);
                 server.notify(TRACK_NOTIFY_STARTED, { regionId: req.regionId, passId: req.passId });
                 return runTrackPass(req, ctx.signal, (fractionDone) => {
                     server.notify(TRACK_NOTIFY_PROGRESS, { fractionDone, regionId: req.regionId, passId: req.passId });
@@ -1142,7 +1139,7 @@ const server = createTypedWorkerServer<TrackerWorkerContract>(self, {
         },
         [DETECT_REQUEST]: async (req, ctx) => {
             return await serialize(() => {
-                if (ctx.signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(ctx.signal);
                 server.notify(DETECT_NOTIFY_STARTED, { passId: req.passId });
                 return runDetectPass(req, ctx.signal, (fractionDone) => {
                     server.notify(DETECT_NOTIFY_PROGRESS, { fractionDone, passId: req.passId });

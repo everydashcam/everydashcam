@@ -13,6 +13,7 @@
 // export-map-snapshot.ts the pipeline uses), refreshed on timeupdate.
 
 import { createLogger } from "../log.js";
+import { createSerialQueue } from "../serial-queue.js";
 import { interpolatePosition } from "../parser.js";
 import type { GpsRecord } from "../parsers/types.js";
 import { MAP_BASE_WIDTH_PCT, mapOverlayRect } from "../transcode/map-overlay.js";
@@ -781,10 +782,9 @@ let mapLastRequestKey = "";
 // only the latest result is allowed to paint (else a slow earlier frame
 // overwrites a fresh later one).
 let mapSnapshotSeq = 0;
-// Serializes snapshot+draw on the shared MapLibre instance / reused composite
-// canvas, and defers disposal behind any in-flight snapshot. Mirrors the export
-// path's snapshotTail (transcode-shim.ts).
-let mapSnapshotTail: Promise<void> = Promise.resolve();
+// Serialize snapshot+draw on the shared MapLibre instance / reused composite
+// canvas, and defer disposal behind any in-flight snapshot.
+const enqueueMapSnapshot = createSerialQueue();
 
 async function refreshMapSnapshot(
     records: GpsRecord[],
@@ -871,16 +871,15 @@ async function refreshMapSnapshot(
     snap.setMarkerAppearance(om.marker);
     if (!exportPanelState.overlayMap.enabled || seqAtStart !== mapSnapshotSeq) return;
 
-    // Serialize the snapshot+draw on the tail: `snap` is ONE MapLibre instance
+    // Serialize the snapshot+draw: `snap` is ONE MapLibre instance
     // with ONE reused composite canvas, so two snapshot() calls running at once
     // interleave their jumpTo/redraw/drawImage and corrupt each other (the
-    // export path serializes the same way - see snapshotTail in transcode-shim).
-    // disposeMapSnapshotter also chains onto this tail, so map.remove() never
+    // export path serializes the same way in MapSnapshotSession).
+    // disposeMapSnapshotter also joins this queue, so map.remove() never
     // fires while a snapshot is mid-await on the instance. The seq re-check
     // below drops a request a newer frame superseded while it waited in the
-    // tail, so a burst renders only the latest. Errors are caught inside so the
-    // tail never rejects and the chain holds.
-    mapSnapshotTail = mapSnapshotTail.then(async () => {
+    // queue, so a burst renders only the latest.
+    void enqueueMapSnapshot(async () => {
         if (seqAtStart !== mapSnapshotSeq || !exportPanelState.overlayMap.enabled) return;
         let bitmap: ImageBitmap | null = null;
         try {
@@ -945,10 +944,9 @@ function disposeMapSnapshotter(): void {
         // Defer map.remove() behind any snapshot still mid-await on this instance
         // (snapshot() takes no signal and runs to completion); removing the
         // MapLibre map under it would make its getCanvas/project/redraw throw.
-        mapSnapshotTail = mapSnapshotTail.then(
-            () => snap.dispose(),
-            () => snap.dispose(),
-        );
+        void enqueueMapSnapshot(() => snap.dispose()).catch((err: unknown) => {
+            log.warn("preview map disposal failed", { err: String(err) });
+        });
     }
 }
 

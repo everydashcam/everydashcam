@@ -25,6 +25,7 @@
 
 // Type-only: the runtime namespace is loaded lazily via loadMaplibre (shared
 // with the viewer map module), so maplibre-gl stays out of the eager graph.
+import { throwIfCancelled } from "../abort-signals.js";
 import type * as maplibregl from "maplibre-gl";
 
 import { probeWebGL } from "../capabilities.js";
@@ -430,7 +431,7 @@ export async function createExportMapSnapshotter(
             };
             await visit(usable[0]!, 4000);
             for (const r of usable) {
-                if (signal.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 if (Date.now() - startedAtMs > PREWARM_BUDGET_MS) {
                     // Cap, do not fail: the un-walked stretch degrades to brief
                     // gray fills that back-fill during the run, while blowing

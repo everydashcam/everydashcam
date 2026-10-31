@@ -12,6 +12,7 @@
 //
 // Protocol: see per-file-mse-protocol.ts (alongside this file).
 
+import { createSerialQueue } from "../serial-queue.js";
 import {
     AudioSampleSource,
     EncodedAudioPacketSource,
@@ -251,11 +252,11 @@ function waitForFeedSignal(signal: AbortSignal): Promise<void> {
 // past the end of the file. tick is left out of the gate - it is a pure
 // state write and we want it to land synchronously even while a long
 // operation (e.g. waiting on feedDonePromise) is mid-flight.
-let opQueue: Promise<unknown> = Promise.resolve();
+const enqueueOp = createSerialQueue();
 function serialize(fn: () => Promise<void>): void {
     // Notifications have no reply; the main thread needs a failure signal
     // when setup throws before a feed exists or its seek would wait forever.
-    opQueue = opQueue.then(fn).catch((error) => {
+    void enqueueOp(fn).catch((error) => {
         if (error instanceof Error && error.name === "AbortError") return;
         fail("feed-setup-threw", error);
     });

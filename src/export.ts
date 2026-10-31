@@ -31,6 +31,7 @@
 // the iterator would require an interleaved feed (V/A packets in ascending pts
 // order), not "all video first, then all audio".
 
+import { throwIfCancelled } from "./abort-signals.js";
 import {
     Input,
     BufferSource,
@@ -132,7 +133,7 @@ export async function exportClip({
     onProgress,
     signal,
 }: ExportClipArgs): Promise<ExportClipResult> {
-    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
 
     const exportStart = performance.now();
 
@@ -199,7 +200,7 @@ export async function exportClip({
     let isDiscardingOutput = false;
     const targetWritable = new WritableStream<{ type: "write"; position: number; data: Uint8Array }>({
         async write(chunk) {
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             // TS5 distinguishes Uint8Array<ArrayBuffer> from Uint8Array<ArrayBufferLike>;
             // FSA write expects the former, mediabunny yields the latter. Cast is safe -
             // SharedArrayBuffer never arrives here in a browser context.
@@ -451,7 +452,7 @@ export async function exportClip({
         let audioDecoderConfigPushed = false;
 
         for (let segIdx = 0; segIdx < segments.length; segIdx++) {
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
 
             const seg = segments[segIdx]!;
             // No UI update at file boundaries - reportProgress in the loop
@@ -527,7 +528,7 @@ export async function exportClip({
                 // the edit list hides its negative portion.
                 const copyAudioBefore = async (untilSec: number): Promise<void> => {
                     while (apkt && audioSink && audioSource && apkt.timestamp < untilSec) {
-                        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+                        throwIfCancelled(signal);
                         const timestamp = apkt.timestamp - videoStartShift + videoAccumSec;
                         if (timestamp >= audioLastEndSec - 1e-6) {
                             const shifted = apkt.clone({ timestamp });
@@ -545,7 +546,7 @@ export async function exportClip({
 
                 let pkt: EncodedPacket | null = videoStartPacket;
                 while (pkt) {
-                    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+                    throwIfCancelled(signal);
                     if (pkt.sequenceNumber > videoEndPacket.sequenceNumber) break;
                     // Skip degenerate packets: some muxers (seen on Matroska
                     // re-exports) emit an empty ~4-byte access unit (a zero-length
@@ -628,7 +629,7 @@ export async function exportClip({
             }
         }
 
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         onProgress({ stage: t("export.progress.writingHeader") });
 
         // finalize() does three things in sequence:
@@ -650,7 +651,7 @@ export async function exportClip({
         // is still uncommitted and the catch below discards it; without telemetry
         // the mp4 is already on disk (too late to undo) - either way the user DID
         // cancel, so surface AbortError instead of a success view.
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
 
         // GPMF injection (post-process). Preferred: into the still-open output
         // before the commit (see gpmd-inject.ts). Fallback when onMoov never

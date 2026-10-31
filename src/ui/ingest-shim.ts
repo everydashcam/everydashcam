@@ -15,6 +15,7 @@
 //  - dispatchParseSidecarsViaPool: gpx-classified entries are parsed
 //    sequentially on main; everything else goes through the pool.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import type { IngestWorkerContract } from "../workers/ingest-protocol.js";
 
 import { extendArray } from "../array-extend.js";
@@ -98,7 +99,7 @@ export async function classifyFilesViaPool(
     existingVideoNames: Iterable<string> = [],
     signal?: AbortSignal,
 ): Promise<ClassifiedFilesResult> {
-    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
     const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(files, existingVideoNames);
     const result: ClassifiedFile[] = [...videoEntries];
     const errors: ClassifiedFilesResult["errors"] = [];
@@ -127,7 +128,7 @@ export async function classifyFilesViaPool(
             });
         }),
     );
-    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
 
     // Stitch sub-results back into the original order is not required - the
     // caller (ingest.ts) does not depend on file order in classified[]. We
@@ -315,7 +316,7 @@ export async function dispatchParseSidecarsViaPool(
     };
 
     const parseGpx = async (target: ClassifiedFile): Promise<void> => {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         try {
             const recs = await gpxSidecar.parse(target.file, target.sidecarMp4!, signal);
             collect(target, recs, gpxSidecar.id);

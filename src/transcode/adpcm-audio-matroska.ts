@@ -15,6 +15,7 @@
 // and buzz after resampling. The packet pts is used only to find the start block,
 // bound the range, and anchor the first emitted frame on the output timeline.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { EncodedPacketSink, Input, MATROSKA } from "mediabunny";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
 import { AudioSample, type AudioSampleSource } from "mediabunny";
@@ -96,7 +97,7 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
             // the same reason; this mirrors it.
             let anchorSec: number | null = null;
             while (pkt) {
-                if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 if (pkt.timestamp >= endInFileSec) break;
                 const block = pkt.data;
                 const framesPerChannel = imaAdpcmFramesPerBlock(block.length, channels);

@@ -17,6 +17,7 @@
 //
 // Storage: in-memory only (on the Trip object). Previews regenerate on reload since Files don't survive it.
 
+import { createSerialQueue } from "../serial-queue.js";
 import type { PreviewWorkerContract } from "../workers/preview-protocol.js";
 
 import { createLogger } from "../log.js";
@@ -91,18 +92,8 @@ function extractFirstFrameInWorker(file: File): Promise<string | null> {
     return pool.request(PREVIEW_REQUEST_EXTRACT, req).then((res) => res.dataUrl);
 }
 
-let nativeFallbackTail: Promise<void> = Promise.resolve();
-
-/** Serializes native fallbacks so thumbnail work never opens several extra
- * hardware decoders beside the live player. */
-function withNativeFallbackSlot<T>(task: () => Promise<T>): Promise<T> {
-    const result = nativeFallbackTail.then(task, task);
-    nativeFallbackTail = result.then(
-        () => {},
-        () => {},
-    );
-    return result;
-}
+/** One native fallback decoder can run beside the live player at a time. */
+const withNativeFallbackSlot = createSerialQueue();
 
 function waitForNativeFrame(video: HTMLVideoElement): Promise<void> {
     return new Promise((resolve, reject) => {

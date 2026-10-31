@@ -2,6 +2,7 @@
 // affected sources without those packets before decoding, preserving timestamps.
 // Healthy MP4s only need a metadata scan; Matroska also benefits from normalization.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import {
     AppendOnlyStreamTarget,
     EncodedPacketSink,
@@ -94,7 +95,7 @@ async function normalizeToCleanMp4(file: File, signal?: AbortSignal): Promise<Fi
         if (!isMatroskaName(file.name)) {
             let packet = await sink.getFirstPacket({ metadataOnly: true });
             while (packet && packet.byteLength > DEGENERATE_VIDEO_PACKET_MAX_BYTES) {
-                if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+                throwIfCancelled(signal);
                 packet = await sink.getNextPacket(packet, { metadataOnly: true });
             }
             if (!packet) return file;
@@ -121,7 +122,7 @@ async function normalizeToCleanMp4(file: File, signal?: AbortSignal): Promise<Fi
         let pushedAny = false;
         let dropped = 0;
         while (packet) {
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             if (packet.byteLength <= DEGENERATE_VIDEO_PACKET_MAX_BYTES) {
                 dropped++;
                 packet = await sink.getNextPacket(packet, { verifyKeyPackets: true });

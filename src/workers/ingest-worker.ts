@@ -13,6 +13,7 @@
 // Protocol: atomic per file for parse-*, batch for classify (shared
 // knownVideoNames). See ingest-protocol.ts for the wire shapes.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import type { IngestWorkerContract } from "./ingest-protocol.js";
 
 import { createLogger } from "../log.js";
@@ -58,9 +59,7 @@ createTypedWorkerServer<IngestWorkerContract>(self, {
             const knownVideos = new Set(req.knownVideoNames);
             const out: ClassifiedFile[] = [];
             for (const vf of req.files) {
-                if (ctx.signal.aborted) {
-                    throw new DOMException("aborted", "AbortError");
-                }
+                throwIfCancelled(ctx.signal);
                 out.push(await classifyOneNonVideo(vf, knownVideos, WORKER_SIDECARS, ACCEL_SIDECARS));
             }
             return out satisfies ClassifyBatchResult;

@@ -5,6 +5,7 @@
 // On a second drop during an active ingest, the set is queued in state.ingestQueue
 // and started after the current ingest's finally{}.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { t } from "../i18n/index.js";
 import {
     attachRecordsToCandidates,
@@ -363,7 +364,7 @@ async function ingestFilesInternal(
         relativePathsSample: vfiles.slice(0, 5).map((vf) => vf.relativePath),
     });
 
-    if (signal.aborted) throw new DOMException("ingest aborted", "AbortError");
+    throwIfCancelled(signal, "ingest aborted");
     setIngestStage(t("ingestOverlay.stage.parsingLogs"));
 
     // Parse logs before indexing so filename-owned records are ready now and
@@ -413,7 +414,7 @@ async function ingestFilesInternal(
     }
     reportParseErrors("log", logsResult.errors);
 
-    if (signal.aborted) throw new DOMException("ingest aborted", "AbortError");
+    throwIfCancelled(signal, "ingest aborted");
     setIngestStage(t("ingestOverlay.stage.parsingSidecars"));
 
     // Apply classifier-owned sidecars first. Loose GPX files are still unknown

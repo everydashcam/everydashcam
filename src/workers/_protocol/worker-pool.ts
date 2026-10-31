@@ -13,6 +13,7 @@
 // module-load failure), the pool clears it and recreates on next access.
 // Pending requests in that slot reject via the client's normal error path.
 
+import { throwIfCancelled } from "../../abort-signals.js";
 import { createLogger } from "../../log.js";
 import { workerUnavailableError } from "./worker-error.js";
 import type { WorkerContract, WorkerNotifier, WorkerRequester } from "./worker-contract.js";
@@ -172,7 +173,7 @@ export function createWorkerPool(opts: WorkerPoolOptions): WorkerPool {
 
     return {
         async request<TResult = unknown>(type: string, data?: unknown, reqOpts?: PoolRequestOptions): Promise<TResult> {
-            if (reqOpts?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(reqOpts?.signal);
             const idx = pickSlotIdx(reqOpts?.shardKey);
             const slot = slots[idx]!;
             const client = ensureSlot(idx);

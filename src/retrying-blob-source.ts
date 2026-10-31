@@ -17,7 +17,7 @@
 
 import { CustomSource } from "mediabunny";
 
-import { combineAbortSignals } from "./abort-signals.js";
+import { throwIfCancelled, combineAbortSignals } from "./abort-signals.js";
 import { createBackgroundReadErrorHandler, demuxView } from "./blob-source.js";
 import { identifyBrowser } from "./capabilities.js";
 import { createLogger } from "./log.js";
@@ -275,10 +275,10 @@ export async function readRangeWithRetry(
 ): Promise<Uint8Array> {
     let consecutiveFailures = 0;
     for (;;) {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         try {
             const bytes = new Uint8Array(await blob.slice(start, end).arrayBuffer());
-            if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+            throwIfCancelled(signal);
             return bytes;
         } catch (err) {
             await backoffOrRethrow(err, consecutiveFailures, start, signal);

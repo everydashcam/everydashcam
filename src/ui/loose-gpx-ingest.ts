@@ -2,6 +2,7 @@
 // model-specific logs/sidecars and exact-basename GPX their authoritative
 // owners before this module sees the remaining role=unknown files.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import { parseGpxTrack } from "../parsers/sidecars/gpx.js";
 import type { ClassifiedFile } from "../parsers/registry-light.js";
 import type { GpsRecord } from "../parsers/types.js";
@@ -34,7 +35,7 @@ async function parseLooseTracks(
     const tracks: ParsedLooseGpx[] = [];
     const errors: LooseGpxResolution["errors"] = [];
     for (const item of files) {
-        if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+        throwIfCancelled(signal);
         try {
             // The temporary filename is replaced with the confirmed trip anchor
             // before records enter GpsLog.
@@ -79,7 +80,7 @@ export async function resolveLooseGpxFiles(
         return { records: [], assignedFiles: 0, needsTrip: false, errors: parsed.errors };
     }
     const assignments = await showGpxAssignmentModal(plans, copy, signal);
-    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    throwIfCancelled(signal);
     return {
         records: recordsForLooseGpxAssignments(assignments),
         assignedFiles: assignments.length,

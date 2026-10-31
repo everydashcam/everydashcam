@@ -12,6 +12,7 @@
 // MPEG-TS: mediabunny.computeDuration + getCodec - TS has no moov, so
 // the worker pays the mediabunny bundle cost only on the TS branch.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import type { IndexerWorkerContract } from "./indexer-protocol.js";
 
 import { createLogger } from "../log.js";
@@ -85,7 +86,7 @@ const server = createTypedWorkerServer<IndexerWorkerContract>(self, {
                 }
             });
             await Promise.all(workers);
-            if (ctx.signal.aborted) throw new DOMException("ingest aborted", "AbortError");
+            throwIfCancelled(ctx.signal, "ingest aborted");
             return {};
         },
     },
