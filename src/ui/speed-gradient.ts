@@ -67,13 +67,24 @@ export function buildSpeedGradient(recs: GpsRecord[], cumDist: number[], total: 
 
     // Strictly monotonically increasing stops. Guard against rare float
     // collisions from very close points by nudging progress forward.
+    //
+    // Speed colors are a handful of discrete buckets, so long runs share one
+    // color. Only the first and last stop of a run are emitted: linear
+    // interpolation between two equal colors yields that color, so the
+    // rendered line is identical. MapLibre parses this expression several times
+    // per addLayer (validation on the main thread, then the worker), and one
+    // stop per GPS record made that the dominant cost of opening a long trip.
+    const colors = recs.map(recordSpeedColor);
     const stops: unknown[] = ["interpolate", ["linear"], ["line-progress"]];
+    const last = recs.length - 1;
     let lastProgress = -1;
-    for (let i = 0; i < recs.length; i++) {
-        let progress = i === recs.length - 1 ? 1 : cumDist[i]! / total;
+    for (let i = 0; i <= last; i++) {
+        let progress = i === last ? 1 : cumDist[i]! / total;
         if (progress <= lastProgress) progress = lastProgress + 1e-9;
         lastProgress = progress;
-        stops.push(progress, recordSpeedColor(recs[i]!));
+        const color = colors[i]!;
+        const interior = i > 0 && i < last && color === colors[i - 1] && color === colors[i + 1];
+        if (!interior) stops.push(progress, color);
     }
     return stops;
 }
