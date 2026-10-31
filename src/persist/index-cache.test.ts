@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { packAccelColumns, packGpsRecordColumns } from "./gps-columns.js";
 import { approxEntryBytes, buildCacheEntry, isCurrentCacheEntry, isQuotaFailure } from "./index-cache.js";
 import {
     type CachedEmbeddedGps,
@@ -47,24 +48,28 @@ function embedded(recordCount = 1, accelCount = 0): CachedEmbeddedGps {
         dispatchRevision: "revision",
         extractorId: "freegps",
         sourceIdentityKey: IDENTITY,
-        records: Array.from({ length: recordCount }, (_, i) => ({
-            unixSeconds: 1_753_900_001 + i,
-            active: true,
-            lat: 52.1,
-            lon: 13.4,
-            bearingDeg: 90,
-            speedMs: 13.9,
-            accelXg: 0,
-            accelYg: 0,
-            accelZg: 0,
-            mp4Filename: "clip.mp4",
-        })),
-        accelSamples: Array.from({ length: accelCount }, (_, i) => ({
-            msSinceStart: i * 100,
-            accelXg: 0,
-            accelYg: 0,
-            accelZg: 1,
-        })),
+        recordColumns: packGpsRecordColumns(
+            Array.from({ length: recordCount }, (_, i) => ({
+                unixSeconds: 1_753_900_001 + i,
+                active: true,
+                lat: 52.1,
+                lon: 13.4,
+                bearingDeg: 90,
+                speedMs: 13.9,
+                accelXg: 0,
+                accelYg: 0,
+                accelZg: 0,
+                mp4Filename: "clip.mp4",
+            })),
+        ),
+        accelColumns: packAccelColumns(
+            Array.from({ length: accelCount }, (_, i) => ({
+                msSinceStart: i * 100,
+                accelXg: 0,
+                accelYg: 0,
+                accelZg: 1,
+            })),
+        ),
     };
 }
 
@@ -110,6 +115,15 @@ describe("approxEntryBytes", () => {
         const sparse = approxEntryBytes(IDENTITY, metadata(), embedded(1));
         const dense = approxEntryBytes(IDENTITY, metadata(), embedded(200, 100));
         expect(dense).toBeGreaterThan(sparse * 10);
+    });
+
+    it("counts packed GPS by its column payload", () => {
+        const empty = approxEntryBytes(IDENTITY, metadata(), embedded(0, 0));
+        const dense = approxEntryBytes(IDENTITY, metadata(), embedded(1_000, 0));
+        const perRecord = (dense - empty) / 1_000;
+        // Eight Float64 columns plus the flag, speed-source and filename-index columns.
+        expect(perRecord, "bytes per packed record").toBeGreaterThanOrEqual(70);
+        expect(perRecord, "bytes per packed record").toBeLessThan(80);
     });
 
     it("counts the patched moov by raw length", () => {

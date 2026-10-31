@@ -5,9 +5,15 @@ import { embeddedGpsDispatchRevision, noEmbeddedGpsDispatchRevision } from "../p
 import type { ClassifiedFile } from "../parsers/registry-light.js";
 import type { DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
 import type { VendorFile } from "../parsers/types.js";
+import { packAccelColumns, packGpsRecordColumns, unpackGpsRecordColumns } from "../persist/gps-columns.js";
 import { fileIdentityKey, fileIdentityOf } from "../persist/identity.js";
 import { buildCacheEntry } from "../persist/index-cache.js";
-import { type CachedRecordingMetadata, RECORDING_METADATA_CACHE_REVISION } from "../persist/types.js";
+import {
+    type CachedGpsRecordColumns,
+    type CachedParsedEmbeddedGps,
+    type CachedRecordingMetadata,
+    RECORDING_METADATA_CACHE_REVISION,
+} from "../persist/types.js";
 import {
     _cacheMetadataForTests,
     _isIndexCacheWriteBlockedForTests,
@@ -126,7 +132,7 @@ describe("isIndexCacheEntryCompatible", () => {
             dispatchRevision: current,
             extractorId: "freegps",
             sourceIdentityKey: identity,
-            records: [],
+            recordColumns: packGpsRecordColumns([]),
         });
         expect(isIndexCacheEntryCompatible(entry, true, available)).toBe(true);
 
@@ -135,31 +141,45 @@ describe("isIndexCacheEntryCompatible", () => {
     });
 
     it("degrades corrupt embedded facts to metadata-only reuse", () => {
-        const entry = buildCacheEntry(identity, metadata(), {
+        const record = {
+            unixSeconds: 100,
+            active: true,
+            lat: 52,
+            lon: 13,
+            bearingDeg: 90,
+            speedMs: 10,
+            accelXg: 0,
+            accelYg: 0,
+            accelZg: 0,
+            mp4Filename: "clip.mp4",
+        };
+        const parsed = (overrides: Partial<CachedParsedEmbeddedGps>): CachedParsedEmbeddedGps => ({
             status: "parsed",
             dispatchRevision: embeddedGpsDispatchRevision("freegps")!,
             extractorId: "freegps",
             sourceIdentityKey: identity,
-            records: [
-                {
-                    unixSeconds: Number.NaN,
-                    active: true,
-                    lat: 52,
-                    lon: 13,
-                    bearingDeg: 90,
-                    speedMs: 10,
-                    accelXg: 0,
-                    accelYg: 0,
-                    accelZg: 0,
-                    mp4Filename: "clip.mp4",
-                },
-            ],
-            videoStartUtcHint: Number.POSITIVE_INFINITY,
-            accelSamples: [{ msSinceStart: 0, accelXg: 0, accelYg: 0, accelZg: Number.NaN }],
+            recordColumns: packGpsRecordColumns([record]),
+            ...overrides,
         });
+        expect(isIndexCacheEntryCompatible(buildCacheEntry(identity, metadata(), parsed({})), true, available)).toBe(
+            true,
+        );
 
-        expect(isIndexCacheEntryCompatible(entry, true, available)).toBe(false);
-        expect(indexCacheReuseKind(entry, true, available)).toBe("metadata");
+        const corruptions: Record<string, Partial<CachedParsedEmbeddedGps>> = {
+            "non-finite record time": { recordColumns: packGpsRecordColumns([{ ...record, unixSeconds: Number.NaN }]) },
+            "non-finite start hint": { videoStartUtcHint: Number.POSITIVE_INFINITY },
+            "non-finite accel sample": {
+                accelColumns: packAccelColumns([{ msSinceStart: 0, accelXg: 0, accelYg: 0, accelZg: Number.NaN }]),
+            },
+            "legacy record objects": { recordColumns: [record] as unknown as CachedGpsRecordColumns },
+        };
+        for (const [label, overrides] of Object.entries(corruptions)) {
+            // Corruption arrives with the stored value, after write-time accounting.
+            const entry = buildCacheEntry(identity, metadata(), parsed({}));
+            Object.assign(entry.embeddedGps!, overrides);
+            expect(isIndexCacheEntryCompatible(entry, true, available), label).toBe(false);
+            expect(indexCacheReuseKind(entry, true, available), label).toBe("metadata");
+        }
     });
 
     it("rejects a clone when its parsed source file is no longer present", () => {
@@ -168,7 +188,7 @@ describe("isIndexCacheEntryCompatible", () => {
             dispatchRevision: embeddedGpsDispatchRevision("juscar-ts")!,
             extractorId: "juscar-ts",
             sourceIdentityKey: "CARD/front.ts\u00001\u00001",
-            records: [],
+            recordColumns: packGpsRecordColumns([]),
         });
         expect(isIndexCacheEntryCompatible(entry, true, available)).toBe(false);
     });
@@ -232,7 +252,7 @@ describe("indexCacheReuseKind", () => {
             dispatchRevision: "stale",
             extractorId: "freegps",
             sourceIdentityKey: identity,
-            records: [],
+            recordColumns: packGpsRecordColumns([]),
         });
         expect(indexCacheReuseKind(stale, true, available)).toBe("metadata");
     });
@@ -243,7 +263,7 @@ describe("indexCacheReuseKind", () => {
             dispatchRevision: embeddedGpsDispatchRevision("freegps")!,
             extractorId: "freegps",
             sourceIdentityKey: identity,
-            records: [],
+            recordColumns: packGpsRecordColumns([]),
         });
         expect(indexCacheReuseKind(entry, true, available, true)).toBe("metadata");
         expect(indexCacheReuseKind(entry, false, available, true)).toBe("metadata");
@@ -363,16 +383,17 @@ describe("buildEmbeddedGpsCacheArtifactUpdates", () => {
         expect(artifact?.status).toBe("parsed");
         if (artifact?.status !== "parsed") throw new Error("expected parsed artifact");
         expect(artifact.extractorId).toBe("freegps");
-        expect(artifact.records[0]!.unixSeconds).toBe(18_100);
-        expect(artifact.records[0]).not.toHaveProperty("videoKey");
-        expect(artifact.records[0]).not.toHaveProperty("recordingAssociation");
-        expect(artifact.records[0]).not.toHaveProperty("timeAssociation");
-        expect(artifact.records[0]).not.toHaveProperty("externalTrack");
-        expect(artifact.records[0]).not.toHaveProperty("externalTrackKey");
-        expect(artifact.records[0]).not.toHaveProperty("localClockOffsetAppliedSec");
+        const [restored] = unpackGpsRecordColumns(artifact.recordColumns, "restoring-session");
+        expect(restored?.unixSeconds).toBe(18_100);
+        expect(restored?.videoKey).toBe("restoring-session");
+        expect(restored).not.toHaveProperty("recordingAssociation");
+        expect(restored).not.toHaveProperty("timeAssociation");
+        expect(restored).not.toHaveProperty("externalTrack");
+        expect(restored).not.toHaveProperty("externalTrackKey");
+        expect(restored).not.toHaveProperty("localClockOffsetAppliedSec");
         expect(artifact.videoStartUtcHint).toBe(90);
         expect(artifact.localClockOffsetHintSec).toBe(18_000);
-        expect(artifact.accelSamples).toHaveLength(1);
+        expect(artifact.accelColumns?.msSinceStart).toHaveLength(1);
     });
 
     it("distinguishes verified negatives from failed parses", () => {
@@ -432,7 +453,7 @@ describe("hydrateCandidate", () => {
             dispatchRevision: embeddedGpsDispatchRevision("freegps")!,
             extractorId: "freegps",
             sourceIdentityKey: identity,
-            records: [
+            recordColumns: packGpsRecordColumns([
                 {
                     unixSeconds: 100,
                     active: true,
@@ -445,10 +466,10 @@ describe("hydrateCandidate", () => {
                     accelZg: 0,
                     mp4Filename: target.file.file.name,
                 },
-            ],
+            ]),
             videoStartUtcHint: 90,
             localClockOffsetHintSec: 18_000,
-            accelSamples: [{ msSinceStart: 0, accelXg: 0, accelYg: 0, accelZg: 1 }],
+            accelColumns: packAccelColumns([{ msSinceStart: 0, accelXg: 0, accelYg: 0, accelZg: 1 }]),
         });
 
         const restored = hydrateCandidate(target, entry, [], []);
@@ -471,7 +492,7 @@ describe("hydrateCandidate", () => {
             dispatchRevision: embeddedGpsDispatchRevision("freegps")!,
             extractorId: "freegps",
             sourceIdentityKey: identity,
-            records: [],
+            recordColumns: packGpsRecordColumns([]),
             videoStartUtcHint: 90,
         });
         const external = {
@@ -508,18 +529,20 @@ describe("partitionByIndexCache", () => {
                 dispatchRevision: embeddedGpsDispatchRevision("freegps")!,
                 extractorId: "freegps",
                 sourceIdentityKey: identity,
-                records: Array.from({ length: recordCount }, (_, index) => ({
-                    unixSeconds: 100 + index,
-                    active: true,
-                    lat: 1,
-                    lon: 2,
-                    bearingDeg: 3,
-                    speedMs: 4,
-                    accelXg: 0,
-                    accelYg: 0,
-                    accelZg: 0,
-                    mp4Filename: "clip.mp4",
-                })),
+                recordColumns: packGpsRecordColumns(
+                    Array.from({ length: recordCount }, (_, index) => ({
+                        unixSeconds: 100 + index,
+                        active: true,
+                        lat: 1,
+                        lon: 2,
+                        bearingDeg: 3,
+                        speedMs: 4,
+                        accelXg: 0,
+                        accelYg: 0,
+                        accelZg: 0,
+                        mp4Filename: "clip.mp4",
+                    })),
+                ),
             }),
         );
 

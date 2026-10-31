@@ -5,6 +5,7 @@
 import { createLogger } from "../log.js";
 import { getIndexCacheLimitBytes } from "./cache-limit.js";
 import { openPersistDb, type PersistDb } from "./db.js";
+import { accelColumnsByteLength, gpsRecordColumnsByteLength } from "./gps-columns.js";
 import {
     type CachedEmbeddedGps,
     type CachedFileIndex,
@@ -119,18 +120,14 @@ export function isCurrentCacheEntry(value: unknown): value is CachedFileIndex {
     );
 }
 
-// Rough stored weight of one GpsRecord: nine numeric fields plus the source
-// filename. Measured against JSON.stringify of a real record (~196 bytes) so
-// the volume bound keeps meaning roughly what it says; the prune itself only
-// ever compares entries against each other.
-const BYTES_PER_RECORD = 200;
-const BYTES_PER_ACCEL_SAMPLE = 40;
 // IndexedMp4 fields, cache revisions, ids, and IndexedDB record overhead.
 const BYTES_PER_ENTRY = 512;
 
 /**
- * Approximate stored size of an entry. Arithmetic, not JSON.stringify: dense
- * telemetry dominates and serializing it solely for accounting is expensive.
+ * Approximate stored size of an entry. Arithmetic, not serialization: dense
+ * telemetry dominates, and its typed columns report their exact payload, so
+ * the volume bound keeps meaning roughly what it says without cloning the
+ * entry solely for accounting.
  */
 export function approxEntryBytes(
     identityKey: string,
@@ -138,10 +135,12 @@ export function approxEntryBytes(
     embeddedGps: CachedEmbeddedGps | undefined,
 ): number {
     const repairBytes = metadata.repair ? metadata.repair.patchedMoov.byteLength + 256 : 0;
-    const recordBytes = embeddedGps?.status === "parsed" ? embeddedGps.records.length * BYTES_PER_RECORD : 0;
-    const accelBytes =
-        embeddedGps?.status === "parsed" ? (embeddedGps.accelSamples?.length ?? 0) * BYTES_PER_ACCEL_SAMPLE : 0;
-    return identityKey.length * 2 + recordBytes + accelBytes + repairBytes + BYTES_PER_ENTRY;
+    let gpsBytes = 0;
+    if (embeddedGps?.status === "parsed") {
+        gpsBytes = gpsRecordColumnsByteLength(embeddedGps.recordColumns);
+        if (embeddedGps.accelColumns) gpsBytes += accelColumnsByteLength(embeddedGps.accelColumns);
+    }
+    return identityKey.length * 2 + gpsBytes + repairBytes + BYTES_PER_ENTRY;
 }
 
 /** Assembles one immutable artifact snapshot for storage. */

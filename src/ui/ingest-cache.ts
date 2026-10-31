@@ -12,6 +12,12 @@ import { embeddedGpsDispatchRevision, noEmbeddedGpsDispatchRevision } from "../p
 import type { ClassifiedFile, DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
 import { shouldTryEmbeddedGps } from "../parsers/gps-source-hints.js";
 import type { AccelSample, GpsRecord, ParsedLog } from "../parsers/types.js";
+import {
+    isValidAccelColumns,
+    isValidGpsRecordColumns,
+    unpackAccelColumns,
+    unpackGpsRecordColumns,
+} from "../persist/gps-columns.js";
 import { fileIdentityKey, fileIdentityOf } from "../persist/identity.js";
 import {
     buildCacheEntry,
@@ -234,53 +240,10 @@ function isCurrentEmbeddedGps(value: unknown, availableIdentityKeys: ReadonlySet
         typeof embedded.sourceIdentityKey !== "string" ||
         embedded.dispatchRevision !== embeddedGpsDispatchRevision(embedded.extractorId) ||
         !availableIdentityKeys.has(embedded.sourceIdentityKey) ||
-        !Array.isArray(embedded.records) ||
-        !embedded.records.every((record) => {
-            if (typeof record !== "object" || record === null) return false;
-            const raw = record as Record<string, unknown>;
-            return (
-                isFiniteNumber(raw.unixSeconds) &&
-                typeof raw.active === "boolean" &&
-                isFiniteNumber(raw.lat) &&
-                isFiniteNumber(raw.lon) &&
-                isFiniteNumber(raw.bearingDeg) &&
-                isFiniteNumber(raw.speedMs) &&
-                (raw.speedSource === undefined ||
-                    raw.speedSource === "measured" ||
-                    raw.speedSource === "estimated" ||
-                    raw.speedSource === "unavailable") &&
-                (raw.trackSegment === undefined ||
-                    (isFiniteNumber(raw.trackSegment) &&
-                        Number.isInteger(raw.trackSegment) &&
-                        raw.trackSegment >= 0)) &&
-                isFiniteNumber(raw.accelXg) &&
-                isFiniteNumber(raw.accelYg) &&
-                isFiniteNumber(raw.accelZg) &&
-                typeof raw.mp4Filename === "string" &&
-                (raw.timeUnsynced === undefined || typeof raw.timeUnsynced === "boolean") &&
-                (raw.relStartSeconds === undefined || isFiniteNumber(raw.relStartSeconds)) &&
-                raw.videoKey === undefined &&
-                raw.trackSegmentSource === undefined &&
-                raw.recordingAssociation === undefined &&
-                raw.timeAssociation === undefined &&
-                raw.externalTrack === undefined &&
-                raw.externalTrackKey === undefined &&
-                raw.localClockOffsetAppliedSec === undefined
-            );
-        }) ||
+        !isValidGpsRecordColumns(embedded.recordColumns) ||
         (embedded.videoStartUtcHint !== undefined && !isFiniteNumber(embedded.videoStartUtcHint)) ||
         (embedded.localClockOffsetHintSec !== undefined && !isFiniteNumber(embedded.localClockOffsetHintSec)) ||
-        (embedded.accelSamples !== undefined &&
-            (!Array.isArray(embedded.accelSamples) ||
-                !embedded.accelSamples.every(
-                    (sample) =>
-                        typeof sample === "object" &&
-                        sample !== null &&
-                        isFiniteNumber(sample.msSinceStart) &&
-                        isFiniteNumber(sample.accelXg) &&
-                        isFiniteNumber(sample.accelYg) &&
-                        isFiniteNumber(sample.accelZg),
-                )))
+        (embedded.accelColumns !== undefined && !isValidAccelColumns(embedded.accelColumns))
     ) {
         return false;
     }
@@ -385,9 +348,7 @@ export function hydrateCandidate(
     const freshVideoKey = vendorFileKey(file.file);
     const needsEmbeddedGps = shouldTryEmbeddedGps(file.file, externalRecords.length > 0);
     const embedded = needsEmbeddedGps && entry.embeddedGps?.status === "parsed" ? entry.embeddedGps : null;
-    const embeddedRecords: GpsRecord[] = embedded
-        ? embedded.records.map((record) => ({ ...record, videoKey: freshVideoKey }))
-        : [];
+    const embeddedRecords: GpsRecord[] = embedded ? unpackGpsRecordColumns(embedded.recordColumns, freshVideoKey) : [];
     const records = externalRecords.length > 0 ? externalRecords : embeddedRecords;
     const fingerprint = cameraFingerprint(file.file);
     const classifierFields = filenameClassifierFields(file.file);
@@ -423,7 +384,7 @@ export function hydrateCandidate(
     return {
         candidate,
         embeddedRecords,
-        accel: embedded?.accelSamples?.map((sample) => ({ ...sample })) ?? null,
+        accel: embedded?.accelColumns ? unpackAccelColumns(embedded.accelColumns) : null,
     };
 }
 

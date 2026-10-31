@@ -4,7 +4,7 @@
 // FileSystemHandle objects are the one exception - browsers clone them
 // natively, which is the whole mechanism this feature stands on.
 
-import type { AccelSample, GpsRecord } from "../parsers/types.js";
+import type { GpsRecord } from "../parsers/types.js";
 import type { IndexedMp4, IndexerRepair } from "../workers/indexer-protocol.js";
 
 export { RECORDING_METADATA_CACHE_REVISION } from "./cache-revisions.generated.js";
@@ -14,7 +14,7 @@ export { RECORDING_METADATA_CACHE_REVISION } from "./cache-revisions.generated.j
  * GPS artifact; container metadata has its own revision. Derived candidate
  * fields and external sidecars are never persisted.
  */
-export const INDEX_CACHE_FORMAT = 3;
+export const INDEX_CACHE_FORMAT = 4;
 
 /**
  * Cheap cross-session identity of a file inside a picked folder, matchable
@@ -68,16 +68,61 @@ export interface CachedRecordingMetadata {
 
 /** Session ownership, external-track choices, and post-parse clock corrections
  * are rebuilt on restore rather than persisted with byte-derived GPS. */
-export type CachedEmbeddedGpsRecord = Omit<
-    GpsRecord,
+export type SessionOnlyGpsField =
     | "videoKey"
     | "trackSegmentSource"
     | "recordingAssociation"
     | "timeAssociation"
     | "externalTrack"
     | "externalTrackKey"
-    | "localClockOffsetAppliedSec"
->;
+    | "localClockOffsetAppliedSec";
+
+/** The parser facts one stored GPS row holds; CachedGpsRecordColumns is their
+ *  storage form. */
+export type CachedEmbeddedGpsRecord = Omit<GpsRecord, SessionOnlyGpsField>;
+
+/**
+ * One file's raw embedded GPS records, stored column-wise: structured clone
+ * (every IndexedDB read, write and recency touch) pays per object, and typed
+ * arrays avoid one object per record. Index i of every per-record column
+ * describes record i. Encoding, decoding and validation live in gps-columns.ts;
+ * code outside the persist boundary only sees GpsRecord[].
+ */
+export interface CachedGpsRecordColumns {
+    unixSeconds: Float64Array;
+    lat: Float64Array;
+    lon: Float64Array;
+    bearingDeg: Float64Array;
+    speedMs: Float64Array;
+    accelXg: Float64Array;
+    accelYg: Float64Array;
+    accelZg: Float64Array;
+    /** Per-record bit set: fix status plus the presence (and value) of each
+     *  optional boolean or numeric field, so absent never reads back as a
+     *  default value. */
+    flags: Uint8Array;
+    /** Per-record speedSource code; 0 means the field is absent. */
+    speedSource: Uint8Array;
+    /** Present only when some record has the field; rows without its presence
+     *  flag hold 0. */
+    trackSegment?: Float64Array;
+    /** Present only when some record has the field; rows without its presence
+     *  flag hold 0. */
+    relStartSeconds?: Float64Array;
+    /** Distinct mp4Filename values. A file's records nearly always share one,
+     *  so a per-record string would repeat the same name thousands of times. */
+    mp4Filenames: string[];
+    /** Per-record index into mp4Filenames. */
+    mp4FilenameIndex: Uint32Array;
+}
+
+/** High-rate accelerometer samples in the same columnar form. */
+export interface CachedAccelColumns {
+    msSinceStart: Float64Array;
+    accelXg: Float64Array;
+    accelYg: Float64Array;
+    accelZg: Float64Array;
+}
 
 export interface CachedParsedEmbeddedGps {
     status: "parsed";
@@ -87,10 +132,11 @@ export interface CachedParsedEmbeddedGps {
     /** Persistent identity of the file whose bytes were parsed. Differs from
      *  the owning entry for cloneAcrossGroup followers. */
     sourceIdentityKey: string;
-    records: CachedEmbeddedGpsRecord[];
+    recordColumns: CachedGpsRecordColumns;
     videoStartUtcHint?: number;
     localClockOffsetHintSec?: number;
-    accelSamples?: AccelSample[];
+    /** Absent when the parse produced no high-rate samples. */
+    accelColumns?: CachedAccelColumns;
 }
 
 export interface CachedNoEmbeddedGps {

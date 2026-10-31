@@ -6,33 +6,13 @@
 import { embeddedGpsDispatchRevision, noEmbeddedGpsDispatchRevision } from "../parsers/primitives/cache-revisions.js";
 import type { ClassifiedFile, DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
 import type { GpsRecord } from "../parsers/types.js";
+import { packAccelColumns, packGpsRecordColumns } from "../persist/gps-columns.js";
 import { fileIdentityKey, fileIdentityOf } from "../persist/identity.js";
-import type { CachedEmbeddedGps, CachedEmbeddedGpsRecord } from "../persist/types.js";
+import type { CachedEmbeddedGps } from "../persist/types.js";
 import { vendorFileKey } from "../vendor-file-key.js";
 
 function cacheKeyOf(file: ClassifiedFile): string {
     return fileIdentityKey(fileIdentityOf(file.file.file, file.file.relativePath));
-}
-
-function toCachedRecord(record: GpsRecord): CachedEmbeddedGpsRecord {
-    const {
-        videoKey: _videoKey,
-        trackSegmentSource: _trackSegmentSource,
-        recordingAssociation: _recordingAssociation,
-        timeAssociation: _timeAssociation,
-        externalTrack: _externalTrack,
-        externalTrackKey: _externalTrackKey,
-        localClockOffsetAppliedSec: _localClockOffsetAppliedSec,
-        ...cached
-    } = record;
-    // Persist the parser's raw axis even if a future call site captures this
-    // record after applyLocalClockCorrections has already shifted it. The marker
-    // is the amount subtracted from unixSeconds, so adding it reverses the
-    // session mutation before the marker itself is discarded.
-    if (record.localClockOffsetAppliedSec) {
-        return { ...cached, unixSeconds: cached.unixSeconds + record.localClockOffsetAppliedSec };
-    }
-    return cached;
 }
 
 /** Pure per-file artifact projection, exported for revision hashing/tests. */
@@ -48,7 +28,9 @@ export function buildEmbeddedGpsCacheArtifactUpdates(
     }
     const errorNames = new Set(result.errors.map((error) => error.file));
     const heavyKeys = new Set(result.heavyFiles.map((file) => vendorFileKey(file.file)));
-    const recordsByVideoKey = new Map<string, CachedEmbeddedGpsRecord[]>();
+    // Groups references only: packing below copies the persisted facts, so no
+    // intermediate per-record object is built.
+    const recordsByVideoKey = new Map<string, GpsRecord[]>();
     for (const record of result.records) {
         if (!record.videoKey) continue;
         let records = recordsByVideoKey.get(record.videoKey);
@@ -56,7 +38,7 @@ export function buildEmbeddedGpsCacheArtifactUpdates(
             records = [];
             recordsByVideoKey.set(record.videoKey, records);
         }
-        records.push(toCachedRecord(record));
+        records.push(record);
     }
 
     for (const target of targets) {
@@ -97,14 +79,14 @@ export function buildEmbeddedGpsCacheArtifactUpdates(
             dispatchRevision,
             extractorId,
             sourceIdentityKey,
-            records: recordsByVideoKey.get(sessionKey) ?? [],
+            recordColumns: packGpsRecordColumns(recordsByVideoKey.get(sessionKey) ?? []),
         };
         const startHint = result.videoStartUtcHintByFileKey.get(sessionKey);
         if (startHint !== undefined) artifact.videoStartUtcHint = startHint;
         const clockHint = result.localClockOffsetHintByFileKey.get(sessionKey);
         if (clockHint !== undefined) artifact.localClockOffsetHintSec = clockHint;
         const accel = result.accelByFileKey.get(sessionKey);
-        if (accel && accel.length > 0) artifact.accelSamples = accel.map((sample) => ({ ...sample }));
+        if (accel && accel.length > 0) artifact.accelColumns = packAccelColumns(accel);
         updates.set(identityKey, artifact);
     }
     return updates;
