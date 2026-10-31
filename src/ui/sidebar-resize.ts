@@ -1,8 +1,9 @@
 // Drag handle between sidebar and main area. Width stored in --sidebar-width on :root and persisted to localStorage.
 // Pointer capture keeps touch, pen and mouse drags attached to the handle.
-// Also owns the collapse toggle (body.sidebar-collapsed + the edge tab) -
+// Also owns the collapse toggle (body.sidebar-collapsed + the player-bar toggle) -
 // collapse is the other way the user manages the same column's width.
 
+import { t } from "../i18n/index.js";
 import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { dom } from "./dom.js";
 import { isMobileLayout } from "./media-queries.js";
@@ -43,19 +44,17 @@ function restoreSidebarWidth(): void {
 }
 
 /** Applies the collapsed state to the DOM: the body class drives the CSS
- *  (0-track column + edge tab visibility), aria-expanded mirrors it on both
- *  toggles for screen readers. */
+ *  (0-track column), and the one toggle in the player bar mirrors it in its
+ *  icon, label and aria-expanded. */
 function applySidebarCollapsed(collapsed: boolean): void {
     document.body.classList.toggle("sidebar-collapsed", collapsed);
-    dom.sidebarCollapseBtn.setAttribute("aria-expanded", String(!collapsed));
-    dom.sidebarExpandTab.setAttribute("aria-expanded", String(!collapsed));
-}
-
-function setSidebarCollapsed(collapsed: boolean): void {
-    applySidebarCollapsed(collapsed);
-    // The vanished control would strand keyboard focus on a hidden element;
-    // hand it to the counterpart so Tab keeps working from the same spot.
-    (collapsed ? dom.sidebarExpandTab : dom.sidebarCollapseBtn).focus();
+    const toggle = dom.sidebarToggle;
+    const label = t(collapsed ? "sidebar.expand" : "sidebar.collapse");
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
+    toggle.querySelector<SVGElement>(".i-panel-close")?.toggleAttribute("hidden", collapsed);
+    toggle.querySelector<SVGElement>(".i-panel-open")?.toggleAttribute("hidden", !collapsed);
 }
 
 export function initSidebarResize(): void {
@@ -66,8 +65,11 @@ export function initSidebarResize(): void {
     window.addEventListener("resize", syncResizeValue);
     // Session-only on purpose (no persistence): a fresh page always shows the
     // list - it is the only way to pick a trip to watch.
-    dom.sidebarCollapseBtn.addEventListener("click", () => setSidebarCollapsed(true));
-    dom.sidebarExpandTab.addEventListener("click", () => setSidebarCollapsed(false));
+    // The toggle keeps focus across the change: it stays where it was.
+    applySidebarCollapsed(document.body.classList.contains("sidebar-collapsed"));
+    dom.sidebarToggle.addEventListener("click", () =>
+        applySidebarCollapsed(!document.body.classList.contains("sidebar-collapsed")),
+    );
 
     attachPointerDrag(dom.sidebarResize, {
         onStart: (e) => {

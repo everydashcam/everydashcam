@@ -133,6 +133,9 @@
     font-weight: 650;
 }
 .trip-jump__step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 28px;
     height: 28px;
     padding: 0;
@@ -140,7 +143,6 @@
     border-radius: var(--dc-radius-sm);
     background: transparent;
     color: var(--fg-dim);
-    font-size: var(--dc-text-lg);
     cursor: pointer;
 }
 .trip-jump__step:hover:not(:disabled) {
@@ -1544,39 +1546,6 @@
    complementary desktop media so it never touches the mobile drawer, which
    reuses the same .sidebar element with position:fixed.
    ========================================================================= */
-/* The edge tab that brings the list back. Hidden until collapsed; sits at
-   the layout's left edge (main.layout is position:relative), above the
-   viewer content. */
-.sidebar-expand-tab {
-    display: none;
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 30;
-    width: 20px;
-    height: 64px;
-    padding: 0;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-elev-2);
-    color: var(--fg-dim);
-    border: 1px solid var(--border);
-    border-left: 0;
-    border-radius: 0 var(--dc-radius-md) var(--dc-radius-md) 0;
-    cursor: pointer;
-    transition:
-        background var(--dc-dur-fast) var(--dc-ease),
-        color var(--dc-dur-fast) var(--dc-ease);
-}
-.sidebar-expand-tab:hover {
-    background: var(--bg-hover);
-    color: var(--fg);
-}
-.sidebar-expand-tab:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-}
 @media (min-width: 768px) and (min-height: 501px) {
     body.sidebar-collapsed main.layout {
         grid-template-columns: 0 0 minmax(0, 1fr);
@@ -1592,13 +1561,18 @@
     body.sidebar-collapsed .sidebar-resize {
         visibility: hidden;
     }
-    /* :not(.export-mode): export slides the sidebar away on its own
-       (export-panel.css) and ignores this class - the tab would show but
-       clicking it could not bring the list back, so it hides for the
-       duration and returns when export mode ends. */
-    body.sidebar-collapsed:not(.export-mode) .sidebar-expand-tab {
-        display: inline-flex;
+}
+/* The trip-list toggle in the player bar is desktop-only: the mobile layouts
+   open the list as a drawer from the burger. Export mode slides the sidebar
+   away on its own (export-panel.css) and ignores the collapsed class, so the
+   toggle could not bring the list back and hides for the duration. */
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+    .player-btn.sidebar-toggle {
+        display: none;
     }
+}
+body.export-mode .sidebar-toggle {
+    display: none;
 }
 
 /* The expanded map borrows the sidebar column on a narrow desktop window.
@@ -1609,7 +1583,7 @@
    normal side-by-side map grid applies and the video stays visible. 1088 =
    768 (player minimum) + 320 (the sidebar clamp ceiling); wider windows fit
    both. Same 0-track + visibility mechanics as body.sidebar-collapsed above.
-   The expand tab stays hidden for the duration - restoring the sidebar
+   The list toggle stays hidden for the duration - restoring the sidebar
    mid-map would just re-trigger the takeover; the sidebar returns when the
    map collapses (the ✕ on the map). Export mode never coexists
    (applyMapLayout drops .map-expanded there). :not(.map-unavailable): the
@@ -1623,14 +1597,7 @@
     body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar-resize {
         visibility: hidden;
     }
-    body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar-expand-tab {
-        display: none;
-    }
-}
-/* The collapse chevron lives among the sort controls; it is desktop-only -
-   the mobile drawer closes via the burger/scrim instead. */
-@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
-    .sidebar-collapse-btn {
+    body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar-toggle {
         display: none;
     }
 }

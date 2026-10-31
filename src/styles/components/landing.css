@@ -24,7 +24,6 @@ body.no-trips .landing {
    class change can therefore reveal the app without a layout shift. */
 body.no-trips .sidebar,
 body.no-trips .sidebar-resize,
-body.no-trips .sidebar-expand-tab,
 body.no-trips .viewer {
     visibility: hidden;
 }

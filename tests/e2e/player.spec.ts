@@ -1177,13 +1177,21 @@ test.describe("player", () => {
         await expect.poll(async () => (await chartWindow(page)).zoomed).toBe(false);
     });
 
-    test("sidebar collapse button hides the trip list and the edge tab restores it", async ({ page }) => {
+    test("the player-bar toggle hides the trip list and brings it back from the same place", async ({ page }) => {
         const sidebar = page.locator(".sidebar").first();
         await expect(sidebar).toBeVisible();
-        await page.locator("#sidebar-collapse").click();
+        const toggle = page.locator("#sidebar-toggle");
+        await expect(toggle).toHaveAccessibleName("Hide the trip list");
+        const openBox = await toggle.boundingBox();
+        await toggle.click();
         await expect(sidebar, "list leaves the layout").toBeHidden();
-        const tab = page.locator("#sidebar-expand");
-        await expect(tab, "edge tab is the way back").toBeVisible();
+        await expect(toggle, "the same toggle is the way back").toBeVisible();
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        await expect(toggle).toHaveAccessibleName("Show the trip list");
+        // It stays at the list's edge: the left edge of the player bar.
+        const barBox = await page.locator("#player-bar").boundingBox();
+        expect((await toggle.boundingBox())?.x).toBeCloseTo(barBox?.x ?? 0, 0);
+        expect(openBox?.y).toBeCloseTo((await toggle.boundingBox())?.y ?? 0, 0);
         // The viewer must take over the freed column, not slide into the
         // 0-width sidebar track (which rendered the whole area black when
         // the hidden boxes left the grid flow).
@@ -1196,9 +1204,9 @@ test.describe("player", () => {
         // under any other name has to fail this too.
         const persisted = await page.evaluate(() => Object.keys(localStorage).filter((k) => /collaps/i.test(k)));
         expect(persisted, "no localStorage key about collapsing may be written").toEqual([]);
-        await tab.click();
+        await toggle.click();
         await expect(sidebar).toBeVisible();
-        await expect(tab).toBeHidden();
+        await expect(toggle).toHaveAttribute("aria-expanded", "true");
     });
 
     test("map divider drag resizes the expanded map pane", async ({ page }) => {

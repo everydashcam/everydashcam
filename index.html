@@ -790,16 +790,6 @@
                             </svg>
                         </button>
                     </div>
-                    <!-- Collapse the whole trip list (desktop only; the mobile
-                         drawer has the burger). Counterpart: #sidebar-expand,
-                         the edge tab that brings the list back. -->
-                    <button id="sidebar-collapse" class="sort-btn sidebar-collapse-btn" type="button"
-                            data-i18n-attr="aria-label:sidebar.collapse,title:sidebar.collapse"
-                            aria-label="Hide the trip list" title="Hide the trip list"
-                            aria-expanded="true" aria-controls="sidebar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
-                    </button>
                 </div>
             </div>
             <div id="trip-filters" class="trip-filters" hidden>
@@ -874,17 +864,6 @@
         <div id="sidebar-resize" class="sidebar-resize" role="separator" aria-orientation="vertical"
              data-i18n-attr="aria-label:sidebar.resize"
              aria-label="Resize sidebar" tabindex="0"></div>
-
-        <!-- Edge tab shown only while the trip list is collapsed
-             (body.sidebar-collapsed) - the way back without the mouse-resize
-             dance. Absolutely positioned at the layout's left edge. -->
-        <button id="sidebar-expand" class="sidebar-expand-tab" type="button"
-                data-i18n-attr="aria-label:sidebar.expand,title:sidebar.expand"
-                aria-label="Show the trip list" title="Show the trip list"
-                aria-expanded="false" aria-controls="sidebar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>
-        </button>
 
         <!-- Landing sections for body.no-trips (initial state, nothing loaded
              yet). This absolute grid sibling overlays the final app geometry;
@@ -1862,6 +1841,16 @@
                 <div class="player-bar" id="player-bar">
                     <div class="player-bar-layout">
                         <div class="player-info">
+                            <!-- Shows or hides the trip list (desktop; phones use the drawer).
+                                 Flush with the bar's left edge, which is always the list's
+                                 edge, so the one toggle stays in one place open or closed.
+                                 Label and icon follow the state (sidebar-resize.ts). -->
+                            <button id="sidebar-toggle" class="player-btn sidebar-toggle" type="button"
+                                    aria-expanded="true" aria-controls="sidebar"
+                                    aria-label="Hide the trip list" title="Hide the trip list">
+                                <svg class="i-panel-close" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg>
+                                <svg class="i-panel-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>
+                            </button>
                             <div class="player-mute-wrap">
                                 <!-- Volume on/off toggle: the sync function flips [hidden].
                                      aria-label is set dynamically in syncMuteButton. -->

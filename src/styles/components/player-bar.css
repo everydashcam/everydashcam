@@ -348,6 +348,22 @@
 
 /* Volume - a vertical popover above the mute button.
    A wrap container so the hover zone includes the popover itself (the slider doesn't disappear). */
+/* Trip-list toggle (sidebar-resize.ts): flush with the bar's left edge,
+   which is always the list's edge, so it reads as a tab pulled out of that
+   boundary - open or closed it stays in the same place. */
+.player-btn.sidebar-toggle {
+    width: 24px;
+    margin-left: calc(-1 * var(--dc-space-2));
+    border: 1px solid var(--border);
+    border-left: 0;
+    border-radius: 0 var(--dc-radius-sm) var(--dc-radius-sm) 0;
+    background: var(--bg-elev-2);
+    color: var(--fg-dim);
+}
+.player-btn.sidebar-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--fg);
+}
 .player-mute-wrap {
     position: relative;
 }

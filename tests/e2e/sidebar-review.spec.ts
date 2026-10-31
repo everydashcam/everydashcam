@@ -64,7 +64,7 @@ test.describe("trip navigation with touch", () => {
         await page.locator("#trip-sort-key").selectOption("duration");
 
         const sidebar = await boxOf(page, "#sidebar");
-        for (const selector of [".sidebar-header h2", "#trip-sort-key", "#trip-sort-dir", "#sidebar-collapse"]) {
+        for (const selector of [".sidebar-header h2", "#trip-sort-key", "#trip-sort-dir"]) {
             const control = await boxOf(page, selector);
             expect(control.x, selector).toBeGreaterThanOrEqual(sidebar.x);
             expect(control.x + control.width, selector).toBeLessThanOrEqual(sidebar.x + sidebar.width);
