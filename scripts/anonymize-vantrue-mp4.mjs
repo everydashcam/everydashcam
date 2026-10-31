@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { findByteOffsets, box, fourCC, u32be } from "./_mp4-fixture.mjs";
 // Anonymize a Vantrue N2X MP4 into a public-safe fixture:
 // 1. Scan the file for freeGPS markers (Vantrue's NMEA-embedded variant).
 // 2. Take the first N blocks, find the $GNRMC/$GPRMC sentence in each,
@@ -14,29 +15,6 @@ import { openSync, readSync, closeSync, statSync, writeFileSync } from "node:fs"
 
 const SCAN_LIMIT = 64 << 20;
 const MAGIC = Buffer.from("freeGPS ");
-
-function fourCC(s) { return Buffer.from(s, "ascii"); }
-function box(type, payload) {
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(8 + payload.length, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(n, 0);
-    return b;
-}
-
-function findFreeGpsOffsets(buf, scanEnd) {
-    const offsets = [];
-    let off = 0;
-    while ((off = buf.indexOf(MAGIC, off)) !== -1 && off < scanEnd) {
-        offsets.push(off);
-        off += MAGIC.length;
-    }
-    return offsets;
-}
 
 // NMEA checksum: XOR of all bytes between $ and *.
 function nmeaChecksum(body) {
@@ -102,7 +80,7 @@ const stat = statSync(inputPath);
 const scanEnd = Math.min(stat.size, SCAN_LIMIT);
 const scanBuf = Buffer.alloc(scanEnd);
 readSync(fd, scanBuf, 0, scanEnd, 0);
-const offsets = findFreeGpsOffsets(scanBuf, scanEnd);
+const offsets = findByteOffsets(scanBuf, MAGIC, scanEnd);
 console.error(`found ${offsets.length} freeGPS markers`);
 if (offsets.length === 0) {
     console.error("no markers found");
@@ -127,9 +105,7 @@ if (newBlocks.length === 0) {
 console.error(`anonymized ${newBlocks.length} blocks`);
 
 // Wrap into minimal MP4: ftyp + free-boxes + moov stub.
-const ftyp = box("ftyp", Buffer.concat([
-    fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41"),
-]));
+const ftyp = box("ftyp", Buffer.concat([fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41")]));
 const freeBoxes = newBlocks.map((b) => box("free", b));
 const mvhd = box("mvhd", Buffer.alloc(108));
 const moov = box("moov", mvhd);

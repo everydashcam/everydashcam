@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { box, fourCC, u32be, readBoxHeader } from "./_mp4-fixture.mjs";
 // Anonymize a real Navitel R-series .MOV into a public-safe fixture for the
 // gps0-tail extractor test.
 //
@@ -28,28 +29,7 @@
 
 import { openSync, readSync, closeSync, statSync, writeFileSync } from "node:fs";
 
-const HEADER_PROBE = 16;
 const GPS0_RECORD_SIZE = 32;
-
-function readBoxHeader(fd, offset, fileSize) {
-    const buf = Buffer.alloc(Math.min(HEADER_PROBE, fileSize - offset));
-    readSync(fd, buf, 0, buf.length, offset);
-    if (buf.length < 8) return null;
-    let size = buf.readUInt32BE(0);
-    const type = buf.toString("ascii", 4, 8);
-    let headerSize = 8;
-    if (size === 1) {
-        if (buf.length < 16) return null;
-        const hi = buf.readUInt32BE(8);
-        const lo = buf.readUInt32BE(12);
-        size = hi * 0x100000000 + lo;
-        headerSize = 16;
-    } else if (size === 0) {
-        size = fileSize - offset;
-    }
-    if (size < headerSize || offset + size > fileSize) return null;
-    return { type, size, headerSize };
-}
 
 function findTopLevel(fd, fileSize, wantedTypes) {
     const out = new Map();
@@ -64,16 +44,6 @@ function findTopLevel(fd, fileSize, wantedTypes) {
     }
     return out;
 }
-
-function fourCC(s) { return Buffer.from(s, "ascii"); }
-function box(type, payload) {
-    const size = 8 + payload.length;
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(size, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) { const b = Buffer.alloc(4); b.writeUInt32BE(n, 0); return b; }
 
 // Convert decimal degrees -> NMEA DDmm.mmmm double.
 function degToDDmm(deg) {
@@ -136,7 +106,10 @@ for (let i = 0; i < keepCount; i++) {
     const latDeg = ddmmToDeg(gps0Buf.readDoubleLE(off));
     const lonDeg = ddmmToDeg(gps0Buf.readDoubleLE(off + 8));
     const validFix =
-        Number.isFinite(latDeg) && Number.isFinite(lonDeg) && Math.abs(latDeg) <= 90 && Math.abs(lonDeg) <= 180 &&
+        Number.isFinite(latDeg) &&
+        Number.isFinite(lonDeg) &&
+        Math.abs(latDeg) <= 90 &&
+        Math.abs(lonDeg) <= 180 &&
         !(latDeg === 0 && lonDeg === 0);
     if (!validFix) continue; // no-fix filler row, nothing to redact
     if (anchorLatDeg === null) {

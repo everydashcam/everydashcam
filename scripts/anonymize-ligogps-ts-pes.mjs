@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { u32le } from "./_mp4-fixture.mjs";
 // Anonymizes an MPEG-TS recording with an enciphered, fuzzed LigoGPS PES
 // (docs/format-ligogps-ts-pes.md) into a snapshot fixture.
 //
@@ -244,12 +245,6 @@ function scrubRecord(text) {
     return text
         .replace(whole, replacement)
         .replace(/(km\/h -?[\d.]+ )(-?[\d.]+)/, (_m, lead, altitude) => lead + altitude.replace(/\d/g, "0"));
-}
-
-function u32le(value) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32LE(value);
-    return b;
 }
 
 // ExifTool LigoGPS.pm DecryptLigoGPS, same port as src/parsers/internal/ligogps.ts.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { box, u32be } from "./_mp4-fixture.mjs";
 // Retain two real fixes in an existing GPS carrier, with whole-degree
 // coordinates and synthetic video. Copy only understood fields: redundant
 // coordinates, labels, unknown headers, original footage and audio are removed.
@@ -42,19 +43,6 @@ const server = await createServer({
     define: { __PORTABLE__: "false" },
 });
 const work = mkdtempSync(join(tmpdir(), "supported-gps-fixture-"));
-
-function box(type, payload) {
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(payload.length + 8);
-    head.write(type, 4, "ascii");
-    return Buffer.concat([head, payload]);
-}
-
-function u32(value) {
-    const bytes = Buffer.alloc(4);
-    bytes.writeUInt32BE(value);
-    return bytes;
-}
 
 function view(bytes) {
     return new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
@@ -170,17 +158,21 @@ try {
         entry.writeUInt32BE(entry.length);
         entry.write(track.sampleFormat, 4, "ascii");
         entry.writeUInt16BE(1, 14);
-        const stco = box("stco", Buffer.concat([u32(0), u32(1), u32(0)]));
+        const stco = box("stco", Buffer.concat([u32be(0), u32be(1), u32be(0)]));
         const stbl = box(
             "stbl",
             Buffer.concat([
-                box("stsd", Buffer.concat([u32(0), u32(1), entry])),
+                box("stsd", Buffer.concat([u32be(0), u32be(1), entry])),
                 box(
                     "stts",
-                    Buffer.concat([u32(0), u32(runs.length), ...runs.flatMap((r) => [u32(r.count), u32(r.delta)])]),
+                    Buffer.concat([
+                        u32be(0),
+                        u32be(runs.length),
+                        ...runs.flatMap((r) => [u32be(r.count), u32be(r.delta)]),
+                    ]),
                 ),
-                box("stsc", Buffer.concat([u32(0), u32(1), u32(1), u32(samples.length), u32(1)])),
-                box("stsz", Buffer.concat([u32(0), u32(samples[0].length), u32(samples.length)])),
+                box("stsc", Buffer.concat([u32be(0), u32be(1), u32be(1), u32be(samples.length), u32be(1)])),
+                box("stsz", Buffer.concat([u32be(0), u32be(samples[0].length), u32be(samples.length)])),
                 stco,
             ]),
         );

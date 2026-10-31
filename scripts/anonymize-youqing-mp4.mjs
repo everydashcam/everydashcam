@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { box, fourCC } from "./_mp4-fixture.mjs";
 // Build a public-safe YOUQINGGPS fixture from a real MP4. Known telemetry
 // fields are copied, coordinates are rounded to whole degrees, and every
 // unknown field is zeroed because the format carries opaque identifiers and
@@ -13,17 +14,6 @@ const READ_SIZE = 160;
 const ATOM_SIZE = 0x4000;
 const MAGIC = Buffer.from("freeGPS ");
 const BANNER = Buffer.from("YOUQINGGPS");
-
-function fourCC(value) {
-    return Buffer.from(value, "ascii");
-}
-
-function box(type, payload) {
-    const header = Buffer.alloc(8);
-    header.writeUInt32BE(header.length + payload.length, 0);
-    fourCC(type).copy(header, 4);
-    return Buffer.concat([header, payload]);
-}
 
 function ddmmToDegrees(value) {
     const degrees = Math.floor(value / 100);
@@ -93,7 +83,9 @@ readSync(fd, scan, 0, scan.length, 0);
 
 const blocks = [];
 let offset = -1;
-while (blocks.length < requested && (offset = scan.indexOf(MAGIC, offset + 1)) !== -1) {
+while (blocks.length < requested) {
+    offset = scan.indexOf(MAGIC, offset + 1);
+    if (offset === -1) break;
     const source = Buffer.alloc(READ_SIZE);
     readSync(fd, source, 0, source.length, offset);
     if (!isYouqingFix(source)) continue;

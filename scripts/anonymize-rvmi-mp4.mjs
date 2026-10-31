@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { findFirstChild, readBoxBytes, box, fourCC, u32be, readBoxHeader } from "./_mp4-fixture.mjs";
 // Anonymize a real RegistratorViewer-output .mp4 (with an RVMI metadata track)
 // into a public-safe fixture for the extractor test.
 //
@@ -24,57 +25,6 @@
 
 import { openSync, readSync, closeSync, statSync, writeFileSync } from "node:fs";
 
-const HEADER_PROBE = 16;
-
-function readBoxHeader(fd, offset, fileSize) {
-    const buf = Buffer.alloc(Math.min(HEADER_PROBE, fileSize - offset));
-    readSync(fd, buf, 0, buf.length, offset);
-    if (buf.length < 8) return null;
-    let size = buf.readUInt32BE(0);
-    const type = buf.toString("ascii", 4, 8);
-    let headerSize = 8;
-    if (size === 1) {
-        if (buf.length < 16) return null;
-        const hi = buf.readUInt32BE(8);
-        const lo = buf.readUInt32BE(12);
-        size = hi * 0x100000000 + lo;
-        headerSize = 16;
-    } else if (size === 0) {
-        size = fileSize - offset;
-    }
-    if (size < headerSize || offset + size > fileSize) return null;
-    return { type, size, headerSize };
-}
-
-// Read full box bytes (header + payload).
-function readBoxBytes(fd, offset, size) {
-    const b = Buffer.alloc(size);
-    readSync(fd, b, 0, size, offset);
-    return b;
-}
-
-function findFirstChild(fd, parentOffset, parentSize, parentHeaderSize, fileSize, type) {
-    let pos = parentOffset + parentHeaderSize;
-    const end = parentOffset + parentSize;
-    while (pos + 8 <= end) {
-        const h = readBoxHeader(fd, pos, fileSize);
-        if (!h) return null;
-        if (h.type === type) return { offset: pos, ...h };
-        pos += h.size;
-    }
-    return null;
-}
-
-function fourCC(s) { return Buffer.from(s, "ascii"); }
-function box(type, payload) {
-    const size = 8 + payload.length;
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(size, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) { const b = Buffer.alloc(4); b.writeUInt32BE(n, 0); return b; }
-
 const [, , inputPath, outputPath, numSamplesArg] = process.argv;
 if (!inputPath || !outputPath) {
     console.error("usage: anonymize-rvmi-mp4.mjs <input.mp4> <output.mp4> [numSamples=30]");
@@ -92,11 +42,17 @@ let moov = null;
     while (pos + 8 <= stat.size) {
         const h = readBoxHeader(fd, pos, stat.size);
         if (!h) break;
-        if (h.type === "moov") { moov = { offset: pos, ...h }; break; }
+        if (h.type === "moov") {
+            moov = { offset: pos, ...h };
+            break;
+        }
         pos += h.size;
     }
 }
-if (!moov) { console.error("no moov found"); process.exit(1); }
+if (!moov) {
+    console.error("no moov found");
+    process.exit(1);
+}
 
 // Step 2: find RVMI trak inside moov.
 let rvmiTrak = null;
@@ -108,18 +64,22 @@ let rvmiTrak = null;
         if (!h) break;
         if (h.type === "trak") {
             // Check stsd entry type via mdia/minf/stbl/stsd.
-            const mdia = findFirstChild(fd, pos, h.size, h.headerSize, stat.size, "mdia");
+            const mdia = findFirstChild(fd, { offset: pos, ...h }, stat.size, "mdia");
             if (mdia) {
-                const minf = findFirstChild(fd, mdia.offset, mdia.size, mdia.headerSize, stat.size, "minf");
+                const minf = findFirstChild(fd, mdia, stat.size, "minf");
                 if (minf) {
-                    const stbl = findFirstChild(fd, minf.offset, minf.size, minf.headerSize, stat.size, "stbl");
+                    const stbl = findFirstChild(fd, minf, stat.size, "stbl");
                     if (stbl) {
-                        const stsd = findFirstChild(fd, stbl.offset, stbl.size, stbl.headerSize, stat.size, "stsd");
+                        const stsd = findFirstChild(fd, stbl, stat.size, "stsd");
                         if (stsd) {
                             // stsd payload: version(1)+flags(3)+entry_count(4)+entry: size(4)+type(4)
                             const stsdBuf = Buffer.alloc(stsd.size);
                             readSync(fd, stsdBuf, 0, stsd.size, stsd.offset);
-                            const entryType = stsdBuf.toString("ascii", stsd.headerSize + 8 + 4, stsd.headerSize + 8 + 8);
+                            const entryType = stsdBuf.toString(
+                                "ascii",
+                                stsd.headerSize + 8 + 4,
+                                stsd.headerSize + 8 + 8,
+                            );
                             if (entryType === "RVMI") {
                                 rvmiTrak = { offset: pos, ...h, mdia, minf, stbl, stsd };
                                 break;
@@ -132,14 +92,16 @@ let rvmiTrak = null;
         pos += h.size;
     }
 }
-if (!rvmiTrak) { console.error("no RVMI track found"); process.exit(1); }
+if (!rvmiTrak) {
+    console.error("no RVMI track found");
+    process.exit(1);
+}
 
 // Step 3: read sample-table from RVMI trak.
 function readBoxFromStbl(typeName) {
-    const b = findFirstChild(fd, rvmiTrak.stbl.offset, rvmiTrak.stbl.size, rvmiTrak.stbl.headerSize, stat.size, typeName);
+    const b = findFirstChild(fd, rvmiTrak.stbl, stat.size, typeName);
     if (!b) throw new Error(`stbl missing ${typeName}`);
-    const buf = Buffer.alloc(b.size);
-    readSync(fd, buf, 0, b.size, b.offset);
+    const buf = readBoxBytes(fd, b);
     return { box: b, buf };
 }
 
@@ -148,19 +110,17 @@ const stsz = readBoxFromStbl("stsz");
 const stco = readBoxFromStbl("stco");
 const stts = readBoxFromStbl("stts");
 const mdhd = (() => {
-    const b = findFirstChild(fd, rvmiTrak.mdia.offset, rvmiTrak.mdia.size, rvmiTrak.mdia.headerSize, stat.size, "mdhd");
+    const b = findFirstChild(fd, rvmiTrak.mdia, stat.size, "mdhd");
     if (!b) throw new Error("mdia missing mdhd");
-    const buf = Buffer.alloc(b.size);
-    readSync(fd, buf, 0, b.size, b.offset);
+    const buf = readBoxBytes(fd, b);
     return { box: b, buf };
 })();
 
 // Parse mdhd to get timescale.
 const mdhdPayload = mdhd.box.headerSize;
 const mdhdVersion = mdhd.buf.readUInt8(mdhdPayload);
-const mediaTimescale = mdhdVersion === 1
-    ? mdhd.buf.readUInt32BE(mdhdPayload + 4 + 16)
-    : mdhd.buf.readUInt32BE(mdhdPayload + 4 + 8);
+const mediaTimescale =
+    mdhdVersion === 1 ? mdhd.buf.readUInt32BE(mdhdPayload + 4 + 16) : mdhd.buf.readUInt32BE(mdhdPayload + 4 + 8);
 
 // Parse stsc - array of {first_chunk, samples_per_chunk, sdi}.
 function parseStsc(buf, h) {
@@ -343,13 +303,10 @@ const stszNew = (() => {
 const stcoPlaceholder = box("stco", Buffer.concat([Buffer.alloc(4), u32be(1), u32be(0)]));
 
 const dinf = (() => {
-    const dref = box("dref", Buffer.concat([
-        Buffer.alloc(4),
-        u32be(1),
-        u32be(12),
-        fourCC("url "),
-        Buffer.from([0, 0, 0, 1]),
-    ]));
+    const dref = box(
+        "dref",
+        Buffer.concat([Buffer.alloc(4), u32be(1), u32be(12), fourCC("url "), Buffer.from([0, 0, 0, 1])]),
+    );
     return box("dinf", dref);
 })();
 
@@ -376,7 +333,10 @@ const mvhd = (() => {
 })();
 
 const moovNew = box("moov", Buffer.concat([mvhd, trak]));
-const ftypNew = box("ftyp", Buffer.concat([fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41")]));
+const ftypNew = box(
+    "ftyp",
+    Buffer.concat([fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41")]),
+);
 
 const mdat = box("mdat", Buffer.concat(sampleBuffers));
 const mdatDataOffset = ftypNew.length + moovNew.length + 8;

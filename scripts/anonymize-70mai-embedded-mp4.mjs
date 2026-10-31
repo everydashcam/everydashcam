@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { u32be } from "./_mp4-fixture.mjs";
 // Anonymize a real 70mai 4K (A810/M500) embedded-freeGPS MP4 into a public-safe
 // fixture that exercises the STRUCTURAL path: moov -> `gps ` index atom with a
 // (offset,size) table pointing at freeGPS blocks (ddmm.mmmm*1e5 dialect).
@@ -106,12 +107,6 @@ function is70maiBlock(win, lit) {
     if (dv.getUint16(lit + OFF_TAG_ZERO, true) !== 0) return false;
     const active = win[lit + OFF_ACTIVE];
     return active === 0x41 || active === 0x56;
-}
-
-function u32be(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(n >>> 0, 0);
-    return b;
 }
 
 function main() {

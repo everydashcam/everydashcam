@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { findByteOffsets, box, fourCC, u32be } from "./_mp4-fixture.mjs";
 // Anonymize a real Novatek freeGPS MP4 that STARTS UNSYNCED into a
 // public-safe cold-start fixture: unlike anonymize-novatek-mp4.mjs (which
 // keeps only active-fix blocks), this keeps the pre-fix RTC blocks
@@ -47,21 +48,6 @@ function ddmm(deg) {
     return Math.floor(abs) * 100 + (abs - Math.floor(abs)) * 60;
 }
 
-function fourCC(s) {
-    return Buffer.from(s, "ascii");
-}
-function box(type, payload) {
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(8 + payload.length, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(n, 0);
-    return b;
-}
-
 const [, , inputPath, outputPath, preFixArg, activeArg] = process.argv;
 if (!inputPath || !outputPath) {
     console.error("usage: anonymize-viofo-coldstart-mp4.mjs <input.mp4> <output.mp4> [preFix=4] [active=4]");
@@ -76,12 +62,7 @@ const scanEnd = Math.min(stat.size, SCAN_LIMIT);
 const scanBuf = Buffer.alloc(scanEnd);
 readSync(fd, scanBuf, 0, scanEnd, 0);
 
-const offsets = [];
-let off = 0;
-while ((off = scanBuf.indexOf(MAGIC, off)) !== -1) {
-    offsets.push(off);
-    off += MAGIC.length;
-}
+const offsets = findByteOffsets(scanBuf, MAGIC);
 console.error(`found ${offsets.length} freeGPS markers`);
 
 const blocks = offsets.map((o) => {
@@ -104,7 +85,9 @@ if (firstFixIdx <= 0) {
 const preFixBlocks = blocks.slice(Math.max(0, firstFixIdx - wantPreFix), firstFixIdx);
 const activeBlocks = blocks.slice(firstFixIdx, firstFixIdx + wantActive);
 const layout = pickLayoutByActive(activeBlocks[0]);
-console.error(`transition at block ${firstFixIdx}; keeping ${preFixBlocks.length} pre-fix + ${activeBlocks.length} active (layout: ${layout.name})`);
+console.error(
+    `transition at block ${firstFixIdx}; keeping ${preFixBlocks.length} pre-fix + ${activeBlocks.length} active (layout: ${layout.name})`,
+);
 
 // Pre-fix blocks must carry no fix data: everything past the status triple is
 // zero on the known firmware. A nonzero byte means unknown content - refuse

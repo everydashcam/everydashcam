@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { box, fourCC, u32be } from "./_mp4-fixture.mjs";
 // Anonymize a Vueroid TXET MP4 into a public-safe fixture:
 // 1. Walk the moov, find the 'tvxt'/'mp4s' track (72-byte GPS samples).
 // 2. Take the first N fix samples + the file's final zeroed terminator row.
@@ -20,15 +21,6 @@ const SAMPLE_SIZE = 72;
 const OFF_LAT = 0x3c;
 const OFF_LON = 0x40;
 const OFF_UNIX = 0x44;
-
-function fourCC(s) { return Buffer.from(s, "ascii"); }
-function box(type, payload) {
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(8 + payload.length, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) { const b = Buffer.alloc(4); b.writeUInt32BE(n, 0); return b; }
 
 function readAt(fd, off, len) {
     const b = Buffer.alloc(len);
@@ -74,7 +66,10 @@ const recoBoxes = [];
         const size = hdr.readUInt32BE(0);
         const type = hdr.toString("latin1", 4, 8);
         if (size < 8) break;
-        if (type === "moov") { moovOff = pos; moovSize = size; }
+        if (type === "moov") {
+            moovOff = pos;
+            moovSize = size;
+        }
         if (type === "free" && size <= 256 && pos < 4096) {
             const payload = readAt(fd, pos + 8, size - 8);
             if (payload.toString("latin1", 0, 4) === "RECO") recoBoxes.push(box("free", payload));
@@ -82,7 +77,10 @@ const recoBoxes = [];
         pos += size;
     }
 }
-if (moovOff === null) { console.error("no moov box"); process.exit(1); }
+if (moovOff === null) {
+    console.error("no moov box");
+    process.exit(1);
+}
 const moov = readAt(fd, moovOff, moovSize);
 console.error(`moov @${moovOff} ${moovSize} B, ${recoBoxes.length} freeRECO config boxes kept`);
 
@@ -99,7 +97,10 @@ for (const trak of iterBoxes(moov, 8, moov.length)) {
     const hdlr = findBox(moov, mdia.payloadStart, mdia.end, "hdlr");
     if (moov.toString("latin1", hdlr.payloadStart + 8, hdlr.payloadStart + 12) === "tvxt") mdiaBox = mdia;
 }
-if (!mdiaBox) { console.error("no tvxt track"); process.exit(1); }
+if (!mdiaBox) {
+    console.error("no tvxt track");
+    process.exit(1);
+}
 
 const mdhd = findBox(moov, mdiaBox.payloadStart, mdiaBox.end, "mdhd");
 const timescale = moov.readUInt32BE(mdhd.payloadStart + 12);
@@ -108,7 +109,10 @@ const stbl = findBox(moov, minf.payloadStart, minf.end, "stbl");
 const stsz = findBox(moov, stbl.payloadStart, stbl.end, "stsz");
 const fixedSize = moov.readUInt32BE(stsz.payloadStart + 4);
 const sampleCount = moov.readUInt32BE(stsz.payloadStart + 8);
-if (fixedSize !== SAMPLE_SIZE) { console.error(`unexpected sample size ${fixedSize}`); process.exit(1); }
+if (fixedSize !== SAMPLE_SIZE) {
+    console.error(`unexpected sample size ${fixedSize}`);
+    process.exit(1);
+}
 
 // Real per-sample stts deltas (50/51 ms alternating in observed firmware).
 const stts = findBox(moov, stbl.payloadStart, stbl.end, "stts");
@@ -142,7 +146,10 @@ if (lastIsTerminator) {
     pickedDeltas.push(deltas[deltas.length - 1] ?? 50);
 }
 closeSync(fd);
-if (picked.length === 0) { console.error("no fix samples found"); process.exit(1); }
+if (picked.length === 0) {
+    console.error("no fix samples found");
+    process.exit(1);
+}
 console.error(`picked ${picked.length} samples (terminator ${lastIsTerminator ? "kept" : "absent"})`);
 
 // Sentinel coordinates: 50.0 / 30.0 in NMEA DDmm.mmmm, advancing +0.0001 deg
@@ -193,7 +200,11 @@ for (const d of pickedDeltas) {
 }
 const sttsOut = box(
     "stts",
-    Buffer.concat([Buffer.alloc(4), u32be(sttsEntries.length), ...sttsEntries.flatMap((e) => [u32be(e.count), u32be(e.delta)])]),
+    Buffer.concat([
+        Buffer.alloc(4),
+        u32be(sttsEntries.length),
+        ...sttsEntries.flatMap((e) => [u32be(e.count), u32be(e.delta)]),
+    ]),
 );
 const stscOut = box("stsc", Buffer.concat([Buffer.alloc(4), u32be(1), u32be(1), u32be(n), u32be(1)]));
 const stszOut = box("stsz", Buffer.concat([Buffer.alloc(4), u32be(SAMPLE_SIZE), u32be(n)]));

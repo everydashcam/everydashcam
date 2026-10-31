@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { box, fourCC, u32be } from "./_mp4-fixture.mjs";
 // Anonymize CARCAM 4CH 360-WiFi MP4 into a public-safe fixture:
 // 1. Parse the MP4 -> find the meta-track with LigoGPS samples (sampleSize ~184).
 // 2. Take the first N samples, decrypt each, replace lat/lon/datetime with a
@@ -16,21 +17,6 @@
 import { openSync, readSync, closeSync, statSync, writeFileSync } from "node:fs";
 
 const SCAN_HEAD_LIMIT = 16 << 20;
-
-function fourCC(s) { return Buffer.from(s, "ascii"); }
-function u32be(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(n, 0);
-    return b;
-}
-function u32le(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32LE(n, 0);
-    return b;
-}
-function box(type, payload) {
-    return Buffer.concat([u32be(8 + payload.length), fourCC(type), payload]);
-}
 
 // ===== MP4 walker (minimal) =====
 
@@ -81,14 +67,19 @@ function decryptLigoGps(chunk) {
         const steering = b & 0xe0;
         if (steering >= 0xc0) {
             if (i + 4 > inBuf.length) return null;
-            const a = inBuf[i++], c = inBuf[i++], d = inBuf[i++], e = inBuf[i++];
+            const a = inBuf[i++],
+                c = inBuf[i++],
+                d = inBuf[i++],
+                e = inBuf[i++];
             out.push(((a | (b & 0x01)) ^ 0x20) & 0xff);
             out.push(((c | (b & 0x02)) ^ 0x20) & 0xff);
             out.push(((d | (b & 0x0c)) ^ 0x20) & 0xff);
-            out.push((((e ^ 0x20) | (b & 0x30))) & 0xff);
+            out.push(((e ^ 0x20) | (b & 0x30)) & 0xff);
         } else if (steering >= 0x40) {
             if (i + 3 > inBuf.length) return null;
-            const a = inBuf[i++], c = inBuf[i++], d = inBuf[i++];
+            const a = inBuf[i++],
+                c = inBuf[i++],
+                d = inBuf[i++];
             if (steering === 0x40) {
                 out.push(0x20);
                 out.push(((a | (b & 0x01)) ^ 0x20) & 0xff);
@@ -125,7 +116,7 @@ function decryptLigoGps(chunk) {
 // all masks are zero when b=0xc0, so output[i] = input[i] ^ 0x20.
 // pad text to multiple of 4 chars.
 function encodeLigoGps(text) {
-    const padded = text + "\0".repeat((4 - text.length % 4) % 4);
+    const padded = text + "\0".repeat((4 - (text.length % 4)) % 4);
     const out = [];
     for (let i = 0; i < padded.length; i += 4) {
         out.push(0xc0);
@@ -139,12 +130,17 @@ function encodeLigoGps(text) {
 
 function findLigoGpsChunkOffset(payload) {
     const magic = Buffer.from("LIGOGPSINFO");
-    let i = payload.indexOf(magic);
+    const i = payload.indexOf(magic);
     if (i < 0) return null;
     const chunkStart = i + 0x14;
     if (chunkStart + 8 > payload.length) return null;
-    if (payload[chunkStart] !== 0x23 || payload[chunkStart + 1] !== 0x23 ||
-        payload[chunkStart + 2] !== 0x23 || payload[chunkStart + 3] !== 0x23) return null;
+    if (
+        payload[chunkStart] !== 0x23 ||
+        payload[chunkStart + 1] !== 0x23 ||
+        payload[chunkStart + 2] !== 0x23 ||
+        payload[chunkStart + 3] !== 0x23
+    )
+        return null;
     return chunkStart;
 }
 
@@ -154,8 +150,7 @@ function readSamples(buf, trak) {
     const stbl = walkPath(buf, trak, "mdia", "minf", "stbl");
     if (!stbl) return null;
     const stsz = findBox(buf, stbl.payloadStart, stbl.end, "stsz");
-    const stco = findBox(buf, stbl.payloadStart, stbl.end, "stco")
-              ?? findBox(buf, stbl.payloadStart, stbl.end, "co64");
+    const stco = findBox(buf, stbl.payloadStart, stbl.end, "stco") ?? findBox(buf, stbl.payloadStart, stbl.end, "co64");
     if (!stsz || !stco) return null;
     const fixedSize = buf.readUInt32BE(stsz.payloadStart + 4);
     const sampleCount = buf.readUInt32BE(stsz.payloadStart + 8);
@@ -187,7 +182,9 @@ function readHandlerType(buf, trak) {
 function anonymizeText(decoded, recordIdx) {
     const ascii = decoded.toString("ascii");
     // Regex captures: datetime, NS, lat, EW, lon, speed.
-    const m = ascii.match(/^(.{4})(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2}) ([NS?]):(-?[.\d]+) ([EW?]):(-?[.\d]+) ([.\d]+)/);
+    const m = ascii.match(
+        /^(.{4})(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2}) ([NS?]):(-?[.\d]+) ([EW?]):(-?[.\d]+) ([.\d]+)/,
+    );
     if (!m) {
         // Parse failed - return a zero-filled buffer of the same size.
         const zeros = Buffer.alloc(decoded.length);
@@ -229,7 +226,10 @@ readSync(fd, headerBuf, 0, headSz, 0);
 
 // Find LigoGPS meta-track
 const moov = findBox(headerBuf, 0, headerBuf.length, "moov");
-if (!moov) { console.error("no moov in first 16MB"); process.exit(1); }
+if (!moov) {
+    console.error("no moov in first 16MB");
+    process.exit(1);
+}
 
 let ligoTrak = null;
 let ligoSamples = null;
@@ -306,14 +306,13 @@ if (newSamples.length === 0) {
 console.error(`anonymized ${newSamples.length} samples`);
 
 // Build minimal MP4 with single meta-track.
-const ftyp = box("ftyp", Buffer.concat([
-    fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41"),
-]));
+const ftyp = box("ftyp", Buffer.concat([fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41")]));
 
 const mdat = box("mdat", Buffer.concat(newSamples));
 
 const stsdPayload = Buffer.concat([
-    Buffer.alloc(4), u32be(1),
+    Buffer.alloc(4),
+    u32be(1),
     Buffer.concat([u32be(16), fourCC("ssmd"), Buffer.alloc(8)]),
 ]);
 const stsd = box("stsd", stsdPayload);
@@ -324,14 +323,27 @@ const sizesTable = Buffer.alloc(newSamples.length * 4);
 for (let i = 0; i < newSamples.length; i++) sizesTable.writeUInt32BE(newSamples[i].length, i * 4);
 const stsz = box("stsz", Buffer.concat([Buffer.alloc(4), u32be(0), u32be(newSamples.length), sizesTable]));
 
-const stco = box("stco", Buffer.concat([Buffer.alloc(4), u32be(newSamples.length), Buffer.alloc(newSamples.length * 4)]));
+const stco = box(
+    "stco",
+    Buffer.concat([Buffer.alloc(4), u32be(newSamples.length), Buffer.alloc(newSamples.length * 4)]),
+);
 const stbl = box("stbl", Buffer.concat([stsd, stts, stsc, stsz, stco]));
 
-const hdlr = box("hdlr", Buffer.concat([Buffer.alloc(8), fourCC("meta"), Buffer.alloc(12), Buffer.from("\0", "ascii")]));
-const mdhd = box("mdhd", Buffer.concat([
-    Buffer.alloc(4), Buffer.alloc(4), Buffer.alloc(4),
-    u32be(1), u32be(newSamples.length), Buffer.alloc(4),
-]));
+const hdlr = box(
+    "hdlr",
+    Buffer.concat([Buffer.alloc(8), fourCC("meta"), Buffer.alloc(12), Buffer.from("\0", "ascii")]),
+);
+const mdhd = box(
+    "mdhd",
+    Buffer.concat([
+        Buffer.alloc(4),
+        Buffer.alloc(4),
+        Buffer.alloc(4),
+        u32be(1),
+        u32be(newSamples.length),
+        Buffer.alloc(4),
+    ]),
+);
 const minf = box("minf", stbl);
 const mdia = box("mdia", Buffer.concat([mdhd, hdlr, minf]));
 const tkhd = box("tkhd", Buffer.alloc(84));
@@ -343,7 +355,10 @@ const moovOut = box("moov", Buffer.concat([mvhd, trak]));
 const mdatPayloadStart = ftyp.length + moovOut.length + 8;
 const stcoMagic = Buffer.from("stco", "ascii");
 const stcoIdx = moovOut.indexOf(stcoMagic);
-if (stcoIdx < 0) { console.error("stco not found in moov"); process.exit(1); }
+if (stcoIdx < 0) {
+    console.error("stco not found in moov");
+    process.exit(1);
+}
 let writeOff = stcoIdx + 4 + 4 + 4;
 let cumulativeOffset = mdatPayloadStart;
 for (const s of newSamples) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { findFirstChild, readBoxBytes, box, fourCC, u32be, readBoxHeader } from "./_mp4-fixture.mjs";
 // Anonymize a real SStar-firmware MP4 with a supported 32-byte DDmm,
 // 40-byte direct or 56-byte KTRX `ssmd` GPS meta track into a public-safe fixture.
 //
@@ -42,58 +43,6 @@ const KTRX_FACTORS = [
     23, 87, 12, 46, 48, 35, 37, 68, 12, 24, 46, 76, 55, 26, 28, 67, 24, 43, 46, 68, 87, 23, 56, 78, 34, 16, 48, 27, 81,
     53, 82,
 ];
-const HEADER_PROBE = 16;
-
-function readBoxHeader(fd, offset, fileSize) {
-    const buf = Buffer.alloc(Math.min(HEADER_PROBE, fileSize - offset));
-    readSync(fd, buf, 0, buf.length, offset);
-    if (buf.length < 8) return null;
-    let size = buf.readUInt32BE(0);
-    const type = buf.toString("ascii", 4, 8);
-    let headerSize = 8;
-    if (size === 1) {
-        if (buf.length < 16) return null;
-        size = buf.readUInt32BE(8) * 0x100000000 + buf.readUInt32BE(12);
-        headerSize = 16;
-    } else if (size === 0) {
-        size = fileSize - offset;
-    }
-    if (size < headerSize || offset + size > fileSize) return null;
-    return { type, size, headerSize };
-}
-
-function findFirstChild(fd, parent, fileSize, type) {
-    let pos = parent.offset + parent.headerSize;
-    const end = parent.offset + parent.size;
-    while (pos + 8 <= end) {
-        const h = readBoxHeader(fd, pos, fileSize);
-        if (!h) return null;
-        if (h.type === type) return { offset: pos, ...h };
-        pos += h.size;
-    }
-    return null;
-}
-
-function readBoxBuf(fd, h) {
-    const buf = Buffer.alloc(h.size);
-    readSync(fd, buf, 0, h.size, h.offset);
-    return buf;
-}
-
-function fourCC(s) {
-    return Buffer.from(s, "ascii");
-}
-function box(type, payload) {
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(8 + payload.length, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(n, 0);
-    return b;
-}
 
 function ddmmToDegrees(value) {
     if (!Number.isFinite(value)) return Number.NaN;
@@ -163,11 +112,11 @@ let sampleSize = null;
             const stsd = stbl && findFirstChild(fd, stbl, stat.size, "stsd");
             const stsz = stbl && findFirstChild(fd, stbl, stat.size, "stsz");
             if (hdlr && stsd && stsz) {
-                const hdlrBuf = readBoxBuf(fd, hdlr);
+                const hdlrBuf = readBoxBytes(fd, hdlr);
                 const handler = hdlrBuf.toString("ascii", hdlr.headerSize + 8, hdlr.headerSize + 12);
-                const stsdBuf = readBoxBuf(fd, stsd);
+                const stsdBuf = readBoxBytes(fd, stsd);
                 const entryType = stsdBuf.toString("ascii", stsd.headerSize + 12, stsd.headerSize + 16);
-                const stszBuf = readBoxBuf(fd, stsz);
+                const stszBuf = readBoxBytes(fd, stsz);
                 const fixedSize = stszBuf.readUInt32BE(stsz.headerSize + 4);
                 if (handler === "meta" && entryType === "ssmd" && SUPPORTED_SAMPLE_SIZES.includes(fixedSize)) {
                     gpsTrak = { ...trak, mdia, minf, stbl };
@@ -188,7 +137,7 @@ if (!gpsTrak || sampleSize === null) {
 function stblChildBuf(type) {
     const h = findFirstChild(fd, gpsTrak.stbl, stat.size, type);
     if (!h) throw new Error(`stbl missing ${type}`);
-    return { h, buf: readBoxBuf(fd, h) };
+    return { h, buf: readBoxBytes(fd, h) };
 }
 
 const stsz = stblChildBuf("stsz");
@@ -229,7 +178,7 @@ const perSampleDeltas = [];
 const mdhd = (() => {
     const h = findFirstChild(fd, gpsTrak.mdia, stat.size, "mdhd");
     if (!h) throw new Error("mdia missing mdhd");
-    return { h, buf: readBoxBuf(fd, h) };
+    return { h, buf: readBoxBytes(fd, h) };
 })();
 const mdhdVersion = mdhd.buf.readUInt8(mdhd.h.headerSize);
 const mediaTimescale =

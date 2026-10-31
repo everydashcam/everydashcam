@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { box } from "./_mp4-fixture.mjs";
 // Build a metadata-only MP4 fixture. No source video, audio, other tracks,
 // or proprietary file trailer is copied into the result.
 
@@ -38,14 +39,6 @@ function path(buffer, parent, ...types) {
     return current;
 }
 
-function box(type, payload) {
-    const out = Buffer.alloc(8 + payload.length);
-    out.writeUInt32BE(out.length, 0);
-    out.write(type, 4, 4, "ascii");
-    payload.copy(out, 8);
-    return out;
-}
-
 const top = [...boxes(source, 0, source.length)];
 const ftyp = top.find((item) => item.type === "ftyp");
 const moov = top.find((item) => item.type === "moov");
@@ -74,7 +67,8 @@ for (const item of boxes(source, moov.start + 8, moov.end)) {
         source.readUInt32BE(stsc.start + 12) !== 1 ||
         source.readUInt32BE(stsc.start + 20) !== 1 ||
         source.readUInt32BE(stsz.start + 12) !== 0
-    ) continue;
+    )
+        continue;
     const sizes = Array.from({ length: count }, (_, i) => source.readUInt32BE(stsz.start + 20 + i * 4));
     if (!sizes.every((size) => size === 40)) continue;
     const offsets = Array.from({ length: count }, (_, i) => source.readUInt32BE(stco.start + 16 + i * 4));
@@ -99,7 +93,11 @@ const packets = sourceOffsets.map((offset) => {
     output.writeUInt16BE(input.readUInt16BE(8), 8);
     output.writeUInt16BE(0x00b5, 14);
     output.writeUInt16BE(0xff04, 16);
-    if ("EW".includes(String.fromCharCode(input[18])) && "NS".includes(String.fromCharCode(input[19])) && input[20] === 1) {
+    if (
+        "EW".includes(String.fromCharCode(input[18])) &&
+        "NS".includes(String.fromCharCode(input[19])) &&
+        input[20] === 1
+    ) {
         output.write("EN", 18, "ascii");
         output[20] = 1;
         // Whole-degree fictional coordinates cannot disclose the source route.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { findByteOffsets, box, fourCC, u32be } from "./_mp4-fixture.mjs";
 // Anonymize a real Novatek freeGPS MP4 into a public-safe fixture:
 // 1. Extract first N freeGPS blocks (each 256-byte slice from real file).
 // 2. Round lat/lon DDmm-floats to whole degrees (50.0 N / 30.0 E - sentinel
@@ -23,22 +24,34 @@ const SCAN_LIMIT = 64 << 20;
 const BLOCK_SIZE = 256;
 const MAGIC = Buffer.from("freeGPS ");
 
-function findFreeGpsOffsets(buf, scanEnd) {
-    const offsets = [];
-    let off = 0;
-    while ((off = buf.indexOf(MAGIC, off)) !== -1 && off < scanEnd) {
-        offsets.push(off);
-        off += MAGIC.length;
-    }
-    return offsets;
-}
-
 function pickLayoutByActive(block) {
     // Same logic as src/parsers/_internal/freegps.ts: try active@68 (default),
     // active@40 (legacy), active@36 (alt). Return offsets-tuple or null.
     const candidates = [
-        { name: "default", datetime: 44, active: 68, ns: 69, ew: 70, lat: 72, lon: 76, speed: 80, course: 84, accel: null },
-        { name: "legacy", datetime: 16, active: 40, ns: 41, ew: 42, lat: 44, lon: 48, speed: 52, course: 56, accel: 60 },
+        {
+            name: "default",
+            datetime: 44,
+            active: 68,
+            ns: 69,
+            ew: 70,
+            lat: 72,
+            lon: 76,
+            speed: 80,
+            course: 84,
+            accel: null,
+        },
+        {
+            name: "legacy",
+            datetime: 16,
+            active: 40,
+            ns: 41,
+            ew: 42,
+            lat: 44,
+            lon: 48,
+            speed: 52,
+            course: 56,
+            accel: 60,
+        },
         { name: "alt", datetime: 12, active: 36, ns: 37, ew: 38, lat: 40, lon: 44, speed: 48, course: 52, accel: null },
     ];
     for (const l of candidates) {
@@ -57,20 +70,6 @@ function ddmm(deg) {
     return Math.floor(abs) * 100 + (abs - Math.floor(abs)) * 60;
 }
 
-function fourCC(s) { return Buffer.from(s, "ascii"); }
-function box(type, payload) {
-    const size = 8 + payload.length;
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(size, 0);
-    fourCC(type).copy(head, 4);
-    return Buffer.concat([head, payload]);
-}
-function u32be(n) {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(n, 0);
-    return b;
-}
-
 const [, , inputPath, outputPath, numBlocksArg] = process.argv;
 if (!inputPath || !outputPath) {
     console.error("usage: anonymize-novatek-mp4.mjs <input.mp4> <output.mp4> [numBlocks=3]");
@@ -84,7 +83,7 @@ const stat = statSync(inputPath);
 const scanEnd = Math.min(stat.size, SCAN_LIMIT);
 const scanBuf = Buffer.alloc(scanEnd);
 readSync(fd, scanBuf, 0, scanEnd, 0);
-const offsets = findFreeGpsOffsets(scanBuf, scanEnd);
+const offsets = findByteOffsets(scanBuf, MAGIC, scanEnd);
 console.error(`found ${offsets.length} freeGPS markers`);
 
 if (offsets.length === 0) {
@@ -125,9 +124,7 @@ for (let i = 0; i < activeBlocks.length; i++) {
 }
 
 // Wrap into minimal MP4.
-const ftyp = box("ftyp", Buffer.concat([
-    fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41"),
-]));
+const ftyp = box("ftyp", Buffer.concat([fourCC("isom"), u32be(512), fourCC("isom"), fourCC("avc1"), fourCC("mp41")]));
 const freeBoxes = activeBlocks.map(({ block }) => box("free", block));
 const mvhd = box("mvhd", Buffer.alloc(108));
 const moov = box("moov", mvhd);
