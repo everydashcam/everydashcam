@@ -79,7 +79,7 @@
     "maplibre-gl": "6.16.0",
     "mediabunny": "1.65.0",
     "native-file-system-adapter": "3.0.1",
-    "onnxruntime-web": "1.30.0"
+    "onnxruntime-web": "1.31.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
