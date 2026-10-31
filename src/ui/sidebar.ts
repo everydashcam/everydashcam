@@ -46,6 +46,8 @@ import { scheduleRecognitionHelp } from "./recognition-help.js";
 import { focusTripFilterStart, initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
 import { tripSearchText } from "./trip-search.js";
 import { readTripDensity, writeTripDensity } from "./trip-density-pref.js";
+import { initTripJump, syncTripJump } from "./trip-jump.js";
+import type { TripListDayStats } from "./trip-jump.js";
 import { foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
 
@@ -149,6 +151,9 @@ const expandedParkingRuns = new Set<string>();
 // Section key per rendered section <li>, kept off the DOM like recordingFocusKeys:
 // parking-run keys carry recording identities.
 const groupKeys = new WeakMap<Element, string>();
+// Day sections of the last render, summarized for the jump-to-date calendar;
+// empty when the list is not sorted by date.
+let renderedDays: TripListDayStats[] = [];
 // Preview stack of each rendered parking run, keyed by the run's top trip, so a
 // preview that arrives later paints the run too. Rebuilt on every render.
 const parkingRunThumbs = new Map<Trip, HTMLElement>();
@@ -267,15 +272,16 @@ export function renderTrips(): void {
         );
     }
     const rest = displayed.slice(favoriteCount);
+    renderedDays = [];
     if (state.tripSortKey === "date") {
         // Month and day sections only make sense in date order.
         const nodes = foldParkingRuns(
             rest.map(({ trip, idx }) => ({ trip, tripIdx: idx })),
             (trip) => tripFocusKey(trip) ?? `start:${trip.startUtc}`,
         );
-        for (const month of groupByMonthDay(nodes)) {
-            dom.list.appendChild(buildMonthSection(month, appendCards));
-        }
+        const months = groupByMonthDay(nodes);
+        renderedDays = months.flatMap((month) => month.days.map(dayJumpStats));
+        for (const month of months) dom.list.appendChild(buildMonthSection(month, appendCards));
     } else {
         // Under other sorts a single "everything else" section follows the favorites.
         if (favoriteCount > 0 && rest.length > 0) {
@@ -293,6 +299,7 @@ export function renderTrips(): void {
     }
 
     revealActiveTrip();
+    syncTripJump(renderedDays.length > 0);
 
     // Cards are in the DOM now - reconcile body.browsing and, on the mobile
     // browse -> watch transition, fire the list-into-icon collapse. Must be last:
@@ -406,6 +413,68 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
         else list.appendChild(buildParkingRun(node, appendCards));
     }
     return section;
+}
+
+/** A day section summarized for the jump-to-date calendar. */
+function dayJumpStats(day: TripListDay): TripListDayStats {
+    const entries = day.nodes.flatMap((node) => nodeEntries(node));
+    let driveSec = 0;
+    for (const { trip } of entries) if (!trip.isParking) driveSec += trip.timeline.contentDurationSec;
+    return {
+        key: day.key,
+        year: day.year,
+        month: day.month,
+        day: day.day,
+        tripCount: entries.length,
+        driveSec,
+        hasEvents: entries.some(
+            ({ trip, tripIdx }) => trip.events.length > 0 || renderedFilterFacts.get(tripIdx)?.event,
+        ),
+        hasParking: entries.some(({ trip }) => trip.isParking),
+    };
+}
+
+/** The rendered section <li> with a layout key, if any. */
+function findGroupSection(selector: string, key: string): HTMLElement | undefined {
+    return Array.from(dom.list.querySelectorAll<HTMLElement>(selector)).find(
+        (section) => groupKeys.get(section) === key,
+    );
+}
+
+/**
+ * Brings a day section to the top of the list, below the stuck month heading:
+ * opens its month and the day if folded, scrolls, briefly highlights the
+ * heading and moves focus there, where the calendar left the user.
+ */
+function jumpToDay(key: string): void {
+    const section = findGroupSection("li.trip-day", key);
+    if (!section) return;
+    const month = section.parentElement?.closest<HTMLElement>("li.trip-month");
+    if (month?.classList.contains("is-collapsed")) setGroupCollapsed(month, false);
+    if (section.classList.contains("is-collapsed")) setGroupCollapsed(section, false);
+    // Instant, then once more after a frame: off-screen cards render with an
+    // estimated height (content-visibility in sidebar.css), and the cards drawn
+    // around the target settle to their real height after the first jump. A
+    // smooth scroll would aim at the estimate and stop short.
+    section.scrollIntoView({ block: "start", behavior: "instant" });
+    requestAnimationFrame(() => section.scrollIntoView({ block: "start", behavior: "instant" }));
+    section.classList.remove("is-jump-target");
+    // Restart the highlight animation when jumping to the same day twice.
+    void section.offsetWidth;
+    section.classList.add("is-jump-target");
+    section.addEventListener("animationend", () => section.classList.remove("is-jump-target"), { once: true });
+    section
+        .querySelector<HTMLElement>(":scope > .trip-group__header > .trip-group-toggle")
+        ?.focus({ preventScroll: true });
+}
+
+/** Key of the first day section still visible below the stuck month heading. */
+function currentDayKey(): string | null {
+    const top = dom.sidebar.getBoundingClientRect().top;
+    for (const section of dom.list.querySelectorAll<HTMLElement>("li.trip-day")) {
+        if (section.getBoundingClientRect().bottom > top + 40) return groupKeys.get(section) ?? null;
+    }
+    return null;
 }
 
 /**
@@ -1395,6 +1464,7 @@ export function initSidebar(cb: SidebarCallbacks): void {
     initSidebarFilters(renderTrips);
     state.tripListDensity = readTripDensity();
     syncDensityControl();
+    initTripJump({ days: () => renderedDays, currentDayKey, jumpToDay });
     dom.tripDensity.addEventListener("click", (event) => {
         const option = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-density]") : null;
         const density = option?.dataset.density;

@@ -89,6 +89,165 @@
 .trip-filter-tray {
     margin-top: var(--dc-space-1);
 }
+.trip-search-bar {
+    position: relative;
+}
+.trip-jump-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.trip-jump-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+.trip-jump-toggle[hidden],
+.trip-jump[hidden] {
+    display: none;
+}
+/* Jump-to-date calendar (trip-jump.ts): the month's days shaded by drive time,
+   a red dot for events and a dash for parking; days without trips are inert. */
+.trip-jump {
+    position: absolute;
+    top: calc(100% + var(--dc-space-1));
+    right: 0;
+    z-index: 30;
+    width: min(280px, 100%);
+    padding: var(--dc-space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--dc-radius-md);
+    background: var(--bg-elev);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.trip-jump__header {
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+    margin-bottom: var(--dc-space-1);
+}
+.trip-jump__title {
+    flex: 1;
+    text-align: center;
+    color: var(--fg);
+    font-size: var(--dc-text-sm);
+    font-weight: 650;
+}
+.trip-jump__step {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+    color: var(--fg-dim);
+    font-size: var(--dc-text-lg);
+    cursor: pointer;
+}
+.trip-jump__step:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--fg);
+}
+.trip-jump__step:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.trip-jump__grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+.trip-jump__weekday {
+    padding-bottom: 2px;
+    color: var(--fg-mute);
+    font-size: var(--dc-text-2xs);
+    font-weight: 600;
+    text-align: center;
+}
+.trip-jump__day {
+    position: relative;
+    height: 28px;
+    padding: 0;
+    border: 1.5px solid transparent;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) calc(12% + var(--heat, 0) * 70%), transparent);
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--dc-text-xs);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.trip-jump__day:disabled {
+    background: transparent;
+    color: var(--fg-mute);
+    opacity: 0.5;
+    cursor: default;
+}
+.trip-jump__day:hover:not(:disabled) {
+    border-color: var(--fg-dim);
+}
+.trip-jump__day:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.trip-jump__event {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--err);
+}
+.trip-jump__parking {
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    width: 10px;
+    height: 2px;
+    margin-left: -5px;
+    border-radius: 1px;
+    background: var(--fg-dim);
+}
+.trip-jump__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--dc-space-1) var(--dc-space-3);
+    margin-top: var(--dc-space-2);
+    color: var(--fg-mute);
+    font-size: var(--dc-text-2xs);
+}
+.trip-jump__legend > span::before {
+    content: "";
+    display: inline-block;
+    margin-right: var(--dc-space-1);
+    vertical-align: middle;
+}
+.trip-jump__legend-heat::before {
+    width: 24px;
+    height: 6px;
+    border-radius: 2px;
+    background: linear-gradient(to right, color-mix(in srgb, var(--accent) 12%, transparent), var(--accent));
+}
+.trip-jump__legend-event::before {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--err);
+}
+.trip-jump__legend-parking::before {
+    width: 10px;
+    height: 2px;
+    background: var(--fg-dim);
+}
+@media (pointer: coarse) {
+    .trip-jump__day {
+        height: 40px;
+    }
+    .trip-jump__step {
+        width: 44px;
+        height: 44px;
+    }
+}
 .trip-filter-tray[hidden],
 .trip-filter-toggle__count[hidden] {
     display: none;
@@ -477,9 +636,23 @@
     z-index: 3;
     padding-bottom: var(--dc-space-1);
 }
-/* Jumping to a day lands its header just under the stuck month header. */
+/* Jumping to a day lands its header just under the stuck month header, which
+   sits at the very top of the scroll box (see --trip-sticky-top). */
 .trip-day {
-    scroll-margin-top: calc(var(--trip-sticky-top) + var(--trip-month-header-h));
+    scroll-margin-top: var(--trip-month-header-h);
+}
+.trip-day.is-jump-target > .trip-group__header {
+    animation: trip-jump-flash 1.2s var(--dc-ease);
+}
+@keyframes trip-jump-flash {
+    from {
+        background: color-mix(in srgb, var(--accent) 30%, var(--bg-elev));
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .trip-day.is-jump-target > .trip-group__header {
+        animation: none;
+    }
 }
 /* Months (and the favorites / everything-else sections) are caps lines with a
    rule under them and air above; days are plain bold lines inside, so the two

@@ -816,6 +816,19 @@
                                data-i18n-attr="placeholder:sidebar.search.placeholder,aria-label:sidebar.search.label"
                                placeholder="Name, note, date or file" aria-label="Search trips">
                     </label>
+                    <!-- Jump to a date: a month calendar of the days in the list. Date sort only. -->
+                    <button id="trip-jump" class="sort-btn trip-jump-toggle" type="button" hidden
+                            aria-expanded="false" aria-controls="trip-jump-panel" aria-haspopup="dialog"
+                            data-i18n-attr="aria-label:sidebar.jump.label,title:sidebar.jump.label"
+                            aria-label="Jump to a date" title="Jump to a date">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/>
+                            <path d="M3 10h18"/>
+                        </svg>
+                    </button>
+                    <div id="trip-jump-panel" class="trip-jump" role="dialog" hidden
+                         data-i18n-attr="aria-label:sidebar.jump.label" aria-label="Jump to a date"></div>
                     <button id="trip-filter-toggle" class="sort-btn trip-filter-toggle" type="button"
                             aria-expanded="false" aria-controls="trip-filter-tray"
                             data-i18n-attr="title:sidebar.filter.toggle"

@@ -138,3 +138,56 @@ test("searches trips by date and clears the search with the filters", async ({ p
     await expect(page.locator(".trip-month")).toHaveCount(2);
     await expect(page.locator("#trip-search")).toBeFocused();
 });
+
+test("jumps to a day from the calendar", async ({ page }) => {
+    await presetLocalStorage(page);
+    // Short enough that the six-trip list has to scroll to reach September.
+    await page.setViewportSize({ width: DESKTOP.width, height: 600 });
+    await gotoApp(page);
+    await addRecordings(page);
+    const jump = page.locator("#trip-jump");
+    const panel = page.locator("#trip-jump-panel");
+
+    await jump.click();
+    await expect(panel).toBeVisible();
+    // Opens on the month at the top of the list, focused on its first day with trips.
+    await expect(panel.locator(".trip-jump__title")).toHaveText("October 2026");
+    await expect(panel.locator(".trip-jump__day:enabled")).toHaveCount(1);
+    await expect(panel.locator(".trip-jump__day:enabled")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(jump).toBeFocused();
+
+    await jump.click();
+    await panel.getByRole("button", { name: "Previous month" }).click();
+    await expect(panel.locator(".trip-jump__title")).toHaveText("September 2026");
+    const days = panel.locator(".trip-jump__day:enabled");
+    await expect(days).toHaveText(["14", "15"]);
+    await days.first().focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(days.last()).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(days.first()).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await expect(panel).toBeHidden();
+    const day = page.locator(".trip-day").filter({ hasText: "Sep 14" });
+    const dayToggle = day.locator(":scope > .trip-group__header > .trip-group-toggle");
+    await expect(dayToggle).toBeFocused();
+    // The day lands just under the stuck month heading, unless the list ends
+    // before it can reach the top (this short fixture scrolls to its end).
+    await expect(dayToggle).toBeInViewport();
+    const placement = await dayToggle.evaluate((toggle) => {
+        const sidebar = document.querySelector("#sidebar")!;
+        return {
+            offset: toggle.getBoundingClientRect().top - sidebar.getBoundingClientRect().top,
+            atEnd: Math.abs(sidebar.scrollHeight - sidebar.clientHeight - sidebar.scrollTop) < 2,
+            scrolled: sidebar.scrollTop > 0,
+        };
+    });
+    expect(placement.scrolled).toBe(true);
+    expect(placement.offset < 60 || placement.atEnd).toBe(true);
+
+    await page.locator("#trip-sort-key").selectOption("duration");
+    await expect(jump).toBeHidden();
+});

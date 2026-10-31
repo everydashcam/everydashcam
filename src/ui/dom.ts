@@ -266,6 +266,8 @@ export const dom = {
     tripFilterToggle: $id<HTMLButtonElement>("trip-filter-toggle"),
     tripFilterCount: $id<HTMLElement>("trip-filter-count"),
     tripFilterTray: $id<HTMLElement>("trip-filter-tray"),
+    tripJump: $id<HTMLButtonElement>("trip-jump"),
+    tripJumpPanel: $id<HTMLElement>("trip-jump-panel"),
     sortKey: $id<HTMLSelectElement>("trip-sort-key"),
     sortDir: $id<HTMLButtonElement>("trip-sort-dir"),
     tripDensity: $id<HTMLElement>("trip-density"),
