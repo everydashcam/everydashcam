@@ -15,9 +15,22 @@
 // names, or timestamps), so committing them is fine. The original files are
 // under NDA in private/ and are not committed.
 
+import {
+    BlobSource,
+    BufferTarget,
+    EncodedPacket,
+    EncodedPacketSink,
+    EncodedVideoPacketSource,
+    Input,
+    Mp4InputFormat,
+    Mp4OutputFormat,
+    Output,
+} from "mediabunny";
 import { describe, expect, it } from "vitest";
 
-import { _testIsBrokenHeader, _testParseSps, _testRebuildHvcC, detectHvcCRepair } from "./hvcc.js";
+import { indexMp4FileWithMoov } from "../parsers/internal/mp4-indexing.js";
+import { findBox, findHvccInTrak, hevcCodecStringFromHvcc } from "../parsers/internal/mp4-walker.js";
+import { _testIsBrokenHeader, _testParseSps, _testRebuildHvcC, detectHvcCRepair, repairBrokenHvcC } from "./hvcc.js";
 
 /** Parses a "01 02 03"-format hex string into a Uint8Array. */
 function bytes(hex: string): Uint8Array {
@@ -75,6 +88,92 @@ const BROKEN_HVCC_PAYLOAD = bytes(
         "21 00 01 00 21 42 01 01 01 60 00 00 03 00 00 03 00 00 03 00 00 03 00 96 a0 01 e0 20 02 1c 7f 89 ad 39 28 92 ec 80 " +
         "22 00 01 00 07 44 01 c0 72 f0 3b 24",
 );
+
+// Container tests inspect metadata and packet bytes without decoding footage.
+const SYNTHETIC_PACKET = new Uint8Array([0, 0, 0, 3, 0x26, 0x01, 0x80]);
+
+async function hevcFile(fastStart: false | "in-memory"): Promise<File> {
+    const target = new BufferTarget();
+    const output = new Output({ format: new Mp4OutputFormat({ fastStart }), target });
+    const source = new EncodedVideoPacketSource("hevc");
+    output.addVideoTrack(source);
+    await output.start();
+    await source.add(new EncodedPacket(SYNTHETIC_PACKET, "key", 0, 1), {
+        decoderConfig: {
+            codec: "hev1.1.6.L150",
+            codedWidth: 3840,
+            codedHeight: 2160,
+            description: new Uint8Array(GOOD_HVCC_PAYLOAD),
+        },
+    });
+    await output.finalize();
+    if (!target.buffer) throw new Error("synthetic hevc output is empty");
+    return new File([target.buffer], "synthetic-hevc.mp4", {
+        type: "video/mp4",
+        lastModified: 1767225600000,
+    });
+}
+
+async function expectReadableHevc(file: File): Promise<void> {
+    const input = new Input({ source: new BlobSource(file), formats: [new Mp4InputFormat()] });
+    try {
+        const track = await input.getPrimaryVideoTrack();
+        expect(track).not.toBeNull();
+        const config = await track!.getDecoderConfig();
+        expect(config?.codec).toBe("hev1.1.6.L150");
+        expect(hevcCodecStringFromHvcc(GOOD_HVCC_PAYLOAD)).toBe(config!.codec);
+        expect(new Uint8Array(config!.description as ArrayBuffer)).toEqual(GOOD_HVCC_PAYLOAD);
+        const packet = await new EncodedPacketSink(track!).getFirstPacket();
+        expect(packet?.data).toEqual(SYNTHETIC_PACKET);
+    } finally {
+        input.dispose();
+    }
+}
+
+describe.each([
+    { layout: "moov first", fastStart: "in-memory" as const },
+    { layout: "moov last", fastStart: false as const },
+])("repairBrokenHvcC with $layout", ({ fastStart }) => {
+    it("leaves a healthy file unchanged and agrees with the demuxer's codec metadata", async () => {
+        const file = await hevcFile(fastStart);
+        expect(await repairBrokenHvcC(file)).toBeNull();
+        await expectReadableHevc(file);
+    });
+
+    it("repairs only the broken header while preserving the file and indexed codec", async () => {
+        const healthy = await hevcFile(fastStart);
+        const healthyBytes = new Uint8Array(await healthy.arrayBuffer());
+        const dv = new DataView(healthyBytes.buffer);
+        const moov = findBox(dv, 0, dv.byteLength, "moov")!;
+        const mdat = findBox(dv, 0, dv.byteLength, "mdat")!;
+        expect(moov.start < mdat.start).toBe(fastStart === "in-memory");
+        const trak = findBox(dv, moov.payloadStart, moov.end, "trak")!;
+        const hvcc = findHvccInTrak(dv, trak)!;
+        expect(healthyBytes.subarray(hvcc.payloadStart, hvcc.payloadEnd)).toEqual(GOOD_HVCC_PAYLOAD);
+        const brokenBytes = healthyBytes.slice();
+        brokenBytes.set(BROKEN_HVCC_PAYLOAD, hvcc.payloadStart);
+        const broken = new File([brokenBytes], healthy.name, {
+            type: healthy.type,
+            lastModified: healthy.lastModified,
+        });
+
+        const repaired = await repairBrokenHvcC(broken);
+        expect(repaired).not.toBeNull();
+        expect(repaired!.description).toEqual(GOOD_HVCC_PAYLOAD);
+        expect(repaired!.file.size).toBe(broken.size);
+        expect(repaired!.file.name).toBe(broken.name);
+        expect(repaired!.file.type).toBe(broken.type);
+        expect(repaired!.file.lastModified).toBe(broken.lastModified);
+        expect(new Uint8Array(await repaired!.file.arrayBuffer())).toEqual(healthyBytes);
+        expect(new Uint8Array(await broken.arrayBuffer())).toEqual(brokenBytes);
+        await expectReadableHevc(repaired!.file);
+
+        const { indexed, repair } = await indexMp4FileWithMoov(broken, false);
+        expect(repair).toBeDefined();
+        expect(indexed?.codec).toBe("hevc");
+        expect(indexed?.videoCodecString).toBe("hev1.1.6.L150");
+    });
+});
 
 describe("parseSps", () => {
     it("extracts profile/level/bit_depth/chroma from valid 70mai SPS", () => {

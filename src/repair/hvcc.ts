@@ -134,7 +134,7 @@ export function detectHvcCRepair(moovBytes: Uint8Array): HvcCRepair | null {
  * The bulk-ingest path no longer calls this - the indexer worker runs
  * detectHvcCRepair on the moov bytes it already holds (see src/repair/moov-repair.ts)
  * and the main thread applies the splice. This wrapper stays as the standalone
- * file-level entry point (and is what the real-sample test exercises).
+ * file-level entry point, covered by the container fixtures in hvcc.test.ts.
  */
 export async function repairBrokenHvcC(file: File): Promise<RepairedHvcC | null> {
     const moov = await findMoovInFile(file).catch((err) => {

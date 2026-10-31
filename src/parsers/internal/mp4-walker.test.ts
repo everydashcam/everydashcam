@@ -824,7 +824,7 @@ describe("hevcCodecStringFromHvcc", () => {
         return rec;
     }
 
-    it("70mai Main: hev1.1.6.L150 (matches the real-file pin in hvcc.real.test)", () => {
+    it("70mai Main: hev1.1.6.L150 (matches the codec metadata fixture in hvcc.test)", () => {
         // compatRaw 0x60000000 bit-reverses to 6; level 150; no constraint flags.
         expect(hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x01, compatRaw: 0x60000000, levelIdc: 150 }))).toBe(
             "hev1.1.6.L150",

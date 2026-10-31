@@ -27,6 +27,10 @@ Verification gates live in [CLAUDE.md](../../CLAUDE.md).
   [documented foreign-source waiver](../../docs/gps-format-coverage.md).
   Synthetic malformed and negative byte fixtures supplement that evidence;
   they do not replace it.
+- Default test suites must run without `private/`. Use committed anonymized
+  fixtures or synthetic cases; missing required fixtures must fail, not skip.
+  Keep private-sample diagnostics outside the default suites and require their
+  inputs explicitly. Browser capability guards remain valid when documented.
 - Shared semantic checks are plain helper functions, not `expect.extend`;
   see `src/parsers/__fixtures__/helpers.ts`. Pair snapshots with plausibility
   checks; a snapshot alone only preserves the parser's output.
