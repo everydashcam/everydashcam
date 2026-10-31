@@ -37,33 +37,80 @@ async function expectStartupFailure(page: Page, message: string): Promise<void> 
     expect(page.workers()).toHaveLength(0);
 }
 
-test("restores the compressed application once in the original file document", async ({ page, requests }, info) => {
-    void requests;
-    await presetLocalStorage(page, { lang: "en" });
-    await page.addInitScript(() => {
-        const state = { originalDocument: document, readyCount: 0 };
-        Object.defineProperty(window, "__portableCompressionProbe", { value: state });
-        addEventListener("dc:ready", () => state.readyCount++);
+for (const decoder of ["native", "fallback"] as const) {
+    test(`restores the compressed application once with the ${decoder} base64 decoder`, async ({
+        page,
+        requests,
+    }, info) => {
+        void requests;
+        const hasNativeDecoder = await page.evaluate(() => "fromBase64" in Uint8Array);
+        test.skip(decoder === "native" && !hasNativeDecoder, "browser has no native base64 decoder");
+        await presetLocalStorage(page, { lang: "en" });
+        await page.addInitScript((decoder) => {
+            const state = { originalDocument: document, readyCount: 0, payloadDecoders: [] as string[] };
+            Object.defineProperty(window, "__portableCompressionProbe", { value: state });
+            const recordPayloadDecoder = (input: string, method: string): void => {
+                const payload = document.getElementById("dc-portable-payload");
+                if (payload && input === payload.textContent) state.payloadDecoders.push(method);
+            };
+            const byteArray = Uint8Array as Uint8ArrayConstructor & {
+                fromBase64?: (input: string) => Uint8Array<ArrayBuffer>;
+            };
+            const fromBase64 = byteArray.fromBase64?.bind(byteArray);
+            Object.defineProperty(byteArray, "fromBase64", {
+                configurable: true,
+                value:
+                    decoder === "native"
+                        ? (input: string) => {
+                              recordPayloadDecoder(input, "native");
+                              return fromBase64!(input);
+                          }
+                        : undefined,
+            });
+            const originalAtob = window.atob.bind(window);
+            window.atob = (input) => {
+                recordPayloadDecoder(input, "fallback");
+                return originalAtob(input);
+            };
+            addEventListener("dc:ready", () => {
+                state.readyCount++;
+                // Other startup features may decode their own base64 data.
+                window.atob("c3RhcnR1cA==");
+                byteArray.fromBase64?.("c3RhcnR1cA==");
+            });
+        }, decoder);
+        const url = await openPortable(page, info.outputPath("compressed startup"), "ru");
+        await expect(page.locator("html")).toHaveAttribute("data-portable-state", "ready");
+        await expect(page.locator("html")).toHaveClass(/dc-dark/);
+        await expect(page.locator("#landing-cta")).toBeEnabled();
+        await expect(page.locator("#dc-i18n")).toHaveCount(1);
+        await expect(page.locator("#dc-portable-startup, #dc-portable-payload")).toHaveCount(0);
+        await expect(page.locator("script[src], iframe")).toHaveCount(0);
+        expect(page.url()).toBe(url);
+        expect(
+            await page.evaluate(() => {
+                const state = (
+                    window as unknown as {
+                        __portableCompressionProbe: {
+                            originalDocument: Document;
+                            readyCount: number;
+                            payloadDecoders: string[];
+                        };
+                    }
+                ).__portableCompressionProbe;
+                return {
+                    sameDocument: document === state.originalDocument,
+                    readyCount: state.readyCount,
+                    payloadDecoders: state.payloadDecoders,
+                };
+            }),
+        ).toEqual({
+            sameDocument: true,
+            readyCount: 1,
+            payloadDecoders: [decoder],
+        });
     });
-    const url = await openPortable(page, info.outputPath("compressed startup"), "ru");
-    await expect(page.locator("html")).toHaveAttribute("data-portable-state", "ready");
-    await expect(page.locator("html")).toHaveClass(/dc-dark/);
-    await expect(page.locator("#landing-cta")).toBeEnabled();
-    await expect(page.locator("#dc-i18n")).toHaveCount(1);
-    await expect(page.locator("#dc-portable-startup, #dc-portable-payload")).toHaveCount(0);
-    await expect(page.locator("script[src], iframe")).toHaveCount(0);
-    expect(page.url()).toBe(url);
-    expect(
-        await page.evaluate(() => {
-            const state = (
-                window as unknown as {
-                    __portableCompressionProbe: { originalDocument: Document; readyCount: number };
-                }
-            ).__portableCompressionProbe;
-            return { sameDocument: document === state.originalDocument, readyCount: state.readyCount };
-        }),
-    ).toEqual({ sameDocument: true, readyCount: 1 });
-});
+}
 
 test("explains an unavailable native decompressor without starting the application", async ({
     page,

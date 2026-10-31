@@ -47,8 +47,14 @@ void (async () => {
     }
 
     try {
-        const binary = atob(payload.textContent!);
-        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        // Older browsers with gzip streams can still lack the native base64 decoder.
+        const byteArray = Uint8Array as Uint8ArrayConstructor & {
+            fromBase64?: (input: string) => Uint8Array<ArrayBuffer>;
+        };
+        const bytes =
+            typeof byteArray.fromBase64 === "function"
+                ? byteArray.fromBase64(payload.textContent!)
+                : Uint8Array.from(atob(payload.textContent!), (character) => character.charCodeAt(0));
         payload.remove();
         payload.textContent = "";
         const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
