@@ -1,3 +1,6 @@
+import { readLocalStorage, writeLocalStorage, readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
+import { zoomForDiameterKm } from "../coordinates.js";
+import { lowerBoundBy } from "../sorted-search.js";
 // Map (large + mini) on MapLibre. Single owner of map instances,
 // markers, popups, rAF marker loop, expand/collapse, mini-map morph animations,
 // follow modes, theme-aware tile style, and GPS-point hover popups.
@@ -53,6 +56,7 @@ import { isOffline, subscribeConnectivity } from "./connectivity.js";
 import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { formatNumber, formatTime } from "./format.js";
+import { attachPointerDrag } from "./pointer-drag.js";
 import { activeFrame, activeTrip, state } from "./state.js";
 import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
@@ -527,13 +531,10 @@ const TRAIL_LAYER_SUFFIX = "-trail";
  */
 function computeTrackProgress(targetUnix: number): number {
     if (trackRecs.length < 2 || trackTotalDist === 0) return 0;
-    let lo = 0;
-    let hi = trackRecs.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (trackRecs[mid]!.unixSeconds < targetUnix) lo = mid + 1;
-        else hi = mid;
-    }
+    const lo = Math.min(
+        lowerBoundBy(trackRecs, targetUnix, (record) => record.unixSeconds),
+        trackRecs.length - 1,
+    );
     if (lo === 0) return 0;
     const prev = trackRecs[lo - 1]!;
     const next = trackRecs[lo]!;
@@ -991,11 +992,7 @@ function refreshMiniMapWidth(): void {
 }
 
 function miniMapZoomForLat(lat: number): number {
-    const targetMetersPerPx = (MINI_MAP_TARGET_WIDTH_KM * 1000) / Math.max(1, miniMapWidthPx);
-    const cosLat = Math.cos((lat * Math.PI) / 180);
-    // Near poles cos → 0; guard against -Infinity and absurdly large zoom.
-    const safeCos = Math.max(cosLat, 0.01);
-    return Math.log2((78271.5 * safeCos) / targetMetersPerPx);
+    return zoomForDiameterKm(lat, MINI_MAP_TARGET_WIDTH_KM, Math.max(1, miniMapWidthPx));
 }
 
 export function ensureMiniMap(): maplibregl.Map | null {
@@ -2215,31 +2212,17 @@ interface MiniMapStoredPos {
 }
 
 function loadStoredMiniMapPos(): MiniMapStoredPos | null {
-    try {
-        const raw = localStorage.getItem(MINIMAP_POS_STORAGE_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as unknown;
-        if (typeof parsed !== "object" || parsed === null) return null;
-        const obj = parsed as { xPct?: unknown; yPct?: unknown };
-        const xPct = typeof obj.xPct === "number" && Number.isFinite(obj.xPct) ? obj.xPct : null;
-        const yPct = typeof obj.yPct === "number" && Number.isFinite(obj.yPct) ? obj.yPct : null;
-        if (xPct === null || yPct === null) return null;
-        return {
-            xPct: Math.max(0, Math.min(1, xPct)),
-            yPct: Math.max(0, Math.min(1, yPct)),
-        };
-    } catch {
-        return null;
-    }
+    const parsed = readLocalStorageJson(MINIMAP_POS_STORAGE_KEY);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const obj = parsed as { xPct?: unknown; yPct?: unknown };
+    const xPct = typeof obj.xPct === "number" && Number.isFinite(obj.xPct) ? obj.xPct : null;
+    const yPct = typeof obj.yPct === "number" && Number.isFinite(obj.yPct) ? obj.yPct : null;
+    if (xPct === null || yPct === null) return null;
+    return { xPct: Math.max(0, Math.min(1, xPct)), yPct: Math.max(0, Math.min(1, yPct)) };
 }
 
 function persistMiniMapPos(pos: MiniMapStoredPos): void {
-    try {
-        localStorage.setItem(MINIMAP_POS_STORAGE_KEY, JSON.stringify(pos));
-    } catch {
-        // localStorage blocked (incognito quota) - position survives the session
-        // but not a reload. Non-critical.
-    }
+    writeLocalStorageJson(MINIMAP_POS_STORAGE_KEY, pos);
 }
 
 /**
@@ -2331,48 +2314,34 @@ function initMiniMapDrag(): void {
         }
     }
 
-    dom.miniMap.addEventListener("pointerdown", (e) => {
-        if (e.target instanceof Element && e.target.closest("a")) return;
-        // Primary mouse button or first touch only.
-        if (e.button !== 0 && e.pointerType === "mouse") return;
-        dragging = true;
-        suppressNextClick = false;
-        startClientX = e.clientX;
-        startClientY = e.clientY;
-        baseOffsetX = appliedOffsetX;
-        baseOffsetY = appliedOffsetY;
-        dom.miniMap.classList.add("is-dragging");
-        // Pointer capture keeps pointermove firing even when the cursor leaves
-        // the mini-map bounds.
-        dom.miniMap.setPointerCapture(e.pointerId);
+    attachPointerDrag(dom.miniMap, {
+        onStart: (e) => {
+            if (e.target instanceof Element && e.target.closest("a")) return false;
+            dragging = true;
+            suppressNextClick = false;
+            startClientX = e.clientX;
+            startClientY = e.clientY;
+            baseOffsetX = appliedOffsetX;
+            baseOffsetY = appliedOffsetY;
+            dom.miniMap.classList.add("is-dragging");
+            return true;
+        },
+        onMove: (e) => {
+            const dx = e.clientX - startClientX;
+            const dy = e.clientY - startClientY;
+            if (!suppressNextClick && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+                suppressNextClick = true;
+            }
+            // No persist during drag (writes on every pointermove would thrash
+            // localStorage); final persist happens on pointerup.
+            applyOffset(baseOffsetX + dx, baseOffsetY + dy, false);
+        },
+        onEnd: () => {
+            dragging = false;
+            dom.miniMap.classList.remove("is-dragging");
+            applyOffset(appliedOffsetX, appliedOffsetY, true);
+        },
     });
-
-    dom.miniMap.addEventListener("pointermove", (e) => {
-        if (e.target instanceof Element && e.target.closest("a")) return;
-        if (!dragging) return;
-        const dx = e.clientX - startClientX;
-        const dy = e.clientY - startClientY;
-        if (!suppressNextClick && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
-            suppressNextClick = true;
-        }
-        // No persist during drag (writes on every pointermove would thrash
-        // localStorage); final persist happens on pointerup.
-        applyOffset(baseOffsetX + dx, baseOffsetY + dy, false);
-    });
-
-    function endDrag(e: PointerEvent): void {
-        if (!dragging) return;
-        dragging = false;
-        dom.miniMap.classList.remove("is-dragging");
-        applyOffset(appliedOffsetX, appliedOffsetY, true);
-        try {
-            dom.miniMap.releasePointerCapture(e.pointerId);
-        } catch {
-            /* already released */
-        }
-    }
-    dom.miniMap.addEventListener("pointerup", endDrag);
-    dom.miniMap.addEventListener("pointercancel", endDrag);
 
     dom.miniMap.addEventListener("click", (e) => {
         if (e.target instanceof Element && e.target.closest("a")) return;
@@ -3053,38 +3022,21 @@ function chaseZoomForSpeed(speedMs: number): number {
 }
 
 function loadChasePitch(): number {
-    try {
-        const raw = localStorage.getItem(CHASE_PITCH_STORAGE_KEY);
-        if (raw === null) return CHASE_DEFAULT_PITCH_DEG;
-        return clampPitch(Number(raw));
-    } catch {
-        return CHASE_DEFAULT_PITCH_DEG;
-    }
+    const raw = readLocalStorage(CHASE_PITCH_STORAGE_KEY);
+    return raw === null ? CHASE_DEFAULT_PITCH_DEG : clampPitch(Number(raw));
 }
 
 function persistChasePitch(deg: number): void {
-    try {
-        localStorage.setItem(CHASE_PITCH_STORAGE_KEY, String(Math.round(deg)));
-    } catch {
-        // localStorage blocked (incognito) - tilt survives the session only.
-    }
+    writeLocalStorage(CHASE_PITCH_STORAGE_KEY, String(Math.round(deg)));
 }
 
 function loadChaseAdaptiveZoom(): boolean {
-    try {
-        // Default ON: absent key -> true. Only an explicit "0" disables it.
-        return localStorage.getItem(CHASE_ADAPTIVE_STORAGE_KEY) !== "0";
-    } catch {
-        return true;
-    }
+    // Default ON: absent key -> true. Only an explicit "0" disables it.
+    return readLocalStorage(CHASE_ADAPTIVE_STORAGE_KEY) !== "0";
 }
 
 function persistChaseAdaptiveZoom(on: boolean): void {
-    try {
-        localStorage.setItem(CHASE_ADAPTIVE_STORAGE_KEY, on ? "1" : "0");
-    } catch {
-        // see persistChasePitch
-    }
+    writeLocalStorage(CHASE_ADAPTIVE_STORAGE_KEY, on ? "1" : "0");
 }
 
 /** First symbol layer id, so the 3D building extrusion is inserted UNDER the

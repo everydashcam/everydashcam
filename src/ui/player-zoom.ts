@@ -27,6 +27,9 @@ import {
     SLAVE_DRIFT_MAX_SEC,
 } from "./dom.js";
 import { t } from "../i18n/index.js";
+import { formatNumber } from "./format.js";
+import { attachPointerDrag, type PointerDragController } from "./pointer-drag.js";
+import { attachPinchGesture, type PinchGeometry, type PinchGesture } from "./pinch-gesture.js";
 import { isMobileLayout } from "./media-queries.js";
 import { clearVideoSrc, requiresMseBackend, setVideoSrcFromFile, videoAttachedFile } from "./player-video-src.js";
 import { activeCandidate, isFocusLayout, state } from "./state.js";
@@ -38,8 +41,7 @@ const DRAG_PIXEL_THRESHOLD = 5;
 
 /** Active pointer-drag on the main video (pan). */
 interface MainDragState {
-    pointerId: number;
-    target: HTMLElement;
+    tile: HTMLElement;
     startClientX: number;
     startClientY: number;
     startOffsetX: number;
@@ -53,17 +55,11 @@ let mainDrag: MainDragState | null = null;
 // (via consumeDragClickSuppress).
 let wasDragging = false;
 
-/** Active pointer-drag on the mini-preview (pan via minimap). */
-interface MinimapDragState {
-    pointerId: number;
-}
-let minimapDrag: MinimapDragState | null = null;
+let mainDragGesture: PointerDragController | null = null;
+let minimapDragGesture: PointerDragController | null = null;
+let pinchGesture: PinchGesture | null = null;
 
-// Two-finger pinch zoom (the touch entry point that wheel zoom has on desktop).
-// activePointers tracks every contact currently on the active video so a second
-// finger can promote a single touch into a pinch; pinch holds the gesture-start
-// snapshot. Both are cleared on resetVideoZoom (trip change / channel swap).
-const activePointers = new Map<number, { x: number; y: number }>();
+// The shared gesture owns contacts/capture; video zoom owns the transform.
 interface PinchState {
     startDist: number;
     startScale: number;
@@ -193,33 +189,9 @@ export function applyVideoZoom(): void {
 /** Reset zoom to default and clear all artifacts. Idempotent. */
 export function resetVideoZoom(): void {
     state.videoZoom = { scale: 1, offsetX: 0, offsetY: 0 };
-    // Release any active drag.
-    if (mainDrag) {
-        try {
-            mainDrag.target.releasePointerCapture(mainDrag.pointerId);
-        } catch {
-            // pointer may have already been released by the browser - ok.
-        }
-        mainDrag.target.classList.remove("dragging");
-        mainDrag = null;
-    }
-    if (minimapDrag) {
-        try {
-            dom.videoMinimap.releasePointerCapture(minimapDrag.pointerId);
-        } catch {
-            /* pointer may have already been released by the browser */
-        }
-        minimapDrag = null;
-    }
-    // Release any in-flight pinch + its captured pointers.
-    for (const id of activePointers.keys()) {
-        try {
-            dom.videoGrid.releasePointerCapture(id);
-        } catch {
-            /* pointer may have already been released by the browser */
-        }
-    }
-    activePointers.clear();
+    mainDragGesture?.cancel();
+    minimapDragGesture?.cancel();
+    pinchGesture?.reset();
     pinch = null;
     if (pinchClickSuppressTimer) {
         clearTimeout(pinchClickSuppressTimer);
@@ -279,7 +251,7 @@ function syncZoomBadge(): void {
     const scaleEl = badge.querySelector<HTMLElement>(".zoom-badge__scale");
     // Multiplier symbol - numeric, not a translatable string. Round to 1 decimal,
     // trailing .0 dropped by Number formatting ("2.4x", "3x").
-    if (scaleEl) scaleEl.textContent = `${Math.round(z.scale * 10) / 10}x`;
+    if (scaleEl) scaleEl.textContent = `${formatNumber(z.scale, 1, 0)}x`;
 }
 
 /**
@@ -433,32 +405,17 @@ function handleVideoWheel(e: WheelEvent): void {
  * active video (even at 1x) so the second finger can start a pinch from rest -
  * the wheel path's only touch counterpart.
  */
-function handleMainPointerDown(e: PointerEvent): void {
-    if (state.exportModeOpen) return; // zoom suspended in export mode (crop owns the transform)
-    if (!isFocusLayout(state.composition.layout)) return;
-    if (!state.active) return;
-    const target = e.target;
-    if (!(target instanceof HTMLVideoElement)) return;
-    if (target !== activePlayer()) return;
-    if (e.button !== 0) return;
+function acceptsZoomPointer(e: PointerEvent): boolean {
+    if (state.exportModeOpen || !isFocusLayout(state.composition.layout) || !state.active) return false;
+    return e.target instanceof HTMLVideoElement && e.target === activePlayer();
+}
 
-    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (activePointers.size >= 2) {
-        startPinch();
-        return;
-    }
-
-    if (state.videoZoom.scale === 1) return; // nothing to pan at 1x; await a second finger
-    const tile = target.parentElement;
-    if (!tile) return;
-    try {
-        target.setPointerCapture(e.pointerId);
-    } catch {
-        /* capture may fail if pointer already inactive - continue without it */
-    }
+function handleMainPointerDown(e: PointerEvent): boolean {
+    if (!acceptsZoomPointer(e) || pinchGesture?.active || state.videoZoom.scale === 1) return false;
+    const tile = activePlayer().parentElement;
+    if (!tile) return false;
     mainDrag = {
-        pointerId: e.pointerId,
-        target,
+        tile,
         startClientX: e.clientX,
         startClientY: e.clientY,
         startOffsetX: state.videoZoom.offsetX,
@@ -466,6 +423,7 @@ function handleMainPointerDown(e: PointerEvent): void {
         maxDist: 0,
     };
     tile.classList.add("dragging");
+    return true;
 }
 
 /**
@@ -475,57 +433,32 @@ function handleMainPointerDown(e: PointerEvent): void {
  * the content point under the start centroid pinned to the moving centroid at the
  * new scale - zoom and pan in one gesture, reusing the wheel/pan clamp math.
  */
-function startPinch(): void {
-    if (mainDrag) {
-        try {
-            mainDrag.target.releasePointerCapture(mainDrag.pointerId);
-        } catch {
-            /* see above */
-        }
-        mainDrag.target.parentElement?.classList.remove("dragging");
-        mainDrag = null;
-    }
+function startPinch(geometry: PinchGeometry): boolean {
     const geom = computeZoomGeometry();
-    if (!geom) return;
-    const pts = [...activePointers.values()];
-    const p1 = pts[0];
-    const p2 = pts[1];
-    if (!p1 || !p2) return;
-    for (const id of activePointers.keys()) {
-        try {
-            dom.videoGrid.setPointerCapture(id);
-        } catch {
-            /* see above */
-        }
-    }
+    if (!geom) return false;
+    mainDragGesture?.cancel();
     const rect = geom.tile.getBoundingClientRect();
     pinch = {
-        startDist: Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1,
+        startDist: geometry.distance,
         startScale: state.videoZoom.scale,
         startOffsetX: state.videoZoom.offsetX,
         startOffsetY: state.videoZoom.offsetY,
-        startCentroidX: (p1.x + p2.x) / 2 - rect.left,
-        startCentroidY: (p1.y + p2.y) / 2 - rect.top,
+        startCentroidX: geometry.centerX - rect.left,
+        startCentroidY: geometry.centerY - rect.top,
     };
+    return true;
 }
 
-function updatePinch(): void {
+function updatePinch(geometry: PinchGeometry): void {
     if (!pinch) return;
     const geom = computeZoomGeometry();
     if (!geom) return;
-    const pts = [...activePointers.values()];
-    const p1 = pts[0];
-    const p2 = pts[1];
-    if (!p1 || !p2) return;
     const rect = geom.tile.getBoundingClientRect();
-    const newDist = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1;
-    const newScale = clamp((pinch.startScale * newDist) / pinch.startDist, ZOOM_MIN, ZOOM_MAX);
-    // Current centroid in tile coords.
-    const cx = (p1.x + p2.x) / 2 - rect.left;
-    const cy = (p1.y + p2.y) / 2 - rect.top;
-    // The content point (untransformed video coords) under the start centroid
-    // stays under the moving centroid at the new scale - same anchor logic as the
-    // wheel path, but the centroid also translates, so the gesture pans too.
+    const newScale = clamp((pinch.startScale * geometry.distance) / pinch.startDist, ZOOM_MIN, ZOOM_MAX);
+    const cx = geometry.centerX - rect.left;
+    const cy = geometry.centerY - rect.top;
+    // Keep the content point under the starting centroid beneath its new
+    // position: zoom and pan share the same clamp as wheel gestures.
     const contentX = (pinch.startCentroidX - pinch.startOffsetX) / pinch.startScale;
     const contentY = (pinch.startCentroidY - pinch.startOffsetY) / pinch.startScale;
     const c = clampZoomOffset(geom, newScale, cx - contentX * newScale, cy - contentY * newScale);
@@ -548,15 +481,7 @@ function endPinch(): void {
 }
 
 function handleMainPointerMove(e: PointerEvent): void {
-    if (activePointers.has(e.pointerId)) {
-        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    }
-    if (pinch) {
-        updatePinch();
-        return;
-    }
     if (!mainDrag) return;
-    if (e.pointerId !== mainDrag.pointerId) return;
     const dx = e.clientX - mainDrag.startClientX;
     const dy = e.clientY - mainDrag.startClientY;
     const dist = Math.hypot(dx, dy);
@@ -569,70 +494,12 @@ function handleMainPointerMove(e: PointerEvent): void {
     applyVideoZoom();
 }
 
-function handleMainPointerUp(e: PointerEvent): void {
-    // A pinch-tracked contact lifts: drop it and, if it was part of a pinch, tear
-    // the pinch down once under two fingers. A single-finger pan pointer is also
-    // tracked here, but pinch is null for it, so it falls through to pan teardown.
-    if (activePointers.delete(e.pointerId)) {
-        if (pinch) {
-            try {
-                dom.videoGrid.releasePointerCapture(e.pointerId);
-            } catch {
-                /* see above */
-            }
-            if (activePointers.size < 2) endPinch();
-            return;
-        }
-    }
+function finishMainDrag(): void {
     if (!mainDrag) return;
-    if (e.pointerId !== mainDrag.pointerId) return;
-    const target = mainDrag.target;
-    const tile = target.parentElement;
-    try {
-        target.releasePointerCapture(mainDrag.pointerId);
-    } catch {
-        /* see above */
-    }
-    tile?.classList.remove("dragging");
-    // If there was a real drag (>= threshold), suppress the subsequent click
-    // so pointerup-after-drag doesn't toggle play/pause.
+    mainDrag.tile.classList.remove("dragging");
+    // A real pan must not turn its release into play/pause.
     wasDragging = mainDrag.maxDist >= DRAG_PIXEL_THRESHOLD;
     mainDrag = null;
-}
-
-/**
- * Pan via mini-preview: cursor position in minimap becomes the new center of
- * the main tile viewport. Click without move = jump; drag with move =
- * continuous pan.
- */
-function handleMinimapPointerDown(e: PointerEvent): void {
-    if (state.videoZoom.scale === 1) return;
-    if (e.button !== 0) return;
-    const minimap = dom.videoMinimap;
-    try {
-        minimap.setPointerCapture(e.pointerId);
-    } catch {
-        /* see above */
-    }
-    minimapDrag = { pointerId: e.pointerId };
-    panFromMinimapToCursor(e);
-}
-
-function handleMinimapPointerMove(e: PointerEvent): void {
-    if (!minimapDrag) return;
-    if (e.pointerId !== minimapDrag.pointerId) return;
-    panFromMinimapToCursor(e);
-}
-
-function handleMinimapPointerUp(e: PointerEvent): void {
-    if (!minimapDrag) return;
-    if (e.pointerId !== minimapDrag.pointerId) return;
-    try {
-        dom.videoMinimap.releasePointerCapture(minimapDrag.pointerId);
-    } catch {
-        /* see above */
-    }
-    minimapDrag = null;
 }
 
 function panFromMinimapToCursor(e: PointerEvent): void {
@@ -682,15 +549,27 @@ export function initPlayerZoom(): void {
     // passive:false because preventDefault blocks browser page-zoom
     // (Ctrl+Wheel) and page scroll.
     dom.videoGrid.addEventListener("wheel", handleVideoWheel, { passive: false });
-    dom.videoGrid.addEventListener("pointerdown", handleMainPointerDown);
-    dom.videoGrid.addEventListener("pointermove", handleMainPointerMove);
-    dom.videoGrid.addEventListener("pointerup", handleMainPointerUp);
-    dom.videoGrid.addEventListener("pointercancel", handleMainPointerUp);
-
-    dom.videoMinimap.addEventListener("pointerdown", handleMinimapPointerDown);
-    dom.videoMinimap.addEventListener("pointermove", handleMinimapPointerMove);
-    dom.videoMinimap.addEventListener("pointerup", handleMinimapPointerUp);
-    dom.videoMinimap.addEventListener("pointercancel", handleMinimapPointerUp);
+    // Register pinch before pan: the second contact cancels the single-pointer
+    // gesture before either surface takes ownership of its movement.
+    pinchGesture = attachPinchGesture(dom.videoGrid, {
+        accepts: acceptsZoomPointer,
+        onStart: startPinch,
+        onMove: updatePinch,
+        onEnd: endPinch,
+    });
+    mainDragGesture = attachPointerDrag(dom.videoGrid, {
+        onStart: handleMainPointerDown,
+        onMove: handleMainPointerMove,
+        onEnd: finishMainDrag,
+    });
+    minimapDragGesture = attachPointerDrag(dom.videoMinimap, {
+        onStart: (e) => {
+            if (state.videoZoom.scale === 1) return false;
+            panFromMinimapToCursor(e);
+            return true;
+        },
+        onMove: panFromMinimapToCursor,
+    });
 
     // Mirror master playback state into the duplicate video. Channel swap
     // automatically redirects via onActivePlayerEvent.

@@ -26,7 +26,7 @@ import {
     subscribeExportState,
 } from "./export-state.js";
 import { formatTime } from "./format.js";
-import { suppressEdgeSwipeNav } from "./pointer-drag.js";
+import { attachPointerDrag, suppressEdgeSwipeNav } from "./pointer-drag.js";
 import { state } from "./state.js";
 
 /** Slack (sec) before a range boundary counts as outside the zoom window.
@@ -236,18 +236,18 @@ function attachTabDrag(tab: HTMLButtonElement, which: "start" | "end"): void {
         ev.preventDefault();
         ev.stopPropagation();
     });
-    tab.addEventListener("pointerdown", (ev) => {
-        if (!isRangeEditable() || (ev.pointerType === "mouse" && ev.button !== 0)) return;
-        ev.preventDefault();
-        tab.setPointerCapture(ev.pointerId);
-        tab.classList.add("is-dragging");
-        showBubbleFor(tab, which);
-        // A compact target can sit beside its true boundary. Preserve that
-        // grab offset so the first movement does not jump the selected edge.
-        const grabOffset = ev.clientX - tabBoundaryClientX(tab);
-
-        const onMove = (mv: PointerEvent) => {
-            if (mv.pointerId !== ev.pointerId) return;
+    let grabOffset = 0;
+    attachPointerDrag(tab, {
+        onStart: (ev) => {
+            if (!isRangeEditable()) return false;
+            ev.preventDefault();
+            tab.classList.add("is-dragging");
+            showBubbleFor(tab, which);
+            // Preserve the distance between a compact target and its boundary.
+            grabOffset = ev.clientX - tabBoundaryClientX(tab);
+            return true;
+        },
+        onMove: (mv) => {
             // A split target can be farther from its spine than the timeline
             // gutter is wide. Reaching the host edge must still reach the view
             // edge, even when the preserved grab offset would stop short.
@@ -259,45 +259,16 @@ function attachTabDrag(tab: HTMLButtonElement, which: "start" | "end"): void {
                       ? hostRect.right
                       : mv.clientX - grabOffset;
             updateRangeFromPointer(x, which);
-            // Re-anchor AFTER the range edit: setRangeEdge notified
-            // synchronously, so the tab's left already reflects the clamped
-            // value - the bubble reads the committed truth, and freezing at
-            // the 1s floor is visible as the number simply stopping.
+            // setRangeEdge notified synchronously; read the committed position.
             showBubbleFor(tab, which);
-        };
-        let finished = false;
-        const finish = (event: PointerEvent, shouldRelease: boolean) => {
-            if (event.pointerId !== ev.pointerId || finished) return;
-            finished = true;
-            tab.removeEventListener("pointermove", onMove);
-            tab.removeEventListener("pointerup", onUp);
-            tab.removeEventListener("pointercancel", onUp);
-            tab.removeEventListener("lostpointercapture", onLostCapture);
+        },
+        onEnd: () => {
             tab.classList.remove("is-dragging");
-            if (shouldRelease) {
-                try {
-                    tab.releasePointerCapture(event.pointerId);
-                } catch {
-                    // pointer already released by browser - ignore.
-                }
-            }
             // Short linger so the final value is readable after the finger lifts.
             hideBubbleSoon();
-            // Range subscribers stayed live during the drag, except for
-            // geometry-changing contextual actions. Settle those once the
-            // timeline can no longer move under the captured pointer.
+            // Settle geometry-changing actions once the pointer is released.
             notifyExportStateChanged();
-        };
-        const onUp = (up: PointerEvent) => {
-            finish(up, true);
-        };
-        const onLostCapture = (lost: PointerEvent) => {
-            finish(lost, false);
-        };
-        tab.addEventListener("pointermove", onMove);
-        tab.addEventListener("pointerup", onUp);
-        tab.addEventListener("pointercancel", onUp);
-        tab.addEventListener("lostpointercapture", onLostCapture);
+        },
     });
 
     tab.addEventListener("keydown", (ev) => {

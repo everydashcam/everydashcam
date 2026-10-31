@@ -18,6 +18,7 @@
 import type { Channel } from "../parsers/types.js";
 import { dom } from "./dom.js";
 import { channelDisplayLabel } from "./format.js";
+import { attachPointerDrag } from "./pointer-drag.js";
 import { persistCurrentLayout } from "./player-layout-pref.js";
 import { activeTrip, moveChannelInOrder, setLayoutAndChannels, state } from "./state.js";
 
@@ -32,10 +33,8 @@ interface ReorderDeps {
 }
 
 interface DragState {
-    pointerId: number;
     sourceCh: Channel;
     sourceTile: HTMLElement;
-    handle: HTMLElement;
     /** Tile currently marked as the drop target, if any. */
     dropTile: HTMLElement | null;
     /** Set once the pointer actually moves - distinguishes a drag from a tap. */
@@ -58,12 +57,14 @@ let placeholderEl: HTMLElement | null = null;
 /** Wire the grid reorder. Call once from initPlayer after dom refs resolve. */
 export function initTileReorder(opts: ReorderDeps): void {
     deps = opts;
-    dom.videoGrid.addEventListener("pointerdown", onPointerDown);
-    // move/up on window: a fast drag can leave the grid bounds; window keeps
-    // tracking until release. Capture is on the handle, so these still fire.
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerCancel);
+    attachPointerDrag(dom.videoGrid, {
+        onStart: onPointerDown,
+        onMove: onPointerMove,
+        onEnd: (_event, reason) => {
+            if (reason === "up") onPointerUp();
+            else cleanup();
+        },
+    });
 
     // Capture-phase so it runs before the bubble-phase audio-swap delegate on
     // the same grid element. Swallows: (a) the click after a real drag, and
@@ -87,38 +88,32 @@ export function initTileReorder(opts: ReorderDeps): void {
     );
 }
 
-function onPointerDown(ev: PointerEvent): void {
-    // Mouse: left button only. Touch/pen report button 0 on first contact.
-    if (ev.pointerType === "mouse" && ev.button !== 0) return;
+function onPointerDown(ev: PointerEvent): boolean {
     // Element, not HTMLElement: the grip icon is an inline <svg>, and
     // SVGSVGElement does not extend HTMLElement - an instanceof HTMLElement
     // check would miss a click landing directly on the icon.
     const target = ev.target;
-    if (!(target instanceof Element)) return;
+    if (!(target instanceof Element)) return false;
     const handle = target.closest(".tile-drag-handle") as HTMLElement | null;
-    if (!handle) return;
+    if (!handle) return false;
     swallowNextClick = false;
-    if (state.composition.channelOrder.length <= 1) return;
+    if (state.composition.channelOrder.length <= 1) return false;
     const sourceTile = handle.closest(".video-tile") as HTMLElement | null;
-    if (!sourceTile) return;
+    if (!sourceTile) return false;
     const sourceCh = sourceTile.dataset.channel as Channel | undefined;
-    if (!sourceCh) return;
+    if (!sourceCh) return false;
 
     // Keep the gesture ours: no audio-swap, no zoom pan, no text selection.
     ev.preventDefault();
     ev.stopPropagation();
-    try {
-        handle.setPointerCapture(ev.pointerId);
-    } catch {
-        /* capture may fail if the pointer is already inactive - continue */
-    }
-    drag = { pointerId: ev.pointerId, sourceCh, sourceTile, handle, dropTile: null, moved: false };
+    drag = { sourceCh, sourceTile, dropTile: null, moved: false };
     dom.videoGrid.classList.add("reordering");
     sourceTile.classList.add("reorder-source");
+    return true;
 }
 
 function onPointerMove(ev: PointerEvent): void {
-    if (!drag || ev.pointerId !== drag.pointerId) return;
+    if (!drag) return;
     if (!drag.moved) {
         drag.moved = true;
         showGhost(drag.sourceCh);
@@ -137,26 +132,15 @@ function onPointerMove(ev: PointerEvent): void {
     }
 }
 
-function onPointerUp(ev: PointerEvent): void {
-    if (!drag || ev.pointerId !== drag.pointerId) return;
-    const { sourceCh, dropTile, moved, handle, pointerId } = drag;
-    try {
-        handle.releasePointerCapture(pointerId);
-    } catch {
-        /* see onPointerDown */
-    }
+function onPointerUp(): void {
+    if (!drag) return;
+    const { sourceCh, dropTile } = drag;
     const targetCh = dropTile?.dataset.channel as Channel | undefined;
     cleanup();
-    // A real drag leaves a trailing synthetic click - swallow it so it does not
-    // land on a tile as an audio swap.
-    if (moved) swallowNextClick = true;
+    // Capture is on the grid; even a tap on the grip must not swap audio.
+    swallowNextClick = true;
     if (!targetCh || targetCh === sourceCh) return;
     insertChannel(sourceCh, targetCh);
-}
-
-function onPointerCancel(ev: PointerEvent): void {
-    if (!drag || ev.pointerId !== drag.pointerId) return;
-    cleanup();
 }
 
 function cleanup(): void {

@@ -20,7 +20,7 @@ import {
 import { dom } from "./dom.js";
 import { formatTime } from "./format.js";
 import { extractFrameAt } from "./frame-extract.js";
-import { suppressEdgeSwipeNav } from "./pointer-drag.js";
+import { attachPointerDrag, suppressEdgeSwipeNav } from "./pointer-drag.js";
 import { getSeekStepSec, getSeekStepShiftSec } from "./seek-step-pref.js";
 import { activeTrip, mainChannel, state } from "./state.js";
 
@@ -272,22 +272,30 @@ export function initPlayerScrubber(deps: {
     // is also an iOS swipe-back candidate. Seek runs on pointerdown (below),
     // not on click, so cancelling the edge touchstart loses nothing.
     suppressEdgeSwipeNav(bar);
-    bar.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        dragging = true;
-        bar.classList.add("is-dragging");
-        bar.setPointerCapture(e.pointerId);
-        const sec = relSecAtClientX(e.clientX);
-        if (sec !== null) seekTripTimeFn(sec);
-        showTooltipAt(e.clientX);
+    attachPointerDrag(bar, {
+        onStart: (e) => {
+            if (!state.active) return false;
+            dragging = true;
+            bar.classList.add("is-dragging");
+            const sec = relSecAtClientX(e.clientX);
+            if (sec !== null) seekTripTimeFn(sec);
+            showTooltipAt(e.clientX);
+            return true;
+        },
+        onMove: (e) => {
+            showTooltipAt(e.clientX);
+            const sec = relSecAtClientX(e.clientX);
+            if (sec !== null) seekTripTimeFn(sec);
+        },
+        onEnd: (e, reason) => {
+            dragging = false;
+            bar.classList.remove("is-dragging");
+            // Mouse keeps its hover preview after a normal release.
+            if (e.pointerType !== "mouse" || reason !== "up") hideTooltip();
+        },
     });
     bar.addEventListener("pointermove", (e) => {
-        // Tooltip follows the cursor even without drag (hover preview);
-        // drag additionally seeks.
-        showTooltipAt(e.clientX);
-        if (!dragging) return;
-        const sec = relSecAtClientX(e.clientX);
-        if (sec !== null) seekTripTimeFn(sec);
+        if (!dragging) showTooltipAt(e.clientX);
     });
     bar.addEventListener("pointerenter", (e) => {
         // Touch events give pointerdown without enter, but on mouse enter the
@@ -297,22 +305,6 @@ export function initPlayerScrubber(deps: {
     bar.addEventListener("pointerleave", () => {
         if (!dragging) hideTooltip();
     });
-    const endDrag = (e: PointerEvent): void => {
-        if (!dragging) return;
-        dragging = false;
-        bar.classList.remove("is-dragging");
-        try {
-            bar.releasePointerCapture(e.pointerId);
-        } catch {
-            /* pointer already released */
-        }
-        // Hide tooltip on touch end (mouse keeps hover); pointerType="touch"
-        // does not receive pointerleave automatically.
-        if (e.pointerType !== "mouse") hideTooltip();
-    };
-    bar.addEventListener("pointerup", endDrag);
-    bar.addEventListener("pointercancel", endDrag);
-
     // Keyboard accessibility. Arrows seek by the user's configured step (Shift =
     // long step), PageUp/PageDown = long step, Home/End jump to trip ends - the
     // same step model as the global hotkeys, so focus state no longer silently

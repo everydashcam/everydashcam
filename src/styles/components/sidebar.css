@@ -1033,6 +1033,7 @@
    ========================================================================= */
 .sidebar-resize {
     width: 4px;
+    touch-action: none;
     cursor: col-resize;
     background: transparent;
     transition: background var(--dc-dur-fast) var(--dc-ease);
@@ -1044,6 +1045,14 @@
 .sidebar-resize:focus-visible {
     background: var(--accent);
     outline: none;
+}
+
+@media (pointer: coarse) {
+    .sidebar-resize::before {
+        content: "";
+        position: absolute;
+        inset: 0 -10px;
+    }
 }
 
 /* =========================================================================

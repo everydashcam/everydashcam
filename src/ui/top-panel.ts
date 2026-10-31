@@ -38,6 +38,7 @@ import { channelDisplayLabel, formatDuration } from "./format.js";
 import { notifyExportStateChanged, subscribeExportState } from "./export-state.js";
 import { persistCurrentLayout } from "./player-layout-pref.js";
 import { MOBILE_LAYOUT_QUERY } from "./media-queries.js";
+import { attachPointerDrag } from "./pointer-drag.js";
 import {
     activeTrip,
     defaultLayoutForCount,
@@ -421,7 +422,6 @@ function toggleChannelInclude(ch: Channel, include: boolean, trip: Trip): void {
  *  semantics (drop a chip onto another to move it into that slot) match the
  *  video-tile drag. */
 interface ChipDragState {
-    pointerId: number;
     sourceCh: Channel;
     chip: HTMLLIElement;
     list: HTMLUListElement;
@@ -435,56 +435,43 @@ let chipDrag: ChipDragState | null = null;
 let chipGhost: HTMLElement | null = null;
 
 function attachChannelChipDrag(chip: HTMLLIElement, list: HTMLUListElement): void {
-    chip.addEventListener("pointerdown", (ev) => {
-        if (ev.pointerType === "mouse" && ev.button !== 0) return;
-        // The include checkbox handles its own clicks - never start a drag from it.
-        if ((ev.target as HTMLElement | null)?.closest("input")) return;
-        const sourceCh = chip.dataset.channel as Channel | undefined;
-        if (!sourceCh) return;
-        ev.preventDefault();
-        try {
-            chip.setPointerCapture(ev.pointerId);
-        } catch {
-            /* capture may fail if the pointer is already inactive - continue */
-        }
-        chipDrag = { pointerId: ev.pointerId, sourceCh, chip, list, target: null, moved: false };
-        chip.classList.add("is-dragging");
-    });
-    chip.addEventListener("pointermove", (ev) => {
-        if (!chipDrag || ev.pointerId !== chipDrag.pointerId) return;
-        if (!chipDrag.moved) {
-            chipDrag.moved = true;
-            showChipGhost(chipDrag.sourceCh);
-        }
-        moveChipGhost(ev.clientX, ev.clientY);
-        const targetChip = chipUnderPoint(chipDrag.list, ev.clientX, ev.clientY);
-        if (targetChip === chipDrag.target) return;
-        chipDrag.target?.classList.remove("drop-before");
-        // Insert indicator on the target chip (the slot the source moves into).
-        if (targetChip && targetChip !== chipDrag.chip) {
-            chipDrag.target = targetChip;
-            targetChip.classList.add("drop-before");
-        } else {
-            chipDrag.target = null;
-        }
-    });
-    chip.addEventListener("pointerup", (ev) => {
-        if (!chipDrag || ev.pointerId !== chipDrag.pointerId) return;
-        const { sourceCh, target } = chipDrag;
-        try {
-            chip.releasePointerCapture(ev.pointerId);
-        } catch {
-            /* see pointerdown */
-        }
-        endChipDrag();
-        if (!target) return;
-        const targetCh = target.dataset.channel as Channel | undefined;
-        if (!targetCh || targetCh === sourceCh) return;
-        insertChannel(sourceCh, targetCh);
-    });
-    chip.addEventListener("pointercancel", (ev) => {
-        if (!chipDrag || ev.pointerId !== chipDrag.pointerId) return;
-        endChipDrag();
+    attachPointerDrag(chip, {
+        onStart: (ev) => {
+            if (chipDrag) return false;
+            // Include checkboxes own their clicks, never a reorder gesture.
+            if (ev.target instanceof Element && ev.target.closest("input")) return false;
+            const sourceCh = chip.dataset.channel as Channel | undefined;
+            if (!sourceCh) return false;
+            ev.preventDefault();
+            chipDrag = { sourceCh, chip, list, target: null, moved: false };
+            chip.classList.add("is-dragging");
+            return true;
+        },
+        onMove: (ev) => {
+            if (!chipDrag) return;
+            if (!chipDrag.moved) {
+                chipDrag.moved = true;
+                showChipGhost(chipDrag.sourceCh);
+            }
+            moveChipGhost(ev.clientX, ev.clientY);
+            const targetChip = chipUnderPoint(chipDrag.list, ev.clientX, ev.clientY);
+            if (targetChip === chipDrag.target) return;
+            chipDrag.target?.classList.remove("drop-before");
+            if (targetChip && targetChip !== chipDrag.chip) {
+                chipDrag.target = targetChip;
+                targetChip.classList.add("drop-before");
+            } else {
+                chipDrag.target = null;
+            }
+        },
+        onEnd: (_event, reason) => {
+            if (!chipDrag) return;
+            const { sourceCh, target } = chipDrag;
+            endChipDrag();
+            if (reason !== "up" || !target) return;
+            const targetCh = target.dataset.channel as Channel | undefined;
+            if (targetCh && targetCh !== sourceCh) insertChannel(sourceCh, targetCh);
+        },
     });
 }
 

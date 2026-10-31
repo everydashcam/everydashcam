@@ -813,10 +813,10 @@ function attachDrawDrag(ch: Channel, layer: HTMLDivElement): void {
             marquee.style.height = `${Math.abs(e.clientY - sy)}px`;
             marquee.hidden = false;
         },
-        onEnd: (e) => {
+        onEnd: (e, reason) => {
             marquee?.remove();
             marquee = null;
-            if (frame && e.type === "pointerup") finishDraw(ch, layer, sx, sy, e.clientX, e.clientY, frame);
+            if (frame && reason === "up") finishDraw(ch, layer, sx, sy, e.clientX, e.clientY, frame);
             frame = null;
         },
     });

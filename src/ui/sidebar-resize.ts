@@ -1,10 +1,12 @@
 // Drag handle between sidebar and main area. Width stored in --sidebar-width on :root and persisted to localStorage.
-// mousemove is on document because the cursor can escape the handle during fast drags.
+// Pointer capture keeps touch, pen and mouse drags attached to the handle.
 // Also owns the collapse toggle (body.sidebar-collapsed + the edge tab) -
 // collapse is the other way the user manages the same column's width.
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { dom } from "./dom.js";
 import { isMobileLayout } from "./media-queries.js";
+import { attachPointerDrag } from "./pointer-drag.js";
 
 const SIDEBAR_WIDTH_KEY = "everydashcam:sidebar-width";
 const SIDEBAR_MIN = 200;
@@ -31,25 +33,8 @@ function applySidebarWidth(width: number): number {
     return clamped;
 }
 
-function lsGet(key: string): string | null {
-    try {
-        return localStorage.getItem(key);
-    } catch {
-        // Private mode or storage disabled - silent fall through to defaults.
-        return null;
-    }
-}
-
-function lsSet(key: string, value: string): void {
-    try {
-        localStorage.setItem(key, value);
-    } catch {
-        // Quota exceeded or storage disabled - persistence is best-effort.
-    }
-}
-
 function restoreSidebarWidth(): void {
-    const saved = parseInt(lsGet(SIDEBAR_WIDTH_KEY) || "", 10);
+    const saved = parseInt(readLocalStorage(SIDEBAR_WIDTH_KEY) || "", 10);
     if (Number.isFinite(saved) && saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX) {
         document.documentElement.style.setProperty("--sidebar-width", `${saved}px`);
     }
@@ -82,32 +67,23 @@ export function initSidebarResize(): void {
     dom.sidebarCollapseBtn.addEventListener("click", () => setSidebarCollapsed(true));
     dom.sidebarExpandTab.addEventListener("click", () => setSidebarCollapsed(false));
 
-    let sidebarDragging = false;
-
-    dom.sidebarResize.addEventListener("mousedown", (e) => {
-        if (e.button !== 0 || isMobileLayout()) return;
-        e.preventDefault();
-        sidebarDragging = true;
-        dom.sidebarResize.classList.add("dragging");
-        document.body.classList.add("sidebar-resizing");
+    attachPointerDrag(dom.sidebarResize, {
+        onStart: (e) => {
+            if (isMobileLayout()) return false;
+            e.preventDefault();
+            dom.sidebarResize.classList.add("dragging");
+            document.body.classList.add("sidebar-resizing");
+            return true;
+        },
+        onMove: (e) => applySidebarWidth(e.clientX),
+        onEnd: () => {
+            dom.sidebarResize.classList.remove("dragging");
+            document.body.classList.remove("sidebar-resizing");
+            const cur = document.documentElement.style.getPropertyValue("--sidebar-width");
+            const w = parseInt(cur, 10);
+            if (Number.isFinite(w)) writeLocalStorage(SIDEBAR_WIDTH_KEY, String(w));
+        },
     });
-
-    document.addEventListener("mousemove", (e) => {
-        if (!sidebarDragging) return;
-        applySidebarWidth(e.clientX);
-    });
-
-    const finishDrag = (): void => {
-        if (!sidebarDragging) return;
-        sidebarDragging = false;
-        dom.sidebarResize.classList.remove("dragging");
-        document.body.classList.remove("sidebar-resizing");
-        const cur = document.documentElement.style.getPropertyValue("--sidebar-width");
-        const w = parseInt(cur, 10);
-        if (Number.isFinite(w)) lsSet(SIDEBAR_WIDTH_KEY, String(w));
-    };
-    document.addEventListener("mouseup", finishDrag);
-    window.addEventListener("blur", finishDrag);
 
     // Arrow keys when the handle is focused shift by 16 px for accessibility.
     dom.sidebarResize.addEventListener("keydown", (e) => {
@@ -118,6 +94,6 @@ export function initSidebarResize(): void {
         const step = e.key === "ArrowLeft" ? -16 : 16;
         const target = e.key === "Home" ? SIDEBAR_MIN : e.key === "End" ? maxSidebarWidth() : cur + step;
         const w = applySidebarWidth(target);
-        lsSet(SIDEBAR_WIDTH_KEY, String(w));
+        writeLocalStorage(SIDEBAR_WIDTH_KEY, String(w));
     });
 }

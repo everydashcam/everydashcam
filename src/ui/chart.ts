@@ -56,7 +56,8 @@ import { eventLabel, formatDuration, formatEventSeverity, formatNumber, formatTi
 import { extractFrameAt } from "./frame-extract.js";
 import { buildRecordPopupHtml } from "./map.js";
 import { isCoarsePointer } from "./media-queries.js";
-import { suppressEdgeSwipeNav } from "./pointer-drag.js";
+import { attachPointerDrag, capturePointer, suppressEdgeSwipeNav } from "./pointer-drag.js";
+import { attachPinchGesture } from "./pinch-gesture.js";
 import { renderRangeRuler } from "./range-ruler.js";
 import { activeTrip, mainChannel, state } from "./state.js";
 import {
@@ -380,59 +381,34 @@ function attachOverviewHandleEvents(handle: HTMLDivElement, edge: "start" | "end
         );
     };
 
-    handle.addEventListener("pointerdown", (e: PointerEvent) => {
-        if (e.pointerType === "mouse" && e.button !== 0) return;
-        if (overviewGesturePointerId !== null) return;
-        const initial = currentOverviewView();
-        if (dom.playerChartOverview.hidden || !initial) return;
-        const gestureMinSpan = computeEffectiveMinViewSpan(
-            initial.durationSec,
-            initial.view.viewEndPct - initial.view.viewStartPct,
-        );
-        e.preventDefault();
-        e.stopPropagation();
-        handle.setPointerCapture(e.pointerId);
-        overviewGesturePointerId = e.pointerId;
-        overviewResizeMinSpanPct = gestureMinSpan;
-        handle.classList.add("is-dragging");
-        function onMove(event: PointerEvent): void {
-            if (event.pointerId === e.pointerId) resizeTo(event.clientX, gestureMinSpan);
-        }
-        function finish(event: PointerEvent, shouldRelease: boolean): void {
-            if (event.pointerId !== e.pointerId) return;
-            handle.removeEventListener("pointermove", onMove);
-            handle.removeEventListener("pointerup", onUp);
-            handle.removeEventListener("pointercancel", onUp);
-            handle.removeEventListener("lostpointercapture", onLostCapture);
+    let gestureMinSpan = 0;
+    attachPointerDrag(handle, {
+        onStart: (e) => {
+            if (overviewGesturePointerId !== null) return false;
+            const initial = currentOverviewView();
+            if (dom.playerChartOverview.hidden || !initial) return false;
+            gestureMinSpan = computeEffectiveMinViewSpan(
+                initial.durationSec,
+                initial.view.viewEndPct - initial.view.viewStartPct,
+            );
+            e.preventDefault();
+            e.stopPropagation();
+            overviewGesturePointerId = e.pointerId;
+            overviewResizeMinSpanPct = gestureMinSpan;
+            handle.classList.add("is-dragging");
+            return true;
+        },
+        onMove: (e) => resizeTo(e.clientX, gestureMinSpan),
+        onEnd: () => {
             handle.classList.remove("is-dragging");
             overviewGesturePointerId = null;
             overviewResizeMinSpanPct = null;
-            // During the drag, ARIA keeps the gesture-start floor so reversing
-            // direction cannot jump. Once the gesture ends, announce the
-            // current span as the floor for the next independent gesture.
+            // Announce the current span as the next gesture's floor.
             syncChartOverview();
-            if (shouldRelease) {
-                try {
-                    handle.releasePointerCapture(event.pointerId);
-                } catch {
-                    /* pointer already released */
-                }
-            }
-            // Conditional export actions may change the trim-bar height. Their
-            // sync is deferred while this class is present so the timeline
-            // never moves under the pointer; settle them after the gesture.
+            // Conditional export actions may change the trim-bar height; keep
+            // them deferred until the timeline can no longer move under a drag.
             callbacks.onSelectionChange?.();
-        }
-        function onUp(event: PointerEvent): void {
-            finish(event, true);
-        }
-        function onLostCapture(event: PointerEvent): void {
-            finish(event, false);
-        }
-        handle.addEventListener("pointermove", onMove);
-        handle.addEventListener("pointerup", onUp);
-        handle.addEventListener("pointercancel", onUp);
-        handle.addEventListener("lostpointercapture", onLostCapture);
+        },
     });
 
     handle.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -467,62 +443,37 @@ function attachOverviewEvents(): void {
     // Pointerdown already applies track centering; swallow its synthetic click
     // before the chart-wide seek handler sees it.
     dom.playerChartZoomRow.addEventListener("click", (e) => e.stopPropagation());
-    overview.addEventListener("pointerdown", (e: PointerEvent) => {
-        if (e.pointerType === "mouse" && e.button !== 0) return;
-        if (overviewGesturePointerId !== null) return;
-        if (overview.hidden || !(e.target instanceof Element)) return;
-        if (e.target.closest(".range-overview-handle")) return;
-        const current = currentOverviewView();
-        const pointerRatio = overviewRatioAt(e.clientX);
-        if (!current || pointerRatio === null) return;
-        e.preventDefault();
-        const span = current.view.viewEndPct - current.view.viewStartPct;
-        const startsInsideViewport = Boolean(e.target.closest("#player-chart-overview-viewport"));
-        const grabOffset = startsInsideViewport ? pointerRatio - current.view.viewStartPct : span / 2;
-
-        const moveViewportTo = (clientX: number): void => {
-            const ratio = overviewRatioAt(clientX);
-            if (ratio === null) return;
-            const newStart = Math.max(0, Math.min(ratio - grabOffset, 1 - span));
-            applyNavigatorView({ viewStartPct: newStart, viewEndPct: newStart + span }, current.durationSec);
-        };
-
-        overview.setPointerCapture(e.pointerId);
-        overviewGesturePointerId = e.pointerId;
-        overview.classList.add("is-panning");
-        moveViewportTo(e.clientX);
-        function onMove(ev: PointerEvent): void {
-            if (ev.pointerId === e.pointerId) moveViewportTo(ev.clientX);
-        }
-        function finish(ev: PointerEvent, shouldRelease: boolean): void {
-            if (ev.pointerId !== e.pointerId) return;
-            overview.removeEventListener("pointermove", onMove);
-            overview.removeEventListener("pointerup", onUp);
-            overview.removeEventListener("pointercancel", onUp);
-            overview.removeEventListener("lostpointercapture", onLostCapture);
+    let moveViewportTo: (clientX: number) => void = () => {};
+    attachPointerDrag(overview, {
+        onStart: (e) => {
+            if (overviewGesturePointerId !== null) return false;
+            if (overview.hidden || !(e.target instanceof Element)) return false;
+            if (e.target.closest(".range-overview-handle")) return false;
+            const current = currentOverviewView();
+            const pointerRatio = overviewRatioAt(e.clientX);
+            if (!current || pointerRatio === null) return false;
+            e.preventDefault();
+            const span = current.view.viewEndPct - current.view.viewStartPct;
+            const startsInsideViewport = Boolean(e.target.closest("#player-chart-overview-viewport"));
+            const grabOffset = startsInsideViewport ? pointerRatio - current.view.viewStartPct : span / 2;
+            moveViewportTo = (clientX) => {
+                const ratio = overviewRatioAt(clientX);
+                if (ratio === null) return;
+                const newStart = Math.max(0, Math.min(ratio - grabOffset, 1 - span));
+                applyNavigatorView({ viewStartPct: newStart, viewEndPct: newStart + span }, current.durationSec);
+            };
+            overviewGesturePointerId = e.pointerId;
+            overview.classList.add("is-panning");
+            moveViewportTo(e.clientX);
+            return true;
+        },
+        onMove: (e) => moveViewportTo(e.clientX),
+        onEnd: () => {
             overview.classList.remove("is-panning");
             overviewGesturePointerId = null;
-            if (shouldRelease) {
-                try {
-                    overview.releasePointerCapture(ev.pointerId);
-                } catch {
-                    /* pointer already released */
-                }
-            }
-            // See the handle path above: reveal any newly-relevant export
-            // action only after panning stops, not during pointer capture.
+            // Reveal export actions after panning, never under the pointer.
             callbacks.onSelectionChange?.();
-        }
-        function onUp(ev: PointerEvent): void {
-            finish(ev, true);
-        }
-        function onLostCapture(ev: PointerEvent): void {
-            finish(ev, false);
-        }
-        overview.addEventListener("pointermove", onMove);
-        overview.addEventListener("pointerup", onUp);
-        overview.addEventListener("pointercancel", onUp);
-        overview.addEventListener("lostpointercapture", onLostCapture);
+        },
     });
 }
 
@@ -1272,7 +1223,6 @@ function chartSecAtClientX(clientX: number): number | null {
 // same model as the video pinch). The navigator (pan) and mini-progress (seek)
 // keep their own single-finger drag, so a finger there is NOT counted toward a
 // pinch and we never fight their pointer capture.
-const chartTouchPointers = new Map<number, { x: number; y: number }>();
 interface ChartPinchState {
     startDist: number;
     startView: { viewStartPct: number; viewEndPct: number };
@@ -1287,132 +1237,73 @@ let chartPinchSuppressTimer = 0;
 /** Centroid of the given client-X coords as a [0,1] ratio across the chart's
  *  plot area (xScale.left..right), matching the wheel handler's cursorRatio.
  *  Null when the chart/scale is not ready or the plot area has no width. */
-function chartCentroidRatio(clientXs: number[]): number | null {
-    if (!state.chart || clientXs.length === 0) return null;
+function chartCentroidRatio(clientX: number): number | null {
+    if (!state.chart) return null;
     const xScale = state.chart.scales.x;
     if (!xScale) return null;
     const sliderWidth = xScale.right - xScale.left;
     if (sliderWidth <= 0) return null;
     const rect = dom.chartCanvas.getBoundingClientRect();
-    const meanX = clientXs.reduce((sum, x) => sum + x, 0) / clientXs.length;
-    const ratio = (meanX - rect.left - xScale.left) / sliderWidth;
+    const ratio = (clientX - rect.left - xScale.left) / sliderWidth;
     return Math.max(0, Math.min(1, ratio));
 }
 
 function initChartTouchZoom(): void {
     const host = dom.playerChartEl;
     if (!host) return;
-
-    // The zoom row, mini-progress and export pull-tabs own their pointers; a
-    // contact there is not eligible to start a pinch.
-    // The pinch captures BOTH pointers on the host, which silently steals a
-    // tab's capture mid-drag: the tab gets lostpointercapture (not
-    // pointercancel), its own move/up listeners never fire again, and its
-    // value bubble hangs around. Same list as the mouse drag-select below.
-    const eligible = (target: EventTarget | null): boolean => {
-        if (!(target instanceof Element)) return true;
-        return !target.closest(".chart-zoom-row, #player-mini-progress, .timeline-range__tab");
-    };
-
-    const startPinch = (): void => {
-        if (!state.chart || !state.active) return;
-        const trip = state.trips[state.active.trip];
-        if (!trip) return;
-        const dur = trip.timeline.contentDurationSec;
-        if (dur <= 0) return;
-        const xScale = state.chart.scales.x;
-        if (!xScale) return;
-        const pts = [...chartTouchPointers.values()];
-        const p1 = pts[0];
-        const p2 = pts[1];
-        if (!p1 || !p2) return;
-        const ratio = chartCentroidRatio([p1.x, p2.x]);
-        if (ratio == null) return;
-        // Capture both contacts to the host so moves keep arriving even if a
-        // finger slides off the canvas onto a sibling row.
-        for (const id of chartTouchPointers.keys()) {
-            try {
-                host.setPointerCapture(id);
-            } catch {
-                /* pointer may already be inactive - continue */
-            }
-        }
-        chartPinch = {
-            startDist: Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1,
-            startView: { viewStartPct: xScale.min / dur, viewEndPct: xScale.max / dur },
-            startCentroidRatio: ratio,
-        };
-    };
-
-    const updatePinch = (): void => {
-        if (!chartPinch || !state.chart || !state.active) return;
-        const trip = state.trips[state.active.trip];
-        if (!trip) return;
-        const dur = trip.timeline.contentDurationSec;
-        if (dur <= 0) return;
-        const pts = [...chartTouchPointers.values()];
-        const p1 = pts[0];
-        const p2 = pts[1];
-        if (!p1 || !p2) return;
-        const curRatio = chartCentroidRatio([p1.x, p2.x]);
-        if (curRatio == null) return;
-        const newDist = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1;
-        const next = applyPinchZoom(
-            chartPinch.startView,
-            chartPinch.startCentroidRatio,
-            curRatio,
-            newDist / chartPinch.startDist,
-            dur,
-        );
-        const fullView = next.viewStartPct <= 1e-6 && next.viewEndPct >= 1 - 1e-6;
-        // Pinch zoom = inspection + take control (pause auto-follow), like wheel.
-        state.isPreviewZoom = false;
-        noteUserTimelineInteraction();
-        applyChartXRange(next.viewStartPct * dur, next.viewEndPct * dur, fullView);
-    };
-
-    const endPinch = (): void => {
-        chartPinch = null;
-        // Suppress the click the lifting fingers may synthesize so it is not read
-        // as a seek. Self-clearing: most multitouch ends fire no click at all.
-        chartPinchSuppressClick = true;
-        if (chartPinchSuppressTimer) clearTimeout(chartPinchSuppressTimer);
-        chartPinchSuppressTimer = window.setTimeout(() => {
-            chartPinchSuppressClick = false;
-            chartPinchSuppressTimer = 0;
-        }, 400);
-    };
-
-    host.addEventListener("pointerdown", (e: PointerEvent) => {
-        if (e.pointerType !== "touch" || !eligible(e.target)) return;
-        chartTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (chartTouchPointers.size === 2) startPinch();
-    });
-    host.addEventListener(
-        "pointermove",
-        (e: PointerEvent) => {
-            if (!chartTouchPointers.has(e.pointerId)) return;
-            chartTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            if (chartPinch) {
-                e.preventDefault();
-                updatePinch();
-            }
+    attachPinchGesture(host, {
+        accepts: (event) => {
+            // Navigator, scrubber and range tabs own their single-finger drags;
+            // stealing capture from one would interrupt the selected range.
+            return (
+                !(event.target instanceof Element) ||
+                !event.target.closest(".chart-zoom-row, #player-mini-progress, .timeline-range__tab")
+            );
         },
-        { passive: false },
-    );
-    const onPointerEnd = (e: PointerEvent): void => {
-        if (!chartTouchPointers.delete(e.pointerId)) return;
-        if (chartPinch) {
-            try {
-                host.releasePointerCapture(e.pointerId);
-            } catch {
-                /* already released by the browser */
-            }
-            if (chartTouchPointers.size < 2) endPinch();
-        }
-    };
-    host.addEventListener("pointerup", onPointerEnd);
-    host.addEventListener("pointercancel", onPointerEnd);
+        onStart: (geometry) => {
+            if (!state.chart || !state.active) return false;
+            const trip = state.trips[state.active.trip];
+            const dur = trip?.timeline.contentDurationSec ?? 0;
+            const xScale = state.chart.scales.x;
+            const ratio = chartCentroidRatio(geometry.centerX);
+            if (dur <= 0 || !xScale || ratio === null) return false;
+            chartPinch = {
+                startDist: geometry.distance,
+                startView: { viewStartPct: xScale.min / dur, viewEndPct: xScale.max / dur },
+                startCentroidRatio: ratio,
+            };
+            return true;
+        },
+        onMove: (geometry) => {
+            if (!chartPinch || !state.chart || !state.active) return;
+            const trip = state.trips[state.active.trip];
+            const dur = trip?.timeline.contentDurationSec ?? 0;
+            const curRatio = chartCentroidRatio(geometry.centerX);
+            if (dur <= 0 || curRatio === null) return;
+            const next = applyPinchZoom(
+                chartPinch.startView,
+                chartPinch.startCentroidRatio,
+                curRatio,
+                geometry.distance / chartPinch.startDist,
+                dur,
+            );
+            const fullView = next.viewStartPct <= 1e-6 && next.viewEndPct >= 1 - 1e-6;
+            // Pinch zoom = inspection + take control (pause auto-follow), like wheel.
+            state.isPreviewZoom = false;
+            noteUserTimelineInteraction();
+            applyChartXRange(next.viewStartPct * dur, next.viewEndPct * dur, fullView);
+        },
+        onEnd: () => {
+            chartPinch = null;
+            // A pinch often fires no trailing click; do not swallow the next tap.
+            chartPinchSuppressClick = true;
+            if (chartPinchSuppressTimer) clearTimeout(chartPinchSuppressTimer);
+            chartPinchSuppressTimer = window.setTimeout(() => {
+                chartPinchSuppressClick = false;
+                chartPinchSuppressTimer = 0;
+            }, 400);
+        },
+    });
 }
 
 // === Mouse drag-select zoom on the timeline ===
@@ -1504,11 +1395,7 @@ function initChartDragSelectZoom(): void {
             if (Math.abs(e.clientX - dragStartClientX) < DRAG_SELECT_THRESHOLD_PX) return;
             isSelecting = true;
             // Keep receiving moves when the mouse leaves the timeline row.
-            try {
-                host.setPointerCapture(e.pointerId);
-            } catch {
-                /* pointer may already be inactive - selection still works inside the row */
-            }
+            capturePointer(host, e.pointerId);
             // Capture retargets pointer/mouse events to the host, which starves
             // the canvas hover handler mid-fade; run its mouseleave cleanup so
             // the tooltip and hover cursor do not freeze over the selection.
