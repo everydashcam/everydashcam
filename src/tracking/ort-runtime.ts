@@ -1,8 +1,7 @@
 // Loader for the onnxruntime-web runtime the detectors run on. Two builds:
 //
-// - "wasm": the plain single-thread WASM EP - works everywhere, the floor of
-//   performance (multithread needs crossOriginIsolated, which would break the
-//   external map-tile fetches - same trade as vittrack.ts).
+// - "wasm": the plain WASM EP - works everywhere, the floor of performance.
+//   Both builds run single-threaded; see the numThreads note in loadOrt.
 // - "webgpu": ort's WebGPU EP (the asyncify wasm build), used by the plate
 //   and face detectors to keep automatic detection within the pass budget.
 //
@@ -52,6 +51,15 @@ async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModul
         const module = (
             runtime === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")
         ) as OrtModule;
+        // TODO: enable threads when ORT can start its own thread entry. The
+        // hosted app is cross-origin isolated, but Emscripten starts each
+        // thread as `new Worker(import.meta.url, { type: "module" })`. Vite
+        // builds this worker as one IIFE with ORT inlined and replaces
+        // import.meta.url with self.location.href, so a thread would boot the
+        // whole tracker worker. ORT's thread entry sits behind the inlined
+        // dynamic import and never runs, the load handshake never completes,
+        // and initialization stays pending. Either ES-format workers or a
+        // separately served ORT module could fix it; this needs a build decision.
         module.env.wasm.numThreads = 1;
         // Official bundled ESM contains the matching glue. A URL override would
         // force ORT back to an independently fetched module.

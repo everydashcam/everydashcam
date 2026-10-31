@@ -25,7 +25,7 @@ describe("addNoIndexHeader", () => {
         expect([...output.matchAll(/^\/\*$/gm)]).toHaveLength(1);
         const global = output.split(/^\/\*$/m)[1]!.split(/^\/\S/m)[0]!;
         expect(global).toContain("  X-Robots-Tag: noindex\n");
-        for (const header of ["Content-Security-Policy", "Strict-Transport-Security", "X-Frame-Options", "Cross-Origin-Opener-Policy"]) {
+        for (const header of ["Content-Security-Policy", "Strict-Transport-Security", "X-Frame-Options", "Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy"]) {
             const original = source.split("\n").find((line) => line.startsWith(`  ${header}:`));
             expect(original, `${header} exists in the source policy`).toBeDefined();
             expect(global).toContain(original!);

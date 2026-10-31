@@ -274,10 +274,16 @@ Your server needs these rules:
   browsers pick up updates promptly.
 - Cache hashed files under `/assets/` indefinitely; their names change whenever
   their contents do.
+- Send `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp` with every response, as
+  everydashcam.app does. The app's offline service worker adds both to the
+  responses it serves, but the first visit and browsers that do not run it rely
+  on the server. In nginx, repeat them in every `location` that has its own
+  `add_header`.
 
 The committed `docker/nginx.conf` is the complete reference for rewrites,
-cache headers and the 404 page. `public/_headers` contains the production
-security and caching headers, including the Content Security Policy.
+cache and isolation headers and the 404 page. `public/_headers` contains the
+production security and caching headers, including the Content Security Policy.
 
 ## HTTPS and local networks
 

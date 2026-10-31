@@ -22,8 +22,8 @@ interface PerformanceWithMemory extends Performance {
  * a report cannot settle after the fact: was memory climbing toward
  * exhaustion, and did throughput collapse before death or stop cold. JS heap
  * is best-effort - measureUserAgentSpecificMemory needs crossOriginIsolated,
- * which the app deliberately is not, so Chromium's performance.memory is the
- * one gauge left.
+ * which the portable edition never has, and resolves asynchronously, so the
+ * heartbeat reads Chromium's synchronous performance.memory gauge.
  */
 export function createExportHeartbeat(heartbeatLog: Logger): (framesDone: number, bytesWritten: number) => void {
     let lastBeatMs = performance.now();

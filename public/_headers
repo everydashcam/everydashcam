@@ -72,8 +72,16 @@
   # the behavior even if a user opens the site through a proxy / VPN with spoofed DNS.
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 
-  # Browsing-context isolation: the window cannot be opened from a cross-origin window.opener.
+  # Cross-origin isolation (crossOriginIsolated, SharedArrayBuffer), which
+  # multithreaded WASM in the blur tracker requires (src/tracking/ort-runtime.ts).
+  # COOP keeps cross-origin windows out of this browsing context group.
+  # COEP require-corp blocks cross-origin resources that are neither CORS nor
+  # marked with CORP: map tiles, glyphs and styles load through CORS fetch,
+  # Sentry uses fetch, and the Cloudflare beacon sends CORP cross-origin.
+  # The service worker adds both headers to every response it serves
+  # (src/sw-policy.ts), so entries cached before a header change stay usable.
   Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
 
   # DNS-prefetch to speed up cross-origin requests (map, fonts).
   X-DNS-Prefetch-Control: on

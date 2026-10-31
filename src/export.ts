@@ -203,7 +203,8 @@ export async function exportClip({
             throwIfCancelled(signal);
             // TS5 distinguishes Uint8Array<ArrayBuffer> from Uint8Array<ArrayBufferLike>;
             // FSA write expects the former, mediabunny yields the latter. Cast is safe -
-            // SharedArrayBuffer never arrives here in a browser context.
+            // mediabunny's writer allocates plain ArrayBuffers, even when isolation
+            // makes SharedArrayBuffer available.
             await mp4Writable.write({
                 type: "write",
                 position: chunk.position,

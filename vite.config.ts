@@ -396,10 +396,10 @@ export default defineConfig(({ command }) => {
         // harness can only see main-thread JS heap - tests for tracking memory
         // regressions in transcode/preview/gps-extract workers are blind.
         //
-        // Gated by PERF_TEST=1 so production preview (and everydashcam.app
-        // itself) stay unchanged. COEP=require-corp can break third-party
-        // assets that lack CORP headers (map tiles, analytics scripts) -
-        // perf-tests run on an offline-ish localhost and don't depend on them.
+        // Production gets the same pair from public/_headers, and the service
+        // worker adds it to every response it serves. Preview does not read
+        // _headers, so other preview runs stay non-isolated until the service
+        // worker controls the page; most e2e specs block it.
         headers:
             process.env.PERF_TEST === "1"
                 ? {

@@ -1,8 +1,10 @@
 // Workbox lifecycle/routing runs in the browser upgrade tests. These checks
 // exercise only our edge-HTML, verified tracker-download and isolation policy.
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { offlineResponse } from "./sw-offline.js";
 import {
+    CROSS_ORIGIN_ISOLATION_HEADERS,
     isHtmlResponse,
     precacheRequest,
     trackerCacheUrl,
@@ -91,6 +93,17 @@ describe("service worker isolation headers", () => {
         embedder: response.headers.get("cross-origin-embedder-policy"),
     });
     const isolated = { opener: "same-origin", embedder: "require-corp" };
+
+    it("sets the isolation pair of the global rule in public/_headers", () => {
+        const source = readFileSync(new URL("../public/_headers", import.meta.url), "utf8");
+        const global = source.split(/^\/\*$/m)[1]!.split(/^\/\S/m)[0]!;
+        const declared = Object.fromEntries(
+            [...global.matchAll(/^[ \t]+(Cross-Origin-(?:Opener|Embedder)-Policy):[ \t]*(\S+)[ \t]*$/gm)].map(
+                ([, name, value]) => [name!.toLowerCase(), value],
+            ),
+        );
+        expect(declared).toEqual(CROSS_ORIGIN_ISOLATION_HEADERS);
+    });
 
     it("adds both headers to a stored response and keeps its status, headers and body", async () => {
         // A precache entry stored before isolation, or with a weaker policy.

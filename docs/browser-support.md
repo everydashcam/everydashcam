@@ -213,8 +213,13 @@ version. The API existing does not mean a codec decodes - always probe.
   covers this.
 - **WASM + CSP** - the hosted tracker uses ONNX Runtime Web and needs
   `'wasm-unsafe-eval'` in `script-src`; JavaScript evaluation remains blocked.
-  Runtime modules and weights are self-hosted. Portable omits tracking and
-  that permission. Policies live in `public/_headers` and `vite-plugins/portable.ts`.
+  Runtime modules and weights are self-hosted. The hosted app is cross-origin
+  isolated (COOP `same-origin`, COEP `require-corp`; the service worker adds
+  both to its responses), which WASM threads require. Third-party resources
+  must load through CORS or send CORP. The tracker still runs single-threaded;
+  see `src/tracking/ort-runtime.ts` for the remaining build constraint. Portable
+  runs from `file://`, cannot be isolated, and omits tracking and that
+  permission. Policies live in `public/_headers` and `vite-plugins/portable.ts`.
 
 ## Manual verification (not automated)
 
