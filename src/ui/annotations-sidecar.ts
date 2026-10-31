@@ -4,6 +4,7 @@
 // folders stay read-only. A discovered child handle is read-only too; only a
 // handle returned by a file picker is ever asked for write permission.
 
+import { downloadBlob } from "../download.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { createLogger } from "../log.js";
@@ -224,12 +225,7 @@ export async function downloadPortableNotesBackup(): Promise<void> {
         return;
     }
     const blob = new Blob([JSON.stringify(buildSidecarPayload(records, Date.now()))], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = notesBackupFilename();
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadBlob(blob, notesBackupFilename());
     notify({ severity: "info", messageKey: "sidecar.exported" });
 }
 
