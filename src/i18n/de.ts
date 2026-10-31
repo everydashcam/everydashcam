@@ -260,6 +260,7 @@ export const deDict = {
     "sidebar.sort.options.size": "Größe",
     "sidebar.sort.dir.desc": "Absteigend",
     "sidebar.sort.dir.asc": "Aufsteigend",
+    "sidebar.density.rows": "Kompakte Liste",
     "sidebar.collapse": "Fahrtenliste ausblenden",
     "sidebar.expand": "Fahrtenliste einblenden",
     "sidebar.resize": "Breite der Fahrtenliste ändern",

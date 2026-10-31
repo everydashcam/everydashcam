@@ -272,6 +272,7 @@ export const jaDict = {
     "sidebar.sort.options.size": "サイズ",
     "sidebar.sort.dir.desc": "降順",
     "sidebar.sort.dir.asc": "昇順",
+    "sidebar.density.rows": "コンパクト表示",
     "sidebar.collapse": "走行リストを隠す",
     "sidebar.expand": "走行リストを表示",
     "sidebar.resize": "走行リストの幅を変更",

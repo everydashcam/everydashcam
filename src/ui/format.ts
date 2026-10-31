@@ -173,6 +173,9 @@ export function formatDayHeading(
     return { relative, date };
 }
 
+// 24-hour clock regardless of the locale default, as in the trip titles.
+const CLOCK_FORMAT: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" };
+
 /**
  * Clock range on the display clock: "23:04 → 06:20". An end on another
  * calendar day gets its weekday ("23:04 → Sun 06:20"), so a stay over a
@@ -180,7 +183,7 @@ export function formatDayHeading(
  */
 export function formatTimeRange(startUtc: number, endUtc: number, cameraTzSec: number | null): string {
     const locale = getDateLocale();
-    const time = cachedDateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+    const time = cachedDateTimeFormat(locale, CLOCK_FORMAT);
     const start = displayClockDate(startUtc, cameraTzSec);
     const end = displayClockDate(endUtc, cameraTzSec);
     if (isSameDisplayDay(start, end)) return `${time.format(start)} → ${time.format(end)}`;
@@ -188,8 +191,40 @@ export function formatTimeRange(startUtc: number, endUtc: number, cameraTzSec: n
     return `${time.format(start)} → ${weekday.format(end)} ${time.format(end)}`;
 }
 
+/**
+ * One-line meta for a compact trip row: duration, distance and size. While
+ * durations are provisional it shows the file count instead, like the card.
+ */
+export function formatTripRowMeta(trip: Trip, loading: TripLoadingState = "loaded"): string {
+    const sizePart = formatBytes(trip.totalBytes);
+    if (recordingsPending(loading)) return `${t("plurals.file", { n: tripAllCandidates(trip).length })} · ${sizePart}`;
+    const distance = tripDistancePart(trip, loading);
+    return [formatDuration(trip.timeline.contentDurationSec), distance, sizePart].filter(Boolean).join(" · ");
+}
+
+/**
+ * Compact-row title under date sort, where the day heading already names the
+ * date: the clock range, or the start alone while the end is still being read.
+ */
+export function formatTripClockTitle(trip: Trip, endKnown: boolean): string {
+    if (endKnown) return formatTimeRange(trip.startUtc, trip.endUtc, trip.cameraTzSec);
+    return cachedDateTimeFormat(getDateLocale(), CLOCK_FORMAT).format(
+        displayClockDate(trip.startUtc, trip.cameraTzSec),
+    );
+}
+
 /** Which recording fact is still being resolved for a trip card. */
 export type TripLoadingState = "loaded" | "recordings-pending" | "recordings-inflight" | "gps-pending" | "gps-inflight";
+
+/** Distance, or what keeps it unknown; null when a loaded trip has no GPS distance. */
+function tripDistancePart(trip: Trip, loading: TripLoadingState): string | null {
+    if (loading === "gps-pending") return t("gpsLoad.pending");
+    if (loading === "gps-inflight") return t("gpsLoad.reading");
+    return trip.distanceKm > 0 ? formatTripDistance(trip.distanceKm) : null;
+}
+
+const recordingsPending = (loading: TripLoadingState): boolean =>
+    loading === "recordings-pending" || loading === "recordings-inflight";
 
 export function formatTripMeta(trip: Trip, loading: TripLoadingState = "loaded"): string {
     // Footage duration (recording pauses removed) - the wall-clock span would
@@ -197,21 +232,13 @@ export function formatTripMeta(trip: Trip, loading: TripLoadingState = "loaded")
     // separately below so a stitched trip is recognizable.
     const dur = formatDuration(trip.timeline.contentDurationSec);
     const sizePart = formatBytes(trip.totalBytes);
-    if (loading === "recordings-pending" || loading === "recordings-inflight") {
+    if (recordingsPending(loading)) {
         const sourceFilesPart = t("plurals.file", { n: tripAllCandidates(trip).length });
         return `${sourceFilesPart} · ${sizePart}`;
     }
 
-    let distStr = "";
-    if (loading === "loaded") {
-        if (trip.distanceKm > 0) {
-            distStr = ` · ${formatTripDistance(trip.distanceKm)}`;
-        }
-    } else if (loading === "gps-pending") {
-        distStr = ` · ${t("gpsLoad.pending")}`;
-    } else {
-        distStr = ` · ${t("gpsLoad.reading")}`;
-    }
+    const distance = tripDistancePart(trip, loading);
+    const distStr = distance ? ` · ${distance}` : "";
     // A stitched trip (recording paused below the gap threshold) shows its pause
     // count so the user knows the footage is not one continuous run.
     const pausesPart =

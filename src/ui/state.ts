@@ -42,6 +42,9 @@ export interface QueuedIngest {
 
 export type TripSortKey = "date" | "distance" | "duration" | "size";
 type TripSortDir = "desc" | "asc";
+// Trip list layout: large preview cards or compact one-line rows for long
+// libraries. Persisted by trip-density-pref.ts.
+export type TripListDensity = "cards" | "rows";
 // What happens when the last clip of a trip ends. "advance" plays the next trip
 // (chronologically) so the whole drive plays through.
 type TripEndBehavior = "stop" | "loop" | "advance";
@@ -143,6 +146,7 @@ export interface AppState {
     exportModeOpen: boolean;
     tripSortKey: TripSortKey;
     tripSortDir: TripSortDir;
+    tripListDensity: TripListDensity;
     tripFilters: TripFilters;
     preferredPlaybackRate: number;
     preferredVolume: number;
@@ -446,6 +450,7 @@ export const state: AppState = {
     exportModeOpen: false,
     tripSortKey: "date",
     tripSortDir: "desc",
+    tripListDensity: "cards",
     tripFilters: { kind: "all", event: false, manual: false, notes: false, favorites: false },
     preferredPlaybackRate: 1,
     preferredVolume: 1,

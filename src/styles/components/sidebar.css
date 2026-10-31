@@ -248,6 +248,12 @@
     color: var(--fg);
     border-color: var(--accent);
 }
+/* A toggle among the sort controls (compact rows) shows its on state. */
+.sort-btn[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent-ink);
+}
 /* Press feedback - :hover never fires on touch and base.css suppresses the OS
    tap flash, so without this the sort toggle reads as unresponsive on a phone. */
 .sort-btn:active {
@@ -500,6 +506,111 @@
     margin-left: -1px;
     background: var(--err);
 }
+/* Compact rows (state.tripListDensity "rows"): the same card controls laid out
+   in one line - a small preview with the star/pencil over it, the title over
+   the meta, the flags and the chevron. The star and pencil show on hover or
+   keyboard focus, and on an expanded row for touch; a favorite's star always
+   shows. Each property here undoes the hero card's absolute layout. */
+.trip-list.is-rows .trip:not(.expanded, .unindexed-note) {
+    contain-intrinsic-block-size: auto 46px;
+}
+.trip-list.is-rows .trip-header {
+    display: grid;
+    grid-template-columns: var(--trip-thumb-w) minmax(0, 1fr) auto auto;
+    grid-template-areas:
+        "thumb title flags chevron"
+        "thumb meta flags chevron";
+    column-gap: var(--dc-space-2);
+    align-items: center;
+    aspect-ratio: auto;
+    min-height: 0;
+    padding: var(--dc-space-1);
+}
+.trip-list.is-rows {
+    --trip-thumb-w: 64px;
+    --trip-thumb-h: 36px;
+}
+.trip-thumb {
+    grid-area: thumb;
+    position: relative;
+    width: var(--trip-thumb-w);
+    height: var(--trip-thumb-h);
+    overflow: hidden;
+    border-radius: var(--dc-radius-sm);
+    background: var(--bg-hover) center / cover no-repeat;
+}
+.trip-thumb .trip-no-preview-icon svg {
+    width: 16px;
+    height: 16px;
+}
+.trip-list.is-rows .trip-title,
+.trip-list.is-rows .trip-meta {
+    position: static;
+    min-width: 0;
+    color: var(--fg);
+    text-shadow: none;
+}
+.trip-list.is-rows .trip-title {
+    grid-area: title;
+    align-self: end;
+    font-size: var(--dc-text-sm);
+}
+.trip-list.is-rows .trip-meta {
+    grid-area: meta;
+    align-self: start;
+    color: var(--fg-dim);
+}
+.trip-list.is-rows .trip-meta .trip-meta-text {
+    white-space: nowrap;
+}
+.trip-row-flags {
+    grid-area: flags;
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+}
+.trip-vendor-badge.is-icon {
+    display: inline-flex;
+    padding: 2px;
+}
+.trip-list.is-rows .trip-chevron {
+    grid-area: chevron;
+    position: static;
+}
+.trip-thumb .trip-card-actions {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 2px;
+    visibility: hidden;
+}
+.trip-thumb .trip-card-action {
+    width: 22px;
+    height: 22px;
+}
+.trip-thumb .trip-card-action svg {
+    width: 12px;
+    height: 12px;
+}
+.trip-thumb .trip-fav.is-on,
+.trip-list.is-rows .trip:hover .trip-card-actions,
+.trip-list.is-rows .trip:focus-within .trip-card-actions,
+.trip-list.is-rows .trip.expanded .trip-card-actions {
+    visibility: visible;
+}
+@media (pointer: coarse) {
+    .trip-list.is-rows {
+        --trip-thumb-w: 76px;
+        --trip-thumb-h: 44px;
+    }
+    .trip-thumb .trip-card-action {
+        width: 26px;
+        height: 26px;
+    }
+}
+
 /* A run of parking trips (buildParkingRun): a compact framed row inside the
    day, not another sticky header. Unfolding lists the run's own cards. */
 .trip-parking-run {
@@ -563,6 +674,10 @@
     border-radius: var(--dc-radius-sm);
     color: var(--err-ink);
     font-size: var(--dc-text-2xs);
+}
+/* Every trip in a parking run is parking; the run's own tile already says so. */
+.trip-parking-run .trip-vendor-badge.parking {
+    display: none;
 }
 .trip-parking-run > .trip-group__list {
     padding: 0 var(--dc-space-1) var(--dc-space-1);

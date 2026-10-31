@@ -29,6 +29,8 @@ import {
     formatDuration,
     formatMonthHeading,
     formatTimeRange,
+    formatTripClockTitle,
+    formatTripRowMeta,
     formatFileMeta,
     formatTripMeta,
     formatTripDistance,
@@ -41,6 +43,7 @@ import { setTripMeta, tripMetaFor } from "./annotations.js";
 import { isTripSortKey, state } from "./state.js";
 import { scheduleRecognitionHelp } from "./recognition-help.js";
 import { initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
+import { readTripDensity, writeTripDensity } from "./trip-density-pref.js";
 import { dayStripSegments, foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
 
@@ -74,6 +77,7 @@ const PENCIL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
 const FILM_ICON = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>`;
 const ALERT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
 const CARET_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="trip-group-toggle__caret"><path d="m6 9 6 6 6-6"/></svg>`;
+const PIN_OFF_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.75 7.09a3 3 0 0 1 2.16 2.16"/><path d="M17.072 17.072c-1.634 2.17-3.527 3.912-4.471 4.727a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 1.432-4.568"/><path d="m2 2 20 20"/><path d="M8.475 2.818A8 8 0 0 1 20 10c0 1.183-.31 2.377-.81 3.533"/><path d="M9.13 9.13a3 3 0 0 0 3.74 3.74"/></svg>`;
 const INFO_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 const parsedIcons = new Map<string, Element>();
 
@@ -167,6 +171,7 @@ export function renderTrips(): void {
     const cardHeights = captureCollapsedCardHeights();
 
     dom.list.innerHTML = "";
+    dom.list.classList.toggle("is-rows", state.tripListDensity === "rows");
     // Empty-state must stay in sync with the trip list so the player shows exactly when the first trip appears in the sidebar.
     syncEmptyState();
 
@@ -541,6 +546,10 @@ function buildTripActions(tripIdx: number, isFavorite: boolean): HTMLElement {
 function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     const li = document.createElement("li");
     li.className = "trip";
+    // Compact rows reuse every control of the card; only the header layout and
+    // the preview size differ (see the is-rows rules in sidebar.css).
+    const asRow = state.tripListDensity === "rows";
+    if (asRow) li.classList.add("trip--row");
     // data-trip-index is used by updateActiveFrameHighlight to find the frame in the correct trip.
     // data-frame-index alone is not unique across trips (0..N in each); without trip scope querySelector would highlight the wrong trip.
     li.dataset.tripIndex = String(tripIdx);
@@ -581,8 +590,11 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     // Custom name replaces the generated title; the generated one (date/time)
     // moves to the tooltip so it stays discoverable.
     const generatedTitle = provisional ? formatTripStartTitle(trip) : formatTripTitle(trip);
-    title.textContent = tripMeta?.name || generatedTitle;
-    if (tripMeta?.name) title.title = generatedTitle;
+    // A row under date sort sits below its day heading, which already names the date.
+    const shownTitle =
+        asRow && state.tripSortKey === "date" ? formatTripClockTitle(trip, !provisional) : generatedTitle;
+    title.textContent = tripMeta?.name || shownTitle;
+    if (tripMeta?.name || shownTitle !== generatedTitle) title.title = generatedTitle;
     // Keyboard / screen-reader affordance: the title IS the trip's open/play
     // control. role=button + tabindex makes it focusable and Enter/Space
     // activatable (the header div carries the same data-action for broad
@@ -594,9 +606,16 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     title.tabIndex = 0;
     header.appendChild(title);
 
-    // First-frame preview as the hero card background. CSS .trip-header sets aspect-ratio 3/1 with a gradient overlay for text readability.
+    // First-frame preview: the hero card background (CSS .trip-header sets
+    // aspect-ratio 3/1 with a gradient overlay for text readability), or the
+    // row's small thumbnail.
+    const previewHost = asRow ? document.createElement("div") : header;
+    if (asRow) {
+        previewHost.className = "trip-thumb";
+        header.appendChild(previewHost);
+    }
     if (hasPreview && trip.previewDataUrl) {
-        applyTripPreviewBackground(header, trip.previewDataUrl);
+        applyTripPreviewBackground(previewHost, trip.previewDataUrl);
     } else {
         // A muted film glyph is stable while the preview is pending and remains
         // as the final fallback when extraction fails.
@@ -604,7 +623,7 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
         icon.className = "trip-no-preview-icon";
         icon.setAttribute("aria-hidden", "true");
         icon.appendChild(cloneIcon(FILM_ICON));
-        header.appendChild(icon);
+        previewHost.appendChild(icon);
     }
 
     const chevron = document.createElement("button");
@@ -651,14 +670,33 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     } else if (!provisional && !gpsPending && !recordsHaveGps(trip.records)) {
         const noGpsChip = document.createElement("span");
         noGpsChip.className = "trip-vendor-badge warn";
-        noGpsChip.textContent = t("trip.chip.noGps");
+        if (asRow) {
+            // A row has no room for the word; the glyph keeps the label for AT and hover.
+            noGpsChip.classList.add("is-icon");
+            noGpsChip.setAttribute("role", "img");
+            noGpsChip.setAttribute("aria-label", t("trip.chip.noGps"));
+            noGpsChip.title = t("trip.chip.noGps");
+            noGpsChip.appendChild(cloneIcon(PIN_OFF_ICON));
+        } else {
+            noGpsChip.textContent = t("trip.chip.noGps");
+        }
         badgeChips.push(noGpsChip);
     }
-    const cornerSlot = document.createElement("div");
-    cornerSlot.className = "trip-corner-slot";
-    cornerSlot.appendChild(buildTripActions(tripIdx, tripMeta?.isFavorite === true));
-    for (const chip of badgeChips) cornerSlot.appendChild(chip);
-    header.appendChild(cornerSlot);
+    const actions = buildTripActions(tripIdx, tripMeta?.isFavorite === true);
+    // The chips and the event chip share one flag cluster in a row; on a card
+    // the chips follow the actions in the top-left corner.
+    const flagSlot = document.createElement("div");
+    if (asRow) {
+        previewHost.appendChild(actions);
+        flagSlot.className = "trip-row-flags";
+        for (const chip of badgeChips) flagSlot.appendChild(chip);
+        header.appendChild(flagSlot);
+    } else {
+        flagSlot.className = "trip-corner-slot";
+        flagSlot.appendChild(actions);
+        for (const chip of badgeChips) flagSlot.appendChild(chip);
+        header.appendChild(flagSlot);
+    }
     // UX-08: red outline chip showing event count. Clickable, cycles to the next trip event (seek -5s).
     // Top-right corner left of the chevron - both group into the actions zone.
     if (trip.events.length > 0) {
@@ -675,7 +713,7 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
         count.className = "num mono";
         count.textContent = String(trip.events.length);
         evchip.append(cloneIcon(ALERT_ICON), count);
-        header.appendChild(evchip);
+        (asRow ? flagSlot : header).appendChild(evchip);
     }
 
     const meta = document.createElement("div");
@@ -683,7 +721,7 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     const metaText = document.createElement("span");
     metaText.className = "trip-meta-text";
     const loadingState = computeTripLoadingState(trip, tripIdx);
-    metaText.textContent = formatTripMeta(trip, loadingState);
+    metaText.textContent = asRow ? formatTripRowMeta(trip, loadingState) : formatTripMeta(trip, loadingState);
     if (loadingState === "gps-pending" || loadingState === "gps-inflight") {
         metaText.classList.add(`load-${loadingState}`);
     }
@@ -1190,18 +1228,18 @@ function tripsSummaryText(trips: readonly Trip[]): string {
 }
 
 /**
- * Applies a preview dataURL as the background-image of a trip hero card and adds the has-preview class
- * (CSS enables the gradient overlay). Extracted because it is called both at initial render (renderTrips)
+ * Applies a preview dataURL as the background-image of a trip hero card (or a
+ * row's thumbnail) and adds the has-preview class (CSS enables the gradient overlay). Extracted because it is called both at initial render (renderTrips)
  * and when a preview becomes available asynchronously (updateTripPreview).
  */
-function applyTripPreviewBackground(header: HTMLElement, dataUrl: string): void {
+function applyTripPreviewBackground(target: HTMLElement, dataUrl: string): void {
     // Defense-in-depth: dataURL must start with "data:image/" - our source (trip-preview-worker.toDataURL)
     // guarantees this, but a prefix check prevents "javascript:..." from leaking into CSS if the source ever changes.
     if (!dataUrl.startsWith("data:image/")) return;
     // dataURL from toDataURL contains a comma but not double quotes or \n. Safe in CSS url("...").
     // Still escape " in case of a future generator regression.
-    header.style.backgroundImage = `url("${dataUrl.replace(/"/g, "%22")}")`;
-    header.classList.add("has-preview");
+    target.style.backgroundImage = `url("${dataUrl.replace(/"/g, "%22")}")`;
+    target.classList.add("has-preview");
 }
 
 /**
@@ -1219,9 +1257,9 @@ export function updateTripPreview(trip: Trip, dataUrl: string): void {
     if (tripIdx < 0) return;
     const tripLi = dom.list.querySelector(`li.trip[data-trip-index="${tripIdx}"]`);
     if (!tripLi) return;
-    const header = tripLi.querySelector<HTMLElement>(".trip-header");
-    if (!header) return;
-    applyTripPreviewBackground(header, dataUrl);
+    const host = tripLi.querySelector<HTMLElement>(".trip-thumb") ?? tripLi.querySelector<HTMLElement>(".trip-header");
+    if (!host) return;
+    applyTripPreviewBackground(host, dataUrl);
     // The thumbnail arrived: drop the static placeholder glyph so the hero
     // photo shows cleanly.
     tripLi.querySelector(".trip-no-preview-icon")?.remove();
@@ -1290,9 +1328,21 @@ export function syncSortControls(): void {
     dom.sortDir.setAttribute("title", label);
 }
 
+function syncDensityControl(): void {
+    dom.tripDensity.setAttribute("aria-pressed", state.tripListDensity === "rows" ? "true" : "false");
+}
+
 export function initSidebar(cb: SidebarCallbacks): void {
     selectTripEvent = cb.onPlayTripEvent;
     initSidebarFilters(renderTrips);
+    state.tripListDensity = readTripDensity();
+    syncDensityControl();
+    dom.tripDensity.addEventListener("click", () => {
+        state.tripListDensity = state.tripListDensity === "rows" ? "cards" : "rows";
+        writeTripDensity(state.tripListDensity);
+        syncDensityControl();
+        renderTrips();
+    });
     dom.sortKey.addEventListener("change", () => {
         // Type guard: value comes from a <select> we control. Unknown values are ignored rather than cast as any.
         const v = dom.sortKey.value;

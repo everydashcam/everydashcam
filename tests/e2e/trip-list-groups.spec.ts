@@ -93,3 +93,25 @@ test("opens the folded parking night when playback advances into it", async ({ p
     await expect(toggle(run)).toHaveAttribute("aria-expanded", "true", { timeout: 20_000 });
     await expect(run.locator("li.trip.active")).toBeVisible();
 });
+
+test("switches to compact rows and keeps the choice after a reload", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await addRecordings(page);
+    const density = page.locator("#trip-density");
+    await expect(density).toHaveAttribute("aria-pressed", "false");
+
+    await density.click();
+    await expect(density).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#trip-list")).toHaveClass(/is-rows/);
+    // Under date sort the day heading names the date, so a row shows the clock only.
+    const october = page.locator(".trip-month").first();
+    await expect(october.locator("li.trip .trip-title")).toHaveText("09:00 → 09:00");
+    await expect(october.locator("li.trip .trip-thumb")).toHaveCount(1);
+    const box = await october.locator("li.trip").boundingBox();
+    expect(box?.height ?? 0).toBeLessThan(60);
+
+    await page.reload();
+    await expect(page.locator("#trip-density")).toHaveAttribute("aria-pressed", "true");
+});

@@ -264,6 +264,7 @@ export const dom = {
     tripFilterReset: $id<HTMLButtonElement>("trip-filter-reset"),
     sortKey: $id<HTMLSelectElement>("trip-sort-key"),
     sortDir: $id<HTMLButtonElement>("trip-sort-dir"),
+    tripDensity: $id<HTMLButtonElement>("trip-density"),
     sidebarResize: $id<HTMLDivElement>("sidebar-resize"),
     sidebarCollapseBtn: $id<HTMLButtonElement>("sidebar-collapse"),
     sidebarExpandTab: $id<HTMLButtonElement>("sidebar-expand"),

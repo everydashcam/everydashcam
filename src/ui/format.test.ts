@@ -12,6 +12,8 @@ import {
     formatMonthHeading,
     formatRateBytes,
     formatTimeRange,
+    formatTripClockTitle,
+    formatTripRowMeta,
     formatTripTitle,
     formatTripDistance,
 } from "./format.js";
@@ -155,6 +157,26 @@ describe("formatTimeRange", () => {
         const start = Date.UTC(2026, 9, 31, 20, 4) / 1000;
         expect(formatTimeRange(start, start + 3600, 3 * 3600)).toBe("23:04 → Sun 00:04");
         expect(formatTimeRange(start, start + 600, 0)).toBe("20:04 → 20:14");
+    });
+});
+
+describe("compact row text", () => {
+    it("titles a row with the clock range, or the start alone while the end is unknown", () => {
+        const start = Date.UTC(2026, 9, 31, 8, 10) / 1000;
+        const trip = { startUtc: start, endUtc: start + 21 * 60, cameraTzSec: 0 } as unknown as Trip;
+        expect(formatTripClockTitle(trip, true)).toBe("08:10 → 08:31");
+        expect(formatTripClockTitle(trip, false)).toBe("08:10");
+    });
+
+    it("puts duration, distance and size on one line", () => {
+        const trip = makeTrip(Date.UTC(2026, 9, 31, 8, 10) / 1000);
+        (trip as { distanceKm: number }).distanceKm = 12;
+        (trip as { totalBytes: number }).totalBytes = 300 * 1024 * 1024;
+        const meta = formatTripRowMeta(trip);
+        expect(meta).not.toContain("\n");
+        expect(meta.split(" · ")).toHaveLength(3);
+        expect(meta).toContain(formatTripDistance(12));
+        expect(meta).toContain(formatBytes(300 * 1024 * 1024));
     });
 });
 

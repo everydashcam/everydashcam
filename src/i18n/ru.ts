@@ -267,6 +267,7 @@ export const ruDict = {
     "sidebar.sort.options.size": "Размер",
     "sidebar.sort.dir.desc": "По убыванию",
     "sidebar.sort.dir.asc": "По возрастанию",
+    "sidebar.density.rows": "Компактный список",
     "sidebar.collapse": "Скрыть список поездок",
     "sidebar.expand": "Показать список поездок",
     "sidebar.resize": "Изменить ширину списка поездок",

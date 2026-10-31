@@ -262,6 +262,7 @@ export const frDict = {
     "sidebar.sort.options.size": "Taille",
     "sidebar.sort.dir.desc": "Décroissant",
     "sidebar.sort.dir.asc": "Croissant",
+    "sidebar.density.rows": "Liste compacte",
     "sidebar.collapse": "Masquer la liste des trajets",
     "sidebar.expand": "Afficher la liste des trajets",
     "sidebar.resize": "Redimensionner la liste des trajets",

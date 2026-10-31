@@ -347,6 +347,7 @@ export type I18nKey =
     | "sidebar.sort.options.size"
     | "sidebar.sort.dir.desc"
     | "sidebar.sort.dir.asc"
+    | "sidebar.density.rows"
     | "sidebar.collapse"
     | "sidebar.expand"
     | "sidebar.resize"
