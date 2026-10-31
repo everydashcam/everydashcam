@@ -1,5 +1,6 @@
 // Worker-side map snapshots use reverse RPC because MapLibre renders on the page.
-import type { WorkerServer } from "./_protocol/worker-server.js";
+import type { WorkerRequester } from "./_protocol/worker-contract.js";
+import type { TranscodeWorkerContract } from "./transcode-protocol.js";
 import type { MapSnapshotter, MapSnapshotRequest } from "../transcode/map-snapshotter-types.js";
 import { TRANSCODE_REQUEST_MAP_SNAPSHOT } from "./transcode-protocol.js";
 
@@ -12,7 +13,7 @@ export class MapSnapshotWorkerClient implements MapSnapshotter {
     private pending = new Set<(error: Error) => void>();
     private warmedUp = false;
 
-    constructor(private server: WorkerServer) {}
+    constructor(private server: WorkerRequester<TranscodeWorkerContract["callbacks"], Transferable[]>) {}
 
     snapshot(request: MapSnapshotRequest): Promise<ImageBitmap> {
         const timeoutMs = this.warmedUp ? SNAPSHOT_TIMEOUT_MS : FIRST_SNAPSHOT_TIMEOUT_MS;
@@ -24,7 +25,7 @@ export class MapSnapshotWorkerClient implements MapSnapshotter {
             };
             const timeoutId = setTimeout(() => cancel(new Error("map snapshot timeout")), timeoutMs);
             this.pending.add(cancel);
-            void this.server.request<ImageBitmap>(TRANSCODE_REQUEST_MAP_SNAPSHOT, request).then(
+            void this.server.request(TRANSCODE_REQUEST_MAP_SNAPSHOT, request).then(
                 (bitmap) => {
                     if (!this.pending.delete(cancel)) {
                         // Cancellation and timeouts can outlive the page's render.

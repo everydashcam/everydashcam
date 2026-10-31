@@ -7,6 +7,8 @@
 // reference is detached and main is the sole owner. Main MUST call
 // bitmap.close() when done, otherwise the GPU surface lingers until GC.
 
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+
 /** Request payload for "extract". One batch per request. */
 export interface ExtractRequestData {
     file: File;
@@ -25,3 +27,14 @@ export const FRAME_REQUEST_EXTRACT = "extract";
  *  active trip change and modal close - lets the worker drop GPU surfaces
  *  it no longer needs. */
 export const FRAME_NOTIFY_DISPOSE_ALL = "dispose-all";
+
+export type FrameExtractWorkerContract = WorkerContract<
+    {
+        [FRAME_REQUEST_EXTRACT]: WorkerRequest<ExtractRequestData, ExtractResult>;
+    },
+    {
+        [FRAME_NOTIFY_DISPOSE_ALL]: undefined;
+    },
+    Record<never, never>,
+    Record<never, never>
+>;

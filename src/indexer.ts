@@ -13,18 +13,19 @@
 // stalls on large cards. The worker also hands moov bytes straight through to
 // GPS extraction, avoiding a second cold-storage read.
 
+import type { IndexerWorkerContract } from "./workers/indexer-protocol.js";
+
 import { createLogger } from "./log.js";
 import { isNonIsobmffContainerName } from "./video-format-names.js";
 import {
     INDEXER_NOTIFY_PROGRESS,
     INDEXER_REQUEST_INDEX_ALL,
-    type IndexProgressNotificationData,
     type IndexRequestData,
     type IndexedMp4,
     type IndexerRepair,
 } from "./workers/indexer-protocol.js";
-import { createWorkerClient } from "./workers/_protocol/worker-client.js";
-import { createWorkerPool } from "./workers/_protocol/worker-pool.js";
+import { createTypedWorkerClient } from "./workers/_protocol/worker-client.js";
+import { createTypedWorkerPool } from "./workers/_protocol/worker-pool.js";
 
 const log = createLogger("indexer");
 
@@ -72,7 +73,7 @@ function poolCapacity(): number {
     return Math.max(1, Math.min(hc - 1, 4));
 }
 
-const pool = createWorkerPool({
+const pool = createTypedWorkerPool<IndexerWorkerContract>({
     name: "indexer",
     capacity: poolCapacity(),
     factory: (idx, opts) => {
@@ -83,12 +84,12 @@ const pool = createWorkerPool({
             name: "indexer-worker",
         });
         log.info("indexer worker slot spawned", { idx });
-        return createWorkerClient(worker, {
+        return createTypedWorkerClient<IndexerWorkerContract>(worker, {
             name: `indexer-${idx}`,
             onCrash: opts.onCrash,
             onNotification: (msg) => {
                 if (msg.type !== INDEXER_NOTIFY_PROGRESS) return;
-                const data = msg.data as IndexProgressNotificationData;
+                const data = msg.data;
                 // Route by batchId so concurrent background and foreground reads do
                 // not cross-fire onProgress with foreign files.
                 const ctx = activeBatches.get(data.batchId);

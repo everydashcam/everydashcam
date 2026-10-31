@@ -9,6 +9,8 @@
 // would otherwise be copied with every request (240 files * 240 names = 1.7 MB
 // of redundant string-copy traffic per ingest).
 
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+
 import type { ClassifiedFile } from "../parsers/registry.js";
 import type { PrimitiveVideoRef } from "../parsers/primitives/types.js";
 import type { AccelSample, GpsRecord, SkippedLine, VendorFile } from "../parsers/types.js";
@@ -70,3 +72,15 @@ export interface ParseAccelSidecarRequestData {
 export interface ParseAccelSidecarResult {
     samples: AccelSample[];
 }
+
+export type IngestWorkerContract = WorkerContract<
+    {
+        [INGEST_REQUEST_CLASSIFY_BATCH]: WorkerRequest<ClassifyBatchRequestData, ClassifyBatchResult>;
+        [INGEST_REQUEST_PARSE_LOG]: WorkerRequest<ParseLogRequestData, ParseLogResult>;
+        [INGEST_REQUEST_PARSE_SIDECAR]: WorkerRequest<ParseSidecarRequestData, ParseSidecarResult>;
+        [INGEST_REQUEST_PARSE_ACCEL_SIDECAR]: WorkerRequest<ParseAccelSidecarRequestData, ParseAccelSidecarResult>;
+    },
+    Record<never, never>,
+    Record<never, never>,
+    Record<never, never>
+>;

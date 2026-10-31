@@ -12,6 +12,8 @@
 // Each call creates its own Worker (transcoding is a rare user-initiated operation; keeping an idle
 // worker between exports wastes memory).
 
+import type { TranscodeWorkerContract } from "../workers/transcode-protocol.js";
+
 import { transfer } from "comlink";
 import type { MapSnapshotRequest } from "../transcode/map-snapshotter-types.js";
 import { createLogger } from "../log.js";
@@ -24,12 +26,9 @@ import {
     TRANSCODE_REQUEST_SINGLE,
     TRANSCODE_REQUEST_SPLIT,
     type TranscodeArgsForTransfer,
-    type TranscodeProgressNotificationData,
-    type TranscodeSingleRequestData,
     type TranscodeSplitArgsForTransfer,
-    type TranscodeSplitRequestData,
 } from "../workers/transcode-protocol.js";
-import { createWorkerClient } from "../workers/_protocol/worker-client.js";
+import { createTypedWorkerClient } from "../workers/_protocol/worker-client.js";
 
 import { state } from "./state.js";
 import type { OverlayMapState } from "./export-state.js";
@@ -71,8 +70,7 @@ export function transcodeViaWorker(
 ): Promise<TranscodeResult> {
     const { signal, onProgress, writable, ...rest } = args;
     return runInWorker(
-        TRANSCODE_REQUEST_SINGLE,
-        rest as TranscodeArgsForTransfer,
+        { type: TRANSCODE_REQUEST_SINGLE, args: rest },
         writable,
         signal,
         onProgress,
@@ -92,8 +90,7 @@ export function transcodeSplitViaWorker(
 ): Promise<TranscodeResult> {
     const { signal, onProgress, writable, ...rest } = args;
     return runInWorker(
-        TRANSCODE_REQUEST_SPLIT,
-        rest as TranscodeSplitArgsForTransfer,
+        { type: TRANSCODE_REQUEST_SPLIT, args: rest },
         writable,
         signal,
         onProgress,
@@ -105,8 +102,9 @@ export function transcodeSplitViaWorker(
 }
 
 function runInWorker(
-    kind: typeof TRANSCODE_REQUEST_SINGLE | typeof TRANSCODE_REQUEST_SPLIT,
-    transferArgs: TranscodeArgsForTransfer | TranscodeSplitArgsForTransfer,
+    request:
+        | { type: typeof TRANSCODE_REQUEST_SINGLE; args: TranscodeArgsForTransfer }
+        | { type: typeof TRANSCODE_REQUEST_SPLIT; args: TranscodeSplitArgsForTransfer },
     writable: FileSystemWritableFileStream,
     signal: AbortSignal,
     onProgress: TranscodeArgs["onProgress"],
@@ -115,6 +113,7 @@ function runInWorker(
     mapConfig: Readonly<OverlayMapState> | null = null,
     beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
+    const transferArgs = request.args;
     // name is static - Vite's worker plugin requires static options.
     const worker = new Worker(new URL("../workers/transcode-worker.ts", import.meta.url), {
         type: "module",
@@ -196,15 +195,12 @@ function runInWorker(
     // main-thread heap climb is invisible to the worker's gauge and vice versa.
     const mainHeartbeat = createExportHeartbeat(log);
 
-    const client = createWorkerClient(worker, {
+    const client = createTypedWorkerClient<TranscodeWorkerContract>(worker, {
         name: "transcode",
-        onRequest: (type, data) => {
-            if (type !== TRANSCODE_REQUEST_MAP_SNAPSHOT) throw new Error(`unknown reverse request type: ${type}`);
-            return renderOneSnapshot(data as MapSnapshotRequest);
-        },
+        onRequest: { [TRANSCODE_REQUEST_MAP_SNAPSHOT]: renderOneSnapshot },
         onNotification: (msg) => {
             if (msg.type === TRANSCODE_NOTIFY_PROGRESS) {
-                const data = msg.data as TranscodeProgressNotificationData;
+                const data = msg.data;
                 mainHeartbeat(data.progress.framesDone, data.progress.bytesWritten);
                 try {
                     onProgress(data.progress);
@@ -264,54 +260,50 @@ function runInWorker(
         }
     };
 
-    const reqData: TranscodeSingleRequestData | TranscodeSplitRequestData = {
-        args: transferArgs as TranscodeArgsForTransfer & TranscodeSplitArgsForTransfer,
-        writablePort,
-    };
+    const options = { signal, transfer: [writablePort] };
+    const resultPromise =
+        request.type === TRANSCODE_REQUEST_SINGLE
+            ? client.request(request.type, { args: request.args, writablePort }, options)
+            : client.request(request.type, { args: request.args, writablePort }, options);
 
-    return client
-        .request<TranscodeResult>(kind, reqData, {
-            signal,
-            transfer: [writablePort],
-        })
-        .then(
-            async (result) => {
-                // On the success path the worker's writer.close() has already resolved via ack, but
-                // the main side may still be applying the last writes (or, by default, finishing the
-                // FSA atomic rename) - wait explicitly via writableFinalized before touching the
-                // output: the post-process writes into it, and getFile() must see the final file.
-                await writableFinalized.catch(() => undefined);
-                try {
-                    if (beforeCommit) await beforeCommit(writable, result);
-                    await writableCommit();
-                } catch (err) {
-                    // The output is still uncommitted: discard it like any other failure.
-                    cleanup(false);
-                    throw err;
-                }
-                cleanup(true);
-                return result;
-            },
-            (err) => {
+    return resultPromise.then(
+        async (result) => {
+            // On the success path the worker's writer.close() has already resolved via ack, but
+            // the main side may still be applying the last writes (or, by default, finishing the
+            // FSA atomic rename) - wait explicitly via writableFinalized before touching the
+            // output: the post-process writes into it, and getFile() must see the final file.
+            await writableFinalized.catch(() => undefined);
+            try {
+                if (beforeCommit) await beforeCommit(writable, result);
+                await writableCommit();
+            } catch (err) {
+                // The output is still uncommitted: discard it like any other failure.
                 cleanup(false);
-                // A sink failure reaches us twice: once as the real object thrown
-                // on THIS thread by the writable, and once as the plain Error the
-                // worker rebuilt from the wire and rejected with. Re-throw the real
-                // one - it is the only copy the export flow can classify (a
-                // DOMException subclass, carrying our sink tag). Cancel is decided
-                // by the signal, not the rejection's name: a user cancel aborts the
-                // sink too (its complaint is fallout, and the flow must see the
-                // AbortError), while a sink failure can surface from the worker AS
-                // an AbortError when the pipeline tears itself down - the name
-                // alone cannot tell the two apart.
-                const sinkErr = writableSinkError();
-                if (sinkErr && !signal.aborted) {
-                    log.warn("rethrowing the sink failure behind the worker error", {
-                        worker: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
-                    });
-                    throw sinkErr;
-                }
                 throw err;
-            },
-        );
+            }
+            cleanup(true);
+            return result;
+        },
+        (err) => {
+            cleanup(false);
+            // A sink failure reaches us twice: once as the real object thrown
+            // on THIS thread by the writable, and once as the plain Error the
+            // worker rebuilt from the wire and rejected with. Re-throw the real
+            // one - it is the only copy the export flow can classify (a
+            // DOMException subclass, carrying our sink tag). Cancel is decided
+            // by the signal, not the rejection's name: a user cancel aborts the
+            // sink too (its complaint is fallout, and the flow must see the
+            // AbortError), while a sink failure can surface from the worker AS
+            // an AbortError when the pipeline tears itself down - the name
+            // alone cannot tell the two apart.
+            const sinkErr = writableSinkError();
+            if (sinkErr && !signal.aborted) {
+                log.warn("rethrowing the sink failure behind the worker error", {
+                    worker: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+                });
+                throw sinkErr;
+            }
+            throw err;
+        },
+    );
 }

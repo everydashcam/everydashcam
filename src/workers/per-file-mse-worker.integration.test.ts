@@ -11,9 +11,11 @@ import { findBox, iterBoxes, readHandlerType } from "../parsers/internal/mp4-wal
 import { clampTsTrailingBytes } from "../ts-trailer.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 import nodeEndpoint from "comlink/dist/esm/node-adapter.mjs";
-import { createWorkerClient, type WorkerEndpoint } from "./_protocol/worker-client.js";
-import type { WorkerNotification } from "./_protocol/worker-rpc.js";
-import type { FeedDoneNotificationData, MediaSegmentNotificationData } from "./per-file-mse-protocol.js";
+import { createTypedWorkerClient, type WorkerEndpoint } from "./_protocol/worker-client.js";
+import type { WorkerMessage } from "./_protocol/worker-contract.js";
+import type { PerFileMseWorkerContract } from "./per-file-mse-protocol.js";
+
+type MseWorkerEvent = WorkerMessage<PerFileMseWorkerContract["events"]>;
 
 let tempDirectory: string;
 const workers: Worker[] = [];
@@ -76,7 +78,7 @@ async function openWorker(
 ) {
     const worker = new Worker(pathToFileURL(join(tempDirectory, "endpoint.mjs")), { workerData: { fileName } });
     workers.push(worker);
-    const events: WorkerNotification[] = [];
+    const events: MseWorkerEvent[] = [];
     const listeners = new Set<() => void>();
     let failure: Error | null = null;
     let ready = false;
@@ -99,7 +101,7 @@ async function openWorker(
             void worker.terminate();
         },
     };
-    const client = createWorkerClient(endpoint, {
+    const client = createTypedWorkerClient<PerFileMseWorkerContract>(endpoint, {
         name: "mse-integration",
         onNotification(message) {
             events.push(message);
@@ -135,20 +137,20 @@ async function openWorker(
         });
     const media = (cycleId: number) =>
         events.filter(
-            (event): event is WorkerNotification =>
-                event.type === "media-segment" && (event.data as MediaSegmentNotificationData).cycleId === cycleId,
+            (event): event is Extract<MseWorkerEvent, { type: "media-segment" }> =>
+                event.type === "media-segment" && event.data.cycleId === cycleId,
         );
-    const send = (type: string, data: unknown) => client.notify(type, data);
+    const send = client.notify;
     await waitFor(() => ready);
-    const init = await client.request("init", { file: new Blob([bytes]), startSec });
+    const init = await client.request("init", { file: new File([bytes], fileName), startSec });
     send("start-feed", feedStartSec === undefined ? { cycleId: 0 } : { cycleId: 0, startSec: feedStartSec });
     return { events, waitFor, media, send, init };
 }
 
-async function readCycle(events: WorkerNotification[], cycleId: number) {
+async function readCycle(events: MseWorkerEvent[], cycleId: number) {
     const chunks = events.flatMap((event) => {
-        if (!["init-segment", "media-segment"].includes(event.type)) return [];
-        const data = event.data as MediaSegmentNotificationData;
+        if (event.type !== "init-segment" && event.type !== "media-segment") return [];
+        const data = event.data;
         return data.cycleId === cycleId ? [data.bytes] : [];
     });
     const input = new Input({ source: new BufferSource(Buffer.concat(chunks)), formats: VIDEO_INPUT_FORMATS });
@@ -191,11 +193,7 @@ describe("per-file MSE worker with real encoded packets", () => {
             }),
         );
         expect(harness.init).toMatchObject({ hasAudio: true });
-        await harness.waitFor(() =>
-            harness
-                .media(0)
-                .some((event) => (event.data as MediaSegmentNotificationData).videoKeyframeTimestamps.length > 0),
-        );
+        await harness.waitFor(() => harness.media(0).some((event) => event.data.videoKeyframeTimestamps.length > 0));
         const output = await readCycle(harness.events, 0);
         expect(output.first?.timestamp).toBeCloseTo(1024 / 48000, 3);
         expect(output.duration).toBeGreaterThanOrEqual(10);
@@ -295,6 +293,7 @@ describe("per-file MSE worker with real encoded packets", () => {
     it("reports a rejected feed setup instead of leaving the player waiting", async () => {
         const harness = await openWorker(await createMseFixture({ gopCount: 2 }));
         await harness.waitFor(() => harness.media(0).length > 0);
+        // @ts-expect-error Exercise the worker's runtime failure path with a malformed payload.
         harness.send("seek", null);
         await expect(harness.waitFor(() => false)).rejects.toThrow("feed-setup-threw");
     });
@@ -352,10 +351,7 @@ describe("per-file MSE worker with real encoded packets", () => {
         expect(harness.init).toMatchObject({ hasAudio: true, audioTranscoded: false });
         const waitForDone = (cycleId: number) =>
             harness.waitFor(() =>
-                harness.events.some(
-                    (event) =>
-                        event.type === "feed-done" && (event.data as FeedDoneNotificationData).cycleId === cycleId,
-                ),
+                harness.events.some((event) => event.type === "feed-done" && event.data.cycleId === cycleId),
             );
         harness.send("tick", { currentTime: 100, appendQueueLen: 0, playbackRate: 1 });
         await waitForDone(0);

@@ -13,6 +13,8 @@
 // Protocol: atomic per file for parse-*, batch for classify (shared
 // knownVideoNames). See ingest-protocol.ts for the wire shapes.
 
+import type { IngestWorkerContract } from "./ingest-protocol.js";
+
 import { createLogger } from "../log.js";
 import { LOG_SIDECAR_PRIMITIVES } from "../parsers/primitives/index.js";
 import { ACCEL_SIDECARS, SIDECARS, classifyOneNonVideo, type ClassifiedFile } from "../parsers/registry.js";
@@ -23,17 +25,13 @@ import {
     INGEST_REQUEST_PARSE_ACCEL_SIDECAR,
     INGEST_REQUEST_PARSE_LOG,
     INGEST_REQUEST_PARSE_SIDECAR,
-    type ClassifyBatchRequestData,
     type ClassifyBatchResult,
-    type ParseAccelSidecarRequestData,
     type ParseAccelSidecarResult,
-    type ParseLogRequestData,
     type ParseLogResult,
-    type ParseSidecarRequestData,
     type ParseSidecarResult,
 } from "./ingest-protocol.js";
 import { createParseGate } from "./_protocol/parse-gate.js";
-import { createWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
+import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
 
 const log = createLogger("worker:ingest");
 
@@ -54,86 +52,78 @@ const WORKER_SIDECARS = SIDECARS.filter((s) => s.id !== "gpx");
 // the gate exists to prevent (see parse-gate.ts for the full rationale).
 const parseGate = createParseGate(2);
 
-createWorkerServer(self, {
-    onRequest: async (type, data, ctx): Promise<unknown> => {
-        switch (type) {
-            case INGEST_REQUEST_CLASSIFY_BATCH: {
-                const req = data as ClassifyBatchRequestData;
-                const knownVideos = new Set(req.knownVideoNames);
-                const out: ClassifiedFile[] = [];
-                for (const vf of req.files) {
-                    if (ctx.signal.aborted) {
-                        throw new DOMException("aborted", "AbortError");
-                    }
-                    out.push(await classifyOneNonVideo(vf, knownVideos, WORKER_SIDECARS, ACCEL_SIDECARS));
+createTypedWorkerServer<IngestWorkerContract>(self, {
+    onRequest: {
+        [INGEST_REQUEST_CLASSIFY_BATCH]: async (req, ctx) => {
+            const knownVideos = new Set(req.knownVideoNames);
+            const out: ClassifiedFile[] = [];
+            for (const vf of req.files) {
+                if (ctx.signal.aborted) {
+                    throw new DOMException("aborted", "AbortError");
                 }
-                return out satisfies ClassifyBatchResult;
+                out.push(await classifyOneNonVideo(vf, knownVideos, WORKER_SIDECARS, ACCEL_SIDECARS));
             }
-            case INGEST_REQUEST_PARSE_LOG: {
-                const req = data as ParseLogRequestData;
-                const extractor = LOG_SIDECAR_PRIMITIVES.find((e) => e.id === req.extractorId);
-                if (!extractor) throw new Error(`no log extractor: ${req.extractorId}`);
-                return await parseGate.run(async () => {
-                    try {
-                        const parsed = await extractor.parse(req.file, undefined, ctx.signal, {
-                            knownVideos: req.knownVideos,
-                        });
-                        return {
-                            records: parsed.records,
-                            skipped: parsed.skipped,
-                        } satisfies ParseLogResult;
-                    } catch (err) {
-                        // WrongFormatError mirrors registry.dispatchParseLogs: marker
-                        // matched but content did not. Surface as empty result; the
-                        // shim aggregates errors via the standard error path of
-                        // request rejection - WrongFormatError specifically does not
-                        // pollute logs there, so we mimic the behavior here.
-                        if (err instanceof WrongFormatError) {
-                            return { records: [], skipped: [] } satisfies ParseLogResult;
-                        }
-                        log.warn("parseLog error", { extractor: req.extractorId, file: req.file.file.name, err });
-                        throw err;
+            return out satisfies ClassifyBatchResult;
+        },
+        [INGEST_REQUEST_PARSE_LOG]: async (req, ctx) => {
+            const extractor = LOG_SIDECAR_PRIMITIVES.find((e) => e.id === req.extractorId);
+            if (!extractor) throw new Error(`no log extractor: ${req.extractorId}`);
+            return await parseGate.run(async () => {
+                try {
+                    const parsed = await extractor.parse(req.file, undefined, ctx.signal, {
+                        knownVideos: req.knownVideos,
+                    });
+                    return {
+                        records: parsed.records,
+                        skipped: parsed.skipped,
+                    } satisfies ParseLogResult;
+                } catch (err) {
+                    // WrongFormatError mirrors registry.dispatchParseLogs: marker
+                    // matched but content did not. Surface as empty result; the
+                    // shim aggregates errors via the standard error path of
+                    // request rejection - WrongFormatError specifically does not
+                    // pollute logs there, so we mimic the behavior here.
+                    if (err instanceof WrongFormatError) {
+                        return { records: [], skipped: [] } satisfies ParseLogResult;
                     }
-                });
-            }
-            case INGEST_REQUEST_PARSE_SIDECAR: {
-                const req = data as ParseSidecarRequestData;
-                // gpx is handled on main; the shim should never route it here.
-                // Defensive check so a mis-wired call surfaces loudly.
-                if (req.sidecarId === "gpx") {
-                    throw new Error("gpx sidecar must be parsed on main thread");
+                    log.warn("parseLog error", { extractor: req.extractorId, file: req.file.file.name, err });
+                    throw err;
                 }
-                const handler = WORKER_SIDECARS.find((h) => h.id === req.sidecarId);
-                if (!handler) throw new Error(`no sidecar handler: ${req.sidecarId}`);
-                return await parseGate.run(async () => {
-                    try {
-                        const records = await handler.parse(req.file, req.mp4Filename, ctx.signal);
-                        return { records } satisfies ParseSidecarResult;
-                    } catch (err) {
-                        // WrongFormatError is control flow, not a failure (mirrors
-                        // parse-log above). ddpaiGpxSidecar throws it when a .gpx in
-                        // a DDPai gps dir turns out to be real XML - which it cannot
-                        // parse (no DOMParser in a worker). Return a marker so the
-                        // shim reroutes to the main-thread gpxSidecar instead of
-                        // surfacing a user-visible parse error + Sentry event.
-                        if (err instanceof WrongFormatError) {
-                            return { records: [], wrongFormat: true } satisfies ParseSidecarResult;
-                        }
-                        throw err;
+            });
+        },
+        [INGEST_REQUEST_PARSE_SIDECAR]: async (req, ctx) => {
+            // gpx is handled on main; the shim should never route it here.
+            // Defensive check so a mis-wired call surfaces loudly.
+            if (req.sidecarId === "gpx") {
+                throw new Error("gpx sidecar must be parsed on main thread");
+            }
+            const handler = WORKER_SIDECARS.find((h) => h.id === req.sidecarId);
+            if (!handler) throw new Error(`no sidecar handler: ${req.sidecarId}`);
+            return await parseGate.run(async () => {
+                try {
+                    const records = await handler.parse(req.file, req.mp4Filename, ctx.signal);
+                    return { records } satisfies ParseSidecarResult;
+                } catch (err) {
+                    // WrongFormatError is control flow, not a failure (mirrors
+                    // parse-log above). ddpaiGpxSidecar throws it when a .gpx in
+                    // a DDPai gps dir turns out to be real XML - which it cannot
+                    // parse (no DOMParser in a worker). Return a marker so the
+                    // shim reroutes to the main-thread gpxSidecar instead of
+                    // surfacing a user-visible parse error + Sentry event.
+                    if (err instanceof WrongFormatError) {
+                        return { records: [], wrongFormat: true } satisfies ParseSidecarResult;
                     }
-                });
-            }
-            case INGEST_REQUEST_PARSE_ACCEL_SIDECAR: {
-                const req = data as ParseAccelSidecarRequestData;
-                const handler = ACCEL_SIDECARS.find((h) => h.id === req.sidecarId);
-                if (!handler) throw new Error(`no accel-sidecar handler: ${req.sidecarId}`);
-                return await parseGate.run(async () => {
-                    const samples = await handler.parseAccel(req.file, ctx.signal);
-                    return { samples } satisfies ParseAccelSidecarResult;
-                });
-            }
-            default:
-                throw new Error(`unknown request type: ${type}`);
-        }
+                    throw err;
+                }
+            });
+        },
+        [INGEST_REQUEST_PARSE_ACCEL_SIDECAR]: async (req, ctx) => {
+            const handler = ACCEL_SIDECARS.find((h) => h.id === req.sidecarId);
+            if (!handler) throw new Error(`no accel-sidecar handler: ${req.sidecarId}`);
+            return await parseGate.run(async () => {
+                const samples = await handler.parseAccel(req.file, ctx.signal);
+                return { samples } satisfies ParseAccelSidecarResult;
+            });
+        },
     },
 });

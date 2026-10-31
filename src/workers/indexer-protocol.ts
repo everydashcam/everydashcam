@@ -7,6 +7,8 @@
 // that downstream embedded-GPS extraction re-reads anyway, so cold SD pays one
 // moov read instead of two.
 
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+
 import type { VideoCodec } from "mediabunny";
 
 import type { Mp4Rotation } from "../parsers/internal/mp4-walker.js";
@@ -172,3 +174,14 @@ export type IndexResult = Record<string, never>;
 
 export const INDEXER_REQUEST_INDEX_ALL = "index-all";
 export const INDEXER_NOTIFY_PROGRESS = "progress";
+
+export type IndexerWorkerContract = WorkerContract<
+    {
+        [INDEXER_REQUEST_INDEX_ALL]: WorkerRequest<IndexRequestData, IndexResult>;
+    },
+    Record<never, never>,
+    {
+        [INDEXER_NOTIFY_PROGRESS]: IndexProgressNotificationData;
+    },
+    Record<never, never>
+>;

@@ -6,6 +6,8 @@
 // box. Results come back as decimated keyframes on the trip content axis,
 // ready for replaceGeneratedKeyframes.
 
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+
 import type { OrtAssets } from "../tracking/ort-assets.js";
 import type { DetectionQuality } from "../tracking/detection-sampling.js";
 import type { DetectionThresholds } from "../tracking/detector-policy.js";
@@ -183,3 +185,26 @@ export interface DetectResult {
 export const DETECT_REQUEST = "detect";
 export const DETECT_NOTIFY_STARTED = "detect-started";
 export const DETECT_NOTIFY_PROGRESS = "detect-progress";
+
+/** Correlation ids belong to transport requests, not the tracking algorithms. */
+interface TrackCorrelation {
+    regionId?: string;
+    passId?: string;
+}
+interface DetectCorrelation {
+    passId?: string;
+}
+export type TrackerWorkerContract = WorkerContract<
+    {
+        [TRACK_REQUEST]: WorkerRequest<TrackRequestData & TrackCorrelation, TrackResult>;
+        [DETECT_REQUEST]: WorkerRequest<DetectRequestData & DetectCorrelation, DetectResult>;
+    },
+    Record<never, never>,
+    {
+        [TRACK_NOTIFY_STARTED]: TrackCorrelation;
+        [TRACK_NOTIFY_PROGRESS]: TrackProgressData & TrackCorrelation;
+        [DETECT_NOTIFY_STARTED]: DetectCorrelation;
+        [DETECT_NOTIFY_PROGRESS]: DetectProgressData & DetectCorrelation;
+    },
+    Record<never, never>
+>;

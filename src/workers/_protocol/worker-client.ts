@@ -5,6 +5,14 @@ import { createLogger, installWorkerLogBridge } from "../../log.js";
 import { captureSentryException } from "../../sentry.js";
 import { workerUnavailableError } from "./worker-error.js";
 import {
+    dispatchWorkerRequest,
+    type WorkerContract,
+    type WorkerMessage,
+    type WorkerNotifier,
+    type WorkerRequester,
+    type WorkerRequestHandlers,
+} from "./worker-contract.js";
+import {
     closeTransferredResources,
     transferValue,
     type WorkerCallbacks,
@@ -36,6 +44,37 @@ export interface WorkerClient {
     /** A string cancels intentional teardown; an Error preserves a shared failure. */
     dispose(reason?: string | Error): void;
     readonly disposed: boolean;
+}
+
+export interface TypedWorkerClient<Contract extends WorkerContract>
+    extends Omit<WorkerClient, "request" | "notify">,
+        WorkerRequester<Contract["requests"], RequestOptions>,
+        WorkerNotifier<Contract["commands"], NotifyOptions> {}
+
+export interface TypedWorkerClientOptions<Contract extends WorkerContract>
+    extends Omit<WorkerClientOptions, "onRequest" | "onNotification" | "onDiscardedResult"> {
+    onRequest?: WorkerRequestHandlers<Contract["callbacks"], void>;
+    onNotification?: (message: WorkerMessage<Contract["events"]>) => void;
+    onDiscardedResult?: (result: Contract["requests"][keyof Contract["requests"]]["result"]) => void;
+}
+
+/** Typed application facade over the same cancellation/crash-safe transport. */
+export function createTypedWorkerClient<Contract extends WorkerContract>(
+    endpoint: WorkerEndpoint,
+    opts: TypedWorkerClientOptions<Contract>,
+): TypedWorkerClient<Contract> {
+    const { onRequest, onNotification, onDiscardedResult, ...options } = opts;
+    const client = createWorkerClient(endpoint, {
+        ...options,
+        onRequest: onRequest && ((type, data) => dispatchWorkerRequest(onRequest, type, data, undefined)),
+        // Comlink has deserialized values from our paired worker. Shape checks
+        // for external inputs belong in the feature, not in this transport.
+        onNotification: onNotification && ((message) => onNotification(message as WorkerMessage<Contract["events"]>)),
+        onDiscardedResult:
+            onDiscardedResult &&
+            ((result) => onDiscardedResult(result as Contract["requests"][keyof Contract["requests"]]["result"])),
+    });
+    return client as unknown as TypedWorkerClient<Contract>;
 }
 export interface WorkerEndpoint {
     postMessage(message: unknown, transfer?: Transferable[]): void;

@@ -15,6 +15,8 @@
 //  - dispatchParseSidecarsViaPool: gpx-classified entries are parsed
 //    sequentially on main; everything else goes through the pool.
 
+import type { IngestWorkerContract } from "../workers/ingest-protocol.js";
+
 import { extendArray } from "../array-extend.js";
 import {
     associateRecordsWithVideos,
@@ -34,17 +36,13 @@ import {
     INGEST_REQUEST_PARSE_LOG,
     INGEST_REQUEST_PARSE_SIDECAR,
     type ClassifyBatchRequestData,
-    type ClassifyBatchResult,
     type ParseAccelSidecarRequestData,
-    type ParseAccelSidecarResult,
     type ParseLogRequestData,
-    type ParseLogResult,
     type ParseSidecarRequestData,
-    type ParseSidecarResult,
 } from "../workers/ingest-protocol.js";
-import { createWorkerClient } from "../workers/_protocol/worker-client.js";
+import { createTypedWorkerClient } from "../workers/_protocol/worker-client.js";
 import { isWorkerUnavailableError } from "../workers/_protocol/worker-error.js";
-import { createWorkerPool } from "../workers/_protocol/worker-pool.js";
+import { createTypedWorkerPool } from "../workers/_protocol/worker-pool.js";
 
 const log = createLogger("ingest-shim");
 
@@ -56,7 +54,7 @@ function poolCapacity(): number {
     return Math.max(1, Math.min(hc - 1, 4));
 }
 
-const pool = createWorkerPool({
+const pool = createTypedWorkerPool<IngestWorkerContract>({
     name: "ingest",
     capacity: poolCapacity(),
     factory: (idx, opts) => {
@@ -65,7 +63,7 @@ const pool = createWorkerPool({
             name: "ingest-worker",
         });
         log.info("ingest worker slot spawned", { idx });
-        return createWorkerClient(worker, {
+        return createTypedWorkerClient<IngestWorkerContract>(worker, {
             name: `ingest-${idx}`,
             onCrash: opts.onCrash,
         });
@@ -123,7 +121,7 @@ export async function classifyFilesViaPool(
                 files: chunk,
                 knownVideoNames,
             };
-            return pool.request<ClassifyBatchResult>(INGEST_REQUEST_CLASSIFY_BATCH, req, {
+            return pool.request(INGEST_REQUEST_CLASSIFY_BATCH, req, {
                 signal,
                 shardKey: `classify-${shardIdx}`,
             });
@@ -261,7 +259,7 @@ export async function dispatchParseLogsViaPool(
     );
     const { successes, failures } = await dispatchViaPool(targets, (c) => {
         const req: ParseLogRequestData = { file: c.file, extractorId: c.logExtractorId!, knownVideos: knownVideoRefs };
-        return pool.request<ParseLogResult>(INGEST_REQUEST_PARSE_LOG, req, { signal });
+        return pool.request(INGEST_REQUEST_PARSE_LOG, req, { signal });
     });
 
     for (const { target: c, message } of failures) {
@@ -357,7 +355,7 @@ export async function dispatchParseSidecarsViaPool(
                 sidecarId: c.sidecarId!,
                 mp4Filename: c.sidecarMp4!,
             };
-            return pool.request<ParseSidecarResult>(INGEST_REQUEST_PARSE_SIDECAR, req, { signal });
+            return pool.request(INGEST_REQUEST_PARSE_SIDECAR, req, { signal });
         });
 
         for (const { target: c, message } of failures) {
@@ -404,7 +402,7 @@ export async function dispatchParseAccelSidecarsViaPool(
 
     const { successes, failures } = await dispatchViaPool(targets, (c) => {
         const req: ParseAccelSidecarRequestData = { file: c.file, sidecarId: c.sidecarId! };
-        return pool.request<ParseAccelSidecarResult>(INGEST_REQUEST_PARSE_ACCEL_SIDECAR, req, { signal });
+        return pool.request(INGEST_REQUEST_PARSE_ACCEL_SIDECAR, req, { signal });
     });
 
     for (const { target: c, message } of failures) {

@@ -7,30 +7,31 @@
 // UI on MPEG-TS builds (~10 s of 100% CPU on a 1 GB / 7 min file -
 // PMT scan + long-GOP decode-forward per frame).
 
+import type { FrameExtractWorkerContract } from "../workers/frame-extract-protocol.js";
+
 import { combineAbortSignals } from "../abort-signals.js";
 import { createLogger } from "../log.js";
 import {
     FRAME_NOTIFY_DISPOSE_ALL,
     FRAME_REQUEST_EXTRACT,
     type ExtractRequestData,
-    type ExtractResult,
 } from "../workers/frame-extract-protocol.js";
-import { createWorkerClient, type WorkerClient } from "../workers/_protocol/worker-client.js";
+import { createTypedWorkerClient, type TypedWorkerClient } from "../workers/_protocol/worker-client.js";
 
 const log = createLogger("frame-extract");
 
-let client: WorkerClient | null = null;
+let client: TypedWorkerClient<FrameExtractWorkerContract> | null = null;
 
-function getClient(): WorkerClient {
+function getClient(): TypedWorkerClient<FrameExtractWorkerContract> {
     if (client && !client.disposed) return client;
     const worker = new Worker(new URL("../workers/frame-extract-worker.ts", import.meta.url), {
         type: "module",
         name: "frame-extract-worker",
     });
-    client = createWorkerClient(worker, {
+    client = createTypedWorkerClient<FrameExtractWorkerContract>(worker, {
         name: "frame-extract",
         onDiscardedResult: (result) => {
-            const { bitmaps } = result as ExtractResult;
+            const { bitmaps } = result;
             for (const bitmap of bitmaps) bitmap?.close();
         },
         onCrash: () => {
@@ -54,7 +55,7 @@ const WORKER_REQUEST_TIMEOUT_MS = 20000;
  * decoder cache so consecutive calls on the same file reuse the open Input.
  *
  * signal lets the caller cancel a long-running extract on trip change /
- * resize. createWorkerClient forwards the signal to the worker so the
+ * resize. createTypedWorkerClient forwards the signal to the worker so the
  * handler stops at the next iteration boundary; the returned promise
  * rejects with AbortError immediately so the caller is not blocked.
  * Bitmaps that arrive AFTER cancel are closed by the framework discarding
@@ -78,9 +79,7 @@ async function workerExtractFrames(
 
     const req: ExtractRequestData = { file, timestamps };
     try {
-        const result = await getClient().request<ExtractResult>(FRAME_REQUEST_EXTRACT, req, {
-            signal: combined.signal,
-        });
+        const result = await getClient().request(FRAME_REQUEST_EXTRACT, req, { signal: combined.signal });
         return result.bitmaps;
     } catch (err) {
         // Abort / timeout / crash all return an empty array to the caller -

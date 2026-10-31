@@ -1,6 +1,7 @@
+import type { EncoderProbeWorkerContract } from "../workers/encoder-probe-protocol.js";
 import { createLogger } from "../log.js";
 import type { EncoderProbeConfig, EncoderProbeResult } from "../transcode/encoder-probe-result.js";
-import { createWorkerClient } from "../workers/_protocol/worker-client.js";
+import { createTypedWorkerClient, type TypedWorkerClient } from "../workers/_protocol/worker-client.js";
 
 const log = createLogger("export:encoder-probe");
 const PROBE_TIMEOUT_MS = 20_000;
@@ -12,7 +13,7 @@ export async function selectAutoEncoder(config: EncoderProbeConfig, signal: Abor
     const key = JSON.stringify(config);
     const cached = cache.get(key);
     if (cached) return cached;
-    let client: ReturnType<typeof createWorkerClient> | undefined;
+    let client: TypedWorkerClient<EncoderProbeWorkerContract> | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
     let result: EncoderProbeResult;
@@ -21,12 +22,12 @@ export async function selectAutoEncoder(config: EncoderProbeConfig, signal: Abor
             type: "module",
             name: "encoder-probe-worker",
         });
-        client = createWorkerClient(worker, { name: "encoder-probe" });
+        client = createTypedWorkerClient<EncoderProbeWorkerContract>(worker, { name: "encoder-probe" });
         timeout = setTimeout(() => {
             timedOut = true;
             client?.dispose("encoder probe timed out");
         }, PROBE_TIMEOUT_MS);
-        result = await client.request<EncoderProbeResult>("probe", config, { signal });
+        result = await client.request("probe", config, { signal });
         log.info("encoder trial measured", { ...config, ...result });
     } catch (err) {
         signal.throwIfAborted();

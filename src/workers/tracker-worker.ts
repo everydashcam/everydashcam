@@ -11,6 +11,8 @@
 // is ~200 ms; re-tracks after a correction are the common case). The DECODE
 // side opens fresh per request - files change between passes.
 
+import type { TrackerWorkerContract } from "./tracker-protocol.js";
+
 import { CanvasSink, EncodedPacketSink, Input, type VideoSample, VideoSampleSink } from "mediabunny";
 import { getInputTimeOrigin } from "../media-time.js";
 
@@ -57,7 +59,7 @@ import {
     type TrackResult,
     type TrackResultKeyframe,
 } from "./tracker-protocol.js";
-import { createWorkerServer, type RequestContext, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
+import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
 
 declare const self: WorkerScopeEndpoint;
 
@@ -1125,10 +1127,9 @@ function serialize<T>(fn: () => Promise<T>): Promise<T> {
     return next;
 }
 
-const server = createWorkerServer(self, {
-    onRequest: async (type, data, ctx: RequestContext): Promise<TrackResult | DetectResult> => {
-        if (type === TRACK_REQUEST) {
-            const req = data as TrackRequestData & { regionId?: string; passId?: string };
+const server = createTypedWorkerServer<TrackerWorkerContract>(self, {
+    onRequest: {
+        [TRACK_REQUEST]: async (req, ctx) => {
             return await serialize(() => {
                 // A request can be cancelled while waiting behind another pass.
                 // Do not let it wake/load the model when its queue turn arrives.
@@ -1138,9 +1139,8 @@ const server = createWorkerServer(self, {
                     server.notify(TRACK_NOTIFY_PROGRESS, { fractionDone, regionId: req.regionId, passId: req.passId });
                 });
             });
-        }
-        if (type === DETECT_REQUEST) {
-            const req = data as DetectRequestData & { passId?: string };
+        },
+        [DETECT_REQUEST]: async (req, ctx) => {
             return await serialize(() => {
                 if (ctx.signal.aborted) throw new DOMException("aborted", "AbortError");
                 server.notify(DETECT_NOTIFY_STARTED, { passId: req.passId });
@@ -1148,7 +1148,6 @@ const server = createWorkerServer(self, {
                     server.notify(DETECT_NOTIFY_PROGRESS, { fractionDone, passId: req.passId });
                 });
             });
-        }
-        throw new Error(`unknown request type: ${type}`);
+        },
     },
 });

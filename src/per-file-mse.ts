@@ -41,18 +41,15 @@ import {
     MSE_NOTIFY_TICK,
     MSE_REQUEST_INIT,
     getMseAdpcmPlaybackCodecs,
-    type ErrorNotificationData,
-    type FeedDoneNotificationData,
     type InitRequestData,
     type InitResult,
-    type InitSegmentNotificationData,
-    type MediaSegmentNotificationData,
-    type SeekDoneNotificationData,
+    type PerFileMseWorkerContract,
     type SeekNotificationData,
     type StartFeedNotificationData,
     type TickNotificationData,
 } from "./workers/per-file-mse-protocol.js";
-import { createWorkerClient, type WorkerClient } from "./workers/_protocol/worker-client.js";
+import { createTypedWorkerClient, type TypedWorkerClient } from "./workers/_protocol/worker-client.js";
+import type { WorkerMessage } from "./workers/_protocol/worker-contract.js";
 
 const log = createLogger("per-file-mse");
 
@@ -168,7 +165,7 @@ export class PerFileMseBackend {
     private onErrorCb: ((reason: string, error?: unknown) => void) | undefined;
     private readonly logger = log.child("");
 
-    private client: WorkerClient | null = null;
+    private client: TypedWorkerClient<PerFileMseWorkerContract> | null = null;
     // Worker init reply. Set by ensureWorkerReady, whether attach() or an
     // earlier prewarm() ran it.
     private initResult: InitResult | null = null;
@@ -331,12 +328,12 @@ export class PerFileMseBackend {
                 type: "module",
                 name: "per-file-mse-worker",
             });
-            this.client = createWorkerClient(worker, {
+            this.client = createTypedWorkerClient<PerFileMseWorkerContract>(worker, {
                 name: "per-file-mse",
                 // Playback reports only after its retry/tail recovery fails.
                 reportIdleCrash: false,
                 onCrash: () => this.fail("worker-crashed"),
-                onNotification: (msg) => this.onWorkerNotification(msg.type, msg.data),
+                onNotification: (msg) => this.onWorkerNotification(msg),
             });
             this.initAbort = new AbortController();
             const timeoutTimer = setTimeout(() => this.initAbort?.abort(), READY_TIMEOUT_MS);
@@ -356,7 +353,7 @@ export class PerFileMseBackend {
                     transcodeAdpcmAudio: this.transcodeAdpcmAudio,
                     adpcmPlaybackCodecs,
                 };
-                initResult = await this.client.request<InitResult>(MSE_REQUEST_INIT, initReq, {
+                initResult = await this.client.request(MSE_REQUEST_INIT, initReq, {
                     signal: this.initAbort.signal,
                 });
             } catch (e) {
@@ -768,11 +765,11 @@ export class PerFileMseBackend {
      * against currentCycleId so stragglers from a cancelled cycle cannot
      * pollute SourceBuffer.
      */
-    private onWorkerNotification(type: string, data: unknown): void {
+    private onWorkerNotification(message: WorkerMessage<PerFileMseWorkerContract["events"]>): void {
         if (this.disposed || this.failed) return;
-        switch (type) {
+        switch (message.type) {
             case MSE_NOTIFY_INIT_SEGMENT: {
-                const ntf = data as InitSegmentNotificationData;
+                const ntf = message.data;
                 if (ntf.cycleId !== this.currentCycleId) {
                     // Stale cycle - drop. Old worker output finalized its
                     // tail fragment after we already advanced past it.
@@ -783,7 +780,7 @@ export class PerFileMseBackend {
                 return;
             }
             case MSE_NOTIFY_MEDIA_SEGMENT: {
-                const ntf = data as MediaSegmentNotificationData;
+                const ntf = message.data;
                 if (ntf.cycleId !== this.currentCycleId) return;
                 this.appendQueue.push({
                     type: "data",
@@ -794,7 +791,7 @@ export class PerFileMseBackend {
                 return;
             }
             case MSE_NOTIFY_SEEK_DONE: {
-                const ntf = data as SeekDoneNotificationData;
+                const ntf = message.data;
                 if (ntf.cycleId !== this.currentCycleId) return;
                 const r = this.seekDoneResolver;
                 this.seekDoneResolver = null;
@@ -802,13 +799,13 @@ export class PerFileMseBackend {
                 return;
             }
             case MSE_NOTIFY_FEED_DONE: {
-                const ntf = data as FeedDoneNotificationData;
+                const ntf = message.data;
                 if (ntf.cycleId !== this.currentCycleId) return;
                 void this.finalizeFeed();
                 return;
             }
             case MSE_NOTIFY_ERROR: {
-                const ntf = data as ErrorNotificationData;
+                const ntf = message.data;
                 this.fail(ntf.reason, ntf.message);
                 return;
             }

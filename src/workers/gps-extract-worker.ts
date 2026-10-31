@@ -14,16 +14,13 @@
 // RPC: Comlink carries calls and errors; createWorkerServer forwards cancellation.
 // Per-file progress is pushed via server.notify("progress").
 
+import type { GpsExtractWorkerContract } from "./gps-extract-protocol.js";
+
 import { createLogger } from "../log.js";
-import {
-    GPS_NOTIFY_PROGRESS,
-    GPS_REQUEST_EXTRACT,
-    type ExtractRequestData,
-    type ExtractResult,
-} from "./gps-extract-protocol.js";
+import { GPS_NOTIFY_PROGRESS, GPS_REQUEST_EXTRACT } from "./gps-extract-protocol.js";
 import { dispatchGpsExtractRequest } from "./gps-extract-request.js";
 import { createParseGate } from "./_protocol/parse-gate.js";
-import { createWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
+import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
 
 const log = createLogger("worker:gps-extract");
 
@@ -38,27 +35,25 @@ declare const self: WorkerScopeEndpoint;
 // (see parse-gate.ts for the full rationale).
 const parseGate = createParseGate(2);
 
-const server = createWorkerServer(self, {
-    onRequest: async (type, data, ctx): Promise<ExtractResult> => {
-        if (type !== GPS_REQUEST_EXTRACT) {
-            throw new Error(`unknown request type: ${type}`);
-        }
-        const req = data as ExtractRequestData;
-        return parseGate.run(async () => {
-            try {
-                return await dispatchGpsExtractRequest(req, ctx.signal, (progress) => {
-                    server.notify(GPS_NOTIFY_PROGRESS, progress);
-                });
-            } catch (err) {
-                // dispatchParseVideoEmbeddedGps rethrows AbortError on cancel;
-                // surface it as-is so the client side sees AbortError, not a
-                // generic Error. Other failures get logged before re-throwing so
-                // the worker tab in DevTools shows the original error site.
-                if (!(err instanceof DOMException && err.name === "AbortError")) {
-                    log.error("dispatchParseVideoEmbeddedGps failed", err);
+const server = createTypedWorkerServer<GpsExtractWorkerContract>(self, {
+    onRequest: {
+        [GPS_REQUEST_EXTRACT]: async (req, ctx) => {
+            return parseGate.run(async () => {
+                try {
+                    return await dispatchGpsExtractRequest(req, ctx.signal, (progress) => {
+                        server.notify(GPS_NOTIFY_PROGRESS, progress);
+                    });
+                } catch (err) {
+                    // dispatchParseVideoEmbeddedGps rethrows AbortError on cancel;
+                    // surface it as-is so the client side sees AbortError, not a
+                    // generic Error. Other failures get logged before re-throwing so
+                    // the worker tab in DevTools shows the original error site.
+                    if (!(err instanceof DOMException && err.name === "AbortError")) {
+                        log.error("dispatchParseVideoEmbeddedGps failed", err);
+                    }
+                    throw err;
                 }
-                throw err;
-            }
-        });
+            });
+        },
     },
 });

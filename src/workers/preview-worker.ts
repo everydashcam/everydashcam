@@ -8,18 +8,16 @@
 // each Input opens and closes independently. This lets the main-thread pool
 // balance load across N workers without cross-talk.
 
+import type { PreviewWorkerContract } from "./preview-protocol.js";
+
 import { CanvasSink, Input, InputDisposedError, UnsupportedInputFormatError } from "mediabunny";
 
 import { PREVIEW_HEIGHT_PX, PREVIEW_JPEG_QUALITY, PREVIEW_WIDTH_PX } from "../preview-config.js";
 import { createBlobSource } from "../blob-source.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 
-import {
-    PREVIEW_REQUEST_EXTRACT,
-    type PreviewExtractRequestData,
-    type PreviewExtractResult,
-} from "./preview-protocol.js";
-import { createWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
+import { PREVIEW_REQUEST_EXTRACT } from "./preview-protocol.js";
+import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
 
 declare const self: WorkerScopeEndpoint;
 
@@ -95,13 +93,11 @@ function bytesToBase64(bytes: Uint8Array): string {
     return btoa(binary);
 }
 
-createWorkerServer(self, {
-    onRequest: async (type, data): Promise<PreviewExtractResult> => {
-        if (type !== PREVIEW_REQUEST_EXTRACT) {
-            throw new Error(`unknown request type: ${type}`);
-        }
-        const req = data as PreviewExtractRequestData;
-        const dataUrl = await extractFirstFrameDataUrl(req.file);
-        return { dataUrl };
+createTypedWorkerServer<PreviewWorkerContract>(self, {
+    onRequest: {
+        [PREVIEW_REQUEST_EXTRACT]: async (req) => {
+            const dataUrl = await extractFirstFrameDataUrl(req.file);
+            return { dataUrl };
+        },
     },
 });

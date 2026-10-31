@@ -2,6 +2,8 @@
 // workers/gps-extract-worker.ts. Wrapped in the standard envelope by
 // worker-client / worker-server.
 
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+
 import type { ClassifiedFile, DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
 
 export type EmbeddedGpsExtractionMode = "all" | "light-only";
@@ -49,3 +51,14 @@ export const GPS_REQUEST_EXTRACT = "extract";
 export const GPS_NOTIFY_PROGRESS = "progress";
 
 export type ExtractResult = DispatchedEmbeddedGpsResult;
+
+export type GpsExtractWorkerContract = WorkerContract<
+    {
+        [GPS_REQUEST_EXTRACT]: WorkerRequest<ExtractRequestData, ExtractResult>;
+    },
+    Record<never, never>,
+    {
+        [GPS_NOTIFY_PROGRESS]: ProgressNotificationData;
+    },
+    Record<never, never>
+>;

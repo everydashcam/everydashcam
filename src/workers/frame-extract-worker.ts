@@ -16,6 +16,8 @@
 // already be aborted by the time the gate releases - extractFrames checks
 // at every iteration boundary.
 
+import type { FrameExtractWorkerContract } from "./frame-extract-protocol.js";
+
 import { CanvasSink, Input, InputDisposedError, type InputVideoTrack, type WrappedCanvas } from "mediabunny";
 
 import { createLogger } from "../log.js";
@@ -25,13 +27,8 @@ import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 
 import { getCanvasNearestForward } from "./canvas-seek.js";
 
-import {
-    FRAME_NOTIFY_DISPOSE_ALL,
-    FRAME_REQUEST_EXTRACT,
-    type ExtractRequestData,
-    type ExtractResult,
-} from "./frame-extract-protocol.js";
-import { createWorkerServer, type RequestContext, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
+import { FRAME_NOTIFY_DISPOSE_ALL, FRAME_REQUEST_EXTRACT } from "./frame-extract-protocol.js";
+import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
 
 const log = createLogger("worker:frame-extract");
 
@@ -213,29 +210,27 @@ function serialize<T>(fn: () => Promise<T>): Promise<T> {
     return next;
 }
 
-createWorkerServer(self, {
-    onRequest: async (type, data, ctx: RequestContext): Promise<ExtractResult> => {
-        if (type !== FRAME_REQUEST_EXTRACT) {
-            throw new Error(`unknown request type: ${type}`);
-        }
-        const req = data as ExtractRequestData;
-        return await serialize(async () => {
-            const bitmaps = await extractFrames(req.file, req.timestamps, ctx.signal);
-            // Mark transferable bitmaps so the framework attaches them to the
-            // postMessage transfer list - zero-copy ownership move to main.
-            const transferList: Transferable[] = [];
-            for (const b of bitmaps) {
-                if (b) transferList.push(b);
-            }
-            ctx.transfer(transferList);
-            return { bitmaps };
-        });
+createTypedWorkerServer<FrameExtractWorkerContract>(self, {
+    onRequest: {
+        [FRAME_REQUEST_EXTRACT]: async (req, ctx) => {
+            return await serialize(async () => {
+                const bitmaps = await extractFrames(req.file, req.timestamps, ctx.signal);
+                // Mark transferable bitmaps so the framework attaches them to the
+                // postMessage transfer list - zero-copy ownership move to main.
+                const transferList: Transferable[] = [];
+                for (const b of bitmaps) {
+                    if (b) transferList.push(b);
+                }
+                ctx.transfer(transferList);
+                return { bitmaps };
+            });
+        },
     },
-    onNotification: (type) => {
-        if (type === FRAME_NOTIFY_DISPOSE_ALL) {
+    onNotification: {
+        [FRAME_NOTIFY_DISPOSE_ALL]: () => {
             // Serialize through the same gate so we do not yank decoders
             // from under an in-flight extract.
             void serialize(async () => disposeAllDecoders());
-        }
+        },
     },
 });

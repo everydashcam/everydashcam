@@ -1,3 +1,5 @@
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+
 // Wire payloads between PerFileMseBackend (src/per-file-mse.ts) and
 // workers/per-file-mse-worker.ts.
 //
@@ -160,3 +162,23 @@ export const MSE_NOTIFY_MEDIA_SEGMENT = "media-segment";
 export const MSE_NOTIFY_FEED_DONE = "feed-done";
 export const MSE_NOTIFY_SEEK_DONE = "seek-done";
 export const MSE_NOTIFY_ERROR = "error";
+
+export type PerFileMseWorkerContract = WorkerContract<
+    {
+        [MSE_REQUEST_INIT]: WorkerRequest<InitRequestData, InitResult>;
+    },
+    {
+        [MSE_NOTIFY_START_FEED]: StartFeedNotificationData;
+        [MSE_NOTIFY_DROP_AUDIO]: undefined;
+        [MSE_NOTIFY_TICK]: TickNotificationData;
+        [MSE_NOTIFY_SEEK]: SeekNotificationData;
+    },
+    {
+        [MSE_NOTIFY_INIT_SEGMENT]: InitSegmentNotificationData;
+        [MSE_NOTIFY_MEDIA_SEGMENT]: MediaSegmentNotificationData;
+        [MSE_NOTIFY_FEED_DONE]: FeedDoneNotificationData;
+        [MSE_NOTIFY_SEEK_DONE]: SeekDoneNotificationData;
+        [MSE_NOTIFY_ERROR]: ErrorNotificationData;
+    },
+    Record<never, never>
+>;

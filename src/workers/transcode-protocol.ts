@@ -11,7 +11,10 @@
 // what we used before - is a DataCloneError on stable Safari (WebKit #215485).
 // A MessagePort is transferable on every target browser. See port-writable.ts.
 
-import type { TranscodeArgs, TranscodeProgress } from "../transcode/types.js";
+import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
+import type { MapSnapshotRequest } from "../transcode/map-snapshotter-types.js";
+
+import type { TranscodeArgs, TranscodeProgress, TranscodeResult } from "../transcode/types.js";
 import type { TranscodeSplitArgs } from "../transcode/pipeline-split.js";
 
 /** Transferable subset of TranscodeArgs - runtime-only fields are passed separately. */
@@ -41,3 +44,13 @@ export const TRANSCODE_NOTIFY_PROGRESS = "progress";
 
 /** Reverse RPC: MapLibre renders each requested map frame on the page. */
 export const TRANSCODE_REQUEST_MAP_SNAPSHOT = "map-snapshot";
+
+export type TranscodeWorkerContract = WorkerContract<
+    {
+        [TRANSCODE_REQUEST_SINGLE]: WorkerRequest<TranscodeSingleRequestData, TranscodeResult>;
+        [TRANSCODE_REQUEST_SPLIT]: WorkerRequest<TranscodeSplitRequestData, TranscodeResult>;
+    },
+    Record<never, never>,
+    { [TRANSCODE_NOTIFY_PROGRESS]: TranscodeProgressNotificationData },
+    { [TRANSCODE_REQUEST_MAP_SNAPSHOT]: WorkerRequest<MapSnapshotRequest, ImageBitmap> }
+>;

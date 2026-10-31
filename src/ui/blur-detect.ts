@@ -34,7 +34,6 @@ import {
     DETECT_NOTIFY_STARTED,
     DETECT_REQUEST,
     type DetectKind,
-    type DetectProgressData,
     type DetectRequestData,
     type DetectResult,
     type DetectResultTrack,
@@ -230,13 +229,13 @@ function notifyDetectChanged(): void {
 // Route this pass's progress off the shared worker's notification stream.
 subscribeTrackerWorkerNotifications((msg) => {
     if (msg.type !== DETECT_NOTIFY_PROGRESS && msg.type !== DETECT_NOTIFY_STARTED) return;
-    const data = msg.data as Partial<DetectProgressData> & { passId?: string };
+    const data = msg.data;
     const run = running;
     if (!run || !data.passId?.startsWith(`${run.runId}:`)) return;
     const segmentIndex = Number(data.passId.slice(run.runId.length + 1));
     if (!Number.isFinite(segmentIndex)) return;
-    if (msg.type === DETECT_NOTIFY_PROGRESS && data.fractionDone !== undefined) {
-        run.fraction = Math.min(1, (segmentIndex + data.fractionDone) / run.segmentCount);
+    if (msg.type === DETECT_NOTIFY_PROGRESS && msg.data.fractionDone !== undefined) {
+        run.fraction = Math.min(1, (segmentIndex + msg.data.fractionDone) / run.segmentCount);
     }
     run.armTimeout();
     notifyDetectChanged();
@@ -792,7 +791,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         trackerModelUrl: TRACKER_MODEL_URL,
                         ortAssets: TRACKER_ORT_ASSETS.webgpu,
                     };
-                    const result = await requestTrackerWorker<DetectResult>(DETECT_REQUEST, request, {
+                    const result = await requestTrackerWorker(DETECT_REQUEST, request, {
                         signal: combined.signal,
                     });
                     // Cancel remains authoritative if it crosses a delivered worker

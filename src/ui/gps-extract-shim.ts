@@ -14,6 +14,8 @@
 // progressive ingest dispatches while indexing fill every slot instead of
 // stacking chunk N of every batch onto the same worker.
 
+import type { GpsExtractWorkerContract } from "../workers/gps-extract-protocol.js";
+
 import { createLogger } from "../log.js";
 import type { ClassifiedFile, DispatchedEmbeddedGpsResult } from "../parsers/registry.js";
 import type { VendorFile } from "../parsers/types.js";
@@ -22,11 +24,10 @@ import {
     GPS_NOTIFY_PROGRESS,
     GPS_REQUEST_EXTRACT,
     type EmbeddedGpsExtractionMode,
-    type ExtractResult,
     type ProgressNotificationData,
 } from "../workers/gps-extract-protocol.js";
-import { createWorkerClient } from "../workers/_protocol/worker-client.js";
-import { createWorkerPool } from "../workers/_protocol/worker-pool.js";
+import { createTypedWorkerClient } from "../workers/_protocol/worker-client.js";
+import { createTypedWorkerPool } from "../workers/_protocol/worker-pool.js";
 import {
     buildGpsExtractShardRequest,
     mergeSettledGpsExtractShards,
@@ -62,7 +63,7 @@ export function gpsExtractShardCount(videoCount: number, requestedConcurrency: n
 const progressByToken: Map<string, (data: ProgressNotificationData) => void> = new Map();
 let activeToken = 0;
 
-const pool = createWorkerPool({
+const pool = createTypedWorkerPool<GpsExtractWorkerContract>({
     name: "gps-extract",
     capacity: poolCapacity(),
     factory: (idx, opts) => {
@@ -74,7 +75,7 @@ const pool = createWorkerPool({
             name: "gps-extract-worker",
         });
         log.info("gps-extract worker slot spawned", { idx });
-        return createWorkerClient(worker, {
+        return createTypedWorkerClient<GpsExtractWorkerContract>(worker, {
             name: `gps-extract-${idx}`,
             onCrash: opts.onCrash,
             onNotification: (msg) => {
@@ -83,7 +84,7 @@ const pool = createWorkerPool({
                 // a notification from one of several concurrently-registered
                 // batches would increment every batch's counter (overcounting
                 // the "Embedded GPS done/total" label past total).
-                const data = msg.data as ProgressNotificationData;
+                const data = msg.data;
                 const cb = progressByToken.get(data.token);
                 if (cb) cb(data);
             },
@@ -159,7 +160,7 @@ export function dispatchParseVideoEmbeddedGpsViaWorker(
         const { request, transfer } = buildGpsExtractShardRequest(token, chunk, mode, prebuiltMoovByPath);
         // The pool counts a request against its slot synchronously, so the N
         // chunks of one dispatch still land on N distinct slots.
-        return pool.request<ExtractResult>(GPS_REQUEST_EXTRACT, request, { signal, transfer });
+        return pool.request(GPS_REQUEST_EXTRACT, request, { signal, transfer });
     });
 
     return Promise.allSettled(subResults)

@@ -15,6 +15,8 @@
 
 import { createLogger } from "../../log.js";
 import { workerUnavailableError } from "./worker-error.js";
+import type { WorkerContract, WorkerNotifier, WorkerRequester } from "./worker-contract.js";
+import type { TypedWorkerClient } from "./worker-client.js";
 
 import {
     type WorkerClient,
@@ -82,6 +84,25 @@ export interface WorkerPool {
     disposeAll(reason?: string): void;
     /** Snapshot of slot states - for diagnostics, not for routing. */
     inspect(): Array<{ idx: number; spawned: boolean; inflight: number }>;
+}
+
+export interface TypedWorkerPool<Contract extends WorkerContract>
+    extends Omit<WorkerPool, "request" | "notify" | "notifyAll">,
+        WorkerRequester<Contract["requests"], PoolRequestOptions>,
+        WorkerNotifier<Contract["commands"], PoolRequestOptions & NotifyOptions> {
+    notifyAll: WorkerNotifier<Contract["commands"], NotifyOptions>["notify"];
+}
+
+export interface TypedWorkerPoolOptions<Contract extends WorkerContract> extends Omit<WorkerPoolOptions, "factory"> {
+    factory: (idx: number, opts: { onCrash: WorkerClientOptions["onCrash"] }) => TypedWorkerClient<Contract>;
+}
+
+export function createTypedWorkerPool<Contract extends WorkerContract>(
+    opts: TypedWorkerPoolOptions<Contract>,
+): TypedWorkerPool<Contract> {
+    // The pool only forwards calls; the paired endpoints enforce the shared
+    // contract. Keep its routing/crash recovery implementation unchanged.
+    return createWorkerPool(opts as unknown as WorkerPoolOptions) as unknown as TypedWorkerPool<Contract>;
 }
 
 /** Per-slot state. inflight is incremented when request() resolves the slot, decremented when its promise settles. */

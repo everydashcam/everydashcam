@@ -16,7 +16,6 @@ import {
     TRACK_NOTIFY_PROGRESS,
     TRACK_NOTIFY_STARTED,
     TRACK_REQUEST,
-    type TrackProgressData,
     type TrackRequestData,
     type TrackResult,
 } from "../workers/tracker-protocol.js";
@@ -33,11 +32,11 @@ const log = createLogger("blur-track");
 // (tracker-worker-client.ts - the worker is shared with blur-detect).
 subscribeTrackerWorkerNotifications((msg) => {
     if (msg.type !== TRACK_NOTIFY_PROGRESS && msg.type !== TRACK_NOTIFY_STARTED) return;
-    const data = msg.data as Partial<TrackProgressData> & { regionId?: string; passId?: string };
+    const data = msg.data;
     const pass = data.regionId ? runningPasses.get(data.regionId) : null;
     if (pass && pass.passId === data.passId && !pass.controller.signal.aborted) {
-        if (msg.type === TRACK_NOTIFY_PROGRESS && data.fractionDone !== undefined) {
-            pass.fractionDone = data.fractionDone;
+        if (msg.type === TRACK_NOTIFY_PROGRESS && msg.data.fractionDone !== undefined) {
+            pass.fractionDone = msg.data.fractionDone;
         }
         // Started is emitted INSIDE the worker's serialization gate: queue wait
         // is excluded, but model creation/decode before the first progress tick
@@ -207,7 +206,7 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
         let result: TrackResult;
         const combined = combineAbortSignals([controller.signal, timeoutCtrl.signal]);
         try {
-            result = await requestTrackerWorker<TrackResult>(TRACK_REQUEST, request, {
+            result = await requestTrackerWorker(TRACK_REQUEST, request, {
                 signal: combined.signal,
             });
             // A response and a user cancel can cross on the message queue. The

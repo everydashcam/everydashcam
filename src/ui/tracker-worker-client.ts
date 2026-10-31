@@ -6,15 +6,19 @@
 // for zero parallelism. Notifications fan out to whoever subscribed; each
 // client filters by its own message type.
 
+import type { TrackerWorkerContract } from "../workers/tracker-protocol.js";
+import type { WorkerMessage, WorkerRequestArguments } from "../workers/_protocol/worker-contract.js";
+
 import { invalidateBlurAssetReadiness } from "./blur-assets.js";
-import { createWorkerClient, type WorkerClient } from "../workers/_protocol/worker-client.js";
+import {
+    createTypedWorkerClient,
+    type TypedWorkerClient,
+    type RequestOptions,
+} from "../workers/_protocol/worker-client.js";
 
-let client: WorkerClient | null = null;
+let client: TypedWorkerClient<TrackerWorkerContract> | null = null;
 
-export interface WorkerNotification {
-    type: string;
-    data?: unknown;
-}
+export type WorkerNotification = WorkerMessage<TrackerWorkerContract["events"]>;
 
 type NotificationListener = (msg: WorkerNotification) => void;
 const notificationListeners = new Set<NotificationListener>();
@@ -28,13 +32,13 @@ export function subscribeTrackerWorkerNotifications(listener: NotificationListen
 }
 
 /** The shared worker client, (re)created on demand (and after a crash). */
-export function trackerWorkerClient(): WorkerClient {
+export function trackerWorkerClient(): TypedWorkerClient<TrackerWorkerContract> {
     if (client && !client.disposed) return client;
     const worker = new Worker(new URL("../workers/tracker-worker.ts", import.meta.url), {
         type: "module",
         name: "tracker-worker",
     });
-    client = createWorkerClient(worker, {
+    client = createTypedWorkerClient<TrackerWorkerContract>(worker, {
         name: "blur-track",
         onCrash: () => {
             client = null;
@@ -48,10 +52,12 @@ export function trackerWorkerClient(): WorkerClient {
 
 /** Initialization, inference and stalled passes can leave ORT unusable.
  * Decode/preprocessing errors outside ORT leave unrelated queued work usable. */
-export async function requestTrackerWorker<T>(...args: Parameters<WorkerClient["request"]>): Promise<T> {
+export async function requestTrackerWorker<
+    Args extends WorkerRequestArguments<TrackerWorkerContract["requests"], RequestOptions>,
+>(...args: Args): Promise<TrackerWorkerContract["requests"][Args[0]]["result"]> {
     const owner = trackerWorkerClient();
     try {
-        return await owner.request<T>(...args);
+        return await owner.request<Args>(...args);
     } catch (error) {
         const isAssetFailure = error instanceof Error && error.name.startsWith("Asset");
         if (isAssetFailure) invalidateBlurAssetReadiness();

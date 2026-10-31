@@ -49,16 +49,13 @@ import {
     type AdpcmPlaybackCodec,
     type ErrorNotificationData,
     type FeedDoneNotificationData,
-    type InitRequestData,
     type InitResult,
     type InitSegmentNotificationData,
     type MediaSegmentNotificationData,
     type SeekDoneNotificationData,
-    type SeekNotificationData,
-    type StartFeedNotificationData,
-    type TickNotificationData,
+    type PerFileMseWorkerContract,
 } from "./per-file-mse-protocol.js";
-import { createWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
+import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/worker-server.js";
 import { readVideoFragmentMetadata, readVideoTrackMetadata } from "./mse-fragment-metadata.js";
 
 const log = createLogger("worker:per-file-mse");
@@ -272,56 +269,45 @@ function serialize(fn: () => Promise<void>): void {
 // state to fight with, and a future "init while previous backend mid-tear-
 // down" would already be impossible because the main side disposes the
 // whole worker before constructing a new backend.
-const server = createWorkerServer(self, {
-    onRequest: async (type, data, ctx): Promise<InitResult> => {
-        if (type !== MSE_REQUEST_INIT) {
-            throw new Error(`unknown request type: ${type}`);
-        }
-        const req = data as InitRequestData;
-        return await onInit(
-            req.file,
-            req.startSec,
-            req.transcodeAdpcmAudio ?? false,
-            req.adpcmPlaybackCodecs ?? ["aac", "opus"],
-            ctx.signal,
-        );
+const server = createTypedWorkerServer<PerFileMseWorkerContract>(self, {
+    onRequest: {
+        [MSE_REQUEST_INIT]: (req, ctx) =>
+            onInit(
+                req.file,
+                req.startSec,
+                req.transcodeAdpcmAudio ?? false,
+                req.adpcmPlaybackCodecs ?? ["aac", "opus"],
+                ctx.signal,
+            ),
     },
-    onNotification: (type, data) => {
-        switch (type) {
-            case MSE_NOTIFY_START_FEED: {
-                const start = data as StartFeedNotificationData;
-                serialize(() => onStartFeed(start.cycleId, start.startSec));
-                return;
-            }
-            case MSE_NOTIFY_DROP_AUDIO:
-                // Pure state write, like TICK: main sends it before start-feed
-                // (which IS serialized), so the flag is set before the Output is
-                // built. No need to enter the serialize gate.
-                dropAudio = true;
-                return;
-            case MSE_NOTIFY_TICK: {
-                // Outside the serialization gate: a stale tick during a long
-                // op (seek cancel + restart) is still useful info, and we do
-                // not want to delay backpressure updates behind unrelated
-                // pending operations.
-                const tick = data as TickNotificationData;
-                lastTick = {
-                    currentTime: tick.currentTime,
-                    appendQueueLen: tick.appendQueueLen,
-                    playbackRate: tick.playbackRate,
-                    appendPaused: tick.appendPaused ?? false,
-                };
-                // Wake anyone parked in waitForBufferRoom so they re-evaluate
-                // against the fresh currentTime / appendQueueLen / rate.
-                wakeFeedWaiters();
-                return;
-            }
-            case MSE_NOTIFY_SEEK: {
-                const seek = data as SeekNotificationData;
-                serialize(() => onSeek(seek.startSec, seek.cycleId));
-                return;
-            }
-        }
+    onNotification: {
+        [MSE_NOTIFY_START_FEED]: (start) => {
+            serialize(() => onStartFeed(start.cycleId, start.startSec));
+        },
+        [MSE_NOTIFY_DROP_AUDIO]: () => {
+            // Pure state write, like TICK: main sends it before start-feed
+            // (which IS serialized), so the flag is set before the Output is
+            // built. No need to enter the serialize gate.
+            dropAudio = true;
+        },
+        [MSE_NOTIFY_TICK]: (tick) => {
+            // Outside the serialization gate: a stale tick during a long
+            // op (seek cancel + restart) is still useful info, and we do
+            // not want to delay backpressure updates behind unrelated
+            // pending operations.
+            lastTick = {
+                currentTime: tick.currentTime,
+                appendQueueLen: tick.appendQueueLen,
+                playbackRate: tick.playbackRate,
+                appendPaused: tick.appendPaused ?? false,
+            };
+            // Wake anyone parked in waitForBufferRoom so they re-evaluate
+            // against the fresh currentTime / appendQueueLen / rate.
+            wakeFeedWaiters();
+        },
+        [MSE_NOTIFY_SEEK]: (seek) => {
+            serialize(() => onSeek(seek.startSec, seek.cycleId));
+        },
     },
 });
 

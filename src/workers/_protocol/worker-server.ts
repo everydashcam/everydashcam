@@ -3,6 +3,15 @@
 import { expose, wrap, type Endpoint } from "comlink";
 import { createLogger } from "../../log.js";
 import { transferValue, type WorkerCallbacks, type WorkerService } from "./worker-rpc.js";
+import {
+    dispatchWorkerNotification,
+    dispatchWorkerRequest,
+    type WorkerContract,
+    type WorkerNotificationHandlers,
+    type WorkerNotifier,
+    type WorkerRequester,
+    type WorkerRequestHandlers,
+} from "./worker-contract.js";
 
 const log = createLogger("worker-server");
 
@@ -18,6 +27,26 @@ export type WorkerScopeEndpoint = Endpoint;
 export interface WorkerServer {
     notify(type: string, data?: unknown, transfers?: Transferable[]): void;
     request<TResult = unknown>(type: string, data?: unknown, transfers?: Transferable[]): Promise<TResult>;
+}
+
+export interface TypedWorkerServer<Contract extends WorkerContract>
+    extends WorkerNotifier<Contract["events"], Transferable[]>,
+        WorkerRequester<Contract["callbacks"], Transferable[]> {}
+
+export interface TypedWorkerServerOptions<Contract extends WorkerContract> {
+    onRequest: WorkerRequestHandlers<Contract["requests"], RequestContext>;
+    onNotification?: WorkerNotificationHandlers<Contract["commands"]>;
+}
+
+export function createTypedWorkerServer<Contract extends WorkerContract>(
+    endpoint: WorkerScopeEndpoint,
+    opts: TypedWorkerServerOptions<Contract>,
+): TypedWorkerServer<Contract> {
+    const notifications = opts.onNotification;
+    return createWorkerServer(endpoint, {
+        onRequest: (type, data, context) => dispatchWorkerRequest(opts.onRequest, type, data, context),
+        onNotification: notifications && ((type, data) => dispatchWorkerNotification(notifications, type, data)),
+    }) as unknown as TypedWorkerServer<Contract>;
 }
 
 export function createWorkerServer(endpoint: WorkerScopeEndpoint, opts: WorkerServerOptions): WorkerServer {

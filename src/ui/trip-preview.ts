@@ -17,17 +17,15 @@
 //
 // Storage: in-memory only (on the Trip object). Previews regenerate on reload since Files don't survive it.
 
+import type { PreviewWorkerContract } from "../workers/preview-protocol.js";
+
 import { createLogger } from "../log.js";
 import { PREVIEW_HEIGHT_PX, PREVIEW_JPEG_QUALITY, PREVIEW_WIDTH_PX } from "../preview-config.js";
 import type { Trip, VideoCandidate } from "../trips.js";
 import { tripAllCandidates } from "../trips.js";
-import {
-    PREVIEW_REQUEST_EXTRACT,
-    type PreviewExtractRequestData,
-    type PreviewExtractResult,
-} from "../workers/preview-protocol.js";
-import { createWorkerClient } from "../workers/_protocol/worker-client.js";
-import { createWorkerPool } from "../workers/_protocol/worker-pool.js";
+import { PREVIEW_REQUEST_EXTRACT, type PreviewExtractRequestData } from "../workers/preview-protocol.js";
+import { createTypedWorkerClient } from "../workers/_protocol/worker-client.js";
+import { createTypedWorkerPool } from "../workers/_protocol/worker-pool.js";
 import { requiresMseBackend } from "./player-video-src.js";
 import { createPreviewQueue } from "./trip-preview-queue.js";
 
@@ -57,7 +55,7 @@ export function setPreviewPlaybackActive(active: boolean): void {
     previewQueue.setPlaybackActive(active);
 }
 
-const pool = createWorkerPool({
+const pool = createTypedWorkerPool<PreviewWorkerContract>({
     name: "preview",
     capacity: previewPoolSize,
     factory: (idx, opts) => {
@@ -67,7 +65,10 @@ const pool = createWorkerPool({
             type: "module",
             name: "preview-worker",
         });
-        return createWorkerClient(worker, { name: `preview-${idx}`, onCrash: opts.onCrash });
+        return createTypedWorkerClient<PreviewWorkerContract>(worker, {
+            name: `preview-${idx}`,
+            onCrash: opts.onCrash,
+        });
     },
 });
 
@@ -87,7 +88,7 @@ export function prewarmPreview(): void {
  */
 function extractFirstFrameInWorker(file: File): Promise<string | null> {
     const req: PreviewExtractRequestData = { file };
-    return pool.request<PreviewExtractResult>(PREVIEW_REQUEST_EXTRACT, req).then((res) => res.dataUrl);
+    return pool.request(PREVIEW_REQUEST_EXTRACT, req).then((res) => res.dataUrl);
 }
 
 let nativeFallbackTail: Promise<void> = Promise.resolve();
