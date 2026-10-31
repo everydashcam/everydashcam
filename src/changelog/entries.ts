@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-01.2",
+        category: "improvement",
+        text: {
+            en: "Following moving objects and automatic plate and face hiding are faster.",
+            ru: "Ускорено слежение за движущимися объектами и автоматическое скрытие номеров и лиц.",
+            de: "Das Verfolgen bewegter Objekte und das automatische Unkenntlichmachen von Kennzeichen und Gesichtern sind schneller.",
+            es: "El seguimiento de objetos en movimiento y la ocultación automática de matrículas y caras son más rápidos.",
+            fr: "Le suivi des objets en mouvement et le masquage automatique des plaques et des visages sont plus rapides.",
+            pl: "Śledzenie poruszających się obiektów oraz automatyczne ukrywanie tablic i twarzy działają szybciej.",
+            pt: "O acompanhamento de objetos em movimento e a ocultação automática de placas e rostos ficaram mais rápidos.",
+            zh: "跟随移动物体以及自动隐藏车牌和人脸的速度更快了。",
+            ja: "動く対象の追尾と、ナンバープレートと顔の自動非表示が速くなりました。",
+            ko: "움직이는 대상 따라가기와 번호판·얼굴 자동 가리기가 더 빨라졌어요.",
+        },
+    },
+    {
         id: "2026-11-01.1",
         category: "improvement",
         text: {

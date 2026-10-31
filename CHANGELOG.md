@@ -9,6 +9,7 @@ release tag. Localized texts ship inside the app (the "What's new" panel).
 
 ## 2026-11-01
 
+- **Improved:** Following moving objects and automatic plate and face hiding are faster.
 - **Improved:** Time-lapse exports are faster.
 
 ## 2026-10-31
