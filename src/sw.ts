@@ -1,9 +1,9 @@
 // Workbox owns cache revisions, installation, routing and expiration. Updates
 // wait for every controlled window to close: local recordings cannot reload.
-import { clientsClaim, type WorkboxPlugin } from "workbox-core";
+import { clientsClaim, type RouteHandler, type RouteMatchCallback, type WorkboxPlugin } from "workbox-core";
 import { ExpirationPlugin } from "workbox-expiration";
 import { PrecacheController, PrecacheRoute, type PrecacheEntry } from "workbox-precaching";
-import { registerRoute, setCatchHandler } from "workbox-routing";
+import { Route, Router } from "workbox-routing";
 import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from "workbox-strategies";
 import { PRECACHE, RUNTIME, TRACKER } from "./sw-cache.js";
 import {
@@ -13,6 +13,7 @@ import {
     precacheRequest,
     trackerCacheUrl,
     validatePrecacheResponse,
+    withCrossOriginIsolation,
 } from "./sw-policy.js";
 import { offlineResponse } from "./sw-offline.js";
 import { migrateLegacyTrackerCache, TRACKER_MAX_ENTRIES } from "./sw-tracker-cache.js";
@@ -251,6 +252,13 @@ function repairOfflineGraph(event: ExtendableEvent): void {
     event.waitUntil(repair);
 }
 
+// A private router instead of Workbox's default one: its fetch listener below
+// is the single exit for every route and the catch handler.
+const router = new Router();
+function registerRoute(match: RouteMatchCallback, handler: RouteHandler): void {
+    router.registerRoute(new Route(match, handler));
+}
+
 const precacheRoute = new PrecacheRoute(precache, { ignoreURLParametersMatching: [/.*/], cleanURLs: false });
 registerRoute(
     (options) => handles(options.request, options.url) && precacheRoute.match(options),
@@ -273,7 +281,7 @@ registerRoute(
 );
 registerRoute(({ request, url }) => handles(request, url), optional);
 
-setCatchHandler(async ({ request }) => {
+router.setCatchHandler(async ({ request }) => {
     if (request.mode !== "navigate") return Response.error();
     const locale = `/${new URL(request.url).pathname.split("/").filter(Boolean)[0]}/`;
     try {
@@ -281,4 +289,13 @@ setCatchHandler(async ({ request }) => {
     } catch {
         return offlineResponse();
     }
+});
+
+// Same as Router.addFetchListener, plus the isolation headers on whatever the
+// page receives: precache and runtime hits, network responses and fallbacks.
+// Requests that no route handles (cross-origin, Range, downloads) bypass the
+// worker and keep the server's headers.
+self.addEventListener("fetch", (event) => {
+    const response = router.handleRequest({ request: event.request, event });
+    if (response) event.respondWith(response.then(withCrossOriginIsolation));
 });

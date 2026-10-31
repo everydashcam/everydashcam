@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 // Real worker lifecycle across releases on one origin and one browser profile.
 // Tiny shells exercise the bundled Workbox worker on a real changing origin.
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { buildServiceWorker } from "../helpers/service-worker-build.js";
 const hash = (body: string) => createHash("sha256").update(body).digest("hex").slice(0, 16);
@@ -377,6 +377,156 @@ test("fetches each resource once on network failure and still serves it when cac
         }
     } finally {
         await page.goto("about:blank");
+        await new Promise<void>((done) => {
+            server.close(() => done());
+            server.closeAllConnections();
+        });
+    }
+});
+
+/** Whether the document and a worker started from `workerUrl` are
+ * cross-origin isolated. A worker script without COEP in an isolated document
+ * fails with ERR_BLOCKED_BY_RESPONSE, which arrives as an error event. */
+async function isolationOf(target: Page, workerUrl: string) {
+    return target.evaluate(async (url) => {
+        const worker = new Worker(url, { type: "module" });
+        try {
+            const workerIsolated = await new Promise<unknown>((resolve, reject) => {
+                worker.onmessage = (event) => resolve(event.data);
+                worker.onerror = () => reject(new Error(`worker ${url} did not start`));
+            });
+            return { document: crossOriginIsolated, worker: workerIsolated };
+        } finally {
+            worker.terminate();
+        }
+    }, workerUrl);
+}
+
+/** Embedder policy each precache entry was stored with, keyed by path. */
+async function storedEmbedderPolicies(target: Page) {
+    return target.evaluate(async () => {
+        const cache = await caches.open("everydashcam-precache");
+        const policies: Record<string, string> = {};
+        for (const request of await cache.keys()) {
+            const response = await cache.match(request);
+            policies[new URL(request.url).pathname] = response?.headers.get("cross-origin-embedder-policy") ?? "none";
+        }
+        return policies;
+    });
+}
+
+test("isolates a new tab and its workers when an update reuses files cached without isolation headers", {
+    tag: "@golden-offline",
+}, async ({ context, page }) => {
+    // The previous worker build is not available here, but the state it
+    // leaves is: Workbox stores network responses unchanged and keeps entries
+    // whose URL and revision did not change. Only the worker changes between
+    // these deployments, as when a release changes nothing but sw.js and
+    // headers, so the shell and the worker script keep pre-isolation headers.
+    const shellRevision = hash("isolation");
+    const files = new Map([
+        [
+            "/en/",
+            `<!doctype html><meta name="dc-precache-revision" content="${shellRevision}"><title>isolation</title><script src="/assets/isolation-shell.js"></script>`,
+        ],
+        [
+            "/assets/isolation-shell.js",
+            "navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(()=>{});",
+        ],
+        ["/assets/isolation-worker.js", "postMessage(self.crossOriginIsolated);"],
+        ["/assets/isolation-update.js", "// only in the isolated deployment"],
+    ]);
+    const asset = (url: string) => {
+        const body = files.get(url)!;
+        return { url, revision: hash(body), integrity: `sha256-${createHash("sha256").update(body).digest("base64")}` };
+    };
+    const shared = [
+        { url: "/en/", revision: shellRevision },
+        asset("/assets/isolation-shell.js"),
+        asset("/assets/isolation-worker.js"),
+    ];
+    const beforeWorker = await buildServiceWorker(shared);
+    const afterWorker = await buildServiceWorker([...shared, asset("/assets/isolation-update.js")]);
+    let published = beforeWorker;
+    let isIsolated = false;
+    let isOffline = false;
+    let workerScriptDownloads = 0;
+    const server = createServer((request, response) => {
+        if (isOffline) return response.destroy();
+        const path = new URL(request.url!, "http://localhost").pathname;
+        response.setHeader("cache-control", "no-store");
+        if (isIsolated) {
+            response.setHeader("cross-origin-opener-policy", "same-origin");
+            response.setHeader("cross-origin-embedder-policy", "require-corp");
+        }
+        if (path === "/sw.js") {
+            response.setHeader("content-type", "text/javascript");
+            return response.end(published);
+        }
+        const body = files.get(path);
+        if (body === undefined) {
+            response.statusCode = 404;
+            return response.end("missing");
+        }
+        if (path === "/assets/isolation-worker.js") workerScriptDownloads++;
+        response.setHeader("content-type", path.endsWith(".js") ? "text/javascript" : "text/html");
+        response.end(body);
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    let current = page;
+    try {
+        await current.goto(`${origin}/en/`);
+        await current.waitForFunction(() => navigator.serviceWorker.controller !== null);
+        const preIsolation = {
+            "/en/": "none",
+            "/assets/isolation-shell.js": "none",
+            "/assets/isolation-worker.js": "none",
+        };
+        expect(await storedEmbedderPolicies(current)).toEqual(preIsolation);
+
+        published = afterWorker;
+        isIsolated = true;
+        await current.evaluate(async () => {
+            await (await navigator.serviceWorker.getRegistration())!.update();
+        });
+        await current.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting);
+        // Activation waits for every controlled window to close. A reload
+        // would overlap the windows instead.
+        const next = await context.newPage();
+        await current.close();
+        current = next;
+        await expect
+            .poll(async () => {
+                for (const worker of context.serviceWorkers()) {
+                    const result = await worker
+                        .evaluate<{ active: string; waiting: boolean }>(
+                            "({active: self.registration.active?.state, waiting: !!self.registration.waiting})",
+                        )
+                        .catch(() => null);
+                    if (result?.active === "activated" && !result.waiting) return true;
+                }
+                return false;
+            })
+            .toBe(true);
+
+        const navigation = await current.goto(`${origin}/en/`);
+        expect(navigation?.fromServiceWorker(), "the updated worker serves the shell").toBe(true);
+        // crossOriginIsolated needs both headers on the document.
+        expect(await isolationOf(current, "/assets/isolation-worker.js")).toEqual({ document: true, worker: true });
+        expect(await storedEmbedderPolicies(current), "the update reused the pre-isolation entries").toEqual({
+            ...preIsolation,
+            "/assets/isolation-update.js": "require-corp",
+        });
+        expect(workerScriptDownloads, "only the first installation downloaded the worker script").toBe(1);
+
+        // The catch handler serves the cached locale shell for an uncached page.
+        isOffline = true;
+        await current.goto(`${origin}/en/never-cached/`);
+        await expect(current).toHaveTitle("isolation");
+        expect(await isolationOf(current, "/assets/isolation-worker.js")).toEqual({ document: true, worker: true });
+    } finally {
+        await current.goto("about:blank");
         await new Promise<void>((done) => {
             server.close(() => done());
             server.closeAllConnections();
