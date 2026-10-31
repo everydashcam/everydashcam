@@ -12,6 +12,7 @@ import {
     formatMonthHeading,
     formatRateBytes,
     formatTimeRange,
+    formatTotalDuration,
     formatTripClockTitle,
     formatTripRowMeta,
     formatTripTitle,
@@ -177,6 +178,16 @@ describe("compact row text", () => {
         expect(meta.split(" · ")).toHaveLength(2);
         expect(meta).toContain(formatTripDistance(12));
         expect(meta).toContain(formatBytes(300 * 1024 * 1024));
+    });
+});
+
+describe("formatTotalDuration", () => {
+    it("rounds a total to minutes, and to hours past ten hours", () => {
+        expect(formatTotalDuration(12)).toBe("<1min");
+        expect(formatTotalDuration(722)).toBe("12min");
+        expect(formatTotalDuration(3600)).toBe("1h");
+        expect(formatTotalDuration(4320)).toBe("1h 12min");
+        expect(formatTotalDuration(28 * 3600 + 1700)).toBe("28h");
     });
 });
 

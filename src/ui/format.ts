@@ -357,6 +357,22 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
+ * A total of footage for a list heading or summary, rounded so it reads at a
+ * glance: "12min", "1h 12min", "28h". Seconds belong to a single clip, not to
+ * a sum of dozens of trips; anything under half a minute shows as "<1min".
+ */
+export function formatTotalDuration(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) return "?";
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 1) return `<1${t("units.m")}`;
+    if (minutes < 60) return `${minutes}${t("units.m")}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours >= 10) return `${Math.round(minutes / 60)}${t("units.h")}`;
+    const rest = minutes % 60;
+    return rest === 0 ? `${hours}${t("units.h")}` : `${hours}${t("units.h")} ${rest}${t("units.m")}`;
+}
+
+/**
  * mm:ss or h:mm:ss depending on duration. padMinutes forces two-digit minutes
  * even below an hour (mm:ss for export progress timecodes vs m:ss for the
  * player scrubber).

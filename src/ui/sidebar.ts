@@ -26,10 +26,10 @@ import {
     comparatorFor,
     formatBytes,
     formatDayHeading,
-    formatDuration,
     formatMonthHeading,
     formatTime,
     formatTimeRange,
+    formatTotalDuration,
     formatTripClockTitle,
     formatTripRowMeta,
     formatFileMeta,
@@ -82,6 +82,10 @@ const FILM_ICON = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" s
 const ALERT_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
 const CARET_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="trip-group-toggle__caret"><path d="m6 9 6 6 6-6"/></svg>`;
 const PIN_OFF_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.75 7.09a3 3 0 0 1 2.16 2.16"/><path d="M17.072 17.072c-1.634 2.17-3.527 3.912-4.471 4.727a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 1.432-4.568"/><path d="m2 2 20 20"/><path d="M8.475 2.818A8 8 0 0 1 20 10c0 1.183-.31 2.377-.81 3.533"/><path d="M9.13 9.13a3 3 0 0 0 3.74 3.74"/></svg>`;
+const CHEVRON_RIGHT_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
+// Lucide arrow-down-wide-narrow / arrow-up-narrow-wide for the sort direction.
+const SORT_DESC_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M11 4h10"/><path d="M11 8h7"/><path d="M11 12h4"/></svg>`;
+const SORT_ASC_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M11 12h4"/><path d="M11 16h7"/><path d="M11 20h10"/></svg>`;
 const INFO_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 const parsedIcons = new Map<string, Element>();
 
@@ -327,7 +331,8 @@ function buildBandSection(
 ): HTMLLIElement {
     const { section, list } = buildGroupSection(key, "trip-month", [
         textSpan("trip-group-toggle__label", label),
-        textSpan("trip-group-toggle__stats", tripsSummaryText(entries.map((entry) => entry.trip))),
+        // A count only: totals of hand-picked trips say nothing.
+        textSpan("trip-group-toggle__stats", String(entries.length)),
     ]);
     appendCards(entries, list, false);
     return section;
@@ -524,7 +529,14 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): H
     thumb.setAttribute("aria-hidden", "true");
     thumb.appendChild(textSpan("trip-parking-run__count", `×${trips.length}`));
     const top = trips[0]!;
-    if (top.previewDataUrl) applyTripPreviewBackground(thumb, top.previewDataUrl);
+    if (top.previewDataUrl) {
+        applyTripPreviewBackground(thumb, top.previewDataUrl);
+    } else {
+        const icon = document.createElement("span");
+        icon.className = "trip-no-preview-icon";
+        icon.appendChild(cloneIcon(FILM_ICON));
+        thumb.appendChild(icon);
+    }
     parkingRunThumbs.set(top, thumb);
 
     const title = document.createElement("span");
@@ -744,7 +756,7 @@ function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): H
     const chevronIcon = document.createElement("span");
     chevronIcon.className = "trip-chevron__icon";
     chevronIcon.setAttribute("aria-hidden", "true");
-    chevronIcon.textContent = "›";
+    chevronIcon.appendChild(cloneIcon(CHEVRON_RIGHT_ICON));
     chevron.appendChild(chevronIcon);
     // Click is handled by the delegated listener in initSidebar via data-action and data-trip-index.
     chevron.dataset.action = "chevron";
@@ -1332,7 +1344,7 @@ function buildSummaryItem(trips: Trip[]): HTMLLIElement {
     return li;
 }
 
-/** "8 trips · 3h 47m · 142 km"; only the count while any duration or distance is provisional. */
+/** "8 trips · 3h 47min · 142 km"; only the count while any duration or distance is provisional. */
 function tripsSummaryText(trips: readonly Trip[]): string {
     if (trips.some(tripHasProvisionalFacts)) return t("plurals.trip", { n: trips.length });
     let totalDuration = 0;
@@ -1343,7 +1355,7 @@ function tripsSummaryText(trips: readonly Trip[]): string {
         totalDistance += trip.distanceKm;
     }
     // ICU plurals handle Russian/English rules automatically.
-    const parts = [t("plurals.trip", { n: trips.length }), formatDuration(totalDuration)];
+    const parts = [t("plurals.trip", { n: trips.length }), formatTotalDuration(totalDuration)];
     if (totalDistance > 0) {
         parts.push(formatTripDistance(totalDistance));
     }
@@ -1377,7 +1389,10 @@ export function updateTripPreview(trip: Trip, dataUrl: string): void {
     // by a regroup) simply skips the paint; carryOverTripPreviews or the next
     // scheduled run covers its successor.
     const runThumb = parkingRunThumbs.get(trip);
-    if (runThumb) applyTripPreviewBackground(runThumb, dataUrl);
+    if (runThumb) {
+        applyTripPreviewBackground(runThumb, dataUrl);
+        runThumb.querySelector(".trip-no-preview-icon")?.remove();
+    }
     const tripIdx = state.trips.indexOf(trip);
     if (tripIdx < 0) return;
     const tripLi = dom.list.querySelector(`li.trip[data-trip-index="${tripIdx}"]`);
@@ -1447,7 +1462,7 @@ export function syncActiveTripHighlight(
 export function syncSortControls(): void {
     dom.sortKey.value = state.tripSortKey;
     const desc = state.tripSortDir === "desc";
-    dom.sortDir.textContent = desc ? "↓" : "↑";
+    dom.sortDir.replaceChildren(cloneIcon(desc ? SORT_DESC_ICON : SORT_ASC_ICON));
     const label = desc ? t("sidebar.sort.dir.desc") : t("sidebar.sort.dir.asc");
     dom.sortDir.setAttribute("aria-label", label);
     dom.sortDir.setAttribute("title", label);

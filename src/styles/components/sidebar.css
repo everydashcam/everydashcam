@@ -460,6 +460,7 @@
     color: var(--fg);
     font-family: var(--dc-font-body);
     font-size: var(--dc-text-xs);
+    height: 28px;
     padding: 2px 4px;
     border-radius: var(--dc-radius-sm);
     cursor: pointer;
@@ -472,7 +473,12 @@
     border-color: var(--accent);
 }
 
+/* One 28px square for every toolbar control so the icons sit on one line. */
 .sort-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
     flex-shrink: 0;
     background: transparent;
     border: 1px solid var(--border);
@@ -493,6 +499,7 @@
 .density-toggle {
     display: inline-flex;
     flex-shrink: 0;
+    height: 28px;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: var(--dc-radius-sm);
@@ -524,6 +531,9 @@
     outline-offset: -2px;
 }
 @media (pointer: coarse) {
+    .density-toggle {
+        height: auto;
+    }
     .density-toggle__option {
         min-width: 44px;
         min-height: 44px;
@@ -590,11 +600,9 @@
 }
 
 .trip-summary {
-    padding: var(--dc-space-1) var(--dc-space-1) var(--dc-space-2) var(--dc-space-1);
+    padding: 0 var(--dc-space-1);
     color: var(--fg-dim);
     font-size: var(--dc-text-xs);
-    border-bottom: 1px dashed var(--border);
-    margin-bottom: var(--dc-space-2);
     font-variant-numeric: tabular-nums;
 }
 
@@ -657,14 +665,18 @@
 /* Months (and the favorites / everything-else sections) are caps lines with a
    rule under them and air above; days are plain bold lines inside, so the two
    levels never look alike. */
+/* One rhythm: 16px above a section, 8px above a day, 4px under a heading. */
 .trip-month:not(:first-child) {
     margin-top: var(--dc-space-4);
+}
+.trip-summary + .trip-month {
+    margin-top: var(--dc-space-2);
 }
 .trip-month > .trip-group__list {
     padding-top: var(--dc-space-1);
 }
 .trip-day:not(:first-child) {
-    margin-top: var(--dc-space-3);
+    margin-top: var(--dc-space-2);
 }
 .trip-group-toggle {
     display: flex;
@@ -708,6 +720,13 @@
 .trip-group-toggle__caret {
     flex: none;
     color: var(--fg-mute);
+}
+/* Day carets stay small and faint: three equal carets stacked in one column
+   (month, day, parking run) read as noise. */
+.trip-day__header .trip-group-toggle__caret {
+    width: 10px;
+    height: 10px;
+    opacity: 0.7;
 }
 @media (prefers-reduced-motion: no-preference) {
     .trip-group-toggle__caret {
@@ -963,7 +982,7 @@
     color: var(--accent-ink);
 }
 .trip-chevron__icon {
-    display: block;
+    display: flex;
 }
 @media (prefers-reduced-motion: no-preference) {
     .trip-chevron__icon {
@@ -1987,6 +2006,10 @@
 }
 .trip-parking-run__header .trip-group-toggle {
     isolation: isolate;
+}
+.trip-parking-run__thumb .trip-no-preview-icon svg {
+    width: 16px;
+    height: 16px;
 }
 .trip-parking-run__count {
     position: absolute;
