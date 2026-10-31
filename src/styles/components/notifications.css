@@ -105,10 +105,12 @@
 }
 .dc-toast__close {
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     border: none;
     color: var(--fg-mute);
-    font-size: var(--dc-text-xl);
     line-height: 1;
     padding: 0 var(--dc-space-1);
     cursor: pointer;

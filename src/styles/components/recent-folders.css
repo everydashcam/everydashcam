@@ -120,6 +120,8 @@
 
 .recent-folder-chip__forget {
     flex: none;
+    display: inline-flex;
+    align-items: center;
     background: transparent;
     border: none;
     border-left: 1px solid var(--border);

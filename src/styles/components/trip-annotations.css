@@ -223,7 +223,6 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    font-size: var(--dc-text-lg);
     line-height: 1;
     color: var(--fg-mute);
     background: transparent;

@@ -4,6 +4,9 @@
 
 export const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** Lucide "x": the close / remove glyph, so no button falls back to a font "×". */
+export const X_ICON_PATHS = ["M18 6 6 18", "m6 6 12 12"];
+
 /**
  * Builds an inline Lucide icon (24x24 viewBox, currentColor stroke) from path
  * `d` strings. size sets both width and height in px. The caller may append

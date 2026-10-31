@@ -1602,11 +1602,13 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
 /* Delete sits in the header (destructive - kept away from the mode controls). */
 .export-panel__blur-del-btn {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     appearance: none;
     border: 0;
     background: none;
     padding: 0 2px;
-    font-size: var(--dc-text-md);
     line-height: 1;
     color: var(--fg-mute);
     cursor: pointer;

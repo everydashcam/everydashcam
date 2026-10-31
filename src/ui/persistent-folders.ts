@@ -47,6 +47,7 @@ import {
 import { beginPreIngestReading, endPreIngestReading } from "./ingest-overlay.js";
 import { ingestFiles } from "./ingest.js";
 import { notify } from "./notifications.js";
+import { X_ICON_PATHS, buildLucideIcon } from "./icons.js";
 
 const log = createLogger("persistent-folders");
 
@@ -328,7 +329,9 @@ function buildChip(folder: RememberedFolder, displayLabel: string): HTMLElement 
     forget.className = "recent-folder-chip__forget";
     forget.setAttribute("aria-label", t("recentFolders.forgetLabel"));
     forget.title = t("recentFolders.forgetLabel");
-    forget.textContent = "×";
+    const forgetIcon = buildLucideIcon(X_ICON_PATHS, 12);
+    forgetIcon.setAttribute("aria-hidden", "true");
+    forget.appendChild(forgetIcon);
     forget.addEventListener("click", () => {
         forgetFolder(folder.id)
             .then(() => {

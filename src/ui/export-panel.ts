@@ -125,7 +125,7 @@ import { STREET_LABEL_DENSITY_LABEL_KEYS, STREET_LABEL_DENSITY_VALUES } from "./
 import { renderMapMarkerControl } from "./map-marker-control.js";
 import { createMapProviderSelect } from "./map-provider-control.js";
 import { MAP_PROVIDER_REGISTRY, MAX_MAP_PITCH_DEG } from "./map-provider-registry.js";
-import { buildLucideIcon } from "./icons.js";
+import { X_ICON_PATHS, buildLucideIcon } from "./icons.js";
 import { isMobileLayout } from "./media-queries.js";
 
 const log = createLogger("export-panel");
@@ -2193,7 +2193,9 @@ function renderBlurRow(region: BlurRegion, index: number): HTMLElement {
     del.type = "button";
     del.dataset.action = "delete";
     del.className = "export-panel__blur-del-btn";
-    del.textContent = "✕";
+    const delIcon = buildLucideIcon(X_ICON_PATHS, 14);
+    delIcon.setAttribute("aria-hidden", "true");
+    del.appendChild(delIcon);
     del.title = t("export.blur.row.delete");
     del.setAttribute("aria-label", t("export.blur.row.delete"));
     del.addEventListener("click", () => {

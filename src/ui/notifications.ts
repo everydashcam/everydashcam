@@ -21,7 +21,7 @@ import { createPopover } from "./popover-lifecycle.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { createLogger } from "../log.js";
-import { buildLucideIcon } from "./icons.js";
+import { X_ICON_PATHS, buildLucideIcon } from "./icons.js";
 
 const log = createLogger("notifications");
 
@@ -279,7 +279,9 @@ function showToast(n: Notification): void {
     close.type = "button";
     close.className = "dc-toast__close";
     close.setAttribute("aria-label", t("notif.toast.dismiss"));
-    close.textContent = "×";
+    const closeIcon = buildLucideIcon(X_ICON_PATHS, 16);
+    closeIcon.setAttribute("aria-hidden", "true");
+    close.appendChild(closeIcon);
     close.addEventListener("click", () => removeToast(n.id));
     el.appendChild(close);
 

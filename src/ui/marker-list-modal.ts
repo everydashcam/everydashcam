@@ -14,6 +14,7 @@ import { formatTime } from "./format.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 import { seekTripTime } from "./player.js";
 import { activeTrip } from "./state.js";
+import { X_ICON_PATHS, buildLucideIcon } from "./icons.js";
 
 let modal: HTMLElement | null = null;
 let listEl: HTMLElement | null = null;
@@ -129,7 +130,9 @@ function buildRow(id: string, text: string, contentSec: number): HTMLElement {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "marker-list-delete";
-    remove.textContent = "×";
+    const removeIcon = buildLucideIcon(X_ICON_PATHS, 16);
+    removeIcon.setAttribute("aria-hidden", "true");
+    remove.appendChild(removeIcon);
     const removeLabel = t("markerList.delete");
     remove.setAttribute("aria-label", removeLabel);
     remove.title = removeLabel;

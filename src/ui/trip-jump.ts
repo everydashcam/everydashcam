@@ -7,6 +7,7 @@ import { getDateLocale, t } from "../i18n/index.js";
 import { firstDayOfWeek, monthGridCells, weekdayOrder } from "./calendar-grid.js";
 import { dom } from "./dom.js";
 import { cachedDateTimeFormat, formatDayHeading, formatMonthHeading } from "./format.js";
+import { buildLucideIcon } from "./icons.js";
 import { createPopover } from "./popover-lifecycle.js";
 
 /** One day section of the rendered list, summarized for the calendar. */
@@ -54,8 +55,14 @@ function element<K extends keyof HTMLElementTagNameMap>(
     return el;
 }
 
+// Lucide chevron-left / chevron-right, like the list's other icons.
+const STEP_ICON_PATHS = { [-1]: "m15 18-6-6 6-6", 1: "m9 18 6-6-6-6" } as const;
+
 function stepButton(step: -1 | 1, disabled: boolean): HTMLButtonElement {
-    const button = element("button", "trip-jump__step", step < 0 ? "‹" : "›");
+    const button = element("button", "trip-jump__step");
+    const icon = buildLucideIcon([STEP_ICON_PATHS[step]], 16);
+    icon.setAttribute("aria-hidden", "true");
+    button.appendChild(icon);
     button.type = "button";
     button.dataset.step = String(step);
     button.disabled = disabled;
