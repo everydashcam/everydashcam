@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 import { TRACKER_ASSETS } from "./asset-manifest.js";
-import { createOrtSession, runOrtSession } from "./ort-runtime.js";
+import { createOrtSession, runOrtSession, SINGLE_THREAD_TRACKER_WORKER_NAME } from "./ort-runtime.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -38,4 +39,10 @@ it.each([
         cause,
         ...(cause instanceof Error ? { stack: cause.stack } : {}),
     });
+});
+
+it("starts the single-threaded fallback worker under the name the runtime checks", () => {
+    // Vite needs literal worker options, so the page repeats the name.
+    const client = readFileSync(new URL("../ui/tracker-worker-client.ts", import.meta.url), "utf8");
+    expect(client).toContain(`name: "${SINGLE_THREAD_TRACKER_WORKER_NAME}"`);
 });
