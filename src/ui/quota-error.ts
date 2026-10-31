@@ -2,8 +2,7 @@
  *  (or hits a storage quota): the browser's QuotaExceededError - native File
  *  System Access write to a full disk, or an over-quota storage write - including
  *  the wrapped/renamed variants where the DOMException subclass is lost but the
- *  name or message survives (the ponyfill and service-worker streams re-throw
- *  the cause, so the instanceof check alone misses them). Lets the export catch
+ *  name or message survives worker error forwarding. Lets the export catch
  *  map a no-room failure to clear, actionable guidance instead of leaking the
  *  raw "...exceed its storage quota" text to the user.
  *
@@ -14,7 +13,7 @@ export function isQuotaExceededError(err: unknown): boolean {
         return true;
     }
     // Wrapped/re-thrown: the subclass is gone but the name is preserved on a
-    // plain Error or object (ponyfill / SW-stream cause forwarding).
+    // plain Error or object after crossing a worker boundary.
     if (typeof err === "object" && err !== null && "name" in err) {
         if ((err as { name?: unknown }).name === "QuotaExceededError") return true;
     }

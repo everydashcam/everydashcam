@@ -1,14 +1,9 @@
 // In-memory FileSystemFileHandle shim for the export-to-disk path on browsers
 // WITHOUT the native File System Access API (Android Chrome, Firefox, Safari).
 //
-// Why this exists: on those browsers `showSaveFilePicker` is the
-// native-file-system-adapter ponyfill, which (with no native FSA) streams the
-// output through a service-worker download. That download sink accepts only
-// sequential raw byte chunks, but the export drives mediabunny's positional
-// `StreamTarget` (`{type:'write', position, data}` chunks). The ponyfill's
-// downloader does not understand positional writes, so the stream never
-// finalizes and the export hangs at "Finalizing". (It also can't re-open the
-// handle for GPMF injection - its getFile() throws immediately.)
+// The export drives mediabunny's positional StreamTarget with
+// `{type:'write', position, data}` chunks and re-opens the file for GPMF
+// injection. A streamed, write-once download cannot support that protocol.
 //
 // This handle instead buffers the whole MP4 in RAM and DOES support the full
 // positional write + truncate + getFile + re-open protocol the export and the
@@ -40,6 +35,7 @@
 //  - `dispose()` frees the backing buffer once the download File has copied it.
 
 import { createLogger } from "../log.js";
+import { getNativeSaveFilePicker } from "../native-file-picker.js";
 
 const log = createLogger("export-flow");
 
@@ -49,17 +45,10 @@ export function markNativeSaveBlocked(): void {
     nativeSaveBlocked = true;
 }
 
-/** True when the browser exposes the native File System Access save picker.
- *  When false the export must buffer in memory (this module) instead of the
- *  broken ponyfill streaming path. Checks for a callable (not just presence) so
- *  a present-but-undefined shim counts as unavailable. Cheap sync probe, safe to
- *  call per UI tick. */
+/** True when the native save picker is callable and no earlier failure has
+ *  disabled it for this page. Otherwise export uses RAM and a Blob download. */
 export function nativeFsaAvailable(): boolean {
-    return (
-        !nativeSaveBlocked &&
-        typeof window !== "undefined" &&
-        typeof (window as { showSaveFilePicker?: unknown }).showSaveFilePicker === "function"
-    );
+    return !nativeSaveBlocked && getNativeSaveFilePicker() !== null;
 }
 
 /** Test-only reset of the page-scoped picker capability. */

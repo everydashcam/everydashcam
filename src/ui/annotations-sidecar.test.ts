@@ -240,7 +240,10 @@ describe("active notes file", () => {
         mocks.savePicker.mockResolvedValue(notes.handle);
         initAnnotationsSidecar();
 
-        await expect(mocks.connector!.create()).resolves.toBe("connected");
+        const connection = mocks.connector!.create();
+        expect(mocks.savePicker).toHaveBeenCalledOnce();
+        expect(mocks.savePicker.mock.contexts[0]).toBe(window);
+        await expect(connection).resolves.toBe("connected");
 
         expect(mocks.savePicker).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -558,5 +561,15 @@ describe("active notes file", () => {
 
         expect(mocks.connector!.canSelectFile()).toBe(false);
         await expect(mocks.connector!.status()).resolves.toEqual({ state: "session" });
+    });
+
+    it("does not offer or invoke a non-callable save picker", async () => {
+        Object.defineProperty(window, "showSaveFilePicker", { value: {} });
+        initAnnotationsSidecar();
+
+        expect(mocks.connector!.canSelectFile()).toBe(false);
+        await expect(mocks.connector!.create()).resolves.toBe("failed");
+        expect(mocks.savePicker).not.toHaveBeenCalled();
+        expect(mocks.setNotesFileHandle).not.toHaveBeenCalled();
     });
 });

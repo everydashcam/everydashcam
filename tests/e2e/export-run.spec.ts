@@ -537,10 +537,8 @@ test.describe("export run (the destination goes away)", () => {
     });
 });
 
-// No native save picker (Android Chrome / Firefox / Safari): the export must NOT
-// hang at "Finalizing" (the old ponyfill SW-streaming bug). It buffers the MP4
-// in RAM and offers it via a done-view Download button. This is the regression
-// gate for that fix.
+// No native save picker (Android Chrome / Firefox / Safari): export finalizes
+// the MP4 in RAM and offers it through the done-view Download button.
 test.describe("export run (in-memory, no native FSA)", () => {
     test.beforeEach(async ({ page }) => {
         await presetLocalStorage(page);

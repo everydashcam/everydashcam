@@ -17,7 +17,6 @@
 import { createSubscribers } from "../subscribers.js";
 import { hasCameraFlip } from "../camera-flip.js";
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
-import { showSaveFilePicker } from "native-file-system-adapter";
 
 // export.js / gpmd-inject.js / transcode-capabilities carry value imports of
 // mediabunny and the transcode audio stack; this module is EAGER (app.ts ->
@@ -67,7 +66,7 @@ import { isMediabunnyReadAssert } from "./mediabunny-read-assert.js";
 import { isQuotaExceededError } from "./quota-error.js";
 import { isSourceReadError } from "../source-read-error.js";
 import { dom } from "./dom.js";
-import { withFilePicker } from "./file-picker.js";
+import { showSaveFilePicker, withFilePicker } from "./file-picker.js";
 import { exportPanelState, OVERLAY_STATE_ACCESSORS, type Quality } from "./export-state.js";
 import { activeBlurRegions } from "./blur-regions-state.js";
 import {
@@ -675,7 +674,7 @@ async function postProcessTelemetry(
     trip: Trip,
     startTripSec: number,
     endTripSec: number,
-    mp4Handle: Awaited<ReturnType<typeof showSaveFilePicker>>,
+    mp4Handle: FileSystemFileHandle,
     withGpmf: boolean,
     onProgressStatus: (s: string) => void,
     signal?: AbortSignal,
@@ -701,7 +700,7 @@ async function postProcessTelemetry(
     // memory-constrained path the RAM sink serves.
     const { injectClipGpmf } = await import("../export/gpmd-inject.js");
     return injectClipGpmf({
-        handle: mp4Handle as unknown as FileSystemFileHandle,
+        handle: mp4Handle,
         writable: openWritable,
         trip,
         clipContentStartSec: startTripSec,
@@ -925,7 +924,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     // Drives the done-view delivery (see buildPendingDownload).
     let deliveryMode: "ram" | "native" = noNative ? "ram" : "native";
 
-    let mp4Handle: Awaited<ReturnType<typeof showSaveFilePicker>> | null = null;
+    let mp4Handle: FileSystemFileHandle | null = null;
     if (!noNative) {
         try {
             const picked = await withFilePicker(
@@ -1101,7 +1100,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     // cannot land on one branch only (the size-read block used to be a verbatim
     // copy in both).
     const finishExport = async (
-        handle: Awaited<ReturnType<typeof showSaveFilePicker>>,
+        handle: FileSystemFileHandle,
         opts: {
             gpmfInjected: boolean;
             mapOverlayDropped?: boolean;
@@ -1126,9 +1125,8 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         } else {
             try {
                 // Native path: the file is already on disk; getFile() here only
-                // feeds the size figure in the done summary. THAT is the
-                // genuinely cosmetic read (unreliable in some FSA polyfill
-                // paths), so only this branch may swallow.
+                // feeds the size figure in the done summary. A failed size
+                // read must not turn a committed export into an error.
                 sizeBytes = (await handle.getFile()).size;
             } catch (err) {
                 // Breadcrumb for a "done summary says 0 MB" report.
@@ -1159,9 +1157,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     try {
         // Even the empty RAM handle allocates. Keep it after capability probes
         // and inside this catch so allocation failure always reaches the UI.
-        mp4Handle ??= createInMemoryFileHandle(fileName, expectedBytes) as unknown as Awaited<
-            ReturnType<typeof showSaveFilePicker>
-        >;
+        mp4Handle ??= createInMemoryFileHandle(fileName, expectedBytes) as unknown as FileSystemFileHandle;
         // Detection pre-pass (the "blur all plates / faces" checkboxes): must
         // settle BEFORE the encode so found regions burn into THIS export.
         // Placed after the GPX download - that anchor download rides the save
@@ -1250,7 +1246,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                     withAudio,
                     withGpmf,
                     mp4Writable: writable,
-                    mp4Handle: mp4Handle as unknown as FileSystemFileHandle,
+                    mp4Handle,
                     onProgress: (p) => {
                         hooks.onStatus(p.stage);
                         // Drive the bar fill too - otherwise stream-copy leaves it
@@ -1416,7 +1412,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         // the user only ever sees a known, friendly export.error.* message. Map
         // the failure shapes we recognize, fall back to a neutral one otherwise:
         //  - out of room on disk / over storage quota (isQuotaExceededError also
-        //    catches the wrapped variants the ponyfill and SW streams re-throw);
+        //    catches errors forwarded across the worker boundary);
         //  - the RAM path could not allocate the MP4 buffer for an oversized clip
         //    (RangeError / out-of-memory). The no-native path is intentionally not
         //    pre-gated by size, so a too-large export surfaces HERE; the message

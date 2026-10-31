@@ -346,7 +346,6 @@ export default defineConfig(({ command }) => {
                 // its dependencies too.
                 codeSplitting: {
                     groups: [
-                        { name: "vendor-fsa", test: /node_modules[\\/]native-file-system-adapter[\\/]/ },
                         { name: "vendor-i18n", test: /node_modules[\\/]intl-messageformat[\\/]/ },
                         { name: "vendor-media", test: /node_modules[\\/]mediabunny[\\/]/ },
                     ],

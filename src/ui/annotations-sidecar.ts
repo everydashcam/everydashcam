@@ -8,6 +8,7 @@ import { downloadBlob } from "../download.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { createLogger } from "../log.js";
+import { getNativeSaveFilePicker } from "../native-file-picker.js";
 import { captureSentryMessage } from "../sentry.js";
 import type { VendorFile } from "../parsers/types.js";
 import {
@@ -32,7 +33,7 @@ import {
     waitForAnnotationsReady,
 } from "./annotations.js";
 import { notify } from "./notifications.js";
-import { withFilePicker } from "./file-picker.js";
+import { showSaveFilePicker, withFilePicker } from "./file-picker.js";
 import {
     refreshFolderSources,
     registerFolderOpenedHook,
@@ -103,7 +104,7 @@ export function initAnnotationsSidecar(): void {
 }
 
 function filePickersAvailable(): boolean {
-    return typeof window.showOpenFilePicker === "function" && typeof window.showSaveFilePicker === "function";
+    return typeof window.showOpenFilePicker === "function" && getNativeSaveFilePicker() !== null;
 }
 
 async function loadSavedConnection(): Promise<void> {
@@ -355,12 +356,11 @@ function onAnnotationsChanged(): void {
 }
 
 async function createSidecarFile(): Promise<NotesConnectResult> {
-    const pickSaveFile = window.showSaveFilePicker;
-    if (typeof pickSaveFile !== "function") return "failed";
+    if (!getNativeSaveFilePicker()) return "failed";
     let handle: FileSystemFileHandle;
     try {
         const picked = await withFilePicker("save", () =>
-            pickSaveFile.call(window, {
+            showSaveFilePicker({
                 id: "annotations-sidecar",
                 ...(currentFolderHandle ? { startIn: currentFolderHandle } : {}),
                 suggestedName: SIDECAR_SUGGESTED_NAME,

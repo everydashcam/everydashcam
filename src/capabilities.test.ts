@@ -93,6 +93,7 @@ function fakeDocument(opts: FakeDocOpts = {}): unknown {
 // tests then knock out one capability to assert the classification.
 function stubModernBrowser(over: Partial<Record<string, unknown>> = {}, docOpts: FakeDocOpts = {}): void {
     const defaults: Record<string, unknown> = {
+        window: globalThis,
         isSecureContext: true,
         Worker: class {},
         WebAssembly: {},
@@ -133,6 +134,14 @@ describe("detectCapabilities", () => {
         expect(report.ok).toBe(true);
         expect(report.blocking).toEqual([]);
         expect(report.degraded).toEqual([]);
+        expect(report.capabilities.find((capability) => capability.id === "fileSystemAccess")?.ok).toBe(true);
+    });
+
+    it("reports a truthy non-callable save picker as unavailable", () => {
+        stubModernBrowser({ showSaveFilePicker: {} });
+        const report = detectCapabilities();
+        expect(report.capabilities.find((capability) => capability.id === "fileSystemAccess")?.ok).toBe(false);
+        expect(report.ok).toBe(true);
     });
 
     it("no Worker → blocking, not ok", () => {

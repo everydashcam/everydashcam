@@ -503,10 +503,9 @@ export async function shot(page: Page, name: string): Promise<void> {
 }
 
 /**
- * Stub `window.showSaveFilePicker` with an in-memory file BEFORE the bundle
- * loads. The native-file-system-adapter ponyfill captures
- * `globalThis.showSaveFilePicker` at module-eval time and delegates to it when
- * present, so this routes the entire export write path (createWritable / write /
+ * Stub `window.showSaveFilePicker` with an in-memory file before the bundle
+ * loads so capability probes see native saving. This routes the entire export
+ * write path (createWritable / write /
  * seek / truncate / getFile, including the GPMF meta-track re-open with
  * keepExistingData) into a buffer we can inspect - exercising the REAL mux /
  * re-encode / telemetry-injection pipeline, stubbing only the disk handle.

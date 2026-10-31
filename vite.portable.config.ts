@@ -38,7 +38,6 @@ export default defineConfig((): UserConfig => {
                     find: /^.*\/blur-(?:track|detect|assets)\.js$/,
                     replacement: resolve("src/portable/blur-disabled.ts"),
                 },
-                { find: "native-file-system-adapter", replacement: resolve("src/portable/file-picker.ts") },
                 { find: /^.*\/map-style-source\.js$/, replacement: resolve("src/portable/map-style-source.ts") },
                 {
                     find: /^\.\/(?:components\/(?:offline-banner|footer|lang-banner|wco)|modals\/(?:whats-new|offline-use))\.css$/,

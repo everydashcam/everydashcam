@@ -213,8 +213,8 @@ describe("nativeFsaAvailable", () => {
         _resetForTests();
     });
 
-    it("is false without a window exposing showSaveFilePicker", () => {
-        vi.stubGlobal("window", {});
+    it.each([undefined, {}])("is false when the save picker is not callable: %s", (picker) => {
+        vi.stubGlobal("window", { showSaveFilePicker: picker });
         expect(nativeFsaAvailable()).toBe(false);
     });
 

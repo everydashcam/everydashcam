@@ -152,16 +152,6 @@ version. The API existing does not mean a codec decodes - always probe.
   ourselves in `ensureMap`. Ships ESM-only and cannot resolve its own worker
   through a bundler, so the consumer must hand it the worker URL before the
   first map is constructed.
-- **native-file-system-adapter** (pinned version: `package.json`) - imported
-  only for its native `showSaveFilePicker` binding and types; `nativeFsaAvailable()`
-  (`src/ui/in-memory-file.ts`) gates entry, and the call to the package's
-  `showSaveFilePicker` only ever fires on that already-native branch. We do
-  **not** use the package's own ponyfill streaming-saver fallback: when native
-  FSA is absent (Firefox, Safari, mobile Chromium) the export instead builds
-  the whole MP4 in a resizable-`ArrayBuffer`-backed handle
-  (`src/ui/in-memory-file.ts`) and hands the result to a Blob download - a
-  streamed, write-once sink can't be re-read for the post-mux GPMF injection,
-  which is a hard product requirement.
 
 ## Known limitations
 

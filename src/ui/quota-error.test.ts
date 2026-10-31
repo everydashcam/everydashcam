@@ -11,7 +11,7 @@ describe("isQuotaExceededError", () => {
         expect(byName.code).toBe(22);
     });
 
-    it("matches a wrapped/re-thrown error that kept only the name (ponyfill/SW cause forwarding)", () => {
+    it("matches a forwarded worker error that kept only the name", () => {
         const wrapped = Object.assign(new Error("write failed"), { name: "QuotaExceededError" });
         expect(isQuotaExceededError(wrapped)).toBe(true);
         expect(isQuotaExceededError({ name: "QuotaExceededError" })).toBe(true);

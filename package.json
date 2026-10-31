@@ -78,7 +78,6 @@
     "intl-messageformat": "^12.1.3",
     "maplibre-gl": "6.16.0",
     "mediabunny": "1.65.0",
-    "native-file-system-adapter": "3.0.1",
     "onnxruntime-web": "1.31.1",
     "tabbable": "6.5.1",
     "workbox-core": "^7.4.1",

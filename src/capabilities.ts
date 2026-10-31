@@ -20,6 +20,7 @@
 // a feature is available.
 
 import { createLogger } from "./log.js";
+import { getNativeSaveFilePicker } from "./native-file-picker.js";
 
 const log = createLogger("capabilities");
 
@@ -29,8 +30,8 @@ const log = createLogger("capabilities");
  *    impossible and there is no graceful path. The UI shows a full blocking gate.
  *  - "degraded" - a real, user-visible feature is unavailable but the core still
  *    works. The UI explains it (proactively and/or at the point of use).
- *  - "info"     - either invisible to the user (a ponyfill covers it) or only a
- *    diagnostic signal. Recorded for metrics, never surfaced on its own.
+ *  - "info"     - a diagnostic signal whose fallback or limitation is handled
+ *    at the point of use. Recorded for metrics, never surfaced on its own.
  */
 export type CapabilitySeverity = "blocking" | "degraded" | "info";
 
@@ -123,9 +124,8 @@ const SEVERITY: Record<CapabilityId, CapabilitySeverity> = {
     // DataTransferItem.webkitGetAsEntry for recursive folder drag-and-drop. The
     // picker is the primary path; this is a convenience. Diagnostic only.
     dndEntries: "info",
-    // Native File System Access (showSaveFilePicker). The
-    // native-file-system-adapter ponyfill transparently covers FF/Safari, so
-    // its absence is invisible to the user. Diagnostic only.
+    // Native File System Access (showSaveFilePicker). Export falls back to a
+    // RAM buffer and Blob download when absent. Diagnostic only.
     fileSystemAccess: "info",
     // showDirectoryPicker - the persistent-folder mode (remember a folder,
     // reopen it across sessions without re-picking). Chromium-only by vendor
@@ -134,9 +134,8 @@ const SEVERITY: Record<CapabilityId, CapabilitySeverity> = {
     // to the classic picker plus cached indexing, so absence is not a
     // user-facing gap. Diagnostic only.
     persistentFolder: "info",
-    // Service Worker powers the ponyfill's streaming export on FF/Safari. When
-    // absent (private mode) the ponyfill falls back to an in-memory Blob, which
-    // the export panel already warns about. Diagnostic only.
+    // Service Worker caches the hosted viewer for offline reopening. Local
+    // playback and export remain available when absent. Diagnostic only.
     serviceWorker: "info",
     // structuredClone: used in a few worker-message paths. Universal on the
     // target bar; diagnostic only.
@@ -452,7 +451,7 @@ function probeFileLoad(): boolean {
 }
 
 function probeFileSystemAccess(): boolean {
-    return hasGlobal("showSaveFilePicker");
+    return getNativeSaveFilePicker() !== null;
 }
 
 function probePersistentFolder(): boolean {
@@ -598,9 +597,8 @@ function computeReport(): CapabilityReport {
 /**
  * The subset of degraded gaps worth surfacing proactively (a clear loss the
  * user would otherwise hit blindly): no map, no editor/export, iOS load
- * friction. Invisible degradations (ponyfill-covered FSA/SW) and reactive ones
- * (per-file codec, HEVC/TS via MSE) are deliberately excluded - they are
- * explained at the point of use instead.
+ * friction. Export destination, offline availability and per-file playback
+ * limits are handled at the point of use instead.
  */
 export function headlineDegradations(report: CapabilityReport): CapabilityId[] {
     const HEADLINE: readonly CapabilityId[] = ["webgl", "webCodecsDecode", "webCodecsEncode", "h264Decode"];

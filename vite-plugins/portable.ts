@@ -88,7 +88,7 @@ export function portablePlugin(options: PortableOptions): Plugin {
                     .filter(
                         ([id, module]) =>
                             module.renderedLength > 0 &&
-                            /onnxruntime|@sentry\/|native-file-system-adapter|tracker-worker|sentry-init|blur-(?:track|detect|assets)\.ts|\/(?:pwa-install|whats-new-modal|lang-switcher|lang-suggestion-banner|sw-registration|support-prompt)\.ts/.test(
+                            /onnxruntime|@sentry\/|tracker-worker|sentry-init|blur-(?:track|detect|assets)\.ts|\/(?:pwa-install|whats-new-modal|lang-switcher|lang-suggestion-banner|sw-registration|support-prompt)\.ts/.test(
                                 id,
                             ),
                     );

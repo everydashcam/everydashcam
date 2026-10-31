@@ -3339,8 +3339,8 @@ function renderDoneSummary(s: ExportDoneSummary): void {
     if (!root) return;
     const summary = root.querySelector<HTMLDivElement>("#export-panel-done-summary");
     if (!summary) return;
-    // sizeBytes is 0 when mp4Handle.getFile() is unavailable on some FSA
-    // ponyfill paths - omit the size rather than print a misleading "0 B".
+    // sizeBytes stays 0 when the native file's size read fails after commit.
+    // Omit it rather than print a misleading "0 B".
     const meta =
         s.sizeBytes > 0 ? `${formatTime(s.durationSec)} · ${formatBytes(s.sizeBytes)}` : formatTime(s.durationSec);
     const lines = [s.fileName, meta];

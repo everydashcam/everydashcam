@@ -1,6 +1,6 @@
 // Shared finalize helper for the export-to-disk path. The last step of every
 // export (stream-copy and re-encode) is closing the FSA writable, which commits
-// the file to disk (native FSA) or finishes a streaming download (ponyfill).
+// the file to disk (native FSA) or commits the in-memory export buffer.
 //
 // On some browsers this close has been observed to hang indefinitely, leaving
 // the UI stuck at "Finalizing..." with no error (the close promise simply never

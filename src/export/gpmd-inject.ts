@@ -168,10 +168,9 @@ function throwIfAbortedSignal(signal: AbortSignal | undefined): void {
  * (truncate + append). Prefer injectGpmdTrackIntoOpen while the output is
  * still open: this path makes Chromium copy the whole file into the swap file.
  *
- * @param handle  file handle (FSA or ponyfill). Must support getFile() and
- *                createWritable({keepExistingData: true}).
- * @param samples GPMF samples from packGpmfSamples (one sample per clip
- *                second, payload + duration).
+ * The native or in-memory handle must support getFile() and
+ * createWritable({keepExistingData: true}). Samples come from packGpmfSamples,
+ * with one payload and duration per clip second.
  */
 export async function injectGpmdTrack(
     handle: FileSystemFileHandle,

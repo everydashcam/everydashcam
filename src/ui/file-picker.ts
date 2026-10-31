@@ -1,4 +1,5 @@
 import { createLogger } from "../log.js";
+import { getNativeSaveFilePicker } from "../native-file-picker.js";
 import { notify } from "./notifications.js";
 
 const log = createLogger("file-picker");
@@ -6,6 +7,15 @@ const log = createLogger("file-picker");
 type PickerKind = "directory" | "open" | "save";
 
 let activePicker: { kind: PickerKind; openedAt: number } | null = null;
+
+// Invoke immediately so the caller's user activation reaches the native picker.
+export function showSaveFilePicker(
+    options: Parameters<NonNullable<Window["showSaveFilePicker"]>>[0],
+): Promise<FileSystemFileHandle> {
+    const picker = getNativeSaveFilePicker();
+    if (!picker) throw new Error("native save picker is unavailable");
+    return picker.call(window, options);
+}
 
 function notifyBusy(): void {
     notify({ severity: "warn", messageKey: "filePicker.busy" });
