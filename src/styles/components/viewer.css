@@ -659,14 +659,14 @@ body.export-mode .player-wrap:not(.player-expanded):not(.map-expanded) {
     cursor: grabbing;
 }
 
-/* Zoom badge: current scale + reset, top-left of the zoomed tile (away from the
-   top-right minimap). The visible cue the wheel/pinch gesture needs, and the only
-   way out of zoom on touch. */
+/* Keep reset above the draggable GPS map, its close button, and the zoom
+   preview (layers 5–7). A different corner alone cannot protect this touch
+   control because the user can move the map anywhere in the frame. */
 .zoom-badge {
     position: absolute;
     top: var(--dc-space-1);
     left: var(--dc-space-1);
-    z-index: 5;
+    z-index: 8;
     display: inline-flex;
     align-items: center;
     gap: var(--dc-space-1);

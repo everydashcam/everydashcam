@@ -9,11 +9,14 @@ test.beforeEach(async ({ page }) => {
     await pausePlayback(page);
 });
 
-test("tablet touch resizes the sidebar and pinches video and timeline", async ({ page, browserName }) => {
+test("tablet touch resizes the sidebar and pinches video and timeline", { tag: "@webkit-ui" }, async ({
+    page,
+    browserName,
+}) => {
     test.skip(browserName !== "chromium", "real multi-touch injection uses Chromium CDP");
     await verifyTouchGestures(page);
 });
 
-test("lost pointer capture settles sidebar and mini-map drags", async ({ page }) => {
+test("lost pointer capture settles sidebar and mini-map drags", { tag: "@webkit-ui" }, async ({ page }) => {
     await verifyLostPointerCapture(page);
 });

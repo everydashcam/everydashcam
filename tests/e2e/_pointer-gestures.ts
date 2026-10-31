@@ -39,10 +39,11 @@ export async function verifyTouchGestures(page: Page): Promise<void> {
         };
         await pinch(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
         await expect.poll(() => page.evaluate(() => window.__everydashcam.state.videoZoom.scale)).toBeGreaterThan(1.5);
-        // The tablet mini-map can cover this corner after the sidebar widens.
-        // Keyboard activation still exercises the public reset control.
-        await page.locator(".zoom-badge").focus();
-        await page.keyboard.press("Enter");
+        const reset = page.locator(".zoom-badge");
+        await expectResetHitArea(reset);
+        const resetBox = await boxOf(page, ".zoom-badge");
+        expect(resetBox.height, "coarse-pointer reset has a full touch target").toBeGreaterThanOrEqual(44);
+        await reset.tap({ position: { x: resetBox.width - 2, y: resetBox.height / 2 } });
         await expect.poll(() => page.evaluate(() => window.__everydashcam.state.videoZoom.scale)).toBe(1);
 
         const span = () =>
@@ -59,6 +60,25 @@ export async function verifyTouchGestures(page: Page): Promise<void> {
         // On failure Playwright closes this test's page and cancels its input.
         await touch.detach().catch(() => {});
     }
+}
+
+/** Check the whole control, including the edges covered by the GPS canvas. */
+export async function expectResetHitArea(reset: Locator): Promise<void> {
+    await expect(reset).toBeVisible();
+    await expect
+        .poll(() =>
+            reset.evaluate((button) => {
+                const { left, top, width, height } = button.getBoundingClientRect();
+                return [
+                    [width / 2, height / 2],
+                    [2, height / 2],
+                    [width - 2, height / 2],
+                    [width / 2, 2],
+                    [width / 2, height - 2],
+                ].map(([x, y]) => button.contains(document.elementFromPoint(left + x!, top + y!)));
+            }),
+        )
+        .toEqual([true, true, true, true, true]);
 }
 
 async function releaseCurrentCapture(target: Locator): Promise<void> {

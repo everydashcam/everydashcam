@@ -201,8 +201,8 @@ export function resetVideoZoom(): void {
     applyVideoZoom();
 }
 
-// Zoom-level badge + reset control on the active tile (top-left, away from the
-// top-right minimap). It is the visible cue a hidden gesture (wheel/pinch) needs
+// Zoom-level badge + reset control on the active tile, above the movable maps.
+// It is the visible cue a hidden gesture (wheel/pinch) needs
 // and - critically - the ONLY way to leave zoom on touch, where Z is unavailable
 // and pinching back out is fiddly. Lazily built; removed from the DOM when not
 // zoomed so it never lingers on a stale tile after a channel swap.
