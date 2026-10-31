@@ -55,7 +55,7 @@ const log = createLogger("map");
 import { isOffline, subscribeConnectivity } from "./connectivity.js";
 import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
-import { formatNumber, formatTime } from "./format.js";
+import { cachedDateTimeFormat, formatNumber, formatTime, POPUP_CLOCK_FORMAT } from "./format.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeFrame, activeTrip, state } from "./state.js";
 import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
@@ -1676,15 +1676,7 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
     // "abs" below stays real wall-clock.
     const relSec = wallToContentSec(trip.timeline, rec.unixSeconds);
     // Display clock (camera clock when known) - see displayClockDate contract.
-    const absFmt = new Intl.DateTimeFormat(getDateLocale(), {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-    });
+    const absFmt = cachedDateTimeFormat(getDateLocale(), POPUP_CLOCK_FORMAT);
     const titleStr = t("popup.title", {
         rel: formatTime(relSec),
         abs: absFmt.format(displayClockDate(rec.unixSeconds, trip.cameraTzSec)),

@@ -74,6 +74,34 @@ function tripTitleClock(
     return { start, end, dateFmt, timeFmt };
 }
 
+// Constructing an Intl.DateTimeFormat resolves locale data and compiles a
+// pattern, which costs far more than formatting with it. Hover popups and the
+// range rulers format on every pointer move or view change, so immutable
+// formatters are shared per locale and option set.
+const dateTimeFormatCache = new Map<string, Intl.DateTimeFormat>();
+
+/** Day, month and clock with seconds; hover popups format the display clock. */
+export const POPUP_CLOCK_FORMAT: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+};
+
+/** A shared formatter for `locale` and `options`; same arguments, same instance. */
+export function cachedDateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+    const key = `${locale}|${JSON.stringify(options)}`;
+    let formatter = dateTimeFormatCache.get(key);
+    if (!formatter) {
+        formatter = new Intl.DateTimeFormat(locale, options);
+        dateTimeFormatCache.set(key, formatter);
+    }
+    return formatter;
+}
+
 // Intl.DateTimeFormat construction resolves locale data and compiles a
 // pattern; the sidebar builds two per card on every full render, which on a
 // long list is the single most expensive part of the rebuild. The pair only

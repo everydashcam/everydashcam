@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+    cachedDateTimeFormat,
     clipBasename,
     dateBucketLabel,
     eventLabel,
@@ -227,5 +228,23 @@ describe("formatTripDistance", () => {
         expect(formatTripDistance(0.02)).toBe(`<0.1 ${t("units.km")}`);
         expect(formatTripDistance(12.3)).toBe(`12 ${t("units.km")}`);
         setUnits(previous);
+    });
+});
+
+describe("cachedDateTimeFormat", () => {
+    it("shares one formatter per locale and option set", () => {
+        const options: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", timeZone: "UTC" };
+        const first = cachedDateTimeFormat("en", options);
+        expect(cachedDateTimeFormat("en", { ...options })).toBe(first);
+        expect(cachedDateTimeFormat("ru", options)).not.toBe(first);
+        expect(cachedDateTimeFormat("en", { ...options, second: "2-digit" })).not.toBe(first);
+    });
+
+    it("formats like a freshly constructed formatter", () => {
+        const options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone: "UTC" };
+        const date = new Date(Date.UTC(2026, 9, 31, 12));
+        expect(cachedDateTimeFormat("de", options).format(date)).toBe(
+            new Intl.DateTimeFormat("de", options).format(date),
+        );
     });
 });

@@ -53,7 +53,15 @@ import { formatSpeedFromMs, subscribeUnitsChange } from "../units-pref.js";
 import { gapAwareDecimationPlugin } from "./chart-decimation.js";
 import { dom } from "./dom.js";
 import { openExportMode, setRange } from "./export-state.js";
-import { eventLabel, formatDuration, formatEventSeverity, formatNumber, formatTime } from "./format.js";
+import {
+    cachedDateTimeFormat,
+    eventLabel,
+    formatDuration,
+    formatEventSeverity,
+    formatNumber,
+    formatTime,
+    POPUP_CLOCK_FORMAT,
+} from "./format.js";
 import { extractFrameAt } from "./frame-extract.js";
 import { buildRecordPopupHtml } from "./map.js";
 import { isCoarsePointer } from "./media-queries.js";
@@ -2391,15 +2399,7 @@ function buildNoGpsTooltipHtml(relSec: number, trip: Trip, file: VideoCandidate 
     // relSec is footage-axis; map to wall-clock for the absolute timestamp.
     const absUtc = contentToWallUtc(trip.timeline, relSec);
     // Display clock (camera clock when known) - see displayClockDate contract.
-    const absFmt = new Intl.DateTimeFormat(getDateLocale(), {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-    });
+    const absFmt = cachedDateTimeFormat(getDateLocale(), POPUP_CLOCK_FORMAT);
     const titleStr = t("popup.title", {
         rel: formatTime(relSec),
         abs: absFmt.format(displayClockDate(absUtc, trip.cameraTzSec)),

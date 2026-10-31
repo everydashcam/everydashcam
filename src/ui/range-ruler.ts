@@ -9,19 +9,21 @@
 import { getDateLocale } from "../i18n/index.js";
 import { contentToWallUtc, displayClockDate, type Trip } from "../trips.js";
 
-import { formatTime } from "./format.js";
+import { cachedDateTimeFormat, formatTime } from "./format.js";
 import { pickRulerInterval } from "./strip-zoom.js";
+
+const CLOCK_MINUTES: Intl.DateTimeFormatOptions = {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+};
+const CLOCK_WITH_SECONDS: Intl.DateTimeFormatOptions = { ...CLOCK_MINUTES, second: "2-digit" };
 
 /** Display clock (camera clock when known) - see displayClockDate contract. */
 function formatAbsoluteClock(unixSec: number, withSeconds: boolean, cameraTzSec: number | null): string {
     const d = displayClockDate(unixSec, cameraTzSec);
-    return new Intl.DateTimeFormat(getDateLocale(), {
-        hour: "2-digit",
-        minute: "2-digit",
-        ...(withSeconds ? { second: "2-digit" } : {}),
-        hour12: false,
-        timeZone: "UTC",
-    }).format(d);
+    return cachedDateTimeFormat(getDateLocale(), withSeconds ? CLOCK_WITH_SECONDS : CLOCK_MINUTES).format(d);
 }
 
 /**
