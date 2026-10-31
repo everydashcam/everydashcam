@@ -41,10 +41,9 @@
 // HTML rewriting is regex-based - the source HTML is under our control,
 // attribute order is stable post-minifier-terser (sortAttributes: true),
 // and data-i18n elements never contain child HTML (only plain text).
-// Adding a real HTML parser (cheerio, parse5) would pull in 200KB+ of
-// devDep weight for no functional gain. If a future change breaks the
-// regex assumptions, the prerender will silently skip - that lands the
-// English literal on every locale, which is still a valid fallback.
+// Every targeted marker and unique SEO anchor is checked. A template outside
+// this deliberately small grammar fails the build instead of shipping English
+// fallback text. An HTML5 parser is needed if this grammar must expand.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -59,11 +58,7 @@ import { koDict } from "../src/i18n/ko.js";
 import { plDict } from "../src/i18n/pl.js";
 import { ptDict } from "../src/i18n/pt.js";
 import { ruDict } from "../src/i18n/ru.js";
-import {
-    getDefaultSeoLocale,
-    getIndexableSeoLocales,
-    type SeoLocale,
-} from "../src/i18n/seo-config.js";
+import { getDefaultSeoLocale, getIndexableSeoLocales, type SeoLocale } from "../src/i18n/seo-config.js";
 import {
     canonicalLocaleUrl,
     canonicalOriginForLocale,
@@ -76,7 +71,7 @@ import { maxGitMtimeIso } from "./git-mtime.js";
 import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import { getDocumentSitemapEntries } from "./document-pages.js";
 import { localizeDocumentLinks } from "./document-links.js";
-import { escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
+import { assertHtmlMatchCount, escapeAttr, escapeText, stringifyJsonLd } from "./html-utils.js";
 import { renderSeoLanguageLinks } from "./seo-navigation.js";
 import { getHomepageCameras } from "./camera-promotion.js";
 import { getAllBrandsCommaSeparated, getLandingBrands } from "./supported-brands.js";
@@ -305,10 +300,7 @@ export function i18nPrerenderPlugin(locales: LocalePrerenderConfig[], options: S
                 if (!locale) return next();
 
                 try {
-                    const sourceHtml = readFileSync(
-                        resolve(server.config.root, "index.html"),
-                        "utf-8",
-                    );
+                    const sourceHtml = readFileSync(resolve(server.config.root, "index.html"), "utf-8");
                     // server.transformIndexHtml applies the full vite pipeline:
                     // our dynamicBaselinePlugin (placeholder expansion) +
                     // vite's HMR client injection. We then run applyLocale on
@@ -355,10 +347,7 @@ export function sitemapPlugin(options: SeoBuildOptions = {}): Plugin {
                 // to this URL's rendered HTML. Per-locale dict is included
                 // alongside HOMEPAGE_SHARED_SOURCES so a translation-only
                 // PR bumps the lastmod for that one locale, not the others.
-                const lastmod = maxGitMtimeIso([
-                    ...HOMEPAGE_SHARED_SOURCES,
-                    `src/i18n/${loc.lang}.ts`,
-                ]);
+                const lastmod = maxGitMtimeIso([...HOMEPAGE_SHARED_SOURCES, `src/i18n/${loc.lang}.ts`]);
                 entries.push({
                     loc: url,
                     changefreq: "weekly",
@@ -465,7 +454,9 @@ export interface SitemapEntry {
 function buildSitemap(entries: SitemapEntry[]): string {
     const lines: string[] = [];
     lines.push('<?xml version="1.0" encoding="UTF-8"?>');
-    lines.push('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">');
+    lines.push(
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+    );
     for (const entry of entries) {
         lines.push("  <url>");
         lines.push(`    <loc>${entry.loc}</loc>`);
@@ -510,9 +501,12 @@ function localeHomeUrl(locale: SeoLocale): string {
     return canonicalLocaleUrl(locale);
 }
 
-
 // Exported for tests. Production callers go through i18nPrerenderPlugin.
 export function applyLocale(html: string, locale: LocalePrerenderConfig, options: SeoBuildOptions): string {
+    assertHtmlMatchCount(html, /<html[^>]*\blang="[^"]*"/i, 1, "html lang anchor");
+    for (const id of ["faq-jsonld", "dc-i18n", "webapp-jsonld", "website-jsonld"]) {
+        assertHtmlMatchCount(html, new RegExp(`<script\\b[^>]*\\bid="${id}"`, "i"), 1, `${id} script`);
+    }
     let out = html;
     const indexable = getIndexableSeoLocales();
     const selfUrl = localeHomeUrl(locale.seo);
@@ -520,7 +514,10 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     // <html lang="...">: replace whatever value is there with the locale code.
     // The source HTML ships with "en"; for /ru/ we flip to "ru" so screen
     // readers and CSS :lang() see the right language for the document.
-    out = out.replace(/<html([^>]*?)\blang="[^"]*"/i, (_m, rest) => `<html data-prerendered${rest}lang="${locale.seo.lang}"`);
+    out = out.replace(
+        /<html([^>]*?)\blang="[^"]*"/i,
+        (_m, rest) => `<html data-prerendered${rest}lang="${locale.seo.lang}"`,
+    );
 
     // canonical / og:url - self-referencing per locale. Without distinct
     // canonical, both URLs would canonicalize to / and the /ru/ page would
@@ -537,12 +534,7 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     // older Bing - they read this when hreflang is absent (Baidu, Naver do
     // not support hreflang at all). Anchor on http-equiv="content-language"
     // to avoid touching other meta tags.
-    out = replaceAttr(
-        out,
-        /<meta\b[^>]*\bhttp-equiv="content-language"/i,
-        "content",
-        locale.seo.contentLanguage,
-    );
+    out = replaceAttr(out, /<meta\b[^>]*\bhttp-equiv="content-language"/i, "content", locale.seo.contentLanguage);
 
     // og:locale uses BCP47 region form (en_US, ru_RU), not just the 2-letter code.
     // The closing quote in `property="og:locale"` is what distinguishes it from
@@ -584,34 +576,44 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     out = replaceAttr(out, /<meta\b[^>]*\bproperty="og:image"/i, "content", ogImage);
     out = replaceAttr(out, /<meta\b[^>]*\bname="twitter:image"/i, "content", ogImage);
 
-    // data-i18n="key" - replace textContent of the element. We rely on
-    // data-i18n elements containing only plain text (no child HTML);
-    // confirmed by grep at write-time of this plugin. If a future change
-    // adds a child element, the regex won't match and we silently fall
-    // back to the source literal.
+    // Runtime translation replaces textContent; a marked parent with child
+    // markup is ambiguous and must be corrected in the source template.
+    const textMarkers = Array.from(out.matchAll(/<[a-zA-Z][^>]*\bdata-i18n\s*=/g)).length;
+    let translatedTexts = 0;
     out = out.replace(
         /<([a-zA-Z][\w-]*)([^>]*?\bdata-i18n="([^"]+)"[^>]*?)>([^<]*)<\/\1>/g,
-        (match, tag, attrs, key, _oldText) => {
+        (_match, tag, attrs, key, _oldText) => {
+            translatedTexts++;
             const value = locale.dict[key as I18nKey];
-            if (value === undefined) return match;
+            if (value === undefined) throw new Error(`seo-prerender: unknown data-i18n key ${key}`);
             return `<${tag}${attrs}>${escapeText(value)}</${tag}>`;
         },
     );
 
+    if (translatedTexts !== textMarkers)
+        throw new Error("seo-prerender: data-i18n requires double-quoted keys and plain text content");
+
     // data-i18n-attr="attr:key,attr:key" - set the listed attributes on the
     // same element. Same swap that applyStaticI18n() does at runtime; running
     // it at build time means crawlers see the localized values without JS.
+    const attributeMarkers = Array.from(out.matchAll(/<[a-zA-Z][^>]*\bdata-i18n-attr\s*=/g)).length;
+    let translatedAttributes = 0;
     out = out.replace(/<([a-zA-Z][\w-]*)([^>]*\bdata-i18n-attr="([^"]+)"[^>]*)>/g, (_match, tag, allAttrs, spec) => {
+        translatedAttributes++;
         let newAttrs = allAttrs as string;
         for (const pair of spec.split(",")) {
             const [attr, key] = pair.split(":").map((s: string) => s.trim());
-            if (!attr || !key) continue;
+            if (!attr || !key || pair.split(":").length !== 2)
+                throw new Error(`seo-prerender: invalid data-i18n-attr pair ${pair}`);
             const value = locale.dict[key as I18nKey];
-            if (value === undefined) continue;
+            if (value === undefined) throw new Error(`seo-prerender: unknown data-i18n-attr key ${key}`);
             newAttrs = setAttribute(newAttrs, attr, value);
         }
         return `<${tag}${newAttrs}>`;
     });
+
+    if (translatedAttributes !== attributeMarkers)
+        throw new Error("seo-prerender: data-i18n-attr requires a double-quoted specification");
 
     // og:description / twitter:description - locale-tuned social-card copy,
     // applied here (after the data-i18n-attr swap above) so it is the final
@@ -655,27 +657,25 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
     out = rewriteWebsiteJsonLd(out, canonicalOrigin);
 
     const cameraLinks = getHomepageCameras(locale.seo.lang)
-        .map((brand) => `<a class="landing-brand-link" href="/${locale.seo.urlSegment}/cameras/${brand.slug}/">${escapeText(brand.displayName)}</a>`)
+        .map(
+            (brand) =>
+                `<a class="landing-brand-link" href="/${locale.seo.urlSegment}/cameras/${brand.slug}/">${escapeText(brand.displayName)}</a>`,
+        )
         .join(", ");
-    out = out.replace(/(<span\b[^>]*\bdata-camera-links(?:="[^"]*")?[^>]*>)[\s\S]*?<\/span>/g, `$1${cameraLinks}</span>`);
+    out = out.replace(
+        /(<span\b[^>]*\bdata-camera-links(?:="[^"]*")?[^>]*>)[\s\S]*?<\/span>/g,
+        `$1${cameraLinks}</span>`,
+    );
 
     // Camera links prefer the current locale, but each brand has an explicit
     // publication set. Falling back to English keeps homepage links valid when
     // a localized brand page does not exist. The cameras hub exists everywhere.
     const defaultSegment = getDefaultSeoLocale().urlSegment;
     for (const brand of getLandingBrands()) {
-        const segment = brand.locales.includes(locale.seo.lang)
-            ? locale.seo.urlSegment
-            : defaultSegment;
-        out = out.replaceAll(
-            `href="/cameras/${brand.slug}/"`,
-            `href="/${segment}/cameras/${brand.slug}/"`,
-        );
+        const segment = brand.locales.includes(locale.seo.lang) ? locale.seo.urlSegment : defaultSegment;
+        out = out.replaceAll(`href="/cameras/${brand.slug}/"`, `href="/${segment}/cameras/${brand.slug}/"`);
     }
-    out = out.replaceAll(
-        'href="/cameras/"',
-        `href="/${locale.seo.urlSegment}/cameras/"`,
-    );
+    out = out.replaceAll('href="/cameras/"', `href="/${locale.seo.urlSegment}/cameras/"`);
 
     out = localizeDocumentLinks(out, locale.seo.urlSegment);
 
@@ -715,11 +715,7 @@ export function applyLocale(html: string, locale: LocalePrerenderConfig, options
 // than the self-locale). This is structurally identical to rewriteHreflangBlock
 // and avoids the previous walk-and-replace fragility where the output count
 // was tied to whatever count happened to live in the baseline HTML.
-function rewriteOgLocaleAlternates(
-    html: string,
-    selfLocale: SeoLocale,
-    indexable: ReadonlyArray<SeoLocale>,
-): string {
+function rewriteOgLocaleAlternates(html: string, selfLocale: SeoLocale, indexable: ReadonlyArray<SeoLocale>): string {
     const tagRe = /<meta\b[^>]*\bproperty="og:locale:alternate"[^>]*>/gi;
     const matches: Array<{ start: number; end: number }> = [];
     for (const m of html.matchAll(tagRe)) {
@@ -727,15 +723,13 @@ function rewriteOgLocaleAlternates(
     }
     if (matches.length === 0) {
         throw new Error(
-            "seo-prerender: no <meta property=\"og:locale:alternate\"> tags found in baseline HTML - " +
+            'seo-prerender: no <meta property="og:locale:alternate"> tags found in baseline HTML - ' +
                 "the baseline must carry at least one tag as an anchor for the rewrite",
         );
     }
 
     const others = indexable.filter((l) => l.lang !== selfLocale.lang);
-    const replacement = others
-        .map((loc) => `<meta property="og:locale:alternate" content="${loc.ogLocale}">`)
-        .join("");
+    const replacement = others.map((loc) => `<meta property="og:locale:alternate" content="${loc.ogLocale}">`).join("");
     const first = matches[0]!;
     const last = matches[matches.length - 1]!;
     return `${html.slice(0, first.start)}${replacement}${html.slice(last.end)}`;
@@ -763,7 +757,7 @@ function rewriteHreflangBlock(html: string): string {
     }
     if (matches.length === 0) {
         throw new Error(
-            "seo-prerender: no <link rel=\"alternate\" hreflang=...> tags found in baseline HTML - " +
+            'seo-prerender: no <link rel="alternate" hreflang=...> tags found in baseline HTML - ' +
                 "hreflang cluster is required for multi-locale SEO",
         );
     }
@@ -913,11 +907,11 @@ function buildFaqJsonLd(dict: Record<I18nKey, string>): string {
 // the value of `attr`. If `attr` is not present on that element, appends it.
 // anchorRe must match the start of the tag through some part of its attributes.
 function replaceAttr(html: string, anchorRe: RegExp, attr: string, value: string): string {
-    const anchorMatch = anchorRe.exec(html);
-    if (!anchorMatch) return html;
+    assertHtmlMatchCount(html, anchorRe, 1, `SEO anchor ${anchorRe.source}`);
+    const anchorMatch = anchorRe.exec(html)!;
     const tagStart = anchorMatch.index;
     const tagEnd = html.indexOf(">", tagStart);
-    if (tagEnd < 0) return html;
+    if (tagEnd < 0) throw new Error(`seo-prerender: unterminated SEO anchor ${anchorRe.source}`);
     const tag = html.slice(tagStart, tagEnd + 1);
     const updated = setAttributeInTag(tag, attr, value);
     return `${html.slice(0, tagStart)}${updated}${html.slice(tagEnd + 1)}`;

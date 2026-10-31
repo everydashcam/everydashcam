@@ -11,11 +11,7 @@
 // but keeps naive scanners (and humans) from misreading the markup. One shared
 // strict implementation, used by every build-time HTML generator.
 export function escapeAttr(s: string): string {
-    return s
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function escapeText(s: string): string {
@@ -29,4 +25,10 @@ export function escapeText(s: string): string {
 // and inert as HTML.
 export function stringifyJsonLd(value: unknown): string {
     return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+/** Controlled templates must fail the build when a required marker drifts. */
+export function assertHtmlMatchCount(html: string, pattern: RegExp, expected: number, label: string): void {
+    const count = Array.from(html.matchAll(new RegExp(pattern.source, `${pattern.flags.replace(/g/g, "")}g`))).length;
+    if (count !== expected) throw new Error(`html template: expected ${expected} ${label}, found ${count}`);
 }

@@ -1,8 +1,9 @@
+import { hostedHtmlFiles } from "./_build-files.mjs";
 // Validate final artifacts, including changes introduced after HTML rendering.
 // A single build can validate local pages; pass both builds to prove cross-host
 // hreflang targets exist and return the same graph. Never merge pages by path.
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { DOMParser } from "@xmldom/xmldom";
 
@@ -75,14 +76,6 @@ function alternateMap(nodes, label) {
 
 function sameAlternates(left, right) {
     return left.size === right.size && [...left].every(([lang, url]) => right.get(lang) === url);
-}
-
-function htmlFiles(directory) {
-    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-        if (entry.name === "downloads") return [];
-        const path = join(directory, entry.name);
-        return entry.isDirectory() ? htmlFiles(path) : entry.name.endsWith(".html") ? [path] : [];
-    });
 }
 
 function isFile(path) {
@@ -293,7 +286,7 @@ function readBuild(directory) {
     requireCondition(entries.size > 0 || globalNoIndex, "indexable deployment has an empty sitemap");
 
     const pages = new Map();
-    for (const file of htmlFiles(directory)) {
+    for (const file of hostedHtmlFiles(directory)) {
         const name = relative(directory, file);
         if (name === "index.html") continue;
         const route = `/${name.replace(/index\.html$/, "").replace(/\.html$/, "")}`;

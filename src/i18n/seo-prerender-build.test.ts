@@ -879,3 +879,21 @@ describe("SUPPORTED_BRANDS landing brands match VENDORS", () => {
         }
     });
 });
+
+describe("localized template invariants", () => {
+    const locale = getPrerenderLocales().find((item) => item.seo.lang === "ru")!;
+    it.each([
+        ['<h1 data-i18n="page.title">EN literal</h1>', '<h1 data-i18n="page.title"><span>nested</span></h1>'],
+        ['data-i18n="page.title"', "data-i18n='page.title'"],
+        ['data-i18n="page.title"', 'data-i18n="unknown.key"'],
+        ['data-i18n-attr="content:meta.description"', "data-i18n-attr='content:meta.description'"],
+        ['data-i18n-attr="content:meta.description"', 'data-i18n-attr="content"'],
+        ['data-i18n-attr="content:meta.description"', 'data-i18n-attr="content:unknown.key"'],
+    ])("rejects untranslated or malformed markers (%s)", (before, after) => {
+        expect(() => applyLocale(buildMinimalBaseline().replace(before, after), locale, {})).toThrow(/data-i18n/);
+    });
+    it.each([0, 2])("requires exactly one canonical anchor (%s present)", (count) => {
+        const anchor = '<link href="https://everydashcam.app/" rel="canonical">';
+        expect(() => applyLocale(buildMinimalBaseline().replace(anchor, anchor.repeat(count)), locale, {})).toThrow(/SEO anchor/);
+    });
+});

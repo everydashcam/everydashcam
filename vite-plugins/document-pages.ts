@@ -15,7 +15,7 @@ import {
     type SeoDeploymentContext,
 } from "./deployment-profile.js";
 import { DOCUMENT_DESCRIPTIONS } from "./document-pages-meta.js";
-import { escapeAttr, escapeText } from "./html-utils.js";
+import { assertHtmlMatchCount, escapeAttr, escapeText } from "./html-utils.js";
 import { buildSeoAlternates, renderSeoAlternates } from "./seo-alternates.js";
 import { getLanguageNavigationLabel } from "./seo-navigation.js";
 
@@ -46,6 +46,7 @@ export function readDocumentSources(sourceDir = resolve(process.cwd(), "public")
                 throw new Error(`document-pages: invalid article locale in ${slug}`);
             articles.set(locale.lang, match[0].replace(/^(<article\b[^>]*?)\s+hidden(?:="[^"]*")?/, "$1"));
         }
+        assertHtmlMatchCount(html, /<article\b/gi, articles.size, `${slug} localized article markers`);
         if (!articles.has("en")) throw new Error(`document-pages: missing English article in ${slug}`);
         return { slug, html, articles, locales: known.filter((locale) => articles.has(locale.lang)) };
     });
@@ -58,8 +59,12 @@ function documentTitle(source: DocumentSource, lang: Lang): string {
 }
 
 function pageHead(source: DocumentSource, locale: SeoLocale, canonical: string): string {
+    assertHtmlMatchCount(source.html, /<head\b/gi, 1, `${source.slug} head`);
     const originalHead = source.html.match(/<head[^>]*>([\s\S]*?)<\/head>/)?.[1];
     if (!originalHead) throw new Error(`document-pages: missing head in ${source.slug}`);
+    assertHtmlMatchCount(originalHead, /<title>/g, 1, `${source.slug} title`);
+    assertHtmlMatchCount(originalHead, /<link rel="canonical"[^>]*>/g, 1, `${source.slug} canonical`);
+    assertHtmlMatchCount(originalHead, /<meta name="description"[^>]*>/g, 1, `${source.slug} description`);
     return originalHead
         .replace(/<!--[\s\S]*?-->/g, "")
         .replace(/<title>[\s\S]*?<\/title>/, `<title>${documentTitle(source, locale.lang)}</title>`)
@@ -128,10 +133,7 @@ ${renderSeoAlternates(tail, source.locales, context)}
 </html>`;
 }
 
-export function renderDocumentStub(
-    source: DocumentSource,
-    options: DocumentRenderOptions = {},
-): string {
+export function renderDocumentStub(source: DocumentSource, options: DocumentRenderOptions = {}): string {
     const context = options.deployment ?? resolveSeoDeploymentContext();
     const locale = source.locales.find((item) => item.lang === "en")!;
     const path = `/en/${source.slug}/`;
