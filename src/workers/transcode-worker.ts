@@ -16,12 +16,13 @@ import type { TranscodeWorkerContract } from "./transcode-protocol.js";
 import { createLogger } from "../log.js";
 import { transcode } from "../transcode/pipeline.js";
 import { transcodeSplit } from "../transcode/pipeline-split.js";
-import type { TranscodeResult } from "../transcode/types.js";
+import type { HardwareAccelerationResolver, TranscodeResult } from "../transcode/types.js";
 
 import { MapSnapshotWorkerClient } from "./map-snapshot-worker-client.js";
 import { wrapPortAsFsaWritable } from "./port-writable.js";
 import {
     TRANSCODE_NOTIFY_PROGRESS,
+    TRANSCODE_REQUEST_HARDWARE_ACCELERATION,
     TRANSCODE_REQUEST_SINGLE,
     TRANSCODE_REQUEST_SPLIT,
     type TranscodeProgressNotificationData,
@@ -33,19 +34,22 @@ const log = createLogger("worker:transcode");
 declare const self: WorkerScopeEndpoint;
 
 // Runtime-only args both pipelines receive on top of their transferred request
-// args (writable + abort signal + progress relay + snapshotter). Built once per
-// request in runPipeline and spread into the pipeline call.
+// args (writable + abort signal + progress relay + snapshotter + late encoder
+// acceleration). Built once per request in runPipeline and spread into the
+// pipeline call.
 interface TranscodeRuntimeExtras {
     writable: FileSystemWritableFileStream;
     signal: AbortSignal;
     onProgress: (p: TranscodeProgressNotificationData["progress"]) => void;
     mapSnapshotter: MapSnapshotWorkerClient | undefined;
+    resolveHardwareAcceleration: HardwareAccelerationResolver | undefined;
 }
 
 async function runPipeline(
     ctx: RequestContext,
     writablePort: MessagePort,
     overlaysMap: boolean,
+    hardwareAccelerationDeferred: boolean,
     run: (extras: TranscodeRuntimeExtras) => Promise<TranscodeResult>,
     label: string,
 ): Promise<TranscodeResult> {
@@ -65,6 +69,11 @@ async function runPipeline(
         // Attach the snapshotter only when the map overlay is actually
         // enabled - otherwise the pipeline never touches it.
         mapSnapshotter: snapshotClient,
+        // The page's encoder trial may still be running; the pipeline asks
+        // right before it creates its encoder (see transcode-protocol.ts).
+        resolveHardwareAcceleration: hardwareAccelerationDeferred
+            ? () => server.request(TRANSCODE_REQUEST_HARDWARE_ACCELERATION, undefined)
+            : undefined,
     };
     try {
         const result = await run(extras);
@@ -89,6 +98,7 @@ const server = createTypedWorkerServer<TranscodeWorkerContract>(self, {
                 ctx,
                 req.writablePort,
                 !!req.args.output.overlays?.map,
+                req.hardwareAccelerationDeferred,
                 (extras) => transcode({ ...req.args, ...extras }),
                 "transcode",
             );
@@ -98,6 +108,7 @@ const server = createTypedWorkerServer<TranscodeWorkerContract>(self, {
                 ctx,
                 req.writablePort,
                 !!req.args.output.overlays?.map,
+                req.hardwareAccelerationDeferred,
                 (extras) => transcodeSplit({ ...req.args, ...extras }),
                 "transcodeSplit",
             );

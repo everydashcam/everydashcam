@@ -17,10 +17,11 @@ import type { TranscodeWorkerContract } from "../workers/transcode-protocol.js";
 import { transfer } from "comlink";
 import type { MapSnapshotRequest } from "../transcode/map-snapshotter-types.js";
 import { createLogger } from "../log.js";
-import type { TranscodeArgs, TranscodeResult } from "../transcode/types.js";
+import type { HardwareAccelerationResolver, TranscodeArgs, TranscodeResult } from "../transcode/types.js";
 import type { TranscodeSplitArgs } from "../transcode/pipeline-split.js";
 
 import {
+    TRANSCODE_REQUEST_HARDWARE_ACCELERATION,
     TRANSCODE_REQUEST_MAP_SNAPSHOT,
     TRANSCODE_NOTIFY_PROGRESS,
     TRANSCODE_REQUEST_SINGLE,
@@ -68,11 +69,12 @@ export function transcodeViaWorker(
     mapConfig: Readonly<OverlayMapState> | null = null,
     beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
-    const { signal, onProgress, writable, ...rest } = args;
+    const { signal, onProgress, writable, resolveHardwareAcceleration, ...rest } = args;
     return runInWorker(
         { type: TRANSCODE_REQUEST_SINGLE, args: rest },
         writable,
         signal,
+        resolveHardwareAcceleration,
         onProgress,
         args.output.overlays,
         onDiskCommit,
@@ -88,11 +90,12 @@ export function transcodeSplitViaWorker(
     mapConfig: Readonly<OverlayMapState> | null = null,
     beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
-    const { signal, onProgress, writable, ...rest } = args;
+    const { signal, onProgress, writable, resolveHardwareAcceleration, ...rest } = args;
     return runInWorker(
         { type: TRANSCODE_REQUEST_SPLIT, args: rest },
         writable,
         signal,
+        resolveHardwareAcceleration,
         onProgress,
         args.output.overlays,
         onDiskCommit,
@@ -107,6 +110,7 @@ function runInWorker(
         | { type: typeof TRANSCODE_REQUEST_SPLIT; args: TranscodeSplitArgsForTransfer },
     writable: FileSystemWritableFileStream,
     signal: AbortSignal,
+    resolveHardwareAcceleration: HardwareAccelerationResolver | undefined,
     onProgress: TranscodeArgs["onProgress"],
     overlays: OverlayPipelineArgs | null,
     onDiskCommit?: (on: boolean) => void,
@@ -197,7 +201,10 @@ function runInWorker(
 
     const client = createTypedWorkerClient<TranscodeWorkerContract>(worker, {
         name: "transcode",
-        onRequest: { [TRANSCODE_REQUEST_MAP_SNAPSHOT]: renderOneSnapshot },
+        onRequest: {
+            [TRANSCODE_REQUEST_MAP_SNAPSHOT]: renderOneSnapshot,
+            [TRANSCODE_REQUEST_HARDWARE_ACCELERATION]: answerHardwareAcceleration,
+        },
         onNotification: (msg) => {
             if (msg.type === TRANSCODE_NOTIFY_PROGRESS) {
                 const data = msg.data;
@@ -226,6 +233,14 @@ function runInWorker(
             throw new DOMException("transcode cancelled", "AbortError");
         }
         return transfer(bitmap, [bitmap]);
+    }
+
+    // The worker asks only when the request deferred the decision; the
+    // resolver owns its own cancellation (it rejects with AbortError).
+    async function answerHardwareAcceleration(): Promise<HardwareAcceleration> {
+        if (!resolveHardwareAcceleration) throw new Error("hardware acceleration was not deferred");
+        if (client.disposed || signal.aborted) throw new DOMException("transcode cancelled", "AbortError");
+        return resolveHardwareAcceleration();
     }
 
     // Lets the map rAF loop and chart hot-path skip work while the worker is writing,
@@ -261,10 +276,11 @@ function runInWorker(
     };
 
     const options = { signal, transfer: [writablePort] };
+    const hardwareAccelerationDeferred = resolveHardwareAcceleration !== undefined;
     const resultPromise =
         request.type === TRANSCODE_REQUEST_SINGLE
-            ? client.request(request.type, { args: request.args, writablePort }, options)
-            : client.request(request.type, { args: request.args, writablePort }, options);
+            ? client.request(request.type, { args: request.args, writablePort, hardwareAccelerationDeferred }, options)
+            : client.request(request.type, { args: request.args, writablePort, hardwareAccelerationDeferred }, options);
 
     return resultPromise.then(
         async (result) => {

@@ -30,7 +30,13 @@ import type { AudioTrackFormat } from "../export-range.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./capabilities.js";
 import { drawMapOverlay } from "./map-overlay.js";
-import type { CapturedMoovBytes, OverlayMapPipelineOpts, TranscodeProgress, TranscodeResult } from "./types.js";
+import type {
+    CapturedMoovBytes,
+    HardwareAccelerationResolver,
+    OverlayMapPipelineOpts,
+    TranscodeProgress,
+    TranscodeResult,
+} from "./types.js";
 
 const log = createLogger("transcode:finalize");
 
@@ -433,6 +439,24 @@ export async function feedSegmentAudioCopy(opts: {
         }
     }
     return { audioLastEndSec: lastEnd, configPushed };
+}
+
+/**
+ * The acceleration a pipeline creates its video encoder with: the late
+ * resolver's answer when the caller supplied one (see
+ * HardwareAccelerationResolver), otherwise the fixed output preference.
+ * Rechecks cancellation because the wait can outlast an abort that the
+ * resolver itself did not observe.
+ */
+export async function resolveVideoEncoderAcceleration(
+    resolveHardwareAcceleration: HardwareAccelerationResolver | undefined,
+    outputPreference: HardwareAcceleration | undefined,
+    signal: AbortSignal,
+): Promise<HardwareAcceleration | undefined> {
+    if (!resolveHardwareAcceleration) return outputPreference;
+    const hardwareAcceleration = await resolveHardwareAcceleration();
+    throwIfCancelled(signal);
+    return hardwareAcceleration;
 }
 
 /**

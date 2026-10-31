@@ -12,6 +12,7 @@ import {
     nextTolerant,
     type DecodeProgress,
     resolveAudioPlan,
+    resolveVideoEncoderAcceleration,
 } from "./pipeline-common.js";
 
 describe("emitSilence", () => {
@@ -389,5 +390,48 @@ describe("frameNeedsNoComposite", () => {
         // VideoSample.draw applies that stretch, so the raw frame must not go
         // straight to the encoder.
         expect(frameNeedsNoComposite(frame({ codedWidth: 1440 }), 1920, 1080)).toBe(false);
+    });
+});
+
+describe("resolveVideoEncoderAcceleration", () => {
+    it("uses the output preference when no late decision is pending", async () => {
+        const acceleration = await resolveVideoEncoderAcceleration(
+            undefined,
+            "prefer-hardware",
+            new AbortController().signal,
+        );
+        expect(acceleration).toBe("prefer-hardware");
+    });
+
+    it("replaces the output preference with the late decision", async () => {
+        const acceleration = await resolveVideoEncoderAcceleration(
+            async () => "prefer-software",
+            "no-preference",
+            new AbortController().signal,
+        );
+        expect(acceleration).toBe("prefer-software");
+    });
+
+    it("fails with AbortError when the run is cancelled while waiting", async () => {
+        const controller = new AbortController();
+        const pending = resolveVideoEncoderAcceleration(
+            async () => {
+                controller.abort();
+                return "prefer-software";
+            },
+            "no-preference",
+            controller.signal,
+        );
+        await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("propagates a rejected decision unchanged", async () => {
+        const failure = new DOMException("trial cancelled", "AbortError");
+        const pending = resolveVideoEncoderAcceleration(
+            () => Promise.reject(failure),
+            "no-preference",
+            new AbortController().signal,
+        );
+        await expect(pending).rejects.toBe(failure);
     });
 });

@@ -262,7 +262,20 @@ export interface TranscodeArgs {
      * channel.
      */
     mapSnapshotter?: MapSnapshotter;
+    /** See HardwareAccelerationResolver. Not serialized through the worker
+     *  bridge: the worker asks the page for the value instead. */
+    resolveHardwareAcceleration?: HardwareAccelerationResolver;
 }
+
+/**
+ * Supplies the encoder acceleration when the caller is still deciding it (the
+ * automatic encoder trial). The pipelines call it once, right before they
+ * create the video encoder, so the decision overlaps their own setup instead
+ * of delaying the whole export. When set, it replaces
+ * output.hardwareAcceleration. A rejection (AbortError on cancel) fails the
+ * transcode like any other setup error.
+ */
+export type HardwareAccelerationResolver = () => Promise<HardwareAcceleration>;
 
 /**
  * Allowed export speed-up factors. 1 = real time, N = the clip plays N times

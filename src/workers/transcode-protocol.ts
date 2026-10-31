@@ -17,20 +17,34 @@ import type { MapSnapshotRequest } from "../transcode/map-snapshotter-types.js";
 import type { TranscodeArgs, TranscodeProgress, TranscodeResult } from "../transcode/types.js";
 import type { TranscodeSplitArgs } from "../transcode/pipeline-split.js";
 
+/** Page-side runtime fields: functions and streams that cannot be cloned. */
+type TranscodeRuntimeOnlyArgs = "signal" | "writable" | "onProgress" | "resolveHardwareAcceleration";
+
 /** Transferable subset of TranscodeArgs - runtime-only fields are passed separately. */
-export type TranscodeArgsForTransfer = Omit<TranscodeArgs, "signal" | "writable" | "onProgress">;
-export type TranscodeSplitArgsForTransfer = Omit<TranscodeSplitArgs, "signal" | "writable" | "onProgress">;
+export type TranscodeArgsForTransfer = Omit<TranscodeArgs, TranscodeRuntimeOnlyArgs>;
+export type TranscodeSplitArgsForTransfer = Omit<TranscodeSplitArgs, TranscodeRuntimeOnlyArgs>;
+
+/** Fields shared by both transcode request payloads. */
+interface TranscodeRequestDataBase {
+    writablePort: MessagePort;
+    /**
+     * True when the page is still deciding the encoder acceleration (the
+     * automatic encoder trial runs alongside worker startup). The worker then
+     * ignores args.output.hardwareAcceleration and asks the page via
+     * TRANSCODE_REQUEST_HARDWARE_ACCELERATION right before it creates its
+     * video encoder.
+     */
+    hardwareAccelerationDeferred: boolean;
+}
 
 /** Request payload for the single-channel transcode path. */
-export interface TranscodeSingleRequestData {
+export interface TranscodeSingleRequestData extends TranscodeRequestDataBase {
     args: TranscodeArgsForTransfer;
-    writablePort: MessagePort;
 }
 
 /** Request payload for the split-screen transcode path. */
-export interface TranscodeSplitRequestData {
+export interface TranscodeSplitRequestData extends TranscodeRequestDataBase {
     args: TranscodeSplitArgsForTransfer;
-    writablePort: MessagePort;
 }
 
 /** Push notification: progress update from the encode loop. */
@@ -45,6 +59,11 @@ export const TRANSCODE_NOTIFY_PROGRESS = "progress";
 /** Reverse RPC: MapLibre renders each requested map frame on the page. */
 export const TRANSCODE_REQUEST_MAP_SNAPSHOT = "map-snapshot";
 
+/** Reverse RPC: the page answers with the encoder acceleration once its
+ *  decision settles. Issued at most once per run, and only when the request
+ *  set hardwareAccelerationDeferred. Rejects with AbortError on cancel. */
+export const TRANSCODE_REQUEST_HARDWARE_ACCELERATION = "hardware-acceleration";
+
 export type TranscodeWorkerContract = WorkerContract<
     {
         [TRANSCODE_REQUEST_SINGLE]: WorkerRequest<TranscodeSingleRequestData, TranscodeResult>;
@@ -52,5 +71,8 @@ export type TranscodeWorkerContract = WorkerContract<
     },
     Record<never, never>,
     { [TRANSCODE_NOTIFY_PROGRESS]: TranscodeProgressNotificationData },
-    { [TRANSCODE_REQUEST_MAP_SNAPSHOT]: WorkerRequest<MapSnapshotRequest, ImageBitmap> }
+    {
+        [TRANSCODE_REQUEST_MAP_SNAPSHOT]: WorkerRequest<MapSnapshotRequest, ImageBitmap>;
+        [TRANSCODE_REQUEST_HARDWARE_ACCELERATION]: WorkerRequest<undefined, HardwareAcceleration>;
+    }
 >;

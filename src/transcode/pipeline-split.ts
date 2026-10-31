@@ -42,6 +42,7 @@ import {
     framesForSpeed,
     resolveBitrate,
     type AspectId,
+    type HardwareAccelerationResolver,
     type TranscodeProgress,
     type TranscodeResult,
     type WatermarkAnchor,
@@ -68,6 +69,7 @@ import {
     joinAllOrThrowFirst,
     nextTolerant,
     type DecodeProgress,
+    resolveVideoEncoderAcceleration,
     round2,
 } from "./pipeline-common.js";
 import { drawMapPlaceholder } from "./map-overlay.js";
@@ -133,6 +135,8 @@ export interface TranscodeSplitArgs {
     onProgress: (p: TranscodeProgress) => void;
     /** Same contract as TranscodeArgs.mapSnapshotter - see that doc. */
     mapSnapshotter?: import("./map-snapshotter-types.js").MapSnapshotter;
+    /** Same contract as TranscodeArgs.resolveHardwareAcceleration - see that doc. */
+    resolveHardwareAcceleration?: HardwareAccelerationResolver;
 }
 
 export async function transcodeSplit(args: TranscodeSplitArgs): Promise<TranscodeResult> {
@@ -258,10 +262,17 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         // imageSmoothingQuality "low" softens that downscale. Match pipeline.ts.
         ctx.imageSmoothingQuality = "high";
 
+        // Awaited only now, so the font loads and the slot aspect preflight above
+        // overlap a page-side encoder trial that may still be running.
+        const hardwareAcceleration = await resolveVideoEncoderAcceleration(
+            args.resolveHardwareAcceleration,
+            output.hardwareAcceleration,
+            signal,
+        );
         // Encoder + AAC target shared with pipeline.ts via pipeline-common - one
         // place so a tuning fix cannot land on one pipeline only.
         const encoderDiagnostics = createVideoEncodingDiagnostics();
-        const videoSource = createH264VideoSource(canvas, bitrate, encoderDiagnostics, output.hardwareAcceleration);
+        const videoSource = createH264VideoSource(canvas, bitrate, encoderDiagnostics, hardwareAcceleration);
         out.addVideoTrack(videoSource, { frameRate: outputFps });
 
         // Audio plan from the master channel: passthrough (stream-copy AAC/MP3, no

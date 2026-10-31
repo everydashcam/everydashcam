@@ -79,6 +79,7 @@ import {
     joinAllOrThrowFirst,
     nextTolerant,
     type DecodeProgress,
+    resolveVideoEncoderAcceleration,
     round2,
 } from "./pipeline-common.js";
 import { drawMapPlaceholder } from "./map-overlay.js";
@@ -173,30 +174,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
         !output.watermarkAnchor &&
         !anyOverlay &&
         !output.blurRegions?.length;
-    // Both sources use the same encoder config; CanvasSource wraps the composed
-    // frame in a VideoSample internally.
     const encoderDiagnostics = createVideoEncodingDiagnostics();
-    const canvasSource = noOverlayLayer
-        ? null
-        : createH264VideoSource(canvas, bitrate, encoderDiagnostics, output.hardwareAcceleration);
-    const sampleSource = noOverlayLayer
-        ? createH264SampleSource(bitrate, encoderDiagnostics, output.hardwareAcceleration)
-        : null;
-    out.addVideoTrack(canvasSource ?? sampleSource!, { frameRate: outputFps });
-
-    /** Encodes the frame currently on the canvas at the output-axis timing. */
-    const encodeCanvas = async (outTs: number, duration: number): Promise<void> => {
-        if (canvasSource) {
-            await canvasSource.add(outTs, duration);
-            return;
-        }
-        const framed = new VideoSample(canvas, { timestamp: outTs, duration });
-        try {
-            await sampleSource!.add(framed);
-        } finally {
-            framed.close();
-        }
-    };
 
     // Audio plan: passthrough (stream-copy AAC/MP3 packets, no encoder), encode
     // (decode + re-encode to AAC, or Opus when AAC encode is unavailable), or
@@ -224,21 +202,62 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
     });
     try {
         const videoResolver = createVideoSourceResolver(signal);
-        if (output.withAudio) {
-            // Probe all segments: heterogeneous audio (e.g. an original clip spliced
-            // with a re-export) cannot share one track, so drop audio rather than
-            // crash the muxer mid-stream. A range that starts on an audio-less clip
-            // (e.g. parking mode) followed by clips with audio still keeps audio -
-            // the per-segment loop fills the leading clip with silence (encode) or a
-            // gap (passthrough). reuseFirstInput shares segment 0's already-open Input
-            // so a one-big-file recording does not read its moov twice.
-            const probe = await probeAudioUniformity(
-                mainSegments.map((s) => s.file),
-                {
-                    reuseFirstInput: firstInput,
-                    signal,
-                },
-            );
+        // Probe all segments: heterogeneous audio (e.g. an original clip spliced
+        // with a re-export) cannot share one track, so drop audio rather than
+        // crash the muxer mid-stream. A range that starts on an audio-less clip
+        // (e.g. parking mode) followed by clips with audio still keeps audio -
+        // the per-segment loop fills the leading clip with silence (encode) or a
+        // gap (passthrough). reuseFirstInput shares segment 0's already-open Input
+        // so a one-big-file recording does not read its moov twice.
+        const audioProbe = output.withAudio
+            ? probeAudioUniformity(
+                  mainSegments.map((s) => s.file),
+                  {
+                      reuseFirstInput: firstInput,
+                      signal,
+                  },
+              )
+            : null;
+        // The audio probe (or, without audio, the first segment's video check the
+        // loop starts with) is started BEFORE the encoder acceleration is awaited,
+        // so these metadata reads overlap the page-side encoder trial. Rejections
+        // surface at the awaits that consume them; the no-op handlers only keep an
+        // early exit (a cancelled trial) from reporting them as unhandled.
+        audioProbe?.catch(() => {});
+        if (!audioProbe) videoResolver.resolve(mainSegments[0]!.file).catch(() => {});
+        const hardwareAcceleration = await resolveVideoEncoderAcceleration(
+            args.resolveHardwareAcceleration,
+            output.hardwareAcceleration,
+            signal,
+        );
+
+        // Both sources use the same encoder config; CanvasSource wraps the composed
+        // frame in a VideoSample internally. The video track is added before the
+        // audio plan adds its track, keeping video as the output's first track.
+        const canvasSource = noOverlayLayer
+            ? null
+            : createH264VideoSource(canvas, bitrate, encoderDiagnostics, hardwareAcceleration);
+        const sampleSource = noOverlayLayer
+            ? createH264SampleSource(bitrate, encoderDiagnostics, hardwareAcceleration)
+            : null;
+        out.addVideoTrack(canvasSource ?? sampleSource!, { frameRate: outputFps });
+
+        /** Encodes the frame currently on the canvas at the output-axis timing. */
+        const encodeCanvas = async (outTs: number, duration: number): Promise<void> => {
+            if (canvasSource) {
+                await canvasSource.add(outTs, duration);
+                return;
+            }
+            const framed = new VideoSample(canvas, { timestamp: outTs, duration });
+            try {
+                await sampleSource!.add(framed);
+            } finally {
+                framed.close();
+            }
+        };
+
+        if (audioProbe) {
+            const probe = await audioProbe;
             firstAudioFile = probe.firstFile ?? firstAudioFile;
             const audio = await applyAudioPlan(out, probe, firstAudioFile, speedFactor === 1);
             audioPlan = audio.audioPlan;

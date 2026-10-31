@@ -44,6 +44,7 @@ import { aspectRatio, ensureEven, type CapturedMoovBytes } from "../transcode/ty
 import type {
     AspectId,
     AspectPreset,
+    HardwareAccelerationResolver,
     OverlayPipelineArgs,
     OverlayTextPipelineOpts,
     TranscodeProgress,
@@ -969,7 +970,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     // is the authoritative backstop (and the only gate if the user clicked Save
     // before the panel's async probe resolved).
     let reencodeBitrate = 0;
-    let hardwareAcceleration = encoderAcceleration(encoderPreference);
+    const hardwareAcceleration = encoderAcceleration(encoderPreference);
     if (!initiallyStreamCopy) {
         // Decode preflight: a source this browser cannot decode makes every
         // re-encode branch impossible. The panel already disables Save with
@@ -1180,21 +1181,40 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
 
         const effectiveBlurRegions = blurRegionsForExport(manualBlurRegions, detectedBlurRegions);
 
+        // Automatic encoder choice. The trial (encoder-selection.ts) runs while
+        // the transcode worker starts, the map prewarms and the sources open,
+        // instead of in front of all of them: the pipeline awaits it only right
+        // before it creates its video encoder. Not started for stream-copy (no
+        // encoder) or an explicit preference (hardwareAcceleration above).
+        let resolveHardwareAcceleration: HardwareAccelerationResolver | undefined;
         if (!streamCopy && encoderPreference === "auto") {
             hooks.onStatus(t("export.progress.checkingEncoder"));
-            const selection = await selectAutoEncoder(
+            const exportController = activeExportController;
+            const encoderTrial = selectAutoEncoder(
                 {
                     width: dims.width,
                     height: dims.height,
                     frameRate,
                     bitrate: reencodeBitrate || desiredBitrate,
                 },
-                activeExportController.signal,
-            );
-            hardwareAcceleration = selection.hardwareAcceleration;
-            if (selection.hardwareAcceleration === "prefer-software")
-                notify({ severity: "warn", messageKey: "export.notify.softwareEncoder" });
-            hooks.onStatus(t("export.status.preparing"));
+                exportController.signal,
+            ).then((selection) => {
+                // Settles before the worker can receive the value, so this status
+                // always precedes the pipeline's own progress. Skipped once the run
+                // has ended: a setup failure must not report an encoder switch for
+                // an export that never encoded.
+                if (activeExportController === exportController && !exportController.signal.aborted) {
+                    if (selection.hardwareAcceleration === "prefer-software")
+                        notify({ severity: "warn", messageKey: "export.notify.softwareEncoder" });
+                    hooks.onStatus(t("export.status.preparing"));
+                }
+                return selection.hardwareAcceleration;
+            });
+            // The trial rejects only on cancel, and the transcode surfaces that
+            // AbortError itself. This keeps a run that ended before asking for the
+            // value from reporting the rejection as unhandled.
+            encoderTrial.catch(() => {});
+            resolveHardwareAcceleration = () => encoderTrial;
         }
         activeExportController.signal.throwIfAborted();
 
@@ -1214,7 +1234,13 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
             desiredBitrate: streamCopy ? null : desiredBitrate,
             encodeBitrate: streamCopy ? null : reencodeBitrate || desiredBitrate,
             encoderPreference,
-            hardwareAcceleration: streamCopy ? null : hardwareAcceleration,
+            // A pending trial logs its own outcome ("encoder trial measured"),
+            // and the encoder config log carries the value actually used.
+            hardwareAcceleration: streamCopy
+                ? null
+                : resolveHardwareAcceleration
+                  ? "trial-pending"
+                  : hardwareAcceleration,
         });
 
         if (streamCopy) {
@@ -1341,6 +1367,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                         writable,
                         signal: activeExportController.signal,
                         onProgress: onTranscodeProgress,
+                        resolveHardwareAcceleration,
                         // The final disk-commit flush is opaque (no progress events) -
                         // sweep an indeterminate bar for its duration, like stream-copy.
                     },
@@ -1373,6 +1400,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                         writable,
                         signal: activeExportController.signal,
                         onProgress: onTranscodeProgress,
+                        resolveHardwareAcceleration,
                         // Same indeterminate-bar bracket as the split path above.
                     },
                     hooks.onProgressIndeterminate,
