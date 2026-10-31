@@ -225,6 +225,10 @@ jobs:
           release="$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)"
           npx --no-install sentry-cli sourcemaps upload --release="${release}" dist
 
+      - name: Retain the previous deployment's immutable assets
+        if: steps.gate.outputs.deploy == 'true'
+        run: node --experimental-strip-types scripts/retain-deployment-assets.mts dist https://everydashcam.app
+
       - name: Save the final hosted dist for recovery
         if: steps.gate.outputs.deploy == 'true'
         uses: actions/upload-artifact@v7

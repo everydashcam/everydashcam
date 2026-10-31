@@ -790,6 +790,7 @@ export const frDict = {
     "export.blur.tracker.working": "Suivi… {pct}%",
     "export.blur.tracker.saveBlocked": "Attends la fin du suivi ou annule-le avant d’enregistrer.",
     "export.blur.tracker.offline": "Tu es hors ligne. Reconnecte-toi une fois pour activer ça — ça marchera ensuite hors ligne aussi.",
+    "export.blur.tracker.update": "Cette version ne peut plus télécharger les fichiers nécessaires. Termine ton travail, ferme toutes les fenêtres everydashcam, puis rouvre l’application pour la mettre à jour.",
     "export.blur.tracker.error": "Le téléchargement a échoué. Vérifie ta connexion et réessaie.",
     "export.blur.tracker.retry": "Réessayer",
     "export.blur.detect.plates": "Masquer toutes les plaques",

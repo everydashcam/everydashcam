@@ -23,19 +23,13 @@ async function openBlurProgress(page: Page): Promise<void> {
     await page.setViewportSize(DESKTOP);
     await page.addInitScript((urls: string[]) => {
         // Exercise UI updates at the worker boundary without making inference
-        // speed, model downloads or GPU availability part of this DOM contract.
+        // speed or GPU availability part of this DOM contract. The real local
+        // asset bytes still pass the same integrity gate as production.
         Object.defineProperty(navigator, "gpu", {
             value: { requestAdapter: async () => ({}) },
             configurable: true,
         });
         for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");
-        const nativeFetch = window.fetch.bind(window);
-        window.fetch = (input, init) => {
-            const url = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
-            return urls.includes(url)
-                ? Promise.resolve(new Response(new Uint8Array([1, 2, 3])))
-                : nativeFetch(input, init);
-        };
         const NativeWorker = window.Worker;
         let completeFutureDetections = false;
         let detectionRequests = 0;
@@ -261,4 +255,24 @@ test("an empty detection result preserves the manual bitrate captured at Save", 
                     .find((record) => record.msg === "export settings")?.ctx,
         ),
     ).toMatchObject({ mode: "single", manualBitrateMbps: 2, encodeBitrate: 2_000_000 });
+});
+
+test.describe("missing retained assets", () => {
+    test.use({
+        tolerateConsole: [/^Failed to load resource: the server responded with a status of 404 \(Not Found\)$/],
+    });
+    test("asks for an update without reloading a loaded recording", async ({ page }) => {
+        await page.route("**/ort/**", (route) => route.fulfill({ status: 404, body: "missing version" }));
+        await openBlurProgress(page);
+        await page.evaluate(() => {
+            document.documentElement.dataset.updateSentinel = "kept";
+        });
+        await page.locator("#export-panel-blur-plates").check();
+        await expect(
+            page.getByText("This version can no longer download what it needs.", { exact: false }),
+        ).toBeVisible();
+        await expect(page.locator("html")).toHaveAttribute("data-update-sentinel", "kept");
+        await expect(page.locator("html")).not.toHaveAttribute("data-detect-requested", "true");
+        await expect(page.locator("#export-panel-blur-plates")).toBeChecked();
+    });
 });

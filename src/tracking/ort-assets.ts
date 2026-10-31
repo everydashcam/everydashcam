@@ -1,12 +1,16 @@
-/** Versioned pieces of one WASM binary, in assembly order. */
-export interface WasmPart {
+/** Immutable binary response, verified before use. */
+export interface AssetPart {
     url: string;
     bytes: number;
     sha256: string;
 }
 
-/** The module and matching WASM for one runtime, resolved on the main thread. */
+/** Parts are in assembly order; small binaries have exactly one part. */
 export interface OrtAssets {
-    moduleUrl: string;
-    wasm: { bytes: number; url: string } | { bytes: number; parts: WasmPart[] };
+    wasm: { bytes: number; parts: AssetPart[] };
+}
+
+export interface TrackerAssetManifest {
+    ort: { wasm: OrtAssets; webgpu: OrtAssets };
+    models: { tracker: AssetPart; plate: AssetPart; face: AssetPart };
 }

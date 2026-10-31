@@ -24,7 +24,7 @@ import { notifyBlurRegionsChanged, subscribeBlurTripRegroup } from "./blur-regio
 import { captureBlurTripSource, matchesBlurTripSource, type BlurTripSource } from "./blur-trip-source.js";
 import { notify } from "./notifications.js";
 import { TRACKER_MODEL_URL, TRACKER_ORT_ASSETS } from "./blur-assets.js";
-import { subscribeTrackerWorkerNotifications, trackerWorkerClient } from "./tracker-worker-client.js";
+import { subscribeTrackerWorkerNotifications, requestTrackerWorker } from "./tracker-worker-client.js";
 
 const log = createLogger("blur-track");
 
@@ -175,7 +175,7 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
         if (timeoutTimer !== undefined) window.clearTimeout(timeoutTimer);
         timeoutTimer = window.setTimeout(() => {
             timedOut = true;
-            timeoutCtrl.abort();
+            timeoutCtrl.abort(new DOMException("tracker worker stalled", "TimeoutError"));
         }, TRACK_REQUEST_TIMEOUT_MS);
     };
     const passId = `track-${++passCounter}`;
@@ -205,7 +205,7 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
         };
         let result: TrackResult;
         try {
-            result = await trackerWorkerClient().request<TrackResult>(TRACK_REQUEST, request, {
+            result = await requestTrackerWorker<TrackResult>(TRACK_REQUEST, request, {
                 signal: AbortSignal.any([controller.signal, timeoutCtrl.signal]),
             });
             // A response and a user cancel can cross on the message queue. The
@@ -254,7 +254,13 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
         } else {
             log.warn("track pass failed", { region: region.id, err: String(err) });
             captureSentryException(err, { tags: { feature: "blur", stage: "tracking" } });
-            notify({ severity: "warn", messageKey: "export.blur.track.failed" });
+            notify({
+                severity: "warn",
+                messageKey:
+                    err instanceof Error && err.name === "AssetUnavailableError"
+                        ? "export.blur.tracker.update"
+                        : "export.blur.track.failed",
+            });
             return "failed";
         }
     } finally {

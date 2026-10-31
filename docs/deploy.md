@@ -88,15 +88,33 @@ Deployment constraints:
   chained after `deploy` in release.yml - its failure cannot fail the deploy
   it follows. Secrets: where `INDEXNOW_KEY` lives, why it is in no file, and
   how the ping pre-flights it - `docs/seo.md`, "IndexNow".
-- **A fresh deployment propagates non-atomically across the CF edge:** for
-  the first ~1-3 minutes a PoP can serve the new HTML while still 404-ing
-  its hashed assets, so a load in that window renders a dead shell - for
-  ANY online visitor, installed service worker or not: navigation is
-  network-first by design (the WHY sits at `NAV_NETWORK_TIMEOUT_MS` in
-  `public/sw.js`). The SW only keeps the hole out of its caches (an install
-  with a missing asset fails and retries later, so offline launches keep
-  the previous build); the IndexNow preflight retries through the same
-  window. Do not debug a just-deployed 404 before waiting it out.
+- A deployment can briefly serve new HTML before its assets are available.
+  First visits use bounded startup recovery. Controlled launches use the complete
+  shell installed with their active service worker; incomplete updates never
+  replace it. Updates wait until all controlled windows close, preserving local
+  recordings and running exports. Refresh alone need not activate an update.
+- The build emits `deployment-assets.json` for the current release's code,
+  bundled media, map styles/sprites and inference binaries. The deployment workflows run
+  `scripts/retain-deployment-assets.mts` against the currently published origin
+  before uploading. It verifies and copies the previous release's immutable
+  files, excluding HTML, service workers and configuration. The manifest remains
+  current-only, so history does not grow on each deployment. Missing or corrupt
+  previous assets fail publication instead of silently reducing compatibility.
+- Recovery/rollback uses the same retention step before uploading the selected
+  hosted artifact: it keeps that artifact's code alongside the currently live
+  release. A dashboard-only rollback cannot add newer assets to an old artifact;
+  newer tabs may then need to finish work and reopen the app. Do not promise that
+  an uncached asset from an arbitrarily old tab remains downloadable.
+- Cache Storage is disposable. The service worker retains two activated release
+  manifests; a failed installation cannot advance retention. Binary readiness
+  requires size and SHA-256 verification in `src/tracking/asset-loader.ts`, both
+  before consent-gated warming finishes and before inference. Settings and notes
+  are independent of resource-cache cleanup. Installed Apple web apps can have
+  separate storage from browser tabs; each instance checks its own assets.
+- Ordinary Vite development does not register an offline worker. Its dev entry
+  retires old registrations before importing the app and preserves preferences.
+  Runtime bytes and glue come from one snapshot; restart Vite after replacing
+  dependencies. Exercise offline/update behavior with production builds.
 
 ## Custom domains
 

@@ -13,10 +13,12 @@ import {
 } from "./vite-plugins/deployment-profile.js";
 import { dynamicBaselinePlugin } from "./vite-plugins/dynamic-baseline.js";
 import { editionMarkupPlugin } from "./vite-plugins/edition-markup.js";
+import { deploymentAssetsPlugin } from "./vite-plugins/deployment-assets.js";
+import { devServiceWorkerPlugin } from "./vite-plugins/dev-service-worker.js";
 import { indexnowKeyPlugin } from "./vite-plugins/indexnow-key.js";
 import { llmsTxtPlugin } from "./vite-plugins/llms-txt.js";
 import { lazyBoundariesPlugin } from "./vite-plugins/lazy-boundaries.js";
-import { mapStylesPlugin } from "./vite-plugins/map-styles.js";
+import { computeMapStyles, mapStylesPlugin } from "./vite-plugins/map-styles.js";
 import { migrationPagePlugin } from "./vite-plugins/migration-page.js";
 import { redirectsPlugin } from "./vite-plugins/redirects.js";
 import { rootStubPlugin } from "./vite-plugins/root-stub.js";
@@ -150,13 +152,12 @@ const SENTRY_INSTRUMENTATION = Boolean(
 );
 
 export default defineConfig(({ command }) => {
-    // Cache-busted tracker asset URLs (versioned /ort/ dir + content-hashed
-    // models). Computed once here so the __DC_TRACKER_ASSETS__ define and
-    // trackerAssetsPlugin share one hash pass. Mode-aware: dev keeps the
-    // original URLs. See vite-plugins/tracker-assets.ts.
+    // Snapshot bytes once for both the manifest and dev/build delivery.
     const trackerAssets = computeTrackerAssets(command);
+    const mapAssets = computeMapStyles();
     return {
     define: {
+        __DC_MAP_STYLES__: JSON.stringify(mapAssets.urls),
         __PORTABLE__: "false",
         __PORTABLE_LOCALE__: JSON.stringify(""),
         __PORTABLE_MAP_ASSETS__: "{}",
@@ -166,8 +167,7 @@ export default defineConfig(({ command }) => {
         // Generic build origin tag for diagnostics. SEO ownership details and
         // mirror hostname/locales remain build-only in SEO_MIRROR_CONFIG.
         __DEPLOYMENT_PROFILE__: JSON.stringify(SEO_DEPLOYMENT.profile),
-        // Cache-busted tracker asset URLs for src/ui/blur-assets.ts. Typed +
-        // guarded there (vitest gets no define). See tracker-assets.ts.
+        // Shared binary metadata for the download gate and inference workers.
         __DC_TRACKER_ASSETS__: JSON.stringify(trackerAssets.app),
         // Tree-shake Sentry's tracing + debug scaffolding out of the errors-only
         // build. Safe ONLY because src/sentry.ts never imports the tracing/replay
@@ -178,6 +178,7 @@ export default defineConfig(({ command }) => {
         __SENTRY_TRACING__: JSON.stringify(false),
     },
     plugins: [
+        devServiceWorkerPlugin(),
         migrationPagePlugin(),
         editionMarkupPlugin(),
         // Legal/support source templates emit localized documents and legacy stubs.
@@ -221,7 +222,7 @@ export default defineConfig(({ command }) => {
         minifyHtmlPlugin(),
         lazyBoundariesPlugin(),
         standaloneFontsPlugin(),
-        mapStylesPlugin(),
+        mapStylesPlugin(mapAssets),
         // SEO build pipeline. All three plugins run in closeBundle, AFTER vite
         // has written dist/index.html and html-minifier has minified it. See
         // vite-plugins/seo-prerender.ts for the rationale (hreflang, two
@@ -281,9 +282,9 @@ export default defineConfig(({ command }) => {
         swPrecachePlugin(),
         // Self-hosts the blur-zone tracker's runtime assets (onnxruntime-web wasm
         // + ONNX models) under cache-busted URLs; deliberately NOT precached, and
-        // injects the current URL set into sw.js so activate drops superseded
-        // TRACKER entries. See vite-plugins/tracker-assets.ts.
+        // injects the current URL set into sw.js for bounded release retention. See vite-plugins/tracker-assets.ts.
         trackerAssetsPlugin(trackerAssets),
+        deploymentAssetsPlugin(),
         // Minify dist/sw.js LAST in the SW pipeline - after swPrecachePlugin has
         // written the manifest into the readable source, so the injected manifest
         // is minified together with the rest of the SW.
@@ -416,7 +417,7 @@ export default defineConfig(({ command }) => {
         // Scan source entry points only: generated portable HTML can contain
         // large inline bundles and must not enter the dev dependency crawl.
         entries: ["index.html", "migrate/index.html"],
-        include: ["onnxruntime-web/wasm"],
+        include: ["onnxruntime-web/wasm", "onnxruntime-web/webgpu"],
     },
     server: {
         port: 5173,

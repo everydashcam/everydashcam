@@ -6,6 +6,7 @@
 // for zero parallelism. Notifications fan out to whoever subscribed; each
 // client filters by its own message type.
 
+import { invalidateBlurAssetReadiness } from "./blur-assets.js";
 import { createWorkerClient, type WorkerClient } from "../workers/_protocol/worker-client.js";
 
 let client: WorkerClient | null = null;
@@ -43,4 +44,23 @@ export function trackerWorkerClient(): WorkerClient {
         },
     });
     return client;
+}
+
+/** Native runtime initialization can leave ORT permanently aborted. A failed
+ * request ends this instance; the next explicit attempt gets a fresh worker. */
+export async function requestTrackerWorker<T>(...args: Parameters<WorkerClient["request"]>): Promise<T> {
+    const owner = trackerWorkerClient();
+    try {
+        return await owner.request<T>(...args);
+    } catch (error) {
+        if (error instanceof Error && error.name.startsWith("Asset")) invalidateBlurAssetReadiness();
+        if (
+            !(error instanceof Error && error.name === "AbortError") ||
+            args[2]?.signal?.reason?.name === "TimeoutError"
+        ) {
+            owner.dispose("tracker request failed");
+            if (client === owner) client = null;
+        }
+        throw error;
+    }
 }

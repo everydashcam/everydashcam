@@ -800,6 +800,7 @@ export const jaDict = {
     "export.blur.tracker.working": "追尾中… {pct}%",
     "export.blur.tracker.saveBlocked": "追尾が終わるまで待つかキャンセルしてから保存してください。",
     "export.blur.tracker.offline": "オフラインです。一度だけネットに接続すればこの機能を使えるようになります — その後はオフラインでも動きます。",
+    "export.blur.tracker.update": "このバージョンでは必要なファイルをダウンロードできなくなりました。作業を終えてから、everydashcamのすべてのウィンドウを閉じ、アプリを開き直して更新してください。",
     "export.blur.tracker.error": "ダウンロードできませんでした。接続を確認して、もう一度お試しください。",
     "export.blur.tracker.retry": "再試行",
     "export.blur.detect.plates": "すべてのナンバープレートを隠す",

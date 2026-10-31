@@ -11,7 +11,7 @@ import { presetLocalStorage, REPO_ROOT } from "./_fixtures.js";
 const assets = computeTrackerAssets("build").app;
 const runtime = assets.ort.webgpu;
 const harnessUrl = "/assets/ort-test-harness.js";
-const bundleUrl = runtime.moduleUrl.replace(/[^/]+$/, "ort.webgpu.min.mjs");
+const bundleUrl = "/assets/ort-test-bundle.mjs";
 let harness: string;
 
 test.use({ serviceWorkers: "allow" });
@@ -21,6 +21,7 @@ test.beforeAll(async () => {
         input: resolve(REPO_ROOT, "tests/helpers/ort-harness.ts"),
         platform: "browser",
         resolve: { extensionAlias: { ".js": [".ts", ".js"] } },
+        transform: { define: { __DC_TRACKER_ASSETS__: JSON.stringify(assets) } },
         plugins: [
             {
                 name: "ort-test-runtime",
@@ -69,12 +70,12 @@ async function runInference(page: Page) {
                 worker.terminate();
             }
         },
-        { harnessUrl, runtime, modelUrl: new URL(assets.models.tracker, "http://localhost:4173").href },
+        { harnessUrl, runtime, modelUrl: new URL(assets.models.tracker.url, "http://localhost:4173").href },
     );
 }
 
-for (const listed of [true, false]) {
-    test(`split asyncify WASM repairs caches and infers offline with ${listed ? "published" : "development"} asset routing`, {
+for (const routing of ["published", "unlisted", "legacy"] as const) {
+    test(`split asyncify WASM repairs caches and infers offline with ${routing} asset routing`, {
         tag: ["@golden-blur", "@golden-offline"],
     }, async ({ page, context }) => {
         test.setTimeout(120_000);
@@ -85,28 +86,39 @@ for (const listed of [true, false]) {
         await context.route(/^https?:\/\//, async (route) => {
             const url = new URL(route.request().url());
             if (url.origin !== "http://localhost:4173") return route.abort();
-            // The dev worker has no injected tracker manifest. Exercise that route
-            // with real cache bodies and the same runtime integrity repair.
-            if (!listed && url.pathname === "/sw.js")
+            // An older controlling worker may not list this build's assets.
+            // Exercise that route with real cache bodies and integrity repair.
+            if (routing !== "published" && url.pathname === "/sw.js")
                 return route.fulfill({
                     contentType: "text/javascript",
-                    body: readFileSync(resolve(REPO_ROOT, "public/sw.js")),
+                    body: readFileSync(
+                        resolve(
+                            REPO_ROOT,
+                            routing === "legacy" ? "tests/helpers/legacy-tracker-sw.js" : "public/sw.js",
+                        ),
+                    ),
                 });
             if (url.pathname === harnessUrl) return route.fulfill({ contentType: "text/javascript", body: harness });
             if (url.pathname === bundleUrl)
                 return route.fulfill({
                     contentType: "text/javascript",
-                    body: readFileSync(resolve(REPO_ROOT, "node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs")),
+                    body: readFileSync(
+                        resolve(REPO_ROOT, "node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs"),
+                    ),
                 });
+            if (routing === "legacy" && /^\/(?:ort|models)\//.test(url.pathname)) {
+                // A background refresh must not outrun the corruption check.
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
             return route.continue();
         });
         await page.goto("/en/");
         await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-        // Match the production consent gate: it warms the module and every piece
+        // Match the production consent gate: it warms every binary piece
         // from the controlled main thread before starting an inference worker.
         await page.evaluate(
             async (urls) => Promise.all(urls.map(async (url) => (await fetch(url)).arrayBuffer())),
-            [...parts.map((part) => part.url), runtime.moduleUrl, assets.models.tracker],
+            [...parts.map((part) => part.url), assets.models.tracker.url],
         );
         const online = await runInference(page);
         expect(online.ok, online.error).toBe(true);
@@ -132,7 +144,7 @@ for (const listed of [true, false]) {
             )
             .toEqual(parts.map(() => true));
 
-        const cachedUrls = [harnessUrl, bundleUrl, runtime.moduleUrl, assets.models.tracker];
+        const cachedUrls = [harnessUrl, bundleUrl, assets.models.tracker.url];
         await expect
             .poll(() =>
                 page.evaluate(
@@ -176,5 +188,25 @@ for (const listed of [true, false]) {
             .toBe(parts[0]!.bytes);
         await context.route(/^https?:\/\//, blockNetwork);
         expect(await runInference(page), "the repaired bytes remain usable offline").toEqual(online);
+        await page.evaluate(async (url) => {
+            await (await caches.open("everydashcam-tracker-v3")).put(url, new Response(new Uint8Array([9, 8, 7])));
+        }, assets.models.tracker.url);
+        expect((await runInference(page)).ok, "a corrupt model must not reach ONNX even offline").toBe(false);
+        await context.unroute(/^https?:\/\//, blockNetwork);
+        expect(await runInference(page), "model integrity recovery uses the same loader as WASM").toEqual(online);
+        await page.evaluate(async (url) => {
+            await (await caches.open("everydashcam-tracker-v3")).put(
+                url,
+                new Response("<html>old fallback</html>", {
+                    headers: { "content-type": "text/html" },
+                }),
+            );
+        }, parts[0]!.url);
+        expect(
+            await runInference(page),
+            "a cached HTML fallback gets one fresh repair before an update prompt",
+        ).toEqual(online);
+        await context.route(/^https?:\/\//, blockNetwork);
+        expect(await runInference(page), "the repaired model works in a fresh offline worker").toEqual(online);
     });
 }

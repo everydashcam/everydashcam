@@ -30,13 +30,6 @@ for (const locale of ["en", "ru"] as const)
                     configurable: true,
                 });
                 for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");
-                const nativeFetch = window.fetch.bind(window);
-                window.fetch = (input, init) => {
-                    const url = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
-                    return urls.includes(url)
-                        ? Promise.resolve(new Response(new Uint8Array([1, 2, 3])))
-                        : nativeFetch(input, init);
-                };
                 const NativeWorker = window.Worker;
                 window.Worker = class extends NativeWorker {
                     private isTracker: boolean;

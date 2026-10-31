@@ -1,3 +1,4 @@
+import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type BlurRegion, regionRectAt } from "../blur-regions.js";
 import type { Channel } from "../parsers/types.js";
@@ -11,6 +12,9 @@ import {
     type DetectRequestData,
     type DetectResult,
 } from "../workers/tracker-protocol.js";
+
+const assetFiles = computeTrackerAssets("serve").files;
+const assetResponse = (url: string) => new Response(new Uint8Array(assetFiles.get(url)!));
 
 const ui = vi.hoisted(() => {
     vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => ({}) } });
@@ -176,13 +180,19 @@ beforeEach(() => {
         if (isWireMessage(event.data) && event.data.__k === "req") requests.push(event.data);
     });
     vi.stubGlobal("Worker", function Worker() {
+        if (endpoints.terminated()) {
+            endpoints = makePairedEndpoints();
+            endpoints.workerEndpoint.addEventListener("message", (event) => {
+                if (isWireMessage(event.data) && event.data.__k === "req") requests.push(event.data);
+            });
+        }
         return endpoints.mainEndpoint;
     });
     vi.stubGlobal("window", globalThis);
     vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => ({}) } });
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
     vi.stubGlobal("caches", { match: async () => undefined });
-    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([1, 2, 3])));
+    vi.stubGlobal("fetch", async (url: string) => assetResponse(url));
 });
 
 afterEach(() => {
@@ -193,6 +203,38 @@ afterEach(() => {
 });
 
 describe("blur pass lifecycle", () => {
+    it("discards a failed native runtime and preserves the region for an explicit retry", async () => {
+        const region = makeRegion();
+        const before = structuredClone(region);
+        const first = toggleTrackPass(ui.trip!, region);
+        await flushMicrotasks();
+        const failedEndpoints = endpoints;
+        endpoints.workerEndpoint.postMessage({
+            __k: "res",
+            id: requests[0]!.id,
+            ok: false,
+            error: { name: "AssetIntegrityError", message: "asset integrity mismatch" },
+        });
+        expect(await first).toBe("failed");
+        expect(failedEndpoints.terminated()).toBe(true);
+        expect(region).toEqual(before);
+
+        const retry = toggleTrackPass(ui.trip!, region);
+        await flushMicrotasks();
+        expect(endpoints).not.toBe(failedEndpoints);
+        endpoints.workerEndpoint.postMessage({
+            __k: "res",
+            id: requests[1]!.id,
+            ok: true,
+            result: {
+                keyframes: [{ contentSec: 0, rect: region.keyframes[0]!.rect }],
+                trackedUntilSec: 4,
+                endReason: "completed",
+            },
+        });
+        expect(await retry).toBe("completed");
+    });
+
     it.each([true, false])("applies a lost Follow with automatic timing %s", async (autoEnd) => {
         const region = makeRegion();
         region.autoEnd = autoEnd;
@@ -1092,14 +1134,14 @@ describe("blur pass lifecycle", () => {
                             release = resolve;
                         }),
                 )
-                .mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]))),
+                .mockImplementation(async (url: string) => assetResponse(url)),
         );
         const pending = ensureDetectRegionsForExport(request, new AbortController().signal, () => {});
         const rejected = expect(pending).rejects.toThrow("detect source changed after export started");
         await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
         tripAllCandidates(ui.trip!)[0]!.startUtc += 3600;
         regroupTrip();
-        release(new Response(new Uint8Array([1, 2, 3])));
+        release(assetResponse(TRACKER_ORT_ASSETS.webgpu.wasm.parts[0]!.url));
         await rejected;
         expect(requests, "the changed source cannot produce a falsely empty privacy result").toHaveLength(0);
     });

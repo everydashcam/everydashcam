@@ -118,7 +118,7 @@ test("repaints a paused map preview when tiles arrive after the bounded snapshot
     await page.route("**/preview-map-tile.png", (route) => {
         pendingTile = route;
     });
-    await page.route("**/styles/neon.json", (route) =>
+    await page.route("**/styles/**/neon.json", (route) =>
         route.fulfill({
             json: {
                 version: 8,

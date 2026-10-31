@@ -3,6 +3,7 @@
     "vite": true,
     "entry": [
         "scripts/*.mjs",
+        "src/dev-entry.ts",
         "src/parsers/__fixtures__/**/build-*.mjs",
         "public/sw.js"
     ],

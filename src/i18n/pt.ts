@@ -790,6 +790,7 @@ export const ptDict = {
     "export.blur.tracker.working": "Seguindo… {pct}%",
     "export.blur.tracker.saveBlocked": "Espere o acompanhamento terminar ou cancele-o antes de salvar.",
     "export.blur.tracker.offline": "Você está offline. Conecte-se uma vez para ativar isso — depois funciona offline também.",
+    "export.blur.tracker.update": "Esta versão não consegue mais baixar os arquivos necessários. Termine seu trabalho, feche todas as janelas do everydashcam e abra o aplicativo novamente para atualizá-lo.",
     "export.blur.tracker.error": "O download falhou. Verifique sua conexão e tente novamente.",
     "export.blur.tracker.retry": "Tentar novamente",
     "export.blur.detect.plates": "Ocultar todas as placas",

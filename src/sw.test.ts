@@ -255,6 +255,7 @@ describe("service worker navigation", () => {
     it("leaves portable downloads and release metadata entirely to the network", async () => {
         const sw = loadSw({ pre: { "/en/": res("cached application") } });
         for (const path of [
+            "/deployment-assets.json",
             "/downloads/portable/latest.json",
             "/downloads/portable/v2026.09.25/dashcamigo-2026-09-25-en",
         ]) {
@@ -268,12 +269,12 @@ describe("service worker navigation", () => {
         expect(await sw.rt.keys()).toEqual([]);
     });
 
-    it("serves fresh online HTML while preserving the complete offline shell", async () => {
+    it("pins controlled online launches to the installed complete shell", async () => {
         const sw = loadSw({ pre: { "/ru/": res("cached") } });
         const result = await sw.navigate("/ru/?source=pwa");
         await result.settled();
-        expect(result.response._tag).toBe("network");
-        expect(sw.fetchSpy).toHaveBeenCalledTimes(1);
+        expect(result.response._tag).toBe("cached");
+        expect(sw.fetchSpy).not.toHaveBeenCalled();
         expect((await sw.cached("/ru/"))?._tag).toBe("cached");
     });
 
@@ -554,7 +555,8 @@ describe("service worker response validation", () => {
         });
         const result = await sw.dispatchFetch("/ort/current.wasm");
         await result.settled();
-        expect(result.response?.type).toBe("error");
+        expect(result.response?.headers.get("content-type")).toBe("text/html");
+        expect(result.response?._tag).toBe("<html>fallback</html>");
         expect(await sw.tr.match("/ort/current.wasm")).toBeUndefined();
     });
 
@@ -722,12 +724,12 @@ describe("service worker cache routes", () => {
         expect(await sw.tr.match(url)).toBeUndefined();
     });
 
-    it("revalidates unknown stable tracker URLs in the background", async () => {
+    it("keeps immutable tracker URLs from newer pages without background replacement", async () => {
         const sw = loadSw({ tr: { "/ort/dev.wasm": res("cached") } });
         const result = await sw.dispatchFetch("/ort/dev.wasm");
         await result.settled();
         expect(result.response?._tag).toBe("cached");
-        expect((await sw.tr.match("/ort/dev.wasm"))?._tag).toBe("network");
+        expect((await sw.tr.match("/ort/dev.wasm"))?._tag).toBe("cached");
     });
 
     it("returns an error response once when an uncached optional resource is offline", async () => {
@@ -781,19 +783,59 @@ describe("service worker activation", () => {
         expect((await sw.cached("/en/"))?._tag).toBe("shell");
     });
 
-    it("keeps current tracker downloads and removes superseded versions", async () => {
+    it("keeps current and unknown tracker downloads during migration", async () => {
         const sw = loadSw({
             trackerUrls: ["/ort/new.wasm"],
             tr: { "/ort/new.wasm": res("new"), "/ort/old.wasm": res("old") },
         });
         await sw.fire("activate");
         expect((await sw.tr.match("/ort/new.wasm"))?._tag).toBe("new");
-        expect(await sw.tr.match("/ort/old.wasm")).toBeUndefined();
+        expect((await sw.tr.match("/ort/old.wasm"))?._tag).toBe("old");
     });
 
-    it("preserves warmed tracker assets in development without an injected asset list", async () => {
+    it("preserves warmed tracker assets when migrating a worker without an injected asset list", async () => {
         const sw = loadSw({ tr: { "/ort/dev.wasm": res("cached") } });
         await sw.fire("activate");
         expect((await sw.tr.match("/ort/dev.wasm"))?._tag).toBe("cached");
+    });
+});
+
+describe("release transitions", () => {
+    it("retains two activated generations through upgrades and rollback without pruning a newer page", async () => {
+        const storage = new Map<string, MemoryCache>();
+        const generation = (id: string) =>
+            loadSw({
+                storage,
+                pre: { [`/assets/${id}.js`]: res(id), "/en/": res(`${id}-shell`) },
+                trackerUrls: [`/ort/${id}.wasm`],
+                tr: { [`/ort/${id}.wasm`]: res(id) },
+            });
+        const a = generation("a");
+        await a.fire("activate");
+        const b = generation("b");
+        await b.fire("activate");
+        expect((await a.cached("/assets/a.js"))?._tag).toBe("a");
+        expect((await b.tr.match("/ort/a.wasm"))?._tag).toBe("a");
+        await b.tr.put("/ort/future.wasm", res("future"));
+        const c = generation("c");
+        await c.fire("activate");
+        expect(await c.tr.match("/ort/a.wasm")).toBeUndefined();
+        expect((await c.tr.match("/ort/b.wasm"))?._tag).toBe("b");
+        expect((await c.tr.match("/ort/future.wasm"))?._tag).toBe("future");
+        const rollback = generation("b");
+        await rollback.fire("activate");
+        expect((await rollback.navigate("/en/")).response._tag).toBe("b-shell");
+        expect((await rollback.tr.match("/ort/c.wasm"))?._tag).toBe("c");
+        expect((await rollback.dispatchFetch("/assets/c.js")).response?._tag).toBe("c");
+    });
+
+    it("repairs corrupt precached code before returning it", async () => {
+        const url = "/assets/app.js";
+        const sw = loadSw({ manifest: [entry(url, "valid")], fetch: async () => res("valid") });
+        await sw.pre.put(`${url}?__dc_revision=${revision("valid")}`, res("corrupt"));
+        const result = await sw.dispatchFetch(url);
+        await result.settled();
+        expect(result.response?._tag).toBe("valid");
+        expect((await sw.cached(url))?._tag).toBe("valid");
     });
 });

@@ -398,10 +398,7 @@ self.postMessage = function(message, ...args) {
             const fetchedModels: string[] = [];
             const plainWasm = assets.ort.wasm.wasm;
             const plainRuntimeUrls = new Set(
-                [
-                    assets.ort.wasm.moduleUrl,
-                    ...("parts" in plainWasm ? plainWasm.parts.map((part) => part.url) : [plainWasm.url]),
-                ].map((url) => new URL(url, "http://localhost").pathname),
+                [...plainWasm.parts.map((part) => part.url)].map((url) => new URL(url, "http://localhost").pathname),
             );
             const fetchedPlainRuntime: string[] = [];
             page.on("request", (request) => {
@@ -463,10 +460,10 @@ self.postMessage = function(message, ...args) {
                                 quality,
                                 thresholds,
                                 analyzeIntervalsByKind: { [kind]: [{ startSec, endSec: durationSec }] },
-                                plateModelUrl: new URL(assets.models.plate, location.origin).href,
-                                faceModelUrl: new URL(assets.models.face, location.origin).href,
+                                plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
+                                faceModelUrl: new URL(assets.models.face.url, location.origin).href,
                                 ortAssets: assets.ort.webgpu,
-                                trackerModelUrl: new URL(assets.models.tracker, location.origin).href,
+                                trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
                             };
                             worker.postMessage({ __k: "req", id: 1, type: "detect", data } satisfies WireRequest);
                         });
@@ -494,8 +491,8 @@ self.postMessage = function(message, ...args) {
                 contentType: "application/json",
             });
             expect(fetchedModels, "only positive discovery loads the tracker model").toEqual([
-                new URL(assets.models[kind], page.url()).href,
-                ...(usesTracker ? [new URL(assets.models.tracker, page.url()).href] : []),
+                new URL(assets.models[kind].url, page.url()).href,
+                ...(usesTracker ? [new URL(assets.models.tracker.url, page.url()).href] : []),
             ]);
             expect(fetchedPlainRuntime, "automatic tracking reuses the detector runtime").toEqual([]);
             const stats = result.statsByKind[kind];

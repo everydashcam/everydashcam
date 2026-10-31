@@ -61,7 +61,7 @@ async function runFollow(
                         seedContentSec: 0,
                         seedRect,
                         endContentSec,
-                        modelUrl: new URL(assets.models.tracker, location.origin).href,
+                        modelUrl: new URL(assets.models.tracker.url, location.origin).href,
                         ortAssets: assets.ort.wasm,
                     };
                     worker.postMessage({ __k: "req", id: 1, type: "track", data } satisfies WireRequest);

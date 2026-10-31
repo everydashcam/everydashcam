@@ -791,6 +791,7 @@ export const enDict = {
     "export.blur.tracker.working": "Following… {pct}%",
     "export.blur.tracker.saveBlocked": "Finish or cancel Follow before saving.",
     "export.blur.tracker.offline": "You're offline. Reconnect once to turn this on — it works offline afterwards.",
+    "export.blur.tracker.update": "This version can no longer download what it needs. Finish your work, then close all everydashcam windows and reopen the app to update it.",
     "export.blur.tracker.error": "That didn't download. Check your connection and try again.",
     "export.blur.tracker.retry": "Try again",
     "export.blur.detect.plates": "Blur all license plates",

@@ -790,6 +790,7 @@ export const plDict = {
     "export.blur.tracker.working": "Śledzenie… {pct}%",
     "export.blur.tracker.saveBlocked": "Przed zapisaniem poczekaj na koniec śledzenia albo je anuluj.",
     "export.blur.tracker.offline": "Jesteś offline. Połącz się raz, żeby to włączyć — potem działa też offline.",
+    "export.blur.tracker.update": "Ta wersja nie może już pobrać potrzebnych plików. Dokończ pracę, zamknij wszystkie okna everydashcam i otwórz aplikację ponownie, aby ją zaktualizować.",
     "export.blur.tracker.error": "Nie udało się pobrać. Sprawdź połączenie i spróbuj ponownie.",
     "export.blur.tracker.retry": "Spróbuj ponownie",
     "export.blur.detect.plates": "Ukryj wszystkie tablice rejestracyjne",

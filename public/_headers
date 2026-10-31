@@ -20,14 +20,17 @@
 /models/*
   Cache-Control: public, max-age=31536000, immutable
 
-# onnxruntime-web wasm runtime, served under a version-stamped dir
-# (/ort/<version>/ - see vite-plugins/tracker-assets.ts). The version in the path
-# makes the URL a content key exactly like a hashed /assets/ name: a dependency
-# bump lands a new path, so a year-long immutable cache is safe and never serves
-# wasm mismatched against the freshly-hashed JS glue in /assets/. (Offline PWA use
-# is a separate concern - these paths are runtime-cached by the SW, not precached.)
+# WASM binaries and parts include their SHA-256 in the filename. JavaScript
+# glue is part of the official bundled ESM under /assets/.
 /ort/*
   Cache-Control: public, max-age=31536000, immutable
+
+/styles/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Deployment metadata describes only the currently published release.
+/deployment-assets.json
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
 
 # Service worker - always fresh. Otherwise users get stuck on a stale SW version
 # (the SW itself is cached by the browser, and the update check only runs on the

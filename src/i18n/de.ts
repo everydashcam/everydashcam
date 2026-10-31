@@ -788,6 +788,7 @@ export const deDict = {
     "export.blur.tracker.working": "Verfolgt… {pct}%",
     "export.blur.tracker.saveBlocked": "Beende oder stoppe die Verfolgung, bevor du speicherst.",
     "export.blur.tracker.offline": "Du bist offline. Einmal verbinden, um das zu aktivieren — danach läuft es auch offline.",
+    "export.blur.tracker.update": "Diese Version kann die benötigten Dateien nicht mehr laden. Beende deine Arbeit, schließe alle everydashcam-Fenster und öffne die App erneut, um sie zu aktualisieren.",
     "export.blur.tracker.error": "Download fehlgeschlagen. Verbindung prüfen und noch mal versuchen.",
     "export.blur.tracker.retry": "Noch mal versuchen",
     "export.blur.detect.plates": "Alle Kennzeichen unkenntlich machen",

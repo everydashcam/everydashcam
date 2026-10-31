@@ -63,6 +63,12 @@ Verification gates live in [CLAUDE.md](../../CLAUDE.md).
   on the user's browser data. It fixes startup only; inspect subsequent test
   failures normally.
 
+- Service-worker upgrade tests must change the published files on a real HTTP
+  server while preserving the browser profile. Playwright routing does not
+  intercept updated worker main scripts. Exercise failed installs, overlapping
+  windows, full window closure, offline startup and rollback on the same origin.
+  Keep this distinct from routing individual asset fetches to simulate corruption.
+
 ## Pixel artifacts
 
 - VRT baselines (`tests/e2e/*-snapshots/`) are committed references for

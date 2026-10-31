@@ -790,6 +790,7 @@ export const esDict = {
     "export.blur.tracker.working": "Siguiendo… {pct}%",
     "export.blur.tracker.saveBlocked": "Espera a que termine el seguimiento o cancélalo antes de guardar.",
     "export.blur.tracker.offline": "Estás sin conexión. Conéctate una vez para activarlo — después funciona sin conexión.",
+    "export.blur.tracker.update": "Esta versión ya no puede descargar los archivos necesarios. Termina tu trabajo, cierra todas las ventanas de everydashcam y vuelve a abrir la aplicación para actualizarla.",
     "export.blur.tracker.error": "No se pudo descargar. Comprueba tu conexión e inténtalo de nuevo.",
     "export.blur.tracker.retry": "Reintentar",
     "export.blur.detect.plates": "Ocultar todas las matrículas",

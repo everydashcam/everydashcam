@@ -54,7 +54,7 @@ import { subscribeBlurTripRegroup } from "./blur-regions-state.js";
 import { captureBlurTripSource, matchesBlurTripSource, type BlurTripSource } from "./blur-trip-source.js";
 import { notify } from "./notifications.js";
 import { activeTrip, state } from "./state.js";
-import { subscribeTrackerWorkerNotifications, trackerWorkerClient } from "./tracker-worker-client.js";
+import { subscribeTrackerWorkerNotifications, requestTrackerWorker } from "./tracker-worker-client.js";
 
 export type { DetectKind } from "../workers/tracker-protocol.js";
 
@@ -727,7 +727,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
         if (timeoutTimer !== undefined) window.clearTimeout(timeoutTimer);
         timeoutTimer = window.setTimeout(() => {
             timedOut = true;
-            timeoutCtrl.abort();
+            timeoutCtrl.abort(new DOMException("tracker worker stalled", "TimeoutError"));
         }, DETECT_REQUEST_TIMEOUT_MS);
     };
     const run: RunningDetect = {
@@ -790,7 +790,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         trackerModelUrl: TRACKER_MODEL_URL,
                         ortAssets: TRACKER_ORT_ASSETS.webgpu,
                     };
-                    const result = await trackerWorkerClient().request<DetectResult>(DETECT_REQUEST, request, {
+                    const result = await requestTrackerWorker<DetectResult>(DETECT_REQUEST, request, {
                         signal: AbortSignal.any([controller.signal, timeoutCtrl.signal]),
                     });
                     // Cancel remains authoritative if it crosses a delivered worker
@@ -938,7 +938,13 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                             tags: { feature: "blur", stage: "detection" },
                         });
                     }
-                    notify({ severity: "warn", messageKey: "export.blur.detect.failed" });
+                    notify({
+                        severity: "warn",
+                        messageKey:
+                            err instanceof Error && err.name === "AssetUnavailableError"
+                                ? "export.blur.tracker.update"
+                                : "export.blur.detect.failed",
+                    });
                 } else {
                     log.info("detect pass cancelled", { key: params.key });
                 }
@@ -951,7 +957,13 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                 if (!run.exportProtected) {
                     captureSentryException(err, { tags: { feature: "blur", stage: "detection" } });
                 }
-                notify({ severity: "warn", messageKey: "export.blur.detect.failed" });
+                notify({
+                    severity: "warn",
+                    messageKey:
+                        err instanceof Error && err.name === "AssetUnavailableError"
+                            ? "export.blur.tracker.update"
+                            : "export.blur.detect.failed",
+                });
             }
             return false;
         } finally {

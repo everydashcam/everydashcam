@@ -1085,6 +1085,7 @@ export type I18nKey =
     | "export.blur.tracker.working"
     | "export.blur.tracker.saveBlocked"
     | "export.blur.tracker.offline"
+    | "export.blur.tracker.update"
     | "export.blur.tracker.error"
     | "export.blur.tracker.retry"
     | "export.blur.detect.plates"

@@ -784,7 +784,7 @@ syncEmptyState();
 //
 // BASE_URL ensures correct registration when deployed to a subdirectory
 // (e.g. example.com/everydashcam/); a hardcoded "/sw.js" would 404.
-if (!__PORTABLE__ && "serviceWorker" in navigator) {
+if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     const swUrl = `${import.meta.env.BASE_URL || "/"}sw.js`;
     const swLog = createLogger("sw");
     // updateViaCache:"none" - the browser's SW update check must bypass the HTTP

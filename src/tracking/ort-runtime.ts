@@ -13,7 +13,8 @@
 // Runs in a worker. No logging - loaded from per-pass hot paths.
 
 import type { OrtAssets } from "./ort-assets.js";
-import { loadWasmParts } from "./wasm-parts.js";
+import { loadAssetParts } from "./asset-loader.js";
+import { TRACKER_ASSETS } from "./asset-manifest.js";
 
 export type OrtRuntime = "webgpu" | "wasm";
 
@@ -25,7 +26,7 @@ const cached = new Map<string, Promise<OrtModule>>();
 /** Shares assembly between concurrent session requests, but lets a failed
  * download retry. The manifest pairs each module with its exact binary. */
 async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModule> {
-    const key = `${runtime}|${assets.moduleUrl}`;
+    const key = `${runtime}|${assets.wasm.parts.map((part) => part.sha256).join("|")}`;
     const hit = cached.get(key);
     if (hit) return hit;
     const pending = (async () => {
@@ -33,14 +34,9 @@ async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModul
             runtime === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")
         ) as OrtModule;
         module.env.wasm.numThreads = 1;
-        // Resolve from the worker's origin: its own module lives under /assets/.
-        const mjs = new URL(assets.moduleUrl, globalThis.location.href).href;
-        if ("parts" in assets.wasm) {
-            module.env.wasm.wasmPaths = { mjs };
-            module.env.wasm.wasmBinary = await loadWasmParts(assets.wasm.parts);
-        } else {
-            module.env.wasm.wasmPaths = { mjs, wasm: new URL(assets.wasm.url, globalThis.location.href).href };
-        }
+        // Official bundled ESM contains the matching glue. A URL override would
+        // force ORT back to an independently fetched module.
+        module.env.wasm.wasmBinary = await loadAssetParts(assets.wasm.parts);
         return module;
     })();
     cached.set(key, pending);
@@ -59,7 +55,12 @@ export async function createOrtSession(
     options: import("onnxruntime-web/wasm").InferenceSession.SessionOptions,
 ) {
     const ort = await loadOrt(runtime, assets);
-    const session = await ort.InferenceSession.create(modelUrl, options);
+    const model = Object.values(TRACKER_ASSETS.models).find(
+        (asset) =>
+            new URL(asset.url, globalThis.location.href).href === new URL(modelUrl, globalThis.location.href).href,
+    );
+    if (!model) throw new Error("model is absent from the build manifest");
+    const session = await ort.InferenceSession.create(await loadAssetParts([model]), options);
     // The single-threaded runtime is initialized and no longer needs its source
     // bytes. Emscripten retains aliases to wasmBinary, so clearing env alone
     // cannot free them. Detach the backing store without retaining a new owner.

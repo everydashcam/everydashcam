@@ -798,6 +798,7 @@ export const koDict = {
     "export.blur.tracker.working": "따라가는 중… {pct}%",
     "export.blur.tracker.saveBlocked": "따라가기가 끝날 때까지 기다리거나 취소한 뒤 저장해 주세요.",
     "export.blur.tracker.offline": "오프라인 상태예요. 한 번만 연결하면 이 기능을 켤 수 있어요 — 이후에는 오프라인에서도 작동해요.",
+    "export.blur.tracker.update": "이 버전에서는 필요한 파일을 더 이상 다운로드할 수 없어요. 작업을 마친 후 everydashcam 창을 모두 닫고 앱을 다시 열어 업데이트해 주세요.",
     "export.blur.tracker.error": "다운로드에 실패했어요. 연결 상태를 확인하고 다시 시도해 주세요.",
     "export.blur.tracker.retry": "다시 시도",
     "export.blur.detect.plates": "모든 번호판 가리기",

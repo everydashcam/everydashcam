@@ -2,11 +2,8 @@ import type { StyleSpecification } from "maplibre-gl";
 import type { MapStyleId } from "./theme.js";
 
 // The portable build aliases this module to bundled JSON imports.
-const MAP_STYLE_URLS: Record<MapStyleId, string> = {
-    light: "/styles/light.json",
-    dark: "/styles/dark.json",
-    neon: "/styles/neon.json",
-};
+declare const __DC_MAP_STYLES__: Record<MapStyleId, string>;
+const MAP_STYLE_URLS = __DC_MAP_STYLES__;
 
 export async function loadMapStyleSource(theme: MapStyleId, signal: AbortSignal): Promise<StyleSpecification> {
     const response = await fetch(MAP_STYLE_URLS[theme], { signal });

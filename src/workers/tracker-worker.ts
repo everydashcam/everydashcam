@@ -93,7 +93,7 @@ async function getTrackerSession(
     modelUrl: string,
     assets: OrtAssets,
 ): Promise<VitTrackerSession> {
-    const key = `${ortRuntime}|${assets.moduleUrl}|${modelUrl}`;
+    const key = `${ortRuntime}|${assets.wasm.parts[0]!.url}|${modelUrl}`;
     const cached = cachedSessions.get(key);
     if (cached) return cached;
     const session = await VitTrackerSession.create(ortRuntime, modelUrl, assets);
@@ -112,7 +112,7 @@ const detectorFactories = { plate: createPlateDetector, face: createFaceDetector
 const cachedDetectors = new Map<DetectKind, { key: string; detector: FrameDetector }>();
 
 async function getDetector(kind: DetectKind, modelUrl: string, assets: OrtAssets): Promise<FrameDetector> {
-    const key = `${assets.moduleUrl}|${modelUrl}`;
+    const key = `${assets.wasm.parts[0]!.url}|${modelUrl}`;
     const cached = cachedDetectors.get(kind);
     if (cached?.key === key) return cached.detector;
     const detector = await detectorFactories[kind]("webgpu", modelUrl, assets);

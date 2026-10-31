@@ -13,6 +13,8 @@ const TRACKER = "everydashcam-tracker-v3";
 const REVISION_PARAM = "__dc_revision";
 const MANIFEST_KEY = "/__dc-precache-manifest__";
 const MAX_RUNTIME_ENTRIES = 60;
+const RELEASES = "everydashcam-releases-v1";
+const RELEASE_KEY = "/__dc-releases__";
 const NAV_NETWORK_TIMEOUT_MS = 2500;
 const PRECACHE_FETCH_TIMEOUT_MS = 10000;
 const PRECACHE_CONCURRENCY = 6;
@@ -20,7 +22,6 @@ const PRECACHE_CONCURRENCY = 6;
 const toAbs = (url) => new URL(url, self.location.origin).toString();
 const PRECACHE_ENTRIES = new Map(PRECACHE_MANIFEST.map((entry) => [toAbs(entry.url), entry]));
 const PRECACHE_URLS = new Set(PRECACHE_ENTRIES.keys());
-const TRACKER_URLS = new Set(TRACKER_ASSET_URLS.map(toAbs));
 const LOCALE_SHELLS = PRECACHE_MANIFEST.map((entry) => entry.url).filter((url) => /^\/[a-z]{2}\/$/.test(url));
 
 function precacheKey(entry) {
@@ -77,6 +78,38 @@ async function readPrecacheBody(res, progress) {
     return bytes.buffer;
 }
 
+async function verifyPrecacheBytes(entry, bytes) {
+    if (entry.htmlRevision) {
+        if (htmlRevision(new TextDecoder().decode(bytes)) !== entry.htmlRevision) {
+            throw new Error(`precache ${entry.url}: shell revision mismatch`);
+        }
+    } else {
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+        const revision = [...digest]
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("")
+            .slice(0, 16);
+        if (revision !== entry.revision) throw new Error(`precache ${entry.url}: revision mismatch`);
+    }
+}
+
+async function verifiedPrecache(cache, entry) {
+    const key = precacheKey(entry);
+    const response = await matchCache(cache, key);
+    if (!response) return;
+    try {
+        if (response.status !== 200 || response.redirected) throw new Error("invalid cached response");
+        await verifyPrecacheBytes(entry, await response.clone().arrayBuffer());
+        return response;
+    } catch {
+        try {
+            await cache.delete(key);
+        } catch {
+            /* Storage is optional. */
+        }
+    }
+}
+
 // Bound inactivity, not total download time: slow connections that keep making
 // progress must still finish the offline graph. Verify bytes before pinning a
 // revision; Cloudflare may append analytics to HTML, so shells use a build marker.
@@ -96,18 +129,7 @@ async function fetchForPrecache(entry) {
             if (res.status !== 200 || res.redirected) throw new Error(`precache ${entry.url}: invalid response`);
             const bytes = await readPrecacheBody(res, progress);
             clearTimeout(timer);
-            if (entry.htmlRevision) {
-                if (htmlRevision(new TextDecoder().decode(bytes)) !== entry.htmlRevision) {
-                    throw new Error(`precache ${entry.url}: shell revision mismatch`);
-                }
-            } else {
-                const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-                const revision = [...digest]
-                    .map((byte) => byte.toString(16).padStart(2, "0"))
-                    .join("")
-                    .slice(0, 16);
-                if (revision !== entry.revision) throw new Error(`precache ${entry.url}: revision mismatch`);
-            }
+            await verifyPrecacheBytes(entry, bytes);
             return res;
         } catch (err) {
             ctrl.abort();
@@ -128,7 +150,7 @@ async function reconcilePrecache() {
             for (const entry of entries) {
                 try {
                     const key = precacheKey(entry);
-                    if (await cache.match(key)) continue;
+                    if (await verifiedPrecache(cache, entry)) continue;
                     await cache.put(key, await fetchForPrecache(entry));
                 } catch {
                     missing.push(entry.url);
@@ -160,38 +182,44 @@ function repairPrecache(evt) {
     evt.waitUntil(repairPromise);
 }
 
+// Only completed activations advance the two retained manifests. A waiting or
+// failed install cannot evict the active version. Unknown immutable downloads
+// may belong to a newer page still controlled by this worker; leave them alone.
 self.addEventListener("activate", (event) => {
     event.waitUntil(
         (async () => {
             try {
+                const releases = await caches.open(RELEASES);
+                const saved = await releases.match(RELEASE_KEY);
+                const history = saved ? JSON.parse(await saved.text()) : [];
+                const current = { entries: PRECACHE_MANIFEST, tracker: TRACKER_ASSET_URLS };
+                const id = JSON.stringify(current);
+                const previous = history.find((release) => JSON.stringify(release) !== id);
+                const retained = previous ? [current, previous] : [current];
+                await releases.put(RELEASE_KEY, new Response(JSON.stringify(retained)));
                 const cache = await caches.open(PRECACHE);
+                const valid = new Set(retained.flatMap((release) => release.entries.map(precacheKey)));
                 const runtime = await caches.open(RUNTIME);
-                const valid = new Set(PRECACHE_MANIFEST.map(precacheKey));
-                // Preserve old immutable chunks for restored tabs before retiring
-                // stale revisions. Stable old shells must not replace a
-                // newer runtime navigation response.
-                async function demote(source, keys) {
-                    for (const req of keys) {
-                        if (!new URL(req.url).pathname.startsWith("/assets/")) continue;
-                        const res = await source.match(req);
-                        if (res) await runtime.put(bareUrl(req), res);
+                for (const req of await cache.keys()) {
+                    if (valid.has(req.url)) continue;
+                    // Migration from workers without release metadata preserves their
+                    // immutable code too. Runtime retention is bounded independently.
+                    if (/^\/(?:assets|styles)\//.test(new URL(req.url).pathname)) {
+                        const response = await cache.match(req);
+                        if (response) await runtime.put(bareUrl(req), response);
                     }
+                    await cache.delete(req);
                 }
-                const stale = (await cache.keys()).filter((req) => !valid.has(req.url));
-                await demote(cache, stale);
-                await Promise.all(stale.map((req) => cache.delete(req)));
                 await trimCache(runtime);
-                if (TRACKER_ASSET_URLS.length > 0) {
-                    const tracker = await caches.open(TRACKER);
-                    await Promise.all(
-                        (await tracker.keys())
-                            .filter((req) => !TRACKER_URLS.has(req.url))
-                            .map((req) => tracker.delete(req)),
-                    );
+                // Retire only versions known to be older than the retained pair.
+                // No cache-entry whitelist: it would erase newer pages' downloads.
+                const tracker = await caches.open(TRACKER);
+                const keep = new Set(retained.flatMap((release) => release.tracker));
+                for (const release of history) {
+                    for (const url of release.tracker) if (!keep.has(url)) await tracker.delete(url);
                 }
             } catch {
-                // Cleanup is best effort. A quota error while saving obsolete
-                // chunks must not prevent the fully installed worker taking over.
+                // Quota/storage failures cannot prevent an installed update starting.
             }
             await self.clients.claim();
         })(),
@@ -219,7 +247,7 @@ async function matchCache(cache, input, options) {
 async function matchPrecache(input) {
     const entry = PRECACHE_ENTRIES.get(bareUrl(input));
     if (!entry) return undefined;
-    return matchCache(await openCache(PRECACHE), precacheKey(entry));
+    return verifiedPrecache(await openCache(PRECACHE), entry);
 }
 
 self.addEventListener("fetch", (evt) => {
@@ -229,8 +257,10 @@ self.addEventListener("fetch", (evt) => {
     if (
         url.origin !== self.location.origin ||
         url.pathname === MANIFEST_KEY ||
+        url.pathname === "/deployment-assets.json" ||
         url.pathname.startsWith("/downloads/")
-    ) return;
+    )
+        return;
     // Partial responses cannot be put into Cache Storage, and a cached full
     // response must not replace a requested media byte range.
     if (req.headers.has("range")) return;
@@ -239,23 +269,26 @@ self.addEventListener("fetch", (evt) => {
     } else if (
         PRECACHE_URLS.has(bareUrl(req)) ||
         url.pathname.startsWith("/assets/") ||
-        url.pathname.startsWith("/fonts/")
+        url.pathname.startsWith("/fonts/") ||
+        url.pathname.startsWith("/styles/")
     ) {
         evt.respondWith(cacheFirst(req, evt));
     } else if (url.pathname.startsWith("/ort/") || url.pathname.startsWith("/models/")) {
-        // Dev URLs and assets introduced by a newer app are not in this
-        // worker's manifest. Integrity repair must bypass their stale cache too.
-        evt.respondWith(
-            TRACKER_URLS.has(url.href) || req.headers.get("x-everydashcam-wasm-repair") === "1"
-                ? trackerCacheFirst(req, evt)
-                : staleWhileRevalidate(req, evt, TRACKER, false),
-        );
+        evt.respondWith(trackerCacheFirst(req, evt));
     } else {
         evt.respondWith(staleWhileRevalidate(req, evt));
     }
 });
 
 async function navigationResponse(req, evt) {
+    // A controlled launch uses the complete shell installed with this worker.
+    // The browser checks /sw.js independently; activation waits for old clients.
+    // Network-first HTML would bypass that lifecycle and mix release graphs.
+    const installed = await matchPrecache(req);
+    if (installed) {
+        if (navigator.onLine) repairPrecache(evt);
+        return installed;
+    }
     const runtime = await openCache(RUNTIME);
     if (!navigator.onLine) {
         const hit = await navigationCacheFallback(req, runtime);
@@ -311,6 +344,32 @@ function offlineResponse() {
 async function cacheFirst(req, evt) {
     const hit = await matchPrecache(req);
     if (hit) return hit;
+    let entry = PRECACHE_ENTRIES.get(bareUrl(req));
+    if (!entry) {
+        try {
+            const saved = await matchCache(await openCache(RELEASES), RELEASE_KEY);
+            const history = saved ? JSON.parse(await saved.text()) : [];
+            entry = history
+                .flatMap((release) => release.entries)
+                .find((candidate) => !candidate.htmlRevision && toAbs(candidate.url) === bareUrl(req));
+            if (entry) {
+                const previous = await verifiedPrecache(await openCache(PRECACHE), entry);
+                if (previous) return previous;
+            }
+        } catch {
+            /* Unknown resources still work through the network. */
+        }
+    }
+    if (entry) {
+        try {
+            const response = await fetchForPrecache(entry);
+            const cache = await openCache(PRECACHE);
+            if (cache) evt.waitUntil(cache.put(precacheKey(entry), response.clone()).catch(() => {}));
+            return response;
+        } catch {
+            return Response.error();
+        }
+    }
     const runtime = await openCache(RUNTIME);
     const cached = await matchCache(runtime, req);
     const isBinaryAsset = !PRECACHE_ENTRIES.get(bareUrl(req))?.htmlRevision;
@@ -323,24 +382,29 @@ async function cacheFirst(req, evt) {
 
 async function trackerCacheFirst(req, evt) {
     const tracker = await openCache(TRACKER);
+    const url = new URL(req.url);
+    url.searchParams.delete("__dc_repair");
+    const key = url.href;
     // These versioned same-origin files have identical bytes for main-thread
     // warming and worker imports, even when the server sends Vary: Origin.
-    const hit = await matchCache(tracker, req, { ignoreVary: true });
+    const hit = await matchCache(tracker, key, { ignoreVary: true });
     // Only the loader's integrity repair bypasses this immutable cache. Browser
     // reloads/tooling can set Request.cache=reload on otherwise ordinary reads.
     // Discard poisoned bytes even if offline, so a later download can repair them.
     if (hit && req.headers.get("x-everydashcam-wasm-repair") !== "1" && !isHtmlResponse(hit)) return hit;
     if (hit) {
         try {
-            await tracker.delete(req, { ignoreVary: true });
+            await tracker.delete(key, { ignoreVary: true });
         } catch {
             /* Storage is optional. */
         }
     }
     try {
         const res = await fetch(req);
-        if (isHtmlResponse(res)) return Response.error();
-        cacheAndTrim(tracker, req, res, evt, false);
+        // Preserve status and MIME for the verifying loader to distinguish an
+        // unavailable old version from a transient network/server failure.
+        if (isHtmlResponse(res)) return res;
+        cacheAndTrim(tracker, key, res, evt, false);
         return res;
     } catch {
         return Response.error();

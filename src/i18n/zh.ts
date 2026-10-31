@@ -787,6 +787,7 @@ export const zhDict = {
     "export.blur.tracker.working": "跟随中… {pct}%",
     "export.blur.tracker.saveBlocked": "请先等待跟随完成或取消跟随，再保存。",
     "export.blur.tracker.offline": "你现在离线。重新联网一次即可开启此功能 — 之后离线也能用。",
+    "export.blur.tracker.update": "此版本已无法下载所需文件。请先完成当前操作，再关闭所有 everydashcam 窗口并重新打开应用以更新。",
     "export.blur.tracker.error": "下载失败。检查一下网络连接，然后重试。",
     "export.blur.tracker.retry": "重试",
     "export.blur.detect.plates": "隐藏所有车牌",

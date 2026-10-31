@@ -4,18 +4,15 @@ import { DESKTOP, expect, gotoApp, loadTrip, openExport, presetLocalStorage, tes
 
 const assets = computeTrackerAssets("build");
 const wasm = assets.app.ort.webgpu.wasm;
-const runtimeUrl = "parts" in wasm ? wasm.parts[0]!.url : wasm.url;
-const faceUrl = assets.app.models.face;
+const runtimeUrl = wasm.parts[0]!.url;
+const faceUrl = assets.app.models.face.url;
 const sharedDetectionUrls = [
-    ...("parts" in wasm ? wasm.parts.map((part) => part.url) : [wasm.url]),
-    assets.app.ort.webgpu.moduleUrl,
-    assets.app.models.tracker,
+    ...wasm.parts.map((part) => part.url),
+
+    assets.app.models.tracker.url,
 ];
 const plainWasm = assets.app.ort.wasm.wasm;
-const plainRuntimeUrls = [
-    ...("parts" in plainWasm ? plainWasm.parts.map((part) => part.url) : [plainWasm.url]),
-    assets.app.ort.wasm.moduleUrl,
-];
+const plainRuntimeUrls = [...plainWasm.parts.map((part) => part.url)];
 
 test.use({ serviceWorkers: "block" });
 
@@ -146,7 +143,7 @@ test("a second checkbox warms its model after the first download and remains can
     const warmed: string[] = await page.evaluate(() =>
         JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]"),
     );
-    expect(warmed).toContain(assets.app.models.plate);
+    expect(warmed).toContain(assets.app.models.plate.url);
     expect(warmed, "automatic detection warms its shared runtime and ViTTrack before inference").toEqual(
         expect.arrayContaining(sharedDetectionUrls),
     );
@@ -169,12 +166,12 @@ test("Cancel stops the automatic tracker download through the detection strip", 
     page.on("worker", (worker) => {
         if (worker.url().includes("tracker-worker-")) trackerWorkers.push(worker.url());
     });
-    await openDetection(page, { gatedRuntimeUrl: assets.app.models.tracker });
+    await openDetection(page, { gatedRuntimeUrl: assets.app.models.tracker.url });
     await page.locator("#export-panel-blur-plates").check();
     const strip = page.locator(".export-panel__blur-detect-strip");
     await expect
         .poll(() => page.evaluate(() => JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]")))
-        .toContain(assets.app.models.tracker);
+        .toContain(assets.app.models.tracker.url);
     const warmed: string[] = await page.evaluate(() =>
         JSON.parse(document.documentElement.dataset.blurWarmRequests ?? "[]"),
     );
@@ -188,7 +185,7 @@ test("Cancel stops the automatic tracker download through the detection strip", 
     await strip.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.locator("html")).toHaveAttribute(
         "data-blur-warm-aborted",
-        JSON.stringify([assets.app.models.tracker]),
+        JSON.stringify([assets.app.models.tracker.url]),
     );
     await expect(strip).toBeHidden();
     await page.clock.fastForward(2000);

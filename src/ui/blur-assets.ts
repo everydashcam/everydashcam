@@ -8,7 +8,7 @@
 // progress bar, so the panel can ask for consent, show progress, and explain the
 // offline story BEFORE anything heavy happens. Warming here also warms the HTTP
 // + service-worker (TRACKER) cache, so the worker's own fetch for the same URLs
-// is a cache hit - the bytes are downloaded exactly once, not twice.
+// normally hits cache. Cache writes are best effort; workers still verify bytes.
 //
 // Assets are grouped per feature; a request names the groups it needs and the
 // consent copy prices only the files this device has never pulled (the detect
@@ -17,93 +17,35 @@
 // remembered per FILE in localStorage. No UI here - the panel subscribes.
 
 import { createLogger } from "../log.js";
-import type { OrtAssets } from "../tracking/ort-assets.js";
+import type { AssetPart } from "../tracking/ort-assets.js";
+import { TRACKER_ASSETS } from "../tracking/asset-manifest.js";
+import { loadAssetParts } from "../tracking/asset-loader.js";
 
 const log = createLogger("blur-assets");
 
-// Cache-busted, same-origin URLs of the tracker's runtime assets, injected at
-// build time by vite-plugins/tracker-assets.ts: the ort wasm under a
-// version-stamped dir, the models content-hashed. Single source of truth - the
-// pass clients hand these to the workers so the warmed cache and the worker
-// fetch line up. (Self-hosted, no CDN: the no-backend + CSP rules mean nothing
-// external at runtime.) The typeof guard falls back to the unbusted dev/test
-// URLs when the define is absent (vitest, ts-runner - no define propagation),
-// where the exact URL is functionally irrelevant. See src/version.ts for the
-// same pattern.
-declare const __DC_TRACKER_ASSETS__:
-    | { ort: { wasm: OrtAssets; webgpu: OrtAssets }; models: { tracker: string; plate: string; face: string } }
-    | undefined;
-
-const TRACKER_ASSETS =
-    typeof __DC_TRACKER_ASSETS__ !== "undefined"
-        ? __DC_TRACKER_ASSETS__
-        : {
-              ort: {
-                  wasm: {
-                      moduleUrl: "/ort/ort-wasm-simd-threaded.mjs",
-                      wasm: { url: "/ort/ort-wasm-simd-threaded.wasm", bytes: 13.6 * 1024 * 1024 },
-                  },
-                  webgpu: {
-                      moduleUrl: "/ort/ort-wasm-simd-threaded.asyncify.mjs",
-                      wasm: { url: "/ort/ort-wasm-simd-threaded.asyncify.wasm", bytes: 25.6 * 1024 * 1024 },
-                  },
-              },
-              models: {
-                  tracker: "/models/vittrack/object_tracking_vittrack_2023sep.onnx",
-                  plate: "/models/plate/yolo26n-plate-640-fp16.onnx",
-                  face: "/models/face/yolo26n-face-640-fp16.onnx",
-              },
-          };
-
-export const TRACKER_MODEL_URL = TRACKER_ASSETS.models.tracker;
-export const PLATE_MODEL_URL = TRACKER_ASSETS.models.plate;
-export const FACE_MODEL_URL = TRACKER_ASSETS.models.face;
+export const TRACKER_MODEL_URL = TRACKER_ASSETS.models.tracker.url;
+export const PLATE_MODEL_URL = TRACKER_ASSETS.models.plate.url;
+export const FACE_MODEL_URL = TRACKER_ASSETS.models.face.url;
 export const TRACKER_ORT_ASSETS = TRACKER_ASSETS.ort;
 
 /** Follow needs ViTTrack and plain WASM. Detection shares its WebGPU runtime
  *  with ViTTrack's WASM session; each checkbox adds its detector model. */
 export type BlurAssetGroupId = "track" | "detect-plate" | "detect-face";
 
-/** approxMb only steers the progress bar weights and the consent price tag -
- *  it does NOT need to track real file sizes exactly, so an ORT/model bump can
- *  shift sizes without breaking anything. */
-interface AssetSpec {
-    url: string;
-    approxMb: number;
-}
-
-function runtimeAssets(assets: OrtAssets): AssetSpec[] {
-    const wasm = assets.wasm;
-    const files = "parts" in wasm ? wasm.parts : [wasm];
-    return [
-        ...files.map((file) => ({ url: file.url, approxMb: file.bytes / (1024 * 1024) })),
-        { url: assets.moduleUrl, approxMb: 0.1 },
-    ];
-}
-
-const ORT_WASM_ASSETS = runtimeAssets(TRACKER_ORT_ASSETS.wasm);
-const ORT_WEBGPU_ASSETS = runtimeAssets(TRACKER_ORT_ASSETS.webgpu);
-const TRACKER_MODEL_ASSET = { url: TRACKER_MODEL_URL, approxMb: 0.7 };
-
-function groupAssets(group: BlurAssetGroupId): readonly AssetSpec[] {
+function groupAssets(group: BlurAssetGroupId): readonly AssetPart[] {
     switch (group) {
         case "track":
-            return [...ORT_WASM_ASSETS, TRACKER_MODEL_ASSET];
+            return [...TRACKER_ORT_ASSETS.wasm.wasm.parts, TRACKER_ASSETS.models.tracker];
         case "detect-plate":
-            // Keep tracking dependencies inside the requested detect group so
-            // its consent, progress and Cancel remain owned by the same strip.
-            return [...ORT_WEBGPU_ASSETS, TRACKER_MODEL_ASSET, { url: PLATE_MODEL_URL, approxMb: 4.9 }];
+            return [
+                ...TRACKER_ORT_ASSETS.webgpu.wasm.parts,
+                TRACKER_ASSETS.models.tracker,
+                TRACKER_ASSETS.models.plate,
+            ];
         case "detect-face":
-            return [...ORT_WEBGPU_ASSETS, TRACKER_MODEL_ASSET, { url: FACE_MODEL_URL, approxMb: 4.9 }];
+            return [...TRACKER_ORT_ASSETS.webgpu.wasm.parts, TRACKER_ASSETS.models.tracker, TRACKER_ASSETS.models.face];
     }
 }
-
-/** Abort a warm if no bytes arrive for this long. Guards the "connected but no
- *  internet" limbo where navigator.onLine stays true and a bare fetch hangs on
- *  the OS TCP timeout (tens of seconds) instead of rejecting - without this the
- *  progress bar would freeze at 0% with no way out. Reset on every chunk, so a
- *  slow-but-progressing download is never killed. */
-const WARM_STALL_TIMEOUT_MS = 30_000;
 
 // Per-file "this device has pulled it" flags. Lets later visits skip the
 // consent prompt for already-cached files: the SW TRACKER cache holds them
@@ -113,13 +55,14 @@ const WARM_STALL_TIMEOUT_MS = 30_000;
 //
 // The asset URLs are cache-busted (see TRACKER_ASSETS): an onnxruntime upgrade
 // or a re-exported model changes the URL, so the flag key moves with it - a
-// device never keys a stale flag to fresh bytes, and the SW drops the old
-// TRACKER entries on activate.
+// device never keys a stale flag to fresh bytes. History is not proof that
+// the browser still holds the response.
 const ASSET_DOWNLOADED_KEY_PREFIX = "everydashcam:blurAssetDownloaded:";
 
 export type BlurAssetsPhase =
     | "idle" // no download in flight, nothing failed
     | "downloading" // warm in flight, `progress` is live
+    | "update" // this build's asset is no longer published
     | "error"; // the last download failed (surfaced so the strip can offer a retry)
 // Note: there is deliberately no sticky "offline" phase. Offline-ness is derived
 // LIVE by the panel from blurAssetsBlockedOffline(), so a reconnect immediately
@@ -138,7 +81,7 @@ export interface BlurAssetsState {
 
 const stateRef: BlurAssetsState = { phase: "idle", progress: 0, activeGroups: null };
 
-// URLs fully drained this session. Storage remains best-effort: the browser
+// URLs fully verified this session. Storage remains best-effort: the browser
 // can evict cached responses independently of the download history.
 const sessionWarmed = new Set<string>();
 const cachedAssets = new Set<string>();
@@ -187,11 +130,11 @@ export function blurAssetsState(): Readonly<BlurAssetsState> {
     return stateRef;
 }
 
-function assetsOf(groups: readonly BlurAssetGroupId[]): AssetSpec[] {
+function assetsOf(groups: readonly BlurAssetGroupId[]): AssetPart[] {
     // Union preserving order, wasm first - it dominates the bytes, so the
     // progress bar moves honestly from the start.
     const seen = new Set<string>();
-    const out: AssetSpec[] = [];
+    const out: AssetPart[] = [];
     for (const g of groups) {
         for (const a of groupAssets(g)) {
             if (!seen.has(a.url)) {
@@ -232,7 +175,7 @@ function forgetDownloaded(url: string): void {
 }
 
 /** True once every asset of `groups` is warmed this session - the pass can run
- *  without any wait. */
+ *  after a verified warm. Workers verify again because storage can be evicted. */
 export function blurAssetsReady(groups: readonly BlurAssetGroupId[]): boolean {
     return assetsOf(groups).every((a) => sessionWarmed.has(a.url));
 }
@@ -255,7 +198,7 @@ export function blurAssetsNeedDownload(groups: readonly BlurAssetGroupId[]): boo
 export function blurAssetsDownloadMb(groups: readonly BlurAssetGroupId[]): number {
     const mb = assetsOf(groups)
         .filter((a) => !sessionWarmed.has(a.url) && !cachedAssets.has(a.url) && !everDownloaded(a.url))
-        .reduce((sum, a) => sum + a.approxMb, 0);
+        .reduce((sum, a) => sum + a.bytes / (1024 * 1024), 0);
     return Math.max(1, Math.round(mb));
 }
 
@@ -329,13 +272,17 @@ export async function downloadBlurAssets(
         })
         .catch((err: unknown) => {
             // A user cancel resets cleanly; anything else (network drop, a stalled
-            // limbo fetch that hit WARM_STALL_TIMEOUT_MS) is an error the strip
+            // limbo fetch that hit the inactivity limit) is an error the strip
             // can retry. Offline-ness is re-derived live, not pinned to a phase.
             if (err instanceof Error && err.name === "AbortError") {
                 setState("idle", 0, null);
                 return false;
             }
-            setState("error", 0, stateRef.activeGroups);
+            setState(
+                err instanceof Error && err.name === "AssetUnavailableError" ? "update" : "error",
+                0,
+                stateRef.activeGroups,
+            );
             log.warn("blur asset download failed", { groups, error: err instanceof Error ? err.message : String(err) });
             return false;
         })
@@ -352,15 +299,15 @@ async function warmAll(groups: readonly BlurAssetGroupId[], signal?: AbortSignal
     const todo = assetsOf(groups).filter((a) => !sessionWarmed.has(a.url));
     const totalMb = Math.max(
         1e-6,
-        todo.reduce((sum, a) => sum + a.approxMb, 0),
+        todo.reduce((sum, a) => sum + a.bytes / (1024 * 1024), 0),
     );
     setState("downloading", 0, groups);
     let baseMb = 0;
     for (const asset of todo) {
         signal?.throwIfAborted();
         try {
-            await warmOne(asset.url, signal, (frac) => {
-                setState("downloading", Math.min(1, (baseMb + asset.approxMb * frac) / totalMb), groups);
+            await loadAssetParts([asset], signal, (frac) => {
+                setState("downloading", Math.min(1, (baseMb + (asset.bytes / (1024 * 1024)) * frac) / totalMb), groups);
             });
         } catch (err) {
             if (!(err instanceof Error && err.name === "AbortError")) forgetDownloaded(asset.url);
@@ -368,56 +315,8 @@ async function warmAll(groups: readonly BlurAssetGroupId[], signal?: AbortSignal
         }
         sessionWarmed.add(asset.url);
         rememberDownloaded(asset.url);
-        baseMb += asset.approxMb;
+        baseMb += asset.bytes / (1024 * 1024);
         setState("downloading", Math.min(1, baseMb / totalMb), groups);
-    }
-}
-
-/** Streams one asset, reporting 0..1 of its bytes. Read the complete response
- *  before marking it ready so an interrupted download remains retriable.
- *
- *  Bounded by a per-chunk stall timeout: the fetch is aborted if no bytes (or
- *  no response headers) arrive within WARM_STALL_TIMEOUT_MS, so a limbo hang
- *  surfaces as an error the user can retry instead of a frozen bar. The caller's
- *  signal (a Cancel button) is honored too. */
-async function warmOne(url: string, signal: AbortSignal | undefined, onFrac: (frac: number) => void): Promise<void> {
-    const stallCtrl = new AbortController();
-    let stallTimer: ReturnType<typeof setTimeout> | undefined;
-    const armStall = (): void => {
-        if (stallTimer) clearTimeout(stallTimer);
-        stallTimer = setTimeout(
-            () => stallCtrl.abort(new DOMException("warm stalled", "TimeoutError")),
-            WARM_STALL_TIMEOUT_MS,
-        );
-    };
-    const merged = signal ? AbortSignal.any([signal, stallCtrl.signal]) : stallCtrl.signal;
-    armStall();
-    try {
-        const res = await fetch(url, { signal: merged });
-        if (!isAssetResponse(res) || !res.body) {
-            throw new Error(`blur asset ${url}: ${res.status}`);
-        }
-        const total = Number(res.headers.get("content-length")) || 0;
-        const reader = res.body.getReader();
-        let received = 0;
-        try {
-            for (;;) {
-                armStall(); // reset per chunk - only a real stall (no data) trips it
-                const { done, value } = await reader.read();
-                merged.throwIfAborted();
-                if (done) break;
-                received += value.byteLength;
-                // No Content-Length (dev middleware / proxy): hold at an indeterminate
-                // half rather than jump around; the completed-asset base still advances.
-                onFrac(total > 0 ? Math.min(1, received / total) : 0.5);
-            }
-        } finally {
-            reader.releaseLock();
-        }
-        if (received === 0) throw new Error(`blur asset ${url}: empty response`);
-        onFrac(1);
-    } finally {
-        if (stallTimer) clearTimeout(stallTimer);
     }
 }
 
@@ -426,6 +325,14 @@ function isAssetResponse(response: Response): boolean {
         response.status === 200 &&
         !/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(response.headers.get("content-type") ?? "")
     );
+}
+
+/** A worker can discover eviction after warming completed. Its next explicit
+ * attempt must pass the download gate again, without losing consent history. */
+export function invalidateBlurAssetReadiness(): void {
+    sessionWarmed.clear();
+    cachedAssets.clear();
+    emit();
 }
 
 export function _resetForTests(): void {

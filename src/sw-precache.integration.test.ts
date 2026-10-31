@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // Integration test for the precache injection pipeline. Reads the built
 // artifacts and asserts:
 //
@@ -109,7 +110,10 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
             "high-density map sprite exists",
         ).toBe(true);
         for (const file of styles) {
-            expect(urls.has(`/styles/${file}`), `map dependency /styles/${file} must be precached`).toBe(true);
+            expect(
+                [...urls].some((url) => url.startsWith("/styles/") && url.endsWith(`/${file}`)),
+                `map dependency /styles/${file} must be precached`,
+            ).toBe(true);
         }
     });
 
@@ -118,10 +122,19 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
         const styles = readdirSync(sourceDir).filter((file) => file.endsWith(".json"));
         expect(styles.length, "readable map styles exist").toBeGreaterThan(0);
         for (const file of styles) {
-            const original: unknown = JSON.parse(readFileSync(resolve(sourceDir, file), "utf8"));
-            const emitted = readFileSync(resolve(DIST_DIR, "styles", file), "utf8");
-            expect(JSON.parse(emitted), `${file} retains its layers, expressions and URLs`).toEqual(original);
-            expect(emitted, `${file} ships as compact JSON`).toBe(JSON.stringify(original));
+            const original = JSON.parse(readFileSync(resolve(sourceDir, file), "utf8")) as Record<string, unknown>;
+            const url = [...urls].find((url) => url.startsWith("/styles/") && url.endsWith(`/${file}`))!;
+            const emitted = readFileSync(resolve(DIST_DIR, url.slice(1)), "utf8");
+            const style = JSON.parse(emitted) as Record<string, unknown>;
+            expect(emitted, `${file} ships as compact JSON`).toBe(JSON.stringify(style));
+            if (typeof original.sprite === "string" && original.sprite.startsWith("/styles/")) {
+                expect(style.sprite).toMatch(/^\/styles\/[a-f0-9]{16}\/sprite\/sprite$/);
+                for (const suffix of [".json", ".png", "@2x.json", "@2x.png"]) {
+                    expect(existsSync(resolve(DIST_DIR, `${String(style.sprite).slice(1)}${suffix}`))).toBe(true);
+                }
+                original.sprite = style.sprite;
+            }
+            expect(style, `${file} retains its layers, expressions and external URLs`).toEqual(original);
         }
     });
 
@@ -154,12 +167,7 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
         expect(injected.trackerUrls).toEqual(assets.urls);
         for (const url of assets.urls) {
             const emitted = readFileSync(resolve(DIST_DIR, url.slice(1)));
-            const model = assets.modelEmit.find((entry) => entry.url === url);
-            const runtime = assets.ortEmit.find((entry) => url.endsWith(`/${entry.name}`));
-            const source = model ? resolve(root, "public", model.rel) : runtime!.source;
-            const original = readFileSync(source);
-            const expected = runtime ? original.subarray(runtime.offset, runtime.offset + runtime.bytes) : original;
-            expect(emitted.equals(expected), `tracker asset ${url} matches its source bytes`).toBe(true);
+            expect(emitted.equals(assets.files.get(url)!), `tracker asset ${url} matches its snapshot`).toBe(true);
             expect(emitted.length, `tracker asset ${url} fits Cloudflare Pages`).toBeLessThanOrEqual(25 * 1024 * 1024);
         }
         for (const runtime of Object.values(assets.app.ort)) {
@@ -168,15 +176,10 @@ describe("sw-precache integration: manifest covers the real boot graph", () => {
             const assembled = Buffer.concat(
                 wasm.parts.map((part) => readFileSync(resolve(DIST_DIR, part.url.slice(1)))),
             );
-            const source = assets.ortEmit.find((entry) => wasm.parts[0]!.url.endsWith(`/${entry.name}`))!;
-            expect(
-                assembled.equals(readFileSync(source.source)),
-                "all WASM pieces reconstruct the original binary",
-            ).toBe(true);
-            expect(
-                existsSync(resolve(DIST_DIR, runtime.moduleUrl.replace(/\.mjs$/, ".wasm").slice(1))),
-                "oversized original is not published",
-            ).toBe(false);
+            expect(assembled.length).toBe(wasm.bytes);
+            for (const part of wasm.parts) {
+                expect(createHash("sha256").update(assets.files.get(part.url)!).digest("hex")).toBe(part.sha256);
+            }
         }
     });
 });

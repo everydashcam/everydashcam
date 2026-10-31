@@ -1619,7 +1619,7 @@ async function startTrackerDownload(): Promise<void> {
     if (!__PORTABLE__) syncTrackerStrip();
 }
 
-type BlurDownloadStripPhase = "hidden" | "downloading" | "offline" | "error" | "consent";
+type BlurDownloadStripPhase = "hidden" | "downloading" | "offline" | "error" | "update" | "consent";
 
 interface BlurDownloadStripOptions {
     phase: BlurDownloadStripPhase;
@@ -1653,7 +1653,7 @@ function syncBlurDownloadStrip(
         return phase;
     }
     strip.innerHTML = "";
-    strip.classList.toggle("is-error", phase === "error");
+    strip.classList.toggle("is-error", phase === "error" || phase === "update");
     strip.hidden = phase === "hidden";
     if (phase === "hidden") return phase;
     if (phase === "downloading") {
@@ -1704,8 +1704,8 @@ function syncTrackerStrip(): void {
               ? "hidden"
               : offlineNow
                 ? "offline"
-                : phase === "error" && followDownload
-                  ? "error"
+                : (phase === "error" || phase === "update") && followDownload
+                  ? phase
                   : "consent";
     trackerStripPhase = syncBlurDownloadStrip(strip, trackerStripPhase, {
         phase: stripPhase,
@@ -1799,8 +1799,8 @@ function syncDetectStrip(): void {
               ? "hidden"
               : offlineNow
                 ? "offline"
-                : phase === "error" && detectDownload
-                  ? "error"
+                : (phase === "error" || phase === "update") && detectDownload
+                  ? phase
                   : "consent";
     detectStripPhase = syncBlurDownloadStrip(strip, detectStripPhase, {
         phase: stripPhase,

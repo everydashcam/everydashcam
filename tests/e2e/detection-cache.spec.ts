@@ -133,9 +133,9 @@ for (const scenario of [
                             thresholds: { [scenario.kind]: scenario.threshold },
                             analyzeIntervalsByKind: Object.fromEntries(kinds.map((kind) => [kind, [contentBounds]])),
                             cachedAnalysisByKind: cached?.analysisByKind,
-                            plateModelUrl: new URL(assets.models.plate, location.origin).href,
-                            faceModelUrl: new URL(assets.models.face, location.origin).href,
-                            trackerModelUrl: new URL(assets.models.tracker, location.origin).href,
+                            plateModelUrl: new URL(assets.models.plate.url, location.origin).href,
+                            faceModelUrl: new URL(assets.models.face.url, location.origin).href,
+                            trackerModelUrl: new URL(assets.models.tracker.url, location.origin).href,
                             ortAssets: assets.ort.webgpu,
                         };
                         worker.postMessage({ __k: "req", id: requestId, type: "detect", data } satisfies WireRequest);

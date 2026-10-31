@@ -795,6 +795,7 @@ export const ruDict = {
     "export.blur.tracker.working": "Слежу… {pct}%",
     "export.blur.tracker.saveBlocked": "Перед сохранением дождись окончания слежения или отмени его.",
     "export.blur.tracker.offline": "Нет интернета. Подключись один раз, чтобы включить это — потом работает и офлайн.",
+    "export.blur.tracker.update": "Эта версия больше не может загрузить нужные файлы. Закончи работу, затем закрой все окна everydashcam и открой приложение заново, чтобы обновить его.",
     "export.blur.tracker.error": "Не удалось загрузить. Проверь связь и попробуй ещё раз.",
     "export.blur.tracker.retry": "Ещё раз",
     "export.blur.detect.plates": "Скрыть все номера",

@@ -49,3 +49,5 @@ export const blurAssetsState: typeof Assets.blurAssetsState = () => ({
     activeGroups: null,
 });
 export const downloadBlurAssets: typeof Assets.downloadBlurAssets = unavailable;
+
+export const invalidateBlurAssetReadiness: typeof Assets.invalidateBlurAssetReadiness = () => {};

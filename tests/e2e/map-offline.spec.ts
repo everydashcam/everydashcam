@@ -143,7 +143,7 @@ test.describe("map style failures", () => {
 
     test("promotes a prefetched style request when the foreground map joins it", async ({ page }) => {
         let prefetched: Route | undefined;
-        await page.route("**/styles/light.json", (route) => {
+        await page.route("**/styles/**/light.json", (route) => {
             prefetched = route;
         });
         await presetLocalStorage(page);
@@ -169,7 +169,7 @@ test.describe("map style failures", () => {
     for (const replacement of ["provider", "theme"] as const) {
         test(`ignores a pending style failure after the map ${replacement} changes`, async ({ page }) => {
             let pendingStyle: Route | undefined;
-            await page.route("**/styles/dark.json", (route) => {
+            await page.route("**/styles/**/dark.json", (route) => {
                 pendingStyle = route;
             });
             await presetLocalStorage(page);
@@ -206,10 +206,10 @@ test.describe("map style failures", () => {
 
     test("keeps the selected theme failure visible when an old theme finishes loading", async ({ page }) => {
         let pendingStyle: Route | undefined;
-        await page.route("**/styles/dark.json", (route) => {
+        await page.route("**/styles/**/dark.json", (route) => {
             pendingStyle = route;
         });
-        await page.route("**/styles/light.json", (route) => route.fulfill({ status: 503 }));
+        await page.route("**/styles/**/light.json", (route) => route.fulfill({ status: 503 }));
         await presetLocalStorage(page);
         await gotoApp(page);
         await loadTrip(page);
@@ -238,7 +238,7 @@ test.describe("map style failures", () => {
         page.on("request", (request) => {
             if (request.url() === "https://tiles.openfreemap.org/planet") bootstrapRequests++;
         });
-        await page.route("**/styles/*.json", async (route) => {
+        await page.route("**/styles/**/*.json", async (route) => {
             if (canLoadStyle) await route.fallback();
             else await route.fulfill({ status: 503 });
         });

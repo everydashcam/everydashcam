@@ -118,7 +118,7 @@ test("completes the saved chase tilt when the basemap interrupts initial entry",
     await page.addInitScript(() =>
         localStorage.setItem("dc.viewer.panels", JSON.stringify({ map: true, mapMode: "large" })),
     );
-    await page.route("**/styles/dark.json", async (route) => {
+    await page.route("**/styles/**/dark.json", async (route) => {
         await page.waitForFunction(() => (window.__everydashcam.state.map?.getPitch() ?? 0) > 5);
         await route.fallback();
     });

@@ -36,7 +36,7 @@ export interface TrackRequestData {
     /** Same-origin URL of the vittrack ONNX model. Resolved on the main
      *  thread so the worker stays free of app config. */
     modelUrl: string;
-    /** Same-origin module and verified WASM parts for this runtime. */
+    /** Verified WASM parts matching the runtime bundled into this worker. */
     ortAssets: OrtAssets;
 }
 

@@ -1,3 +1,4 @@
+import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     _resetForTests,
@@ -14,6 +15,14 @@ import {
 } from "./blur-assets.js";
 import { reportMapTileNetworkError, reportMapTilesOk } from "./connectivity.js";
 
+const assetFiles = computeTrackerAssets("serve").files;
+function assetResponse(url: string | URL | Request): Response {
+    const path = url instanceof Request ? url.url : String(url);
+    const bytes = assetFiles.get(path);
+    if (!bytes) throw new Error(`unexpected asset: ${path}`);
+    return new Response(new Uint8Array(bytes));
+}
+
 let history: Map<string, string>;
 
 beforeEach(() => {
@@ -28,7 +37,7 @@ beforeEach(() => {
     vi.stubGlobal("caches", { match: async () => undefined });
     vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))),
+        vi.fn(async (url: string | URL | Request) => assetResponse(url)),
     );
 });
 
@@ -43,14 +52,9 @@ describe("blur assets offline readiness", () => {
         expect(fetch).toHaveBeenCalledWith(PLATE_MODEL_URL, expect.anything());
         expect(fetch).toHaveBeenCalledWith(FACE_MODEL_URL, expect.anything());
         expect(fetch).toHaveBeenCalledWith(TRACKER_MODEL_URL, expect.anything());
-        expect(fetch).not.toHaveBeenCalledWith(TRACKER_ORT_ASSETS.wasm.moduleUrl, expect.anything());
-        expect(fetch).toHaveBeenCalledWith(TRACKER_ORT_ASSETS.webgpu.moduleUrl, expect.anything());
         const downloaded = vi.mocked(fetch).mock.calls.map(([url]) => url);
         const plainWasm = TRACKER_ORT_ASSETS.wasm.wasm;
-        const plainUrls = [
-            ...("parts" in plainWasm ? plainWasm.parts.map((part) => part.url) : [plainWasm.url]),
-            TRACKER_ORT_ASSETS.wasm.moduleUrl,
-        ];
+        const plainUrls = plainWasm.parts.map((part) => part.url);
         expect(downloaded.filter((url) => plainUrls.includes(String(url)))).toEqual([]);
         expect(new Set(downloaded).size, "shared runtime and model download once").toBe(downloaded.length);
         expect(blurAssetsReady(["detect-plate", "detect-face"])).toBe(true);
@@ -88,7 +92,7 @@ describe("blur assets offline readiness", () => {
         expect(blurAssetsBlockedOffline(["track"])).toBe(false);
         expect(await downloadBlurAssets(["track"])).toBe(true);
         expect(blurAssetsReady(["track"])).toBe(true);
-        expect(fetch).toHaveBeenCalledTimes(3);
+        expect(fetch).toHaveBeenCalledTimes(2);
     });
 
     it("finds cached models offline even when download history is missing", async () => {
@@ -220,7 +224,7 @@ describe("blur assets offline readiness", () => {
 
         vi.stubGlobal(
             "fetch",
-            vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))),
+            vi.fn(async (url: string | URL | Request) => assetResponse(url)),
         );
         expect(await downloadBlurAssets(["track"])).toBe(true);
         expect(blurAssetsReady(["track"])).toBe(true);
@@ -245,14 +249,14 @@ describe("blur assets offline readiness", () => {
     it("cancels a queued warm without waiting for or aborting another feature's download", async () => {
         let finish!: (response: Response) => void;
         const fetcher = vi
-            .fn<() => Promise<Response>>()
+            .fn<(url: string | URL | Request) => Promise<Response>>()
             .mockImplementationOnce(
                 () =>
                     new Promise((resolve) => {
                         finish = resolve;
                     }),
             )
-            .mockImplementation(async () => new Response(new Uint8Array([1, 2, 3])));
+            .mockImplementation(async (url) => assetResponse(url));
         vi.stubGlobal("fetch", fetcher);
         const tracking = downloadBlurAssets(["track"]);
         await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
@@ -266,7 +270,7 @@ describe("blur assets offline readiness", () => {
             expect(fetcher).toHaveBeenCalledTimes(1);
             expect(blurAssetsState().phase).toBe("downloading");
         } finally {
-            finish(new Response(new Uint8Array([1, 2, 3])));
+            finish(assetResponse(TRACKER_ORT_ASSETS.wasm.wasm.parts[0]!.url));
             expect(await tracking).toBe(true);
         }
     });

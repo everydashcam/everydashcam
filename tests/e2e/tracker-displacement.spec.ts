@@ -5,7 +5,9 @@ import type { trackDisplacements } from "../helpers/tracker-displacement-harness
 import { expect, REPO_ROOT, test } from "./_fixtures.js";
 
 test("real tracker verifies a displaced target against its frozen appearance", async ({ page }) => {
+    const assets = computeTrackerAssets("build").app;
     const bundle = await rolldown({
+        transform: { define: { __DC_TRACKER_ASSETS__: JSON.stringify(assets) } },
         input: resolve(REPO_ROOT, "tests/helpers/tracker-displacement-harness.ts"),
         platform: "browser",
         resolve: { extensionAlias: { ".js": [".ts", ".js"] } },
@@ -26,11 +28,10 @@ test("real tracker verifies a displaced target against its frozen appearance", a
         route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Tracker displacement</title>" }),
     );
     await page.goto("/tracker-displacement.html");
-    const assets = computeTrackerAssets("build").app;
     const results = await page.evaluate(async (assets) => {
         const url = "/tracker-displacement.js";
         const module: { trackDisplacements: typeof trackDisplacements } = await import(url);
-        return module.trackDisplacements(new URL(assets.models.tracker, location.origin).href, assets.ort.wasm);
+        return module.trackDisplacements(new URL(assets.models.tracker.url, location.origin).href, assets.ort.wasm);
     }, assets);
     expect(results.results).toHaveLength(3);
     for (const { dx, changed, result } of results.results) {
