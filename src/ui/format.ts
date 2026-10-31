@@ -135,13 +135,19 @@ function tripTitleFormatters(
  * Month section heading for the date-sorted trip list ("October 2026"). The
  * month and year are display-clock calendar fields (see trip-list-layout.ts).
  * Locales that write month names in lower case get a capital first letter,
- * because the heading starts a line.
+ * because the heading starts a line. `locale` is injectable for tests.
  */
-export function formatMonthHeading(year: number, month: number): string {
-    const locale = getDateLocale();
-    const text = cachedDateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(
+export function formatMonthHeading(year: number, month: number, locale: string = getDateLocale()): string {
+    const parts = cachedDateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).formatToParts(
         new Date(Date.UTC(year, month, 1)),
     );
+    // Some locales close the year with an abbreviation (ru "октябрь 2026 г."),
+    // which only costs width in a narrow heading. A literal after the month
+    // (ja "2026年10月") is part of the date and stays.
+    let end = parts.length;
+    while (end > 0 && parts[end - 1]!.type === "literal") end--;
+    const kept = parts[end - 1]?.type === "year" ? parts.slice(0, end) : parts;
+    const text = kept.map((part) => part.value).join("");
     return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
 }
 

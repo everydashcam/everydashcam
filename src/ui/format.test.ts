@@ -184,6 +184,11 @@ describe("formatMonthHeading", () => {
     it("names the month and the year", () => {
         expect(formatMonthHeading(2026, 9)).toBe("October 2026");
     });
+
+    it("drops a year abbreviation but keeps a month marker", () => {
+        expect(formatMonthHeading(2026, 9, "ru-RU")).toBe("Октябрь 2026");
+        expect(formatMonthHeading(2026, 9, "ja-JP")).toBe("2026年10月");
+    });
 });
 
 describe("display clock (camera clock when the trip carries a zone estimate)", () => {

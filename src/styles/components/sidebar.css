@@ -452,6 +452,10 @@
 .trip-group-toggle__label {
     flex: 0 1 auto;
 }
+/* The month name is the point of its band; the totals give way first. */
+.trip-month__header .trip-group-toggle__label {
+    flex-shrink: 0;
+}
 .trip-day__header .trip-group-toggle__label {
     color: var(--fg);
     font-size: var(--dc-text-sm);

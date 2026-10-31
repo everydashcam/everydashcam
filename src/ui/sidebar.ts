@@ -238,9 +238,9 @@ export function renderTrips(): void {
         displayed = [...displayed.filter(isFavoriteEntry), ...displayed.filter((d) => !isFavoriteEntry(d))];
     }
 
-    const appendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element): void => {
+    const appendCards: AppendCards = (entries, parent, underDayHeading) => {
         for (const { trip, idx } of entries) {
-            const card = buildTripCard(trip, idx);
+            const card = buildTripCard(trip, idx, underDayHeading);
             seedCardHeight(card, cardHeights);
             parent.appendChild(card);
         }
@@ -251,7 +251,7 @@ export function renderTrips(): void {
     // sort mode, or they read as trips mysteriously out of order.
     if (favoriteCount > 0) {
         dom.list.appendChild(buildListSeparator(t("sidebar.bucket.favorites")));
-        appendCards(displayed.slice(0, favoriteCount), dom.list);
+        appendCards(displayed.slice(0, favoriteCount), dom.list, false);
     }
     const rest = displayed.slice(favoriteCount);
     if (state.tripSortKey === "date") {
@@ -261,12 +261,12 @@ export function renderTrips(): void {
             (trip) => tripFocusKey(trip) ?? `start:${trip.startUtc}`,
         );
         for (const month of groupByMonthDay(nodes)) {
-            dom.list.appendChild(buildMonthSection(month, (entries, parent) => appendCards(entries, parent)));
+            dom.list.appendChild(buildMonthSection(month, appendCards));
         }
     } else {
         // Under other sorts a single "everything else" label closes the favorites group.
         if (favoriteCount > 0 && rest.length > 0) dom.list.appendChild(buildListSeparator(t("sidebar.bucket.others")));
-        appendCards(rest, dom.list);
+        appendCards(rest, dom.list, false);
     }
 
     if (state.unindexed.size > 0) {
@@ -292,7 +292,8 @@ export function renderTrips(): void {
     scheduleRecognitionHelp();
 }
 
-type AppendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element) => void;
+/** Appends cards for `entries`; `underDayHeading` lets a row drop the date its day heading shows. */
+type AppendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element, underDayHeading: boolean) => void;
 
 /** A plain heading row between top-level groups (favorites / everything else). */
 function buildListSeparator(label: string): HTMLLIElement {
@@ -385,7 +386,7 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
     content.push(textSpan("trip-group-toggle__stats", tripsSummaryText(nodeTrips(day.nodes))));
     const { section, list } = buildGroupSection(day.key, "trip-day", content, buildDayStrip(day));
     for (const node of day.nodes) {
-        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list);
+        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list, true);
         else list.appendChild(buildParkingRun(node, appendCards));
     }
     return section;
@@ -431,6 +432,7 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): H
     appendCards(
         node.entries.map((entry) => ({ trip: entry.trip, idx: entry.tripIdx })),
         list,
+        true,
     );
     return section;
 }
@@ -543,7 +545,7 @@ function buildTripActions(tripIdx: number, isFavorite: boolean): HTMLElement {
  * (refreshTripCard) without tearing down the whole list while recording data
  * arrives in the background.
  */
-function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
+function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): HTMLLIElement {
     const li = document.createElement("li");
     li.className = "trip";
     // Compact rows reuse every control of the card; only the header layout and
@@ -590,9 +592,8 @@ function buildTripCard(trip: Trip, tripIdx: number): HTMLLIElement {
     // Custom name replaces the generated title; the generated one (date/time)
     // moves to the tooltip so it stays discoverable.
     const generatedTitle = provisional ? formatTripStartTitle(trip) : formatTripTitle(trip);
-    // A row under date sort sits below its day heading, which already names the date.
-    const shownTitle =
-        asRow && state.tripSortKey === "date" ? formatTripClockTitle(trip, !provisional) : generatedTitle;
+    // A row inside a day section sits below the heading that already names the date.
+    const shownTitle = asRow && underDayHeading ? formatTripClockTitle(trip, !provisional) : generatedTitle;
     title.textContent = tripMeta?.name || shownTitle;
     if (tripMeta?.name || shownTitle !== generatedTitle) title.title = generatedTitle;
     // Keyboard / screen-reader affordance: the title IS the trip's open/play
@@ -948,7 +949,7 @@ export function refreshTripCard(tripIdx: number): void {
     const oldLi = dom.list.querySelector<HTMLElement>(`li.trip[data-trip-index="${tripIdx}"]`);
     if (!oldLi) return;
     const focus = captureListFocus(oldLi);
-    const card = buildTripCard(trip, tripIdx);
+    const card = buildTripCard(trip, tripIdx, oldLi.closest(".trip-day") !== null);
     // Reuse the height seeded by the last full render. Measuring the old card
     // here would force a list layout on every call, and ingest refreshes many
     // cards in one task.
