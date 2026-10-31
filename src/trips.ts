@@ -1459,8 +1459,11 @@ function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsReco
     // can carry the impact spike on the lower-priority channel, so transplant the
     // stronger accel triple onto the survivor (max-|G| wins) instead of dropping
     // it before detectEvents. Clone, never mutate: candidate.records are reused
-    // across regroups. indexByKey holds the survivor's slot in the pre-sort array.
-    const indexByKey = new Map<string, number>();
+    // across regroups. slotsByTime holds the survivors' slots in the pre-sort
+    // array per timestamp. A number-keyed Map compares with SameValueZero, the
+    // same equality the identity needs for every field (NaN matches NaN, -0
+    // matches 0), so no per-record key string is built.
+    const slotsByTime = new Map<number, number | number[]>();
     const merged: GpsRecord[] = [];
     const sources: TripGpsSource[] = [];
     const seen = new Set<VideoCandidate>();
@@ -1474,11 +1477,14 @@ function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsReco
     }
     for (const records of normalizeTripTrackSegments(sources)) {
         for (const r of records) {
-            const key = `${r.unixSeconds}|${r.lat}|${r.lon}|${r.trackSegment ?? ""}`;
-            const existingIdx = indexByKey.get(key);
-            if (existingIdx === undefined) {
-                indexByKey.set(key, merged.length);
+            const slots = slotsByTime.get(r.unixSeconds);
+            const existingIdx = findSameGpsIdentity(merged, slots, r);
+            if (existingIdx === -1) {
+                const slot = merged.length;
                 merged.push(r);
+                if (slots === undefined) slotsByTime.set(r.unixSeconds, slot);
+                else if (typeof slots === "number") slotsByTime.set(r.unixSeconds, [slots, slot]);
+                else slots.push(slot);
                 continue;
             }
             const kept = merged[existingIdx]!;
@@ -1500,6 +1506,36 @@ function collectRawTripRecords(frames: readonly TripFrame[]): { records: GpsReco
     // chart, distance, events, export), and it recomputes on every regroup -
     // candidate records and state.gpsLog keep the raw parser output.
     return { records: dropTeleportOutliers(merged), mergedCount: merged.length };
+}
+
+function sameValueZero(a: number, b: number): boolean {
+    return a === b || (Number.isNaN(a) && Number.isNaN(b));
+}
+
+/** Same dedup identity apart from the timestamp the caller already matched. */
+function isSameGpsPosition(kept: GpsRecord, record: GpsRecord): boolean {
+    return (
+        sameValueZero(kept.lat, record.lat) &&
+        sameValueZero(kept.lon, record.lon) &&
+        (kept.trackSegment === undefined || record.trackSegment === undefined
+            ? kept.trackSegment === record.trackSegment
+            : sameValueZero(kept.trackSegment, record.trackSegment))
+    );
+}
+
+/** Slot of the merged record sharing `record`'s dedup identity, or -1.
+ *  `slots` are the survivors already merged at `record`'s timestamp. */
+function findSameGpsIdentity(
+    merged: readonly GpsRecord[],
+    slots: number | readonly number[] | undefined,
+    record: GpsRecord,
+): number {
+    if (slots === undefined) return -1;
+    if (typeof slots === "number") return isSameGpsPosition(merged[slots]!, record) ? slots : -1;
+    for (const slot of slots) {
+        if (isSameGpsPosition(merged[slot]!, record)) return slot;
+    }
+    return -1;
 }
 
 /** Unsynced clocks alone do not prove duplication: independently cut channels
