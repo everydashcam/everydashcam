@@ -11,6 +11,7 @@ import { contentToFrame, contentToWallUtc, displayClockDate, type Trip } from ".
 import type { GpsRecord } from "../parser.js";
 import { formatDistanceFromKm, formatSpeedFromMs, getUnits, subscribeUnitsChange, toggleUnits } from "../units-pref.js";
 import { dom } from "./dom.js";
+import { formatNumber } from "./format.js";
 import { syncGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { activeCandidate, activeFrame } from "./state.js";
 import { type FixState, resolvePlayerMetrics } from "./player-metrics-data.js";
@@ -150,7 +151,7 @@ function refreshMetrics(
     // i18n so 24h/12h follows the UI language.
     dom.metrics.time.textContent = localTimeFormatter().format(displayClockDate(rec.unixSeconds, cameraTzSec));
     const distance = formatDistanceFromKm(distanceKm ?? 0);
-    dom.metrics.distance.textContent = distance.value.toFixed(1);
+    dom.metrics.distance.textContent = formatNumber(distance.value, 1);
     dom.metrics.distanceUnit.textContent = t(distance.unitKey);
     // Map marker updates via rAF-loop with GPS interpolation - it moves
     // smoothly without us setting position here.

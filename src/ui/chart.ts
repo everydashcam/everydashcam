@@ -52,7 +52,7 @@ import { formatSpeedFromMs, subscribeUnitsChange } from "../units-pref.js";
 
 import { dom } from "./dom.js";
 import { openExportMode, setRange } from "./export-state.js";
-import { eventLabel, formatDuration, formatEventSeverity, formatTime } from "./format.js";
+import { eventLabel, formatDuration, formatEventSeverity, formatNumber, formatTime } from "./format.js";
 import { extractFrameAt } from "./frame-extract.js";
 import { buildRecordPopupHtml } from "./map.js";
 import { isCoarsePointer } from "./media-queries.js";
@@ -1602,7 +1602,7 @@ function showEventPopup(ev: TripEvent, anchorPx: { x: number; y: number }): void
 
     const titleStr = t("event.popup.titleFmt", {
         time: formatTime(ev.relSec),
-        severity: ev.severity.toFixed(2),
+        severity: formatNumber(ev.severity, 2),
     });
     el.innerHTML = `
         <div class="event-popup-title mono">${escapeHtml(titleStr)}</div>

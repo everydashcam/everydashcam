@@ -50,6 +50,7 @@ import {
     channelDisplayLabel,
     clipBasename,
     formatBytes,
+    formatNumber,
     formatRateBytes,
     formatTime,
     randomFilenameSuffix,
@@ -60,7 +61,7 @@ import { downloadBlob } from "../download.js";
 import { buildClipGpx, clipRecordsForRange } from "../export-range.js";
 import { totalDistanceKm } from "../parser.js";
 import { notify } from "./notifications.js";
-import { getDateLocale, t } from "../i18n/index.js";
+import { t } from "../i18n/index.js";
 import { DETECTION_QUALITIES, type DetectionQuality } from "../tracking/detection-sampling.js";
 import {
     DETECTION_POLICIES,
@@ -653,7 +654,7 @@ function syncGpxSummary(): void {
     const dist = formatDistanceFromKm(totalDistanceKm(records));
     // 1 decimal under 10 units (a short clip is < 1 km, which rounds to "0");
     // whole units above, where the fraction is noise.
-    const distText = `${dist.value.toFixed(dist.value < 10 ? 1 : 0)} ${t(dist.unitKey)}`;
+    const distText = `${formatNumber(dist.value, dist.value < 10 ? 1 : 0)} ${t(dist.unitKey)}`;
     gpxSummaryStatsEl.textContent = t("export.gpx.summary", {
         n: records.length,
         dist: distText,
@@ -937,7 +938,7 @@ function syncManualBitrateUi(est: ReturnType<typeof estimateExport>): void {
             // second, so a bare "32 Mbit/s" under a row reading "5 MB/s" looks
             // like a contradiction until you do the x8 in your head.
             manualBitrateSourceEl.textContent = t("export.quality.manual.source", {
-                mbit: mbit < 10 ? mbit.toFixed(1) : String(Math.round(mbit)),
+                mbit: formatNumber(mbit, mbit < 10 ? 1 : 0),
                 perSecond: formatRateBytes(bps / 8),
             });
         }
@@ -1415,7 +1416,7 @@ function renderBlurGroup(): HTMLElement {
 }
 
 function formatDetectionThreshold(value: number): string {
-    return new Intl.NumberFormat(getDateLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+    return formatNumber(value, 2);
 }
 
 function renderDetectThresholdSettings(): HTMLElement {

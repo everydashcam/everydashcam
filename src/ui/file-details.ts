@@ -20,7 +20,7 @@ import {
     type VideoCandidate,
 } from "../trips.js";
 
-import { channelDisplayLabel, formatBytes, formatDuration } from "./format.js";
+import { channelDisplayLabel, formatBytes, formatDuration, formatNumber } from "./format.js";
 
 /** One label/value row of the details grid. value is already HTML-safe. */
 interface DetailRow {
@@ -109,21 +109,21 @@ function timeSourceLabel(source: StartSource): string {
 function formatFps(fps: number): string {
     const rounded = Math.round(fps * 100) / 100;
     const isWhole = Math.abs(rounded - Math.round(rounded)) < 0.01;
-    return `${isWhole ? Math.round(rounded) : rounded.toFixed(2)} fps`;
+    return `${formatNumber(rounded, isWhole ? 0 : 2)} fps`;
 }
 
 /** Sample rate as kHz (48 kHz, 44.1 kHz). */
 function formatSampleRate(hz: number): string {
     const khz = hz / 1000;
     const isWhole = Math.abs(khz - Math.round(khz)) < 0.01;
-    return `${isWhole ? Math.round(khz) : khz.toFixed(1)} kHz`;
+    return `${formatNumber(khz, isWhole ? 0 : 1)} kHz`;
 }
 
 /** Average bitrate = size*8 / duration, in Mbps. null when duration is unknown. */
 function formatAvgBitrate(bytes: number, durationSec: number): string | null {
     if (!(durationSec > 0)) return null;
     const mbps = (bytes * 8) / durationSec / 1e6;
-    return `${mbps.toFixed(1)} Mbps`;
+    return `${formatNumber(mbps, 1)} Mbps`;
 }
 
 /** Folder part of a clip's path ("Normal/Front"), or null for a flat drop with

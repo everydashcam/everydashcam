@@ -52,7 +52,7 @@ const log = createLogger("map");
 import { isOffline, subscribeConnectivity } from "./connectivity.js";
 import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
-import { formatTime } from "./format.js";
+import { formatNumber, formatTime } from "./format.js";
 import { activeFrame, activeTrip, state } from "./state.js";
 import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
@@ -1701,8 +1701,8 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
     // No accelerometer in this format - drop the G rows entirely rather than
     // show a constant 0.00 (same rule as the hidden |G| curve on the chart).
     const gRows = hasAccelData(trip.records)
-        ? `<div class="track-popup-row"><span class="track-popup-label">${t("popup.label.gMag")}</span><span>${gMagnitude(rec).toFixed(2)} g</span></div>
-            <div class="track-popup-row mono"><span class="track-popup-label">${t("popup.label.aXYZ")}</span><span>${rec.accelXg.toFixed(2)} · ${rec.accelYg.toFixed(2)} · ${rec.accelZg.toFixed(2)}</span></div>`
+        ? `<div class="track-popup-row"><span class="track-popup-label">${t("popup.label.gMag")}</span><span>${formatNumber(gMagnitude(rec), 2)} g</span></div>
+            <div class="track-popup-row mono"><span class="track-popup-label">${t("popup.label.aXYZ")}</span><span>${formatNumber(rec.accelXg, 2)} · ${formatNumber(rec.accelYg, 2)} · ${formatNumber(rec.accelZg, 2)}</span></div>`
         : "";
     // mp4Filename is user-controlled (70mai: CSV field[9]; GPX: matched MP4
     // basename; embedded: File.name). The user may have renamed the file to

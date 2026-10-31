@@ -163,7 +163,7 @@ export function formatTripMeta(trip: Trip, loading: TripLoadingState = "loaded")
 }
 
 export function formatFileMeta(video: VideoCandidate, tripStartUtc: number, gpsPending = false): string {
-    const sizeMb = (video.file.size / (1024 * 1024)).toFixed(1);
+    const sizeMb = formatNumber(video.file.size / (1024 * 1024), 1);
     if (video.metadataFailed === true) {
         return `${t("trip.chip.readFailed")} · ${sizeMb} ${t("units.mb")}`;
     }
@@ -177,7 +177,7 @@ export function formatFileMeta(video: VideoCandidate, tripStartUtc: number, gpsP
     let distStr = "";
     if (distKm > 0) {
         const d = formatDistanceFromKm(distKm);
-        distStr = ` · ${d.value.toFixed(1)} ${t(d.unitKey)}`;
+        distStr = ` · ${formatNumber(d.value, 1)} ${t(d.unitKey)}`;
     }
     // "GPS: N" is not useful - omit. Explicitly signal when there are no records at all (video without a track).
     const noGps = video.records.length === 0 && !gpsPending ? t("trip.fileMeta.noGps") : "";
@@ -279,19 +279,37 @@ export function formatTime(seconds: number, padMinutes = false): string {
     return `${padMinutes ? pad(m) : m}:${pad(s)}`;
 }
 
+const numberFormatters = new Map<string, Intl.NumberFormat>();
+
+/** UI numbers use the page locale. Fixed precision by default; pass a lower
+ * minimum to omit insignificant trailing zeros. Never use for inputs or CSS. */
+export function formatNumber(
+    value: number,
+    maximumFractionDigits = 0,
+    minimumFractionDigits = maximumFractionDigits,
+): string {
+    const key = `${minimumFractionDigits}:${maximumFractionDigits}`;
+    let formatter = numberFormatters.get(key);
+    if (!formatter) {
+        formatter = new Intl.NumberFormat(getDateLocale(), { minimumFractionDigits, maximumFractionDigits });
+        numberFormatters.set(key, formatter);
+    }
+    return formatter.format(value);
+}
+
 /** Keeps short routes distinct from a stationary recording. */
 export function formatTripDistance(km: number): string {
     const { value, unitKey } = formatDistanceFromKm(km);
-    const rounded = new Intl.NumberFormat(getDateLocale(), { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value);
-    const distance = value > 0 && value < 0.1 ? `<${new Intl.NumberFormat(getDateLocale()).format(0.1)}` : rounded;
+    const rounded = formatNumber(value, value < 10 ? 1 : 0, 0);
+    const distance = value > 0 && value < 0.1 ? `<${formatNumber(0.1, 1)}` : rounded;
     return `${distance} ${t(unitKey)}`;
 }
 
 /** Human-readable file size: bytes → KB/MB/GB via localized unit keys. */
 export function formatBytes(b: number): string {
-    if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} ${t("units.kb")}`;
-    if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(0)} ${t("units.mb")}`;
-    return `${(b / 1024 / 1024 / 1024).toFixed(2)} ${t("units.gb")}`;
+    if (b < 1024 * 1024) return `${formatNumber(b / 1024)} ${t("units.kb")}`;
+    if (b < 1024 * 1024 * 1024) return `${formatNumber(b / 1024 / 1024)} ${t("units.mb")}`;
+    return `${formatNumber(b / 1024 / 1024 / 1024, 2)} ${t("units.gb")}`;
 }
 
 /**
@@ -302,11 +320,11 @@ export function formatBytes(b: number): string {
  * The caller appends the "/s".
  */
 export function formatRateBytes(bytesPerSecond: number): string {
-    if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(0)} ${t("units.kb")}`;
+    if (bytesPerSecond < 1024 * 1024) return `${formatNumber(bytesPerSecond / 1024)} ${t("units.kb")}`;
     if (bytesPerSecond < 1024 * 1024 * 1024) {
-        return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} ${t("units.mb")}`;
+        return `${formatNumber(bytesPerSecond / 1024 / 1024, 1)} ${t("units.mb")}`;
     }
-    return `${(bytesPerSecond / 1024 / 1024 / 1024).toFixed(2)} ${t("units.gb")}`;
+    return `${formatNumber(bytesPerSecond / 1024 / 1024 / 1024, 2)} ${t("units.gb")}`;
 }
 
 /**
@@ -373,7 +391,7 @@ export function eventLabel(_kind: EventKind): string {
 
 /** Formats brake-event severity for a tooltip ("0.42 g"). */
 export function formatEventSeverity(ev: TripEvent): string {
-    return `${ev.severity.toFixed(2)} g`;
+    return `${formatNumber(ev.severity, 2)} g`;
 }
 
 /** Returns a comparator for the given sort key. Distance, duration, and size are pre-computed by finalizeTrip, so comparison is O(1). */

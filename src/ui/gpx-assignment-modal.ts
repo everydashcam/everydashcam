@@ -4,7 +4,7 @@
 import { t } from "../i18n/index.js";
 import { totalDistanceKm } from "../parser.js";
 import { formatDistanceFromKm } from "../units-pref.js";
-import { formatDuration } from "./format.js";
+import { formatDuration, formatNumber } from "./format.js";
 import { GpxRoutePreview } from "./gpx-route-preview.js";
 import type { LooseGpxAssignment } from "./loose-gpx-assignment.js";
 import type { LooseGpxChoice, LooseGpxPlan } from "./loose-gpx.js";
@@ -70,7 +70,7 @@ function displayPath(plan: LooseGpxPlan): string {
 function trackSummary(plan: LooseGpxPlan): string {
     const records = plan.track.records;
     const distance = formatDistanceFromKm(totalDistanceKm(records));
-    const distanceText = `${distance.value.toFixed(distance.value < 10 ? 1 : 0)} ${t(distance.unitKey)}`;
+    const distanceText = `${formatNumber(distance.value, distance.value < 10 ? 1 : 0)} ${t(distance.unitKey)}`;
     const durationSec = plan.track.timeRanges.reduce(
         (total, range) => total + Math.max(0, range.endUnix - range.startUnix),
         0,

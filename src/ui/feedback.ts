@@ -12,7 +12,7 @@ import { displayClockDate, frameMediaOffset, tripAllCandidates, wallToContentSec
 import { formatDistanceFromKm } from "../units-pref.js";
 import { APP_VERSION } from "../version.js";
 import { dom, effectiveMasterChannel } from "./dom.js";
-import { formatTime } from "./format.js";
+import { formatNumber, formatTime } from "./format.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 import { notify } from "./notifications.js";
 import { activeCandidate, activeFrame, isFocusLayout, mainChannel, state } from "./state.js";
@@ -329,7 +329,7 @@ function currentContextSummary(): string {
     let dist = "—";
     if (af.trip.distanceKm > 0) {
         const d = formatDistanceFromKm(af.trip.distanceKm);
-        dist = `${d.value.toFixed(1)} ${t(d.unitKey)}`;
+        dist = `${formatNumber(d.value, 1)} ${t(d.unitKey)}`;
     }
     lines.push(
         t("feedback.body.context.trip", {
