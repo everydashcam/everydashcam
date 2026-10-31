@@ -413,6 +413,9 @@ export default defineConfig(({ command }) => {
     // browserHash stable from the start. Dev-only concern - each worker
     // self-bundles mediabunny once in the production build.
     optimizeDeps: {
+        // Scan source entry points only: generated portable HTML can contain
+        // large inline bundles and must not enter the dev dependency crawl.
+        entries: ["index.html", "migrate/index.html"],
         include: ["onnxruntime-web/wasm"],
     },
     server: {
