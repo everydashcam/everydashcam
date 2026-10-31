@@ -66,7 +66,7 @@ function fmtFrame(f: CpuProfileFrame): string {
 test(`_diag-boundary: ${vendor?.name}`, async ({ browser }) => {
     test.setTimeout(Number(process.env.DIAG_TEST_TIMEOUT_MS ?? "400000"));
     if (!vendor) return;
-    const ctx = await browser.newContext();
+    const ctx = await browser.newContext({ serviceWorkers: "block" });
     const page = await ctx.newPage();
     page.on("pageerror", (err) => console.log("BROWSER ERROR:", err.message));
     await presetLocalStorage(page);

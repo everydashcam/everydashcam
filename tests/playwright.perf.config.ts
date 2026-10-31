@@ -55,6 +55,9 @@ export default defineConfig({
         timeout: 30 * 1000,
     },
     use: {
+        baseURL: "http://localhost:4173/",
+        // Context routes cannot intercept requests handled by a service worker.
+        serviceWorkers: "block",
         // Full Chromium (not the smaller chromium-headless-shell) for proper
         // GPU/WebCodecs pipeline. headless: true on the chromium channel still
         // pulls full Chromium - shell is only auto-selected when no specific

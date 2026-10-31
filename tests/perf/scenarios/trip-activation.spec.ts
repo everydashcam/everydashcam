@@ -51,7 +51,7 @@ for (const vendor of vendors) {
         const ingestBudgetMs = 60_000 + mbTotal * 250;
         test.setTimeout(Math.max(ingestBudgetMs + (WARMUP + REPLAYS) * 30_000, 180_000));
 
-        const ctx = await browser.newContext();
+        const ctx = await browser.newContext({ serviceWorkers: "block" });
         const page = await ctx.newPage();
         const samples: ScenarioResult[] = [];
         try {

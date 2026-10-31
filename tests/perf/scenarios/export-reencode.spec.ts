@@ -30,6 +30,7 @@ import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { loadTrip, openExport, presetLocalStorage } from "../../e2e/_fixtures.js";
+import { blockExternalRequests } from "../harness/setup.js";
 import { discoverVendors } from "../harness/vendors.js";
 
 /**
@@ -171,6 +172,7 @@ for (const vendor of vendors) {
         page,
     }, testInfo) => {
         test.setTimeout(20 * 60_000);
+        await blockExternalRequests(page);
         await presetLocalStorage(page);
         await page.addInitScript(
             ({ encoder, overlays }) => {

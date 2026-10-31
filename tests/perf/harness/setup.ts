@@ -8,12 +8,23 @@ import { BYTES_READ_INIT_SCRIPT } from "./bytes-read.js";
 import { PEAK_MEMORY_INIT_SCRIPT } from "./peak-memory.js";
 import { RESET_INIT_SCRIPT } from "./measure.js";
 
+/** Keeps private recording metadata away from map providers and telemetry endpoints. */
+export async function blockExternalRequests(page: Page, baseURL = "http://localhost:4173/"): Promise<void> {
+    const origin = new URL(baseURL).origin;
+    await page
+        .context()
+        .route("**/*", (route) =>
+            new URL(route.request().url()).origin === origin ? route.continue() : route.abort("blockedbyclient"),
+        );
+}
+
 /**
  * Installs init scripts and navigates to '/'. The init scripts run BEFORE
  * any app module evaluates, so File.prototype.slice etc. are patched in time
  * to count the very first ingest's reads.
  */
 export async function setupPage(page: Page, baseURL = "http://localhost:4173/"): Promise<void> {
+    await blockExternalRequests(page, baseURL);
     await page.addInitScript(HARNESS_INIT_SCRIPT);
     await page.addInitScript(BYTES_READ_INIT_SCRIPT);
     await page.addInitScript(PEAK_MEMORY_INIT_SCRIPT);

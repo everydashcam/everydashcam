@@ -61,7 +61,7 @@ export async function runWithReplays<T>(browser: Browser, opts: ReplayOptions): 
     const samples: T[] = [];
     const total = opts.warmup + opts.replays;
     for (let i = 0; i < total; i++) {
-        const ctx = await browser.newContext();
+        const ctx = await browser.newContext({ serviceWorkers: "block" });
         const page = await ctx.newPage();
         try {
             await opts.setup(page);

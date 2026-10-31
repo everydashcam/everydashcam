@@ -18,7 +18,7 @@ if (!vendor) test.skip(true, `no vendor "${target}"`);
 test(`_diag-trip: ${vendor?.name}`, async ({ browser }) => {
     test.setTimeout(40_000);
     if (!vendor) return;
-    const ctx = await browser.newContext();
+    const ctx = await browser.newContext({ serviceWorkers: "block" });
     const page = await ctx.newPage();
     page.on("console", (msg) => console.log(`BROWSER[${msg.type()}]:`, msg.text()));
     page.on("pageerror", (err) => console.log(`BROWSER ERROR:`, err.message));

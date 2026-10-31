@@ -99,12 +99,6 @@ for (const vendor of vendors) {
         const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, serviceWorkers: "block" });
         let recording: CpuProfileRecording | null = null;
         try {
-            // Service workers cannot bypass this route. Never send private route
-            // coordinates to a tile service, analytics endpoint or error reporter.
-            await ctx.route("**/*", (route) => {
-                const url = new URL(route.request().url());
-                return url.origin === new URL(BASE_URL).origin ? route.continue() : route.abort();
-            });
             const page = await ctx.newPage();
             await presetLocalStorage(page);
             await page.addInitScript(() => {
