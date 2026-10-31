@@ -4,6 +4,7 @@ import type { AssetPart } from "./ort-assets.js";
 import { loadAssetParts } from "./asset-loader.js";
 
 const bodies = [new Uint8Array([0, 97, 115, 109]), new Uint8Array([1, 0, 0, 0])];
+const nativeAny = Object.getOwnPropertyDescriptor(AbortSignal, "any")!;
 const parts: AssetPart[] = bodies.map((body, index) => ({
     url: `/ort/test/part-${index}.bin`,
     bytes: body.length,
@@ -11,6 +12,7 @@ const parts: AssetPart[] = bodies.map((body, index) => ({
 }));
 
 afterEach(() => {
+    Object.defineProperty(AbortSignal, "any", nativeAny);
     vi.unstubAllGlobals();
     vi.useRealTimers();
 });
@@ -77,7 +79,8 @@ it("fails on a missing part without accepting the successfully downloaded prefix
     expect(fetch).toHaveBeenCalledTimes(2);
 });
 
-it("propagates cancellation without a repair request", async () => {
+it.each(["native", "fallback"])("propagates cancellation without a repair request (%s)", async (implementation) => {
+    if (implementation === "fallback") Object.defineProperty(AbortSignal, "any", { value: undefined });
     const controller = new AbortController();
     vi.stubGlobal(
         "fetch",
@@ -129,30 +132,34 @@ it("does not start an already cancelled download", async () => {
     expect(fetch).not.toHaveBeenCalled();
 });
 
-it("aborts a stalled response body and never retries it as corruption", async () => {
-    vi.useFakeTimers();
-    const cancelled = vi.fn();
-    vi.stubGlobal(
-        "fetch",
-        vi.fn(
-            async () =>
-                new Response(
-                    new ReadableStream({
-                        start(controller) {
-                            controller.enqueue(bodies[0]!.subarray(0, 1));
-                        },
-                        cancel: cancelled,
-                    }),
-                ),
-        ),
-    );
-    const result = expect(loadAssetParts(parts.slice(0, 1))).rejects.toMatchObject({ name: "TimeoutError" });
-    await vi.advanceTimersByTimeAsync(30_001);
-    await result;
-    expect(cancelled).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
-});
+it.each(["native", "fallback"])(
+    "aborts a stalled response body without a corruption retry (%s)",
+    async (implementation) => {
+        if (implementation === "fallback") Object.defineProperty(AbortSignal, "any", { value: undefined });
+        vi.useFakeTimers();
+        const cancelled = vi.fn();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                async () =>
+                    new Response(
+                        new ReadableStream({
+                            start(controller) {
+                                controller.enqueue(bodies[0]!.subarray(0, 1));
+                            },
+                            cancel: cancelled,
+                        }),
+                    ),
+            ),
+        );
+        const result = expect(loadAssetParts(parts.slice(0, 1))).rejects.toMatchObject({ name: "TimeoutError" });
+        await vi.advanceTimersByTimeAsync(30_001);
+        await result;
+        expect(cancelled).toHaveBeenCalledTimes(1);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        vi.useRealTimers();
+    },
+);
 
 it("allows slow downloads while bytes continue arriving", async () => {
     vi.useFakeTimers();

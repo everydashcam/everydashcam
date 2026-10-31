@@ -5,6 +5,7 @@
 // segments, fires the request, and folds the resulting keyframes back into the
 // region (unpinned - user pins stay authoritative, replaceGeneratedKeyframes).
 
+import { combineAbortSignals } from "../abort-signals.js";
 import type { BlurRegion } from "../blur-regions.js";
 import { applyTrackResult, followSeed } from "../blur-follow.js";
 import { sliceTripChannelForRange } from "../export-range.js";
@@ -204,9 +205,10 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
             ortAssets: TRACKER_ORT_ASSETS.wasm,
         };
         let result: TrackResult;
+        const combined = combineAbortSignals([controller.signal, timeoutCtrl.signal]);
         try {
             result = await requestTrackerWorker<TrackResult>(TRACK_REQUEST, request, {
-                signal: AbortSignal.any([controller.signal, timeoutCtrl.signal]),
+                signal: combined.signal,
             });
             // A response and a user cancel can cross on the message queue. The
             // explicit cancellation wins even if the worker response was
@@ -216,6 +218,7 @@ export async function toggleTrackPass(trip: Trip, region: BlurRegion): Promise<T
             timeoutCtrl.signal.throwIfAborted();
         } finally {
             if (timeoutTimer !== undefined) window.clearTimeout(timeoutTimer);
+            combined.dispose();
         }
 
         // Automatic timing follows measured motion only. On loss, end at the

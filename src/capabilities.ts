@@ -490,11 +490,9 @@ const PROBES: Record<CapabilityId, () => boolean> = {
 const CAPABILITY_ORDER: readonly CapabilityId[] = Object.keys(PROBES) as CapabilityId[];
 
 /**
- * Lightweight user-agent classification. ONLY for human advice + metrics; never
- * for gating. UA parsing is fragile by design, so the engine axis (the one we
- * actually branch advice on) is kept coarse and order-sensitive: Edge before
- * Chrome (Edge UA contains "Chrome"), Chrome before Safari (Chrome UA contains
- * "Safari").
+ * Lightweight user-agent classification for advice, metrics and narrow engine
+ * workarounds. Feature availability uses probes instead. The engine axis is
+ * coarse and order-sensitive: Edge before Chrome, Chrome before Safari.
  */
 export function identifyBrowser(ua?: string): BrowserInfo {
     const s = (ua ?? (typeof navigator !== "undefined" ? navigator.userAgent : "") ?? "").toLowerCase();
@@ -526,10 +524,10 @@ export function identifyBrowser(ua?: string): BrowserInfo {
     // instead of an awkward untranslated "your browser".
     let name = "";
     if (/firefox|fxios/.test(s)) {
-        engine = "gecko";
+        engine = /fxios/.test(s) ? "webkit" : "gecko";
         name = "Firefox";
     } else if (/edg\//.test(s) || /edga|edgios/.test(s)) {
-        engine = "blink";
+        engine = /edgios/.test(s) ? "webkit" : "blink";
         name = "Edge";
     } else if (/opr\/|opera/.test(s)) {
         engine = "blink";
@@ -542,8 +540,7 @@ export function identifyBrowser(ua?: string): BrowserInfo {
         engine = os === "ios" ? "webkit" : "blink";
         name = "Chrome";
     } else if (/safari/.test(s)) {
-        // On iOS every browser is WebKit under the hood, but a plain "Safari" UA
-        // (no Chrome/Firefox token) is the actual Safari app.
+        // The branded Chrome/Firefox tokens have already been handled above.
         engine = "webkit";
         name = "Safari";
     }

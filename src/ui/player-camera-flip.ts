@@ -8,6 +8,14 @@ import { initMenuKeyboard } from "./menu-keyboard.js";
 import { exitCropEditIfOpen } from "./player-crop.js";
 import { activeTrip, state } from "./state.js";
 
+interface CameraMenu {
+    menu: HTMLElement;
+    isOpen(): boolean;
+    close(): void;
+}
+
+const cameraMenus = new Map<HTMLElement, CameraMenu>();
+
 function isCameraFlipLocked(): boolean {
     return exportPanelState.configurationLocked || state.transcodeInProgress;
 }
@@ -33,12 +41,12 @@ export function syncCameraFlips(): void {
             });
             button.setAttribute("aria-label", button.title);
         }
-        const menu = tile.querySelector<HTMLElement>(".camera-settings-menu");
-        if (menu?.matches(":popover-open") && (isLocked || menu.getAttribute("aria-label") !== button?.title)) {
-            menu.hidePopover();
+        const entry = cameraMenus.get(tile);
+        if (entry?.isOpen() && (isLocked || entry.menu.getAttribute("aria-label") !== button?.title)) {
+            entry.close();
         }
         for (const axis of ["horizontal", "vertical"] as const) {
-            tile.querySelector(`[data-flip="${axis}"]`)?.setAttribute("aria-checked", String(flip[axis]));
+            entry?.menu.querySelector(`[data-flip="${axis}"]`)?.setAttribute("aria-checked", String(flip[axis]));
         }
     }
 }
@@ -55,10 +63,17 @@ export function initPlayerCameraFlip(): void {
         const menu = document.createElement("div");
         menu.id = `camera-settings-${ch}`;
         menu.className = "camera-settings-menu";
-        menu.popover = "auto";
+        // Older Safari can play recordings without Popover API. Do not even
+        // evaluate :popover-open there: an unknown selector throws during init.
+        const hasPopover = typeof menu.showPopover === "function" && typeof menu.hidePopover === "function";
+        if (hasPopover) menu.popover = "auto";
+        else {
+            menu.hidden = true;
+            menu.classList.add("camera-settings-menu--fallback");
+        }
         menu.setAttribute("role", "menu");
         button.setAttribute("aria-controls", menu.id);
-        button.setAttribute("popovertarget", menu.id);
+        if (hasPopover) button.setAttribute("popovertarget", menu.id);
         for (const axis of ["horizontal", "vertical"] as const) {
             const item = document.createElement("button");
             item.type = "button";
@@ -87,13 +102,38 @@ export function initPlayerCameraFlip(): void {
         }
         menu.setAttribute("aria-description", t("player.camera.flip.hint"));
         tile.append(button, menu);
-        const close = (): void => menu.hidePopover();
+        const isOpen = (): boolean => (hasPopover ? menu.matches(":popover-open") : !menu.hidden);
+        const close = (): void => {
+            if (hasPopover) {
+                if (isOpen()) menu.hidePopover();
+            } else {
+                menu.hidden = true;
+                tile.append(menu);
+            }
+            button.setAttribute("aria-expanded", "false");
+        };
+        cameraMenus.set(tile, { menu, isOpen, close });
         const open = (): void => {
             const trip = activeTrip();
             if (!trip || isCameraFlipLocked()) return;
             syncCameraFlips();
+            for (const [otherTile, entry] of cameraMenus) {
+                if (otherTile !== tile && entry.isOpen()) entry.close();
+            }
             menu.setAttribute("aria-label", button.title);
-            menu.showPopover();
+            if (hasPopover) menu.showPopover();
+            else {
+                // Tile transforms and overflow would clip an ordinary fixed
+                // menu. Use the visible fullscreen host, or body, while open.
+                const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
+                const host =
+                    fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement)
+                        ? fullscreen
+                        : document.body;
+                host.append(menu);
+                menu.hidden = false;
+            }
+            button.setAttribute("aria-expanded", "true");
             const anchor = button.getBoundingClientRect();
             const rect = menu.getBoundingClientRect();
             menu.style.left = `${Math.max(8, Math.min(anchor.right - rect.width, window.innerWidth - rect.width - 8))}px`;
@@ -102,12 +142,24 @@ export function initPlayerCameraFlip(): void {
         };
         button.addEventListener("click", (event) => {
             event.preventDefault();
-            if (menu.matches(":popover-open")) close();
+            if (isOpen()) close();
             else open();
         });
-        menu.addEventListener("toggle", () =>
-            button.setAttribute("aria-expanded", String(menu.matches(":popover-open"))),
-        );
+        if (hasPopover) {
+            menu.addEventListener("toggle", () => button.setAttribute("aria-expanded", String(isOpen())));
+        } else {
+            document.addEventListener(
+                "pointerdown",
+                (event) => {
+                    const target = event.target;
+                    if (isOpen() && target instanceof Node && !menu.contains(target) && !button.contains(target))
+                        close();
+                },
+                true,
+            );
+        }
+        document.addEventListener("fullscreenchange", close);
+        document.addEventListener("playerexpansionchange", close);
         for (const el of [button, menu]) {
             for (const event of ["click", "dblclick", "pointerdown"])
                 el.addEventListener(event, (e) => e.stopPropagation());

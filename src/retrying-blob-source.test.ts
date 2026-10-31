@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { Input, InputDisposedError } from "mediabunny";
 
@@ -342,7 +342,15 @@ describe("createRetryingRangeStream", () => {
     });
 });
 
-describe("retrying input lifecycle", () => {
+describe.each(["native", "fallback"])("retrying input lifecycle (%s abort composition)", (implementation) => {
+    const nativeAny = Object.getOwnPropertyDescriptor(AbortSignal, "any")!;
+    beforeEach(() => {
+        if (implementation === "fallback") Object.defineProperty(AbortSignal, "any", { value: undefined });
+    });
+    afterEach(() => {
+        Object.defineProperty(AbortSignal, "any", nativeAny);
+    });
+
     it("cancels the active file stream when Mediabunny disposes the input", async () => {
         const recording = delayedRecording();
         const input = new Input({ source: createRetryingBlobSource(recording.file), formats: VIDEO_INPUT_FORMATS });

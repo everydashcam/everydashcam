@@ -16,6 +16,7 @@
 // edits re-trigger through a debounce so a trim-bar drag does not thrash
 // multi-minute passes.
 
+import { combineAbortSignals } from "../abort-signals.js";
 import { cloneBlurRegions, type BlurRegion, type BlurStyle } from "../blur-regions.js";
 import { sliceTripChannelForRange } from "../export-range.js";
 import { groupDetectionFindings, type DetectionFinding } from "../tracking/detection-review.js";
@@ -721,6 +722,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
     // armed from the worker's STARTED notification and reset from progress, so
     // queue wait is not counted while model creation/decode before progress is.
     const timeoutCtrl = new AbortController();
+    const combined = combineAbortSignals([controller.signal, timeoutCtrl.signal]);
     let timedOut = false;
     let timeoutTimer: number | undefined;
     const armTimeout = (): void => {
@@ -791,7 +793,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                         ortAssets: TRACKER_ORT_ASSETS.webgpu,
                     };
                     const result = await requestTrackerWorker<DetectResult>(DETECT_REQUEST, request, {
-                        signal: AbortSignal.any([controller.signal, timeoutCtrl.signal]),
+                        signal: combined.signal,
                     });
                     // Cancel remains authoritative if it crosses a delivered worker
                     // response before this continuation resumes.
@@ -965,6 +967,7 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
             return false;
         } finally {
             if (timeoutTimer !== undefined) window.clearTimeout(timeoutTimer);
+            combined.dispose();
             if (running === run) running = null;
             notifyDetectChanged();
             // A settled pass can flip the copy-vs-encode gate (fresh empty

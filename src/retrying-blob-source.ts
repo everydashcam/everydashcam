@@ -17,6 +17,7 @@
 
 import { CustomSource } from "mediabunny";
 
+import { combineAbortSignals } from "./abort-signals.js";
 import { createBackgroundReadErrorHandler, demuxView } from "./blob-source.js";
 import { identifyBrowser } from "./capabilities.js";
 import { createLogger } from "./log.js";
@@ -298,7 +299,8 @@ export async function readRangeWithRetry(
 export function createRetryingBlobSource(blob: Blob, signal?: AbortSignal): CustomSource {
     const pool = createReaderPool();
     const disposeController = new AbortController();
-    const readSignal = signal ? AbortSignal.any([signal, disposeController.signal]) : disposeController.signal;
+    const combined = combineAbortSignals(signal ? [signal, disposeController.signal] : [disposeController.signal]);
+    const readSignal = combined.signal;
     readSignal.addEventListener("abort", () => pool.disposeAll(), { once: true });
     if (readSignal.aborted) pool.disposeAll();
     const avoidBlobStream = identifyBrowser().engine === "webkit";
@@ -317,7 +319,10 @@ export function createRetryingBlobSource(blob: Blob, signal?: AbortSignal): Cust
             avoidBlobStream
                 ? readRangeWithRetry(readBlob, start, end, readSignal)
                 : createRetryingRangeStream(readBlob, pool, start, end, readSignal),
-        dispose: () => disposeController.abort(),
+        dispose: () => {
+            disposeController.abort();
+            combined.dispose();
+        },
         // Mirror BlobSource: 8 MiB cache is its default, fileSystem prefetch is
         // what it hard-codes for local reads.
         maxCacheSize: 8 * 2 ** 20,

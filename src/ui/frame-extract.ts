@@ -7,6 +7,7 @@
 // UI on MPEG-TS builds (~10 s of 100% CPU on a 1 GB / 7 min file -
 // PMT scan + long-GOP decode-forward per frame).
 
+import { combineAbortSignals } from "../abort-signals.js";
 import { createLogger } from "../log.js";
 import {
     FRAME_NOTIFY_DISPOSE_ALL,
@@ -73,11 +74,13 @@ async function workerExtractFrames(
         log.warn("frame-extract request timed out", { file: file.name, count: timestamps.length });
         timeoutCtrl.abort();
     }, WORKER_REQUEST_TIMEOUT_MS);
-    const combined = signal ? AbortSignal.any([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
+    const combined = combineAbortSignals(signal ? [signal, timeoutCtrl.signal] : [timeoutCtrl.signal]);
 
     const req: ExtractRequestData = { file, timestamps };
     try {
-        const result = await getClient().request<ExtractResult>(FRAME_REQUEST_EXTRACT, req, { signal: combined });
+        const result = await getClient().request<ExtractResult>(FRAME_REQUEST_EXTRACT, req, {
+            signal: combined.signal,
+        });
         return result.bitmaps;
     } catch (err) {
         // Abort / timeout / crash all return an empty array to the caller -
@@ -87,6 +90,7 @@ async function workerExtractFrames(
         return [];
     } finally {
         clearTimeout(timer);
+        combined.dispose();
     }
 }
 

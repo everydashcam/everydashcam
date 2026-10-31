@@ -1,3 +1,4 @@
+import { combineAbortSignals } from "../abort-signals.js";
 import type { AssetPart } from "./ort-assets.js";
 
 const STALL_TIMEOUT_MS = 30_000;
@@ -36,7 +37,8 @@ async function readPart(
     repair = false,
 ): Promise<boolean> {
     const controller = new AbortController();
-    const merged = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const combined = combineAbortSignals(signal ? [signal, controller.signal] : [controller.signal]);
+    const merged = combined.signal;
     let timer: ReturnType<typeof setTimeout>;
     const arm = () => {
         clearTimeout(timer);
@@ -109,5 +111,6 @@ async function readPart(
         throw error;
     } finally {
         clearTimeout(timer!);
+        combined.dispose();
     }
 }

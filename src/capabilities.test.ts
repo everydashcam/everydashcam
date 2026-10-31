@@ -397,6 +397,17 @@ describe("identifyBrowser", () => {
         expect(b.isMobile).toBe(true);
     });
 
+    it.each([
+        ["Firefox", "FxiOS/130.0"],
+        ["Edge", "EdgiOS/130.0"],
+        ["Chrome", "CriOS/130.0.0.0"],
+    ])("keeps %s branding while recognizing its iOS WebKit engine", (name, token) => {
+        const b = identifyBrowser(
+            `Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) ${token} Mobile/15E148 Safari/605.1.15`,
+        );
+        expect(b).toEqual({ engine: "webkit", name, os: "ios", isMobile: true });
+    });
+
     it("Safari on macOS", () => {
         const b = identifyBrowser(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",

@@ -53,7 +53,7 @@ to revisit if a gap's classification should change.
 - Export destination selection: `src/ui/export-flow.ts` and
   `src/ui/in-memory-file.ts`.
 
-## Minimum versions (first stable, no flag)
+## API introduction versions (first stable, no flag)
 
 Researched against MDN browser-compat-data, caniuse, and vendor release notes.
 Numbers are the first stable release where the feature is on by default.
@@ -74,14 +74,40 @@ Numbers are the first stable release where the feature is on by default.
 | `structuredClone` | 98 | 98 | 94 | 15.4 | 15.4 | 98 |
 | `isSecureContext` | 47 | 15 | 49 | 11.1 | 11.3 | 47 |
 
-**Practical floor for the full app** (editor + map + viewing): roughly
-**Chrome/Edge 94, Firefox 130, Safari 16.4 (iOS 16.4)**, gated by WebCodecs.
-**Viewing-only** works much lower (native `<video>` + Workers + WebGL): roughly
-Safari 15 / Firefox 114 / Chrome 80.
+These are individual API floors, not verified minimum versions for the whole
+application. In particular, the first browser with WebCodecs is not necessarily
+able to run every editor path. Both editions emit ES2022 syntax (see
+[`vite.config.ts`](../vite.config.ts) and
+[`vite.portable.config.ts`](../vite.portable.config.ts)); the build target does
+not add missing Web APIs. Library and runtime requirements apply as well.
+
+Older browsers remain eligible for viewing and any other capability they
+provide; there is no browser-version gate. Native `<video>` playback and
+container parsing do not require WebCodecs. Test an actual browser version
+before claiming an end-to-end minimum for it.
 
 **Service Workers** in the table above gate only the offline PWA precache
 (`src/sw.ts`) - export-to-disk does not depend on it (see Library floors
 below).
+
+### Compatibility fallbacks
+
+- Cancellation composition uses native `AbortSignal.any` when available and
+  [`combineAbortSignals`](../src/abort-signals.ts) otherwise. The fallback
+  preserves the first abort reason, including `TimeoutError`, and
+  releases its subscriptions when the operation ends.
+- Camera settings use native Popover API when available. Without it,
+  [`player-camera-flip.ts`](../src/ui/player-camera-flip.ts) uses a hidden menu
+  with keyboard and outside-pointer dismissal, hosted outside the clipped
+  video tile and inside the fullscreen player when needed. Unsupported
+  `:popover-open` selectors are never evaluated by that fallback.
+- Branded WebKit user agents (`FxiOS`, `EdgiOS`, `CriOS`) keep their browser
+  names while selecting WebKit-specific read workarounds. Feature availability
+  still comes from probes, not those names.
+
+Regression tests can omit newer APIs in the current test browser to exercise
+these branches. That verifies fallback behavior, not complete compatibility
+with a historical Safari/Chromium build or its media codecs.
 
 ### OS-level codecs
 

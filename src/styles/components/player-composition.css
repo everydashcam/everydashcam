@@ -70,6 +70,8 @@ body.export-mode .camera-settings-button {
 }
 
 .camera-settings-menu {
+    display: none;
+    gap: 2px;
     position: fixed;
     inset: auto;
     margin: 0;
@@ -83,7 +85,12 @@ body.export-mode .camera-settings-button {
 
 .camera-settings-menu:popover-open {
     display: flex;
-    gap: 2px;
+}
+
+/* Keep separate from :popover-open: unsupported selectors invalidate a list. */
+.camera-settings-menu--fallback:not([hidden]) {
+    display: flex;
+    z-index: var(--dc-z-menu);
 }
 
 .camera-settings-menu button {

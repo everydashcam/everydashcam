@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { rolldown } from "rolldown";
 import type { renderFlippedFrames } from "../helpers/camera-flip-harness.js";
+import { omitModernBrowserApis } from "../helpers/legacy-browser-apis.js";
 import {
     DESKTOP,
     MOBILE,
@@ -35,6 +36,49 @@ function colorError(expected: number[], actual: number[]): number {
 }
 
 test.describe("camera reflection", () => {
+    test("camera menus work without Popover API on mobile and in fullscreen", async ({ page }) => {
+        await omitModernBrowserApis(page);
+        await presetLocalStorage(page);
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+        await pausePlayback(page);
+        const front = page.locator('.video-tile[data-channel="front"]');
+        const frontButton = front.locator(".camera-settings-button");
+        const rearButton = page.locator('.video-tile[data-channel="rear"] .camera-settings-button');
+        const menu = page.locator("#camera-settings-front");
+        await expect(menu).toBeHidden();
+        await frontButton.click();
+        await expect(menu).toBeVisible();
+        await expect(frontButton).toHaveAttribute("aria-expanded", "true");
+        await page.getByRole("menuitemcheckbox", { name: "Flip horizontally" }).click();
+        await expect(front).toHaveClass(/camera-flipped/);
+        await rearButton.click();
+        await expect(menu).toBeHidden();
+        await expect(frontButton).toHaveAttribute("aria-expanded", "false");
+        await expect(page.getByRole("menu")).toHaveCount(1);
+        await page.keyboard.press("Escape");
+        await expect(rearButton).toBeFocused();
+        await frontButton.click();
+        await page.locator("#player-mini-progress").click();
+        await expect(menu).toBeHidden();
+        await page.setViewportSize(MOBILE);
+        await frontButton.click();
+        await expect(menu).toBeInViewport({ ratio: 1 });
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/camera-flip-fallback-mobile.png` });
+        await page.keyboard.press("Escape");
+        await page.setViewportSize(DESKTOP);
+        await page.locator("#player-fullscreen").click();
+        await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
+        await frontButton.click();
+        await expect(page.locator("#player-wrap > #camera-settings-front")).toBeVisible();
+        await expect(menu).toBeInViewport({ ratio: 1 });
+        await page.keyboard.press("Escape");
+        await expect(menu).toBeHidden();
+        await expect(frontButton).toBeFocused();
+        await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
+    });
+
     test("composition reflects each video before overlays, crops and privacy masks", async ({ page }) => {
         const bundle = await rolldown({
             input: resolve(REPO_ROOT, "tests/helpers/camera-flip-harness.ts"),
