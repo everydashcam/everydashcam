@@ -43,6 +43,25 @@ function documentRuntime(pathname: string, search: string, attributes: Record<st
 }
 
 describe("localized standalone documents", () => {
+    it("preserves heading text across title, social metadata and legacy link escaping", () => {
+        const source = sources[0]!;
+        const locale = source.locales.find((item) => item.lang === "en")!;
+        const articles = new Map(source.articles);
+        const heading = "Terms &amp; &quot;privacy&quot; &#39;notes&#39; &#x1F4F9; &lt;camera&gt; &amp;amp;";
+        articles.set("en", articles.get("en")!.replace(/<h1>[^<]+<\/h1>/, `<h1>${heading}</h1>`));
+        const changed = { ...source, articles };
+        const html = renderDocumentPage(changed, locale, { deployment: context });
+        const title = "Terms &amp; \"privacy\" 'notes' 📹 &lt;camera&gt; &amp;amp; | everydashcam";
+        const metaTitle = "Terms &amp; &quot;privacy&quot; 'notes' 📹 &lt;camera&gt; &amp;amp; | everydashcam";
+        expect(html).toContain(`<h1>${heading}</h1>`);
+        expect(html).toContain(`<title>${title}</title>`);
+        expect(html).toContain(`<meta property="og:title" content="${metaTitle}">`);
+        expect(html).toContain(`<meta name="twitter:title" content="${metaTitle}">`);
+        const stub = renderDocumentStub(changed, { deployment: context });
+        expect(stub).toContain(`<title>${title}</title>`);
+        expect(stub).toContain(`<a href="/en/${source.slug}/">${title}</a>`);
+    });
+
     it("publishes one existing article per URL with local metadata and same-host navigation", () => {
         for (const source of sources) {
             for (const locale of source.locales) {

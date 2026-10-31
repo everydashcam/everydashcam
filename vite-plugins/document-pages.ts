@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DOMParser } from "@xmldom/xmldom";
 import type { Plugin } from "vite";
 import type { Lang } from "../src/i18n/index.js";
 import { LANGS } from "../src/i18n/languages.js";
@@ -53,7 +54,14 @@ export function readDocumentSources(sourceDir = resolve(process.cwd(), "public")
 }
 
 function documentTitle(source: DocumentSource, lang: Lang): string {
-    const title = source.articles.get(lang)?.match(/<h1>([^<]+)<\/h1>/)?.[1];
+    const heading = source.articles.get(lang)?.match(/<h1>[^<]+<\/h1>/)?.[0];
+    if (!heading) throw new Error(`document-pages: missing title for ${source.slug}/${lang}`);
+    // Decode the heading once before escaping its text for each output context.
+    const title = new DOMParser({
+        onError: (_level, message) => {
+            throw new Error(`document-pages: invalid title for ${source.slug}/${lang}: ${message}`);
+        },
+    }).parseFromString(heading, "text/html").documentElement?.textContent;
     if (!title) throw new Error(`document-pages: missing title for ${source.slug}/${lang}`);
     return `${title} | everydashcam`;
 }
@@ -67,7 +75,7 @@ function pageHead(source: DocumentSource, locale: SeoLocale, canonical: string):
     assertHtmlMatchCount(originalHead, /<meta name="description"[^>]*>/g, 1, `${source.slug} description`);
     return originalHead
         .replace(/<!--[\s\S]*?-->/g, "")
-        .replace(/<title>[\s\S]*?<\/title>/, `<title>${documentTitle(source, locale.lang)}</title>`)
+        .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeText(documentTitle(source, locale.lang))}</title>`)
         .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${escapeAttr(canonical)}">`)
         .replace(
             /<meta name="description"[^>]*>/,
@@ -147,7 +155,7 @@ ${options.noIndex ? '<meta name="robots" content="noindex, nofollow">' : ""}
 <script src="${escapeAttr(options.runtimeScriptUrl ?? "/doc-lang.js")}"></script>
 <meta http-equiv="refresh" content="0; url=${path}">
 </head>
-<body><main><a href="${path}">${documentTitle(source, "en")}</a></main></body>
+<body><main><a href="${path}">${escapeText(documentTitle(source, "en"))}</a></main></body>
 </html>`;
 }
 
