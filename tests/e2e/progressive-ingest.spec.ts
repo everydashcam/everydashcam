@@ -197,6 +197,37 @@ test.describe("progressive ingest", () => {
                 });
             });
         }
+        if (testInfo.title.includes("drains a structure-only queued selection")) {
+            await installWorkerRpc(page, () => {
+                const target = window as typeof window & { __releaseClassification?: () => void };
+                let held = false;
+                window.__workerRpc.intercept(["ingest-worker"], () => async (type, _data, forward, kind) => {
+                    if (kind === "request" && type === "classify-batch" && !held) {
+                        held = true;
+                        await new Promise<void>((resolve) => {
+                            target.__releaseClassification = resolve;
+                        });
+                    }
+                    return forward();
+                });
+            });
+        }
+        if (testInfo.title.includes("ignored-only drop resumes previews")) {
+            await installWorkerRpc(page, () => {
+                const pending: Array<() => void> = [];
+                let isHeld = true;
+                (window as typeof window & { __releasePreviews?: () => void }).__releasePreviews = () => {
+                    isHeld = false;
+                    for (const release of pending.splice(0)) release();
+                };
+                window.__workerRpc.intercept(["preview-worker"], () => async (type, _data, forward, kind) => {
+                    if (kind === "request" && type === "extract-preview" && isHeld) {
+                        await new Promise<void>((resolve) => pending.push(resolve));
+                    }
+                    return forward();
+                });
+            });
+        }
         if (testInfo.title.includes("damaged leading clip")) {
             await page.route("**/assets/maplibre-gl-*.js", async (route) => {
                 await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -546,34 +577,6 @@ test.describe("progressive ingest", () => {
     }
 
     test("drains a structure-only queued selection before the following recording import", async ({ page }) => {
-        await page.evaluate(() => {
-            const send = Worker.prototype.postMessage;
-            let held = false;
-            Worker.prototype.postMessage = function (
-                message: unknown,
-                transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
-            ): void {
-                const deliver = () =>
-                    send.call(
-                        this,
-                        message,
-                        Array.isArray(transferOrOptions) ? { transfer: transferOrOptions } : transferOrOptions,
-                    );
-                if (
-                    !held &&
-                    typeof message === "object" &&
-                    message !== null &&
-                    "type" in message &&
-                    message.type === "classify-batch"
-                ) {
-                    held = true;
-                    (window as typeof window & { __releaseClassification?: () => void }).__releaseClassification =
-                        deliver;
-                    return;
-                }
-                deliver();
-            };
-        });
         await page.locator("#file-input").setInputFiles([
             {
                 name: "NO20200101-120000-000001F.MP4",
@@ -1032,39 +1035,6 @@ test.describe("progressive ingest", () => {
         }
         const ignoredDirectory = makeTemporaryDirectory("everydashcam-preview-ignored-");
         writeFileSync(path.join(ignoredDirectory, ".DS_Store"), "ignored");
-
-        await page.evaluate(() => {
-            const send = Worker.prototype.postMessage;
-            const pending: Array<() => void> = [];
-            let isHeld = true;
-            Worker.prototype.postMessage = function (
-                message: unknown,
-                transferOrOptions: Transferable[] | StructuredSerializeOptions = [],
-            ): void {
-                const deliver = (): void => {
-                    send.call(
-                        this,
-                        message,
-                        Array.isArray(transferOrOptions) ? { transfer: transferOrOptions } : transferOrOptions,
-                    );
-                };
-                if (
-                    isHeld &&
-                    typeof message === "object" &&
-                    message !== null &&
-                    "type" in message &&
-                    message.type === "extract-preview"
-                ) {
-                    pending.push(deliver);
-                    return;
-                }
-                deliver();
-            };
-            (window as typeof window & { __releasePreviews?: () => void }).__releasePreviews = () => {
-                isHeld = false;
-                for (const deliver of pending.splice(0)) deliver();
-            };
-        });
 
         await page.locator("#folder-input").setInputFiles(directory);
         await expect(page.locator("li.trip:not(.unindexed-note)")).toHaveCount(4);
