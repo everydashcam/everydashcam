@@ -89,6 +89,7 @@ export const zhDict = {
     "notesFile.change": "更换文件…",
     "sidebar.bucket.favorites": "收藏",
     "sidebar.bucket.others": "其他",
+    "sidebar.parkingRun.title": "停车 {range}",
     "trip.fav.add": "添加到收藏",
     "trip.fav.remove": "从收藏中移除",
     "trip.editMeta": "编辑名称和备注",

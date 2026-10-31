@@ -154,6 +154,7 @@ export type I18nKey =
     // trip annotations: favorite star, name/note editor
     | "sidebar.bucket.favorites"
     | "sidebar.bucket.others"
+    | "sidebar.parkingRun.title"
     | "trip.fav.add"
     | "trip.fav.remove"
     | "trip.editMeta"

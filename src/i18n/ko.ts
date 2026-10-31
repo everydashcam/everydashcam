@@ -99,6 +99,7 @@ export const koDict = {
     "notesFile.change": "파일 변경…",
     "sidebar.bucket.favorites": "즐겨찾기",
     "sidebar.bucket.others": "나머지",
+    "sidebar.parkingRun.title": "주차 {range}",
     "trip.fav.add": "즐겨찾기에 추가",
     "trip.fav.remove": "즐겨찾기에서 제거",
     "trip.editMeta": "이름과 메모 편집",

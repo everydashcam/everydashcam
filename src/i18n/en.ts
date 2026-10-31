@@ -91,6 +91,7 @@ export const enDict = {
     "notesFile.change": "Change file…",
     "sidebar.bucket.favorites": "Favorites",
     "sidebar.bucket.others": "Everything else",
+    "sidebar.parkingRun.title": "Parked {range}",
     "trip.fav.add": "Add to favorites",
     "trip.fav.remove": "Remove from favorites",
     "trip.editMeta": "Edit name and note",

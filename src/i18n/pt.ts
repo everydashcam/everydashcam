@@ -90,6 +90,7 @@ export const ptDict = {
     "notesFile.change": "Alterar arquivo…",
     "sidebar.bucket.favorites": "Favoritos",
     "sidebar.bucket.others": "Restantes",
+    "sidebar.parkingRun.title": "Estacionado {range}",
     "trip.fav.add": "Adicionar aos favoritos",
     "trip.fav.remove": "Remover dos favoritos",
     "trip.editMeta": "Editar nome e anotação",

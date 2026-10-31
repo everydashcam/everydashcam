@@ -11,6 +11,7 @@ import {
     formatFileMeta,
     formatMonthHeading,
     formatRateBytes,
+    formatTimeRange,
     formatTripTitle,
     formatTripDistance,
 } from "./format.js";
@@ -146,6 +147,14 @@ describe("formatDayHeading", () => {
 
     it("formats the weekday and the date of the given calendar day", () => {
         expect(formatDayHeading(2026, 9, 31, now).date).toBe("Sat, Oct 31");
+    });
+});
+
+describe("formatTimeRange", () => {
+    it("shows clock times on the camera clock and the weekday of an end on another day", () => {
+        const start = Date.UTC(2026, 9, 31, 20, 4) / 1000;
+        expect(formatTimeRange(start, start + 3600, 3 * 3600)).toBe("23:04 → Sun 00:04");
+        expect(formatTimeRange(start, start + 600, 0)).toBe("20:04 → 20:14");
     });
 });
 

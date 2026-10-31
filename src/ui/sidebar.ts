@@ -24,9 +24,11 @@ import {
     channelDisplayLabel,
     channelDisplayShortLabel,
     comparatorFor,
+    formatBytes,
     formatDayHeading,
     formatDuration,
     formatMonthHeading,
+    formatTimeRange,
     formatFileMeta,
     formatTripMeta,
     formatTripDistance,
@@ -39,8 +41,8 @@ import { setTripMeta, tripMetaFor } from "./annotations.js";
 import { isTripSortKey, state } from "./state.js";
 import { scheduleRecognitionHelp } from "./recognition-help.js";
 import { initSidebarFilters, resetTripFilters, syncSidebarFilters } from "./sidebar-filters.js";
-import { dayStripSegments, groupByMonthDay } from "./trip-list-layout.js";
-import type { TripListDay, TripListMonth, TripListNode } from "./trip-list-layout.js";
+import { dayStripSegments, foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
+import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
 
 interface SidebarCallbacks {
     /** Opens the first playable frame, tolerating a damaged leading clip. */
@@ -136,7 +138,10 @@ function seedCardHeight(card: HTMLElement, heights: ReadonlyMap<string, number>)
 // Month and day sections the user collapsed. Session-only: a reload starts
 // with every section open. Keys come from trip-list-layout ("m:2026-10").
 const collapsedGroups = new Set<string>();
-// Section key per rendered section <li>, kept off the DOM like recordingFocusKeys.
+// Parking runs the user opened; runs start folded ("p:" keys).
+const expandedParkingRuns = new Set<string>();
+// Section key per rendered section <li>, kept off the DOM like recordingFocusKeys:
+// parking-run keys carry recording identities.
 const groupKeys = new WeakMap<Element, string>();
 // Recording identity of the active trip the list last revealed (revealActiveTrip).
 let revealedActiveKey: string | null = null;
@@ -246,7 +251,10 @@ export function renderTrips(): void {
     const rest = displayed.slice(favoriteCount);
     if (state.tripSortKey === "date") {
         // Month and day sections only make sense in date order.
-        const nodes: TripListNode[] = rest.map(({ trip, idx }) => ({ kind: "trip", entry: { trip, tripIdx: idx } }));
+        const nodes = foldParkingRuns(
+            rest.map(({ trip, idx }) => ({ trip, tripIdx: idx })),
+            (trip) => tripFocusKey(trip) ?? `start:${trip.startUtc}`,
+        );
         for (const month of groupByMonthDay(nodes)) {
             dom.list.appendChild(buildMonthSection(month, (entries, parent) => appendCards(entries, parent)));
         }
@@ -310,7 +318,7 @@ function buildGroupSection(
     const section = document.createElement("li");
     section.className = `trip-group ${className}`;
     groupKeys.set(section, key);
-    const collapsed = collapsedGroups.has(key);
+    const collapsed = isGroupCollapsed(key);
     section.classList.toggle("is-collapsed", collapsed);
     const header = document.createElement("div");
     header.className = `trip-group__header ${className}__header`;
@@ -332,7 +340,22 @@ function buildGroupSection(
 }
 
 function nodeTrips(nodes: readonly TripListNode[]): Trip[] {
-    return nodes.map((node) => node.entry.trip);
+    return nodes.flatMap((node) => nodeEntries(node).map((entry) => entry.trip));
+}
+
+function isGroupCollapsed(key: string): boolean {
+    return key.startsWith("p:") ? !expandedParkingRuns.has(key) : collapsedGroups.has(key);
+}
+
+function rememberGroupCollapsed(key: string, collapsed: boolean): void {
+    if (key.startsWith("p:")) {
+        if (collapsed) expandedParkingRuns.delete(key);
+        else expandedParkingRuns.add(key);
+    } else if (collapsed) {
+        collapsedGroups.add(key);
+    } else {
+        collapsedGroups.delete(key);
+    }
 }
 
 function buildMonthSection(month: TripListMonth, appendCards: AppendCards): HTMLLIElement {
@@ -356,8 +379,52 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
     if (heading.relative) content.push(textSpan("trip-group-toggle__date", heading.date));
     content.push(textSpan("trip-group-toggle__stats", tripsSummaryText(nodeTrips(day.nodes))));
     const { section, list } = buildGroupSection(day.key, "trip-day", content, buildDayStrip(day));
+    for (const node of day.nodes) {
+        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list);
+        else list.appendChild(buildParkingRun(node, appendCards));
+    }
+    return section;
+}
+
+/**
+ * A run of parking trips as one row: a night of motion clips is often a dozen
+ * one-minute trips. Folded by default; unfolding lists the trips themselves,
+ * which keep every card action.
+ */
+function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): HTMLLIElement {
+    const trips = node.entries.map((entry) => entry.trip);
+    let first = trips[0]!;
+    let endUtc = first.endUtc;
+    let bytes = 0;
+    let events = 0;
+    for (const trip of trips) {
+        if (trip.startUtc < first.startUtc) first = trip;
+        endUtc = Math.max(endUtc, trip.endUtc);
+        bytes += trip.totalBytes;
+        events += trip.events.length;
+    }
+    const tile = textSpan("trip-parking-run__tile", t("trip.chip.parking"));
+    tile.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.className = "trip-parking-run__text";
+    text.append(
+        textSpan(
+            "trip-parking-run__title",
+            t("sidebar.parkingRun.title", { range: formatTimeRange(first.startUtc, endUtc, first.cameraTzSec) }),
+        ),
+        textSpan("trip-parking-run__meta", `${t("plurals.trip", { n: trips.length })} · ${formatBytes(bytes)}`),
+    );
+    const content: Node[] = [tile, text];
+    if (events > 0) {
+        const chip = document.createElement("span");
+        chip.className = "trip-parking-run__events";
+        chip.setAttribute("aria-label", t("trip.events.chip.title", { n: events }));
+        chip.append(cloneIcon(ALERT_ICON), textSpan("num mono", String(events)));
+        content.push(chip);
+    }
+    const { section, list } = buildGroupSection(node.key, "trip-parking-run", content, null);
     appendCards(
-        day.nodes.map((node) => ({ trip: node.entry.trip, idx: node.entry.tripIdx })),
+        node.entries.map((entry) => ({ trip: entry.trip, idx: entry.tripIdx })),
         list,
     );
     return section;
@@ -389,7 +456,8 @@ function buildDayStrip(day: TripListDay): HTMLElement {
 }
 
 /**
- * Folds or unfolds one month/day section in place and remembers the choice.
+ * Folds or unfolds one section (month, day or parking run) in place and
+ * remembers the choice.
  * Folding a section whose header is stuck to the top would leave the reader
  * somewhere further down the list, so the section is scrolled back to its
  * header.
@@ -397,8 +465,7 @@ function buildDayStrip(day: TripListDay): HTMLElement {
 function setGroupCollapsed(section: HTMLElement, collapsed: boolean): void {
     const key = groupKeys.get(section);
     if (key === undefined) return;
-    if (collapsed) collapsedGroups.add(key);
-    else collapsedGroups.delete(key);
+    rememberGroupCollapsed(key, collapsed);
     const header = section.querySelector<HTMLElement>(":scope > .trip-group__header");
     const wasStuck =
         collapsed && header !== null && section.getBoundingClientRect().top < header.getBoundingClientRect().top - 1;

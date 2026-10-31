@@ -88,6 +88,7 @@ export const deDict = {
     "notesFile.change": "Datei wechseln…",
     "sidebar.bucket.favorites": "Favoriten",
     "sidebar.bucket.others": "Alle übrigen",
+    "sidebar.parkingRun.title": "Geparkt {range}",
     "trip.fav.add": "Zu Favoriten hinzufügen",
     "trip.fav.remove": "Aus Favoriten entfernen",
     "trip.editMeta": "Name und Notiz bearbeiten",

@@ -173,6 +173,21 @@ export function formatDayHeading(
     return { relative, date };
 }
 
+/**
+ * Clock range on the display clock: "23:04 → 06:20". An end on another
+ * calendar day gets its weekday ("23:04 → Sun 06:20"), so a stay over a
+ * weekend does not read as a few hours.
+ */
+export function formatTimeRange(startUtc: number, endUtc: number, cameraTzSec: number | null): string {
+    const locale = getDateLocale();
+    const time = cachedDateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+    const start = displayClockDate(startUtc, cameraTzSec);
+    const end = displayClockDate(endUtc, cameraTzSec);
+    if (isSameDisplayDay(start, end)) return `${time.format(start)} → ${time.format(end)}`;
+    const weekday = cachedDateTimeFormat(locale, { weekday: "short", timeZone: "UTC" });
+    return `${time.format(start)} → ${weekday.format(end)} ${time.format(end)}`;
+}
+
 /** Which recording fact is still being resolved for a trip card. */
 export type TripLoadingState = "loaded" | "recordings-pending" | "recordings-inflight" | "gps-pending" | "gps-inflight";
 

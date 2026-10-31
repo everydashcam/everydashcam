@@ -95,6 +95,7 @@ export const ruDict = {
     "notesFile.change": "Сменить файл…",
     "sidebar.bucket.favorites": "Избранное",
     "sidebar.bucket.others": "Остальные",
+    "sidebar.parkingRun.title": "Парковка {range}",
     "trip.fav.add": "В избранное",
     "trip.fav.remove": "Убрать из избранного",
     "trip.editMeta": "Изменить название и заметку",

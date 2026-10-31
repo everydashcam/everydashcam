@@ -90,6 +90,7 @@ export const esDict = {
     "notesFile.change": "Cambiar archivo…",
     "sidebar.bucket.favorites": "Favoritos",
     "sidebar.bucket.others": "El resto",
+    "sidebar.parkingRun.title": "Aparcado {range}",
     "trip.fav.add": "Añadir a favoritos",
     "trip.fav.remove": "Quitar de favoritos",
     "trip.editMeta": "Editar nombre y nota",

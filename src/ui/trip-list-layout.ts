@@ -1,6 +1,7 @@
 // Display structure of the date-sorted trip list: month and day sections on the
-// display clock (camera clock when known). Pure - no DOM, no app state - so the
-// grouping rules stay unit-testable apart from the sidebar that renders them.
+// display clock (camera clock when known) and runs of parking trips folded into
+// one row. Pure - no DOM, no app state - so the grouping rules stay
+// unit-testable apart from the sidebar that renders them.
 
 import { displayClockDate } from "../trips.js";
 import type { Trip } from "../trips.js";
@@ -17,7 +18,27 @@ export interface TripListTripNode {
     readonly entry: TripListEntry;
 }
 
-export type TripListNode = TripListTripNode;
+/**
+ * Consecutive parking trips shown as one expandable row. Display only: each
+ * trip stays a trip for playback, export and notes.
+ */
+export interface TripListParkingNode {
+    readonly kind: "parking";
+    /** "p:" plus the earliest trip's identity, so it survives re-renders. */
+    readonly key: string;
+    /** Two or more parking trips in list order. */
+    readonly entries: readonly TripListEntry[];
+}
+
+export type TripListNode = TripListTripNode | TripListParkingNode;
+
+/**
+ * Longest pause between two parking trips that still reads as one stay.
+ * Motion-triggered cameras can stay silent through a quiet night, so the gap
+ * between clips easily reaches eight hours; half a day without a recording
+ * more likely means the car left without the camera recording the drive.
+ */
+export const PARKING_RUN_MAX_GAP_SEC = 12 * 3600;
 
 /** One calendar day on the display clock, in list order. */
 export interface TripListDay {
@@ -43,14 +64,56 @@ export interface TripListMonth {
 
 /** Every trip a node stands for, in list order. */
 export function nodeEntries(node: TripListNode): readonly TripListEntry[] {
-    return [node.entry];
+    return node.kind === "trip" ? [node.entry] : node.entries;
+}
+
+function earliestEntry(entries: readonly TripListEntry[]): TripListEntry {
+    let earliest = entries[0]!;
+    for (const entry of entries) if (entry.trip.startUtc < earliest.trip.startUtc) earliest = entry;
+    return earliest;
 }
 
 /** The node's earliest start: a run of trips belongs to the day it began. */
 function nodeStartTrip(node: TripListNode): Trip {
-    let earliest = node.entry.trip;
-    for (const entry of nodeEntries(node)) if (entry.trip.startUtc < earliest.startUtc) earliest = entry.trip;
-    return earliest;
+    return earliestEntry(nodeEntries(node)).trip;
+}
+
+/** Pause between two trips regardless of list direction; overlap counts as none. */
+function pauseSec(a: Trip, b: Trip): number {
+    const [earlier, later] = a.startUtc <= b.startUtc ? [a, b] : [b, a];
+    return Math.max(0, later.startUtc - earlier.endUtc);
+}
+
+/**
+ * Folds runs of parking trips that are neighbours in list order - no other
+ * trip between them, pauses up to PARKING_RUN_MAX_GAP_SEC - into parking
+ * nodes. A lone parking trip stays a trip node. `identity` returns a trip's
+ * recording identity, which keys the run for its expanded state.
+ */
+export function foldParkingRuns(
+    entries: readonly TripListEntry[],
+    identity: (trip: Trip) => string,
+): TripListNode[] {
+    const nodes: TripListNode[] = [];
+    let run: TripListEntry[] = [];
+    const flushRun = (): void => {
+        if (run.length >= 2) {
+            nodes.push({ kind: "parking", key: `p:${identity(earliestEntry(run).trip)}`, entries: run });
+        } else {
+            for (const entry of run) nodes.push({ kind: "trip", entry });
+        }
+        run = [];
+    };
+    for (const entry of entries) {
+        const previous = run[run.length - 1];
+        if (!entry.trip.isParking || (previous && pauseSec(previous.trip, entry.trip) > PARKING_RUN_MAX_GAP_SEC)) {
+            flushRun();
+        }
+        if (entry.trip.isParking) run.push(entry);
+        else nodes.push({ kind: "trip", entry });
+    }
+    flushRun();
+    return nodes;
 }
 
 const pad2 = (value: number): string => String(value).padStart(2, "0");
@@ -108,19 +171,29 @@ function dayFraction(unixSec: number, trip: Trip, day: TripListDay): number {
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
 /**
- * Footage and event positions for a day's 24-hour strip. A trip that runs past
- * midnight is clipped to the day; event instants outside the day are dropped.
+ * Footage and event positions for a day's 24-hour strip. A parking run is one
+ * span from its first start to its last end - the car stood there between the
+ * clips too. Spans that run past midnight are clipped to the day; event
+ * instants outside the day are dropped.
  */
 export function dayStripSegments(day: TripListDay): { segments: DayStripSegment[]; events: number[] } {
     const segments: DayStripSegment[] = [];
     const events: number[] = [];
+    const pushSpan = (startUtc: number, endUtc: number, trip: Trip, isParking: boolean): void => {
+        const from = clamp01(dayFraction(startUtc, trip, day));
+        const to = clamp01(dayFraction(endUtc, trip, day));
+        if (to > from || (to === from && from > 0 && from < 1)) segments.push({ from, to, isParking });
+    };
     for (const node of day.nodes) {
-        for (const { trip } of nodeEntries(node)) {
-            const from = clamp01(dayFraction(trip.startUtc, trip, day));
-            const to = clamp01(dayFraction(trip.endUtc, trip, day));
-            if (to > from || (to === from && from > 0 && from < 1)) {
-                segments.push({ from, to, isParking: trip.isParking });
-            }
+        const entries = nodeEntries(node);
+        if (node.kind === "parking") {
+            const first = earliestEntry(entries).trip;
+            const lastEnd = Math.max(...entries.map((entry) => entry.trip.endUtc));
+            pushSpan(first.startUtc, lastEnd, first, true);
+        } else {
+            pushSpan(node.entry.trip.startUtc, node.entry.trip.endUtc, node.entry.trip, node.entry.trip.isParking);
+        }
+        for (const { trip } of entries) {
             for (const event of trip.events) {
                 const at = dayFraction(event.unixSeconds, trip, day);
                 if (at >= 0 && at <= 1) events.push(at);

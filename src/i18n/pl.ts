@@ -90,6 +90,7 @@ export const plDict = {
     "notesFile.change": "Zmień plik…",
     "sidebar.bucket.favorites": "Ulubione",
     "sidebar.bucket.others": "Pozostałe",
+    "sidebar.parkingRun.title": "Postój {range}",
     "trip.fav.add": "Dodaj do ulubionych",
     "trip.fav.remove": "Usuń z ulubionych",
     "trip.editMeta": "Edytuj nazwę i notatkę",

@@ -100,6 +100,7 @@ export const jaDict = {
     "notesFile.change": "ファイルを変更…",
     "sidebar.bucket.favorites": "お気に入り",
     "sidebar.bucket.others": "その他",
+    "sidebar.parkingRun.title": "駐車 {range}",
     "trip.fav.add": "お気に入りに追加",
     "trip.fav.remove": "お気に入りから削除",
     "trip.editMeta": "名前とメモを編集",

@@ -500,6 +500,73 @@
     margin-left: -1px;
     background: var(--err);
 }
+/* A run of parking trips (buildParkingRun): a compact framed row inside the
+   day, not another sticky header. Unfolding lists the run's own cards. */
+.trip-parking-run {
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-md);
+    background: var(--bg-elev-2);
+}
+.trip-parking-run__header {
+    position: static;
+    background: transparent;
+}
+.trip-parking-run__header .trip-group-toggle {
+    height: auto;
+    min-height: 44px;
+    padding: var(--dc-space-1) var(--dc-space-2);
+    gap: var(--dc-space-2);
+    border-radius: inherit;
+}
+.trip-parking-run__tile {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid color-mix(in srgb, var(--dc-blue) 60%, transparent);
+    border-radius: var(--dc-radius-sm);
+    background: color-mix(in srgb, var(--dc-blue) 12%, transparent);
+    color: var(--info-ink);
+    font-family: var(--dc-font-heavy);
+    font-size: var(--dc-text-sm);
+    font-weight: 800;
+}
+.trip-parking-run__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+.trip-parking-run__title,
+.trip-parking-run__meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trip-parking-run__title {
+    color: var(--fg);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+}
+.trip-parking-run__meta {
+    color: var(--fg-mute);
+    font-size: var(--dc-text-2xs);
+    font-variant-numeric: tabular-nums;
+}
+.trip-parking-run__events {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px var(--dc-space-1);
+    border: 1px solid var(--err);
+    border-radius: var(--dc-radius-sm);
+    color: var(--err-ink);
+    font-size: var(--dc-text-2xs);
+}
+.trip-parking-run > .trip-group__list {
+    padding: 0 var(--dc-space-1) var(--dc-space-1);
+}
 @media (pointer: coarse) {
     .trip-list {
         --trip-month-header-h: 44px;

@@ -90,6 +90,7 @@ export const frDict = {
     "notesFile.change": "Changer de fichier…",
     "sidebar.bucket.favorites": "Favoris",
     "sidebar.bucket.others": "Le reste",
+    "sidebar.parkingRun.title": "Stationné {range}",
     "trip.fav.add": "Ajouter aux favoris",
     "trip.fav.remove": "Retirer des favoris",
     "trip.editMeta": "Modifier le nom et la note",
