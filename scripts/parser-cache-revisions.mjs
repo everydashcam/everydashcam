@@ -5,6 +5,7 @@ import { relative, resolve } from "node:path";
 import { rolldown } from "rolldown";
 
 import { canonicalProgram } from "./_cache-revision-ast.mjs";
+import { parsePrimitiveId, parseRegistryBindings } from "./_parser-registry.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const REGISTRY_FILE = resolve(ROOT, "src/parsers/primitives/index.ts");
@@ -38,69 +39,18 @@ function resolveSourceImport(fromPath, specifier) {
     return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-function importedRuntimeBindings(path) {
-    const imports = new Map();
-    const source = readFileSync(path, "utf8");
-    const rx = /import\s+(?!type\b)([\s\S]*?)\s+from\s+["']([^"']+)["'][^;]*;/g;
-    for (const match of source.matchAll(rx)) {
-        const target = resolveSourceImport(path, match[2]);
-        if (!target) continue;
-        const clause = match[1].trim();
-        const defaultBinding = clause.match(/^([A-Za-z_$][\w$]*)/);
-        if (defaultBinding) imports.set(defaultBinding[1], target);
-        const namespaceBinding = clause.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
-        if (namespaceBinding) imports.set(namespaceBinding[1], target);
-        const named = clause.match(/\{([\s\S]*)\}/)?.[1] ?? "";
-        for (const part of named.split(",")) {
-            const binding = part.trim();
-            if (!binding || binding.startsWith("type ")) continue;
-            const local = binding.split(/\s+as\s+/).at(-1)?.trim();
-            if (local) imports.set(local, target);
-        }
-    }
-    return imports;
-}
-
 function registryEntries() {
-    const source = readFileSync(REGISTRY_FILE, "utf8");
-    const imports = importedRuntimeBindings(REGISTRY_FILE);
-    const initializer = source.match(
-        new RegExp(`export\\s+const\\s+${REGISTRY_NAME}[^=]*=\\s*\\[([\\s\\S]*?)\\];`),
-    )?.[1];
-    if (!initializer) throw new Error(`cannot find ${REGISTRY_NAME} array`);
-
-    // Fail closed: a spread/factory/inline object must never silently disappear
-    // from a negative-cache revision. Keep this registry as explicit imported
-    // bindings, or teach the generator the new syntax before it can build.
-    const withoutComments = initializer.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    const bindings = withoutComments
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
-    if (bindings.length === 0) throw new Error(`${REGISTRY_NAME} must not be empty`);
-
-    return bindings.map((exportName) => {
-        if (!/^[A-Za-z_$][\w$]*$/.test(exportName)) {
-            throw new Error(`unsupported ${REGISTRY_NAME} entry: ${exportName}`);
-        }
-        const path = imports.get(exportName);
-        if (!path) throw new Error(`cannot resolve ${exportName} import`);
-        return { exportName, path, id: primitiveId(path, exportName) };
+    const bindings = parseRegistryBindings(
+        normalizedPath(REGISTRY_FILE),
+        readFileSync(REGISTRY_FILE, "utf8"),
+        REGISTRY_NAME,
+    );
+    return bindings.map(({ specifier, exportName }) => {
+        const path = resolveSourceImport(REGISTRY_FILE, specifier);
+        if (!path) throw new Error(`cannot resolve ${exportName} import from ${specifier}`);
+        const id = parsePrimitiveId(normalizedPath(path), readFileSync(path, "utf8"), exportName);
+        return { exportName, path, id };
     });
-}
-
-function primitiveId(path, exportName) {
-    const source = readFileSync(path, "utf8");
-    const body = source.match(new RegExp(`export\\s+const\\s+${exportName}[^=]*=\\s*\\{([\\s\\S]*?)\\n\\};`))?.[1];
-    if (!body) throw new Error(`cannot find ${exportName} in ${normalizedPath(path)}`);
-    const initializer = body.match(/\bid\s*:\s*("[^"]+"|'[^']+'|[A-Za-z_$][\w$]*)/)?.[1];
-    if (initializer?.startsWith('"') || initializer?.startsWith("'")) return initializer.slice(1, -1);
-    if (initializer) {
-        const escaped = initializer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const value = source.match(new RegExp(`const\\s+${escaped}\\s*=\\s*["']([^"']+)["']`))?.[1];
-        if (value) return value;
-    }
-    throw new Error(`cannot find a static id for ${exportName} in ${normalizedPath(path)}`);
 }
 
 async function semanticRevision(path, exportName, extraExternal = []) {
@@ -181,10 +131,7 @@ async function embeddedGeneratedSource() {
         // at their precise prefix and must not become global through this edge.
         semanticRevision(CACHE_PROJECTION_FILE, "buildEmbeddedGpsCacheArtifactUpdates", [CACHE_REVISIONS_FILE]),
     ]);
-    const dispatchRevision = createHash("sha256")
-        .update(commonRevisions.join("\0"))
-        .digest("hex")
-        .slice(0, 16);
+    const dispatchRevision = createHash("sha256").update(commonRevisions.join("\0")).digest("hex").slice(0, 16);
     const rows = revisions.map(
         (entry) => `    { id: ${JSON.stringify(entry.id)}, revision: ${JSON.stringify(entry.revision)} },`,
     );
