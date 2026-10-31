@@ -8,6 +8,7 @@ import { dom } from "./dom.js";
 import { initMenuKeyboard } from "./menu-keyboard.js";
 import { initPlayerPopoverPosition } from "./player-popover.js";
 import { state } from "./state.js";
+import { createPopover } from "./popover-lifecycle.js";
 
 // Speed values for "<" / ">" hotkeys and the dropdown menu. Must match
 // data-rate in the speed-menu HTML.
@@ -35,20 +36,19 @@ export function cyclePlaybackRate(dir: 1 | -1): void {
     dom.player.playbackRate = rate;
 }
 
+let speedPopover: ReturnType<typeof createPopover>;
+
 function toggleSpeedMenu(): void {
     if (dom.playerBar.speedMenu.hidden) openSpeedMenu();
     else closeSpeedMenu();
 }
 
 function openSpeedMenu(): void {
-    dom.playerBar.speedMenu.hidden = false;
-    dom.playerBar.speed.setAttribute("aria-expanded", "true");
-    dom.playerBar.speedMenu.querySelector<HTMLElement>(".active")?.focus();
+    speedPopover.open();
 }
 
 export function closeSpeedMenu(): void {
-    dom.playerBar.speedMenu.hidden = true;
-    dom.playerBar.speed.setAttribute("aria-expanded", "false");
+    speedPopover?.close();
 }
 
 /** True iff the speed dropdown is currently open. */
@@ -81,6 +81,11 @@ export function syncSpeedButton(): void {
  * the central hotkeys handler (player.ts) - it just calls cyclePlaybackRate.
  */
 export function initPlayerSpeed(): void {
+    speedPopover = createPopover({
+        button: dom.playerBar.speed,
+        panel: dom.playerBar.speedMenu,
+        afterOpen: () => dom.playerBar.speedMenu.querySelector<HTMLElement>(".active")?.focus(),
+    });
     initPlayerPopoverPosition(dom.playerBar.speed, dom.playerBar.speedMenu);
     const items = [...dom.playerBar.speedMenu.querySelectorAll<HTMLElement>("[data-rate]")];
     for (const item of items) {
@@ -115,22 +120,5 @@ export function initPlayerSpeed(): void {
         }
         closeSpeedMenu();
         focusSpeedButton();
-    });
-
-    // Close the menu on click outside - standard dropdown UX.
-    document.addEventListener("click", (e) => {
-        if (dom.playerBar.speedMenu.hidden) return;
-        const target = e.target instanceof Node ? e.target : null;
-        if (!target) {
-            closeSpeedMenu();
-            return;
-        }
-        // Click is "inside" if the target is the menu, the speed button, or a
-        // descendant of either. Element.contains(self) is true, so clicks on
-        // the menu/button itself are handled. The old `target.contains(menu)`
-        // check (target as ancestor of menu) was always true for body/root
-        // clicks and kept the menu open when it should have closed.
-        const inside = dom.playerBar.speedMenu.contains(target) || dom.playerBar.speed.contains(target);
-        if (!inside) closeSpeedMenu();
     });
 }

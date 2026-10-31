@@ -13,6 +13,7 @@
 
 import { createLogger } from "../log.js";
 import { dom } from "./dom.js";
+import { createModalResult } from "./modal-result.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 
 const log = createLogger("upload-warning");
@@ -20,7 +21,7 @@ const log = createLogger("upload-warning");
 const STORAGE_KEY = "everydashcam:upload-warning-shown-at";
 const WARNING_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-let pendingResolve: ((continued: boolean) => void) | null = null;
+const modalResult = createModalResult<boolean>();
 
 /**
  * Whether to show the modal on the next CTA trigger. Returns true if the
@@ -68,11 +69,7 @@ function markSeen(): void {
 export function showUploadWarning(): Promise<boolean> {
     if (!dom.uploadWarningModal) return Promise.resolve(true);
 
-    if (pendingResolve) {
-        const prev = pendingResolve;
-        pendingResolve = null;
-        prev(false);
-    }
+    const result = modalResult.wait(false);
 
     dom.uploadWarningModal.hidden = false;
     // Focus on the primary action (Continue) so the user can press Enter
@@ -83,9 +80,7 @@ export function showUploadWarning(): Promise<boolean> {
         initialFocus: dom.uploadWarningModalContinue,
     });
 
-    return new Promise<boolean>((resolve) => {
-        pendingResolve = resolve;
-    });
+    return result;
 }
 
 function close(continued: boolean): void {
@@ -93,11 +88,7 @@ function close(continued: boolean): void {
     dom.uploadWarningModal.hidden = true;
     deactivateModal(dom.uploadWarningModal);
     if (continued) markSeen();
-    if (pendingResolve) {
-        const fn = pendingResolve;
-        pendingResolve = null;
-        fn(continued);
-    }
+    modalResult.settle(continued);
 }
 
 /**

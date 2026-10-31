@@ -14,6 +14,7 @@
 // cards commonly expose the same root name (DCIM); collapsing them would bind
 // both cards' annotations to whichever folder opened last.
 
+import { createPopover } from "./popover-lifecycle.js";
 import { t } from "../i18n/index.js";
 import type { DuplicateSourceMatch } from "../ingest-dedup.js";
 import { createLogger } from "../log.js";
@@ -790,7 +791,7 @@ function buildMenu(source: FolderSource, folderLabel: string): HTMLElement {
  *  teardown. `fill` populates the (already emptied) menu right before it
  *  opens - the contents come from the store and can change between opens. */
 function buildMenuShell(
-    fill: (menu: HTMLElement, setOpen: (open: boolean) => void) => void | Promise<void>,
+    fill: (menu: HTMLElement, setOpen: (open: boolean) => void) => void,
     folderLabel: string,
 ): HTMLElement {
     const wrap = document.createElement("span");
@@ -811,52 +812,32 @@ function buildMenuShell(
     menu.setAttribute("role", "menu");
     menu.hidden = true;
 
-    let isOpen = false;
-    let outsideClickAttached = false;
-    const onDocumentClick = (event: MouseEvent): void => {
-        const target = event.target as Node | null;
-        if (menu.contains(target) || toggle.contains(target)) return;
-        setOpen(false);
-    };
+    const popover = createPopover({
+        button: toggle,
+        panel: menu,
+        show: () => {
+            menu.hidden = false;
+            closeOpenMenu = () => popover.close();
+        },
+        hide: () => {
+            menu.hidden = true;
+            closeOpenMenu = null;
+        },
+    });
     const setOpen = (open: boolean): void => {
-        isOpen = open;
-        menu.hidden = !open;
-        toggle.setAttribute("aria-expanded", String(open));
-        if (open && !outsideClickAttached) {
-            // queueMicrotask so the click that opened the menu is not the one
-            // that closes it.
-            queueMicrotask(() => {
-                document.addEventListener("click", onDocumentClick);
-                outsideClickAttached = true;
-            });
-            closeOpenMenu = () => setOpen(false);
-        } else if (!open) {
-            if (outsideClickAttached) {
-                document.removeEventListener("click", onDocumentClick);
-                outsideClickAttached = false;
-            }
-            if (closeOpenMenu) closeOpenMenu = null;
-        }
+        if (open) popover.open();
+        else popover.close();
     };
 
     toggle.addEventListener("click", () => {
-        if (isOpen) {
+        if (popover.isOpen) {
             setOpen(false);
             return;
         }
         menu.replaceChildren();
-        void Promise.resolve(fill(menu, setOpen)).then(() => setOpen(true));
+        fill(menu, setOpen);
+        setOpen(true);
     });
-    // On the wrap, not the menu: after the toggle click the focus is on the
-    // toggle, so a listener bound to the menu would never see the key.
-    wrap.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" || !isOpen) return;
-        event.preventDefault();
-        event.stopPropagation();
-        setOpen(false);
-        toggle.focus();
-    });
-
     wrap.appendChild(toggle);
     wrap.appendChild(menu);
     return wrap;

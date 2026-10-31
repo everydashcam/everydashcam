@@ -6,18 +6,18 @@
 // Toggling a panel sets the `hidden` attribute on its host element; layout
 // reflows via existing CSS grid/flex rules (no JS layout math here).
 //
-import { createLogger } from "../log.js";
 
+import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
+import { createSubscribers } from "../subscribers.js";
 import { isAnyModalOpen } from "./modal-helper.js";
 import { initPlayerPopoverPosition } from "./player-popover.js";
+import { createPopover } from "./popover-lifecycle.js";
 
 const STORAGE_KEY = "dc.viewer.panels";
 const HOTKEY_BY_PANEL = { chart: "KeyC", strip: "KeyT", map: "KeyM", readout: "KeyG" } as const;
 const PANELS = ["chart", "strip", "map", "readout"] as const;
 export type Panel = (typeof PANELS)[number];
 export type MapViewMode = "off" | "mini" | "large";
-
-const log = createLogger("view-menu");
 
 /** Visibility state of the view-menu panels. Default: all visible. */
 export type ViewPanels = Record<Panel, boolean>;
@@ -36,11 +36,10 @@ let mapModeRequestHandler: ((mode: MapViewMode) => void) | null = null;
 /** Listeners for visibility changes. Map.ts uses this to suppress mini-map
  *  visibility logic when the user hid it via the menu. */
 type Listener = (panels: ViewPanels) => void;
-const listeners = new Set<Listener>();
+const listeners = createSubscribers<Parameters<Listener>>("view-panels");
 
 export function subscribeViewPanels(handler: Listener): () => void {
-    listeners.add(handler);
-    return () => listeners.delete(handler);
+    return listeners.subscribe(handler);
 }
 
 export function getViewPanels(): ViewPanels {
@@ -90,34 +89,20 @@ function isMapViewMode(value: unknown): value is MapViewMode {
 }
 
 function loadFromStorage(): LoadedViewPreferences {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { panels: { ...DEFAULT_PANELS }, mapMode: "mini" };
-        const parsed = JSON.parse(raw) as Partial<ViewPanels> & { mapMode?: unknown };
-        // !== false, not ?? true: a panel added after the preference was
-        // written is absent from the stored object and must default to on.
-        const restored = {} as ViewPanels;
-        for (const panel of PANELS) restored[panel] = parsed[panel] !== false;
-        // Migration: old preferences only stored map:boolean. Preserve that
-        // choice, then write the richer mode on the next explicit user action.
-        const mapMode = isMapViewMode(parsed.mapMode) ? parsed.mapMode : restored.map ? "mini" : "off";
-        restored.map = mapMode !== "off";
-        return { panels: restored, mapMode };
-    } catch {
-        // private mode / malformed JSON - fall back to defaults
-        return { panels: { ...DEFAULT_PANELS }, mapMode: "mini" };
-    }
+    const value = readLocalStorageJson(STORAGE_KEY);
+    if (typeof value !== "object" || value === null) return { panels: { ...DEFAULT_PANELS }, mapMode: "mini" };
+    const parsed = value as Partial<ViewPanels> & { mapMode?: unknown };
+    // A newly added panel is absent from old preferences and defaults to on.
+    const restored = {} as ViewPanels;
+    for (const panel of PANELS) restored[panel] = parsed[panel] !== false;
+    // Old preferences stored only map:boolean. Preserve it until the next save.
+    const mapMode = isMapViewMode(parsed.mapMode) ? parsed.mapMode : restored.map ? "mini" : "off";
+    restored.map = mapMode !== "off";
+    return { panels: restored, mapMode };
 }
 
 function saveToStorage(): void {
-    try {
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ ...currentPanels, ...ordinaryDetails, mapMode: preferredMapMode }),
-        );
-    } catch {
-        // private mode - silent
-    }
+    writeLocalStorageJson(STORAGE_KEY, { ...currentPanels, ...ordinaryDetails, mapMode: preferredMapMode });
 }
 
 export interface ViewMenuOptions {
@@ -170,13 +155,7 @@ export function setMapViewModePreference(mode: MapViewMode): void {
 }
 
 function notifyListeners(): void {
-    for (const l of listeners) {
-        try {
-            l({ ...currentPanels });
-        } catch (err) {
-            log.warn("view-panels listener threw", { err: String(err) });
-        }
-    }
+    listeners.emitWith(() => [{ ...currentPanels }]);
 }
 
 /** Marks a panel as available/unavailable. The row gets aria-disabled +
@@ -219,12 +198,22 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
     preferredMapMode = loaded.mapMode;
     applyPanels(opts);
 
+    const popover = createPopover({
+        button: opts.button,
+        panel: opts.popover,
+        show: () => {
+            opts.popover.hidden = false;
+            opts.button.classList.add("is-open");
+        },
+        hide: () => {
+            opts.popover.hidden = true;
+            opts.button.classList.remove("is-open");
+        },
+    });
     function togglePopover(force?: boolean): void {
-        // hidden is boolean | "until-found"; only an explicit false is visible.
-        const willOpen = force ?? opts.popover.hidden !== false;
-        opts.popover.hidden = !willOpen;
-        opts.button.setAttribute("aria-expanded", willOpen ? "true" : "false");
-        opts.button.classList.toggle("is-open", willOpen);
+        if (force === undefined) popover.toggle();
+        else if (force) popover.open();
+        else popover.close();
     }
 
     // Toggle delegates to setPanelVisible (module-level) - single source of
@@ -285,17 +274,6 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
         });
     });
 
-    // Outside-click dismisses. Escape closes.
-    function onDocClick(e: MouseEvent): void {
-        if (opts.popover.hidden) return;
-        const target = e.target;
-        if (!(target instanceof Element)) return;
-        if (target.closest(".view-menu-popover")) return;
-        if (target.closest("#player-view-menu")) return;
-        togglePopover(false);
-    }
-    document.addEventListener("click", onDocClick);
-
     function onKeyDown(e: KeyboardEvent): void {
         // A modal owns the keyboard while open - C/T/M must not toggle panels
         // behind the backdrop (modal-helper's trap only swallows Escape/Tab).
@@ -304,12 +282,6 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
         if (e.target instanceof HTMLElement) {
             const tag = e.target.tagName;
             if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
-        }
-        if (e.key === "Escape" && !opts.popover.hidden) {
-            e.preventDefault();
-            togglePopover(false);
-            opts.button.focus();
-            return;
         }
         // Modifier keys are reserved for browser/system shortcuts - skip rebinds.
         if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -329,7 +301,7 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
 
     return () => {
         disposePosition();
-        document.removeEventListener("click", onDocClick);
+        popover.close();
         document.removeEventListener("keydown", onKeyDown);
     };
 }

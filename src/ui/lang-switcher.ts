@@ -23,6 +23,7 @@ import { buildLocaleUrl } from "../i18n/seo-config.js";
 import { getCurrentLang, LANGS, persistLangChoice, type Lang } from "../i18n/index.js";
 
 import { dom } from "./dom.js";
+import { createPopover } from "./popover-lifecycle.js";
 import { initMenuKeyboard } from "./menu-keyboard.js";
 import { markIntentionalNavigation } from "./nav-intent.js";
 import { showSwitchLangConfirm } from "./switch-lang-modal.js";
@@ -74,20 +75,14 @@ function renderLangMenu(): void {
     }
 }
 
+let langPopover: ReturnType<typeof createPopover>;
+
 function openLangMenu(): void {
-    const { langMenu, langToggle } = dom;
-    if (!langMenu || !langToggle) return;
-    langMenu.hidden = false;
-    langToggle.setAttribute("aria-expanded", "true");
-    langMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    langPopover.open();
 }
 
 function closeLangMenu(restoreFocus = false): void {
-    const { langMenu, langToggle } = dom;
-    if (!langMenu || !langToggle) return;
-    langMenu.hidden = true;
-    langToggle.setAttribute("aria-expanded", "false");
-    if (restoreFocus) langToggle.focus();
+    langPopover.close(restoreFocus);
 }
 
 export function initLangSwitcher(): void {
@@ -96,6 +91,11 @@ export function initLangSwitcher(): void {
     // Button is the static SVG icon from index.html; no text code is injected.
     // Active language is visible in the popover as the highlighted item.
     renderLangMenu();
+    langPopover = createPopover({
+        button: langToggle,
+        panel: langMenu,
+        afterOpen: () => langMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.focus(),
+    });
     initMenuKeyboard({
         button: langToggle,
         menu: langMenu,
@@ -128,21 +128,5 @@ export function initLangSwitcher(): void {
         void showSwitchLangConfirm().then((confirmed) => {
             if (confirmed) navigateToLocale(code);
         });
-    });
-    // Click outside the menu closes the popover. Standard pattern for popovers
-    // without a backdrop so the rest of the UI stays interactive.
-    document.addEventListener("click", (ev) => {
-        if (langMenu.hidden) return;
-        const target = ev.target;
-        if (target instanceof Node && (langMenu.contains(target) || langToggle.contains(target))) return;
-        closeLangMenu();
-    });
-    // Escape closes the popover - parity with the sibling header popovers
-    // (overflow bar, view menu, notifications drawer).
-    document.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape" && !langMenu.hidden) {
-            ev.preventDefault();
-            closeLangMenu(true);
-        }
     });
 }

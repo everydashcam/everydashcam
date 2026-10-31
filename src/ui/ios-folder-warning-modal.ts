@@ -11,13 +11,14 @@
 // body carries the "nothing is uploaded" reassurance).
 
 import { dom } from "./dom.js";
+import { createModalResult } from "./modal-result.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 
 /** What the user chose in the iOS folder warning:
  *  pick individual files, insist on the whole folder, or back out. */
 export type IosFolderWarningChoice = "files" | "folder" | "cancel";
 
-let pendingResolve: ((choice: IosFolderWarningChoice) => void) | null = null;
+const modalResult = createModalResult<IosFolderWarningChoice>();
 
 /**
  * Shows the modal and resolves with the user's choice. If the modal markup is
@@ -28,11 +29,7 @@ let pendingResolve: ((choice: IosFolderWarningChoice) => void) | null = null;
 export function showIosFolderWarning(): Promise<IosFolderWarningChoice> {
     if (!dom.iosFolderWarningModal) return Promise.resolve("folder");
 
-    if (pendingResolve) {
-        const prev = pendingResolve;
-        pendingResolve = null;
-        prev("cancel");
-    }
+    const result = modalResult.wait("cancel");
 
     dom.iosFolderWarningModal.hidden = false;
     // Focus lands on the primary action - "choose files", the safe path.
@@ -41,20 +38,14 @@ export function showIosFolderWarning(): Promise<IosFolderWarningChoice> {
         initialFocus: dom.iosFolderWarningModalFiles,
     });
 
-    return new Promise<IosFolderWarningChoice>((resolve) => {
-        pendingResolve = resolve;
-    });
+    return result;
 }
 
 function close(choice: IosFolderWarningChoice): void {
     if (!dom.iosFolderWarningModal) return;
     dom.iosFolderWarningModal.hidden = true;
     deactivateModal(dom.iosFolderWarningModal);
-    if (pendingResolve) {
-        const fn = pendingResolve;
-        pendingResolve = null;
-        fn(choice);
-    }
+    modalResult.settle(choice);
 }
 
 /**

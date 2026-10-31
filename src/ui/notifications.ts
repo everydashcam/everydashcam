@@ -16,6 +16,7 @@
 // final warnings and stuck them in a tiny mono font that scrolled off in
 // narrow PWA windows.
 
+import { createPopover } from "./popover-lifecycle.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { createLogger } from "../log.js";
@@ -90,6 +91,7 @@ let drawerEl: HTMLElement | null = null;
 let drawerList: HTMLElement | null = null;
 let toastContainer: HTMLElement | null = null;
 
+let drawerPopover: ReturnType<typeof createPopover> | null = null;
 let drawerOpen = false;
 // Tiny incrementing counter is sufficient for id generation - we only need
 // uniqueness within one page load.
@@ -179,23 +181,18 @@ export function initNotifications(): void {
 
     bellBtn.addEventListener("click", toggleDrawer);
 
-    // Backdrop click closes the drawer; clicks on the drawer card itself
-    // bubble up but stopPropagation isn't needed because we check the
-    // event target instead.
-    document.addEventListener("click", (ev) => {
-        if (!drawerOpen) return;
-        const target = ev.target;
-        if (!(target instanceof Element)) return;
-        if (target.closest("#notif-drawer-card")) return;
-        if (target.closest("#notif-bell")) return;
-        closeDrawer();
-    });
-
-    document.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape" && drawerOpen) {
-            ev.preventDefault();
-            closeDrawer();
-        }
+    drawerPopover = createPopover({
+        button: bellBtn,
+        panel: drawerEl,
+        contains: (target) => document.getElementById("notif-drawer-card")?.contains(target) ?? false,
+        show: () => {
+            drawerEl!.hidden = false;
+            drawerOpen = true;
+        },
+        hide: () => {
+            drawerEl!.hidden = true;
+            drawerOpen = false;
+        },
     });
 
     document.getElementById("notif-drawer-clear")?.addEventListener("click", clearAll);
@@ -306,8 +303,7 @@ function toggleDrawer(): void {
 
 function openDrawer(): void {
     if (!drawerEl) return;
-    drawerEl.hidden = false;
-    drawerOpen = true;
+    drawerPopover?.open();
     // Mark everything read at open; dot disappears immediately.
     for (const n of notifications) n.read = true;
     renderBellBadge();
@@ -315,8 +311,7 @@ function openDrawer(): void {
 
 function closeDrawer(): void {
     if (!drawerEl) return;
-    drawerEl.hidden = true;
-    drawerOpen = false;
+    drawerPopover?.close();
 }
 
 function clearAll(): void {

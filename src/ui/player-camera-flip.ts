@@ -5,6 +5,7 @@ import { cameraFlipForChannel, saveCameraFlip } from "./camera-flip-pref.js";
 import { exportPanelState, notifyExportStateChanged, subscribeExportState } from "./export-state.js";
 import { channelDisplayLabel } from "./format.js";
 import { initMenuKeyboard } from "./menu-keyboard.js";
+import { createPopover } from "./popover-lifecycle.js";
 import { exitCropEditIfOpen } from "./player-crop.js";
 import { activeTrip, state } from "./state.js";
 
@@ -103,42 +104,45 @@ export function initPlayerCameraFlip(): void {
         menu.setAttribute("aria-description", t("player.camera.flip.hint"));
         tile.append(button, menu);
         const isOpen = (): boolean => (hasPopover ? menu.matches(":popover-open") : !menu.hidden);
-        const close = (): void => {
-            if (hasPopover) {
-                if (isOpen()) menu.hidePopover();
-            } else {
-                menu.hidden = true;
-                tile.append(menu);
-            }
-            button.setAttribute("aria-expanded", "false");
-        };
+        const popover = createPopover({
+            button,
+            panel: menu,
+            show: () => {
+                menu.setAttribute("aria-label", button.title);
+                if (hasPopover) menu.showPopover();
+                else {
+                    // Portal beyond tile transforms/clipping, inside fullscreen.
+                    const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
+                    const host =
+                        fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement)
+                            ? fullscreen
+                            : document.body;
+                    host.append(menu);
+                    menu.hidden = false;
+                }
+            },
+            hide: () => {
+                if (hasPopover) {
+                    if (isOpen()) menu.hidePopover();
+                } else {
+                    menu.hidden = true;
+                    tile.append(menu);
+                }
+            },
+            afterOpen: () => {
+                const anchor = button.getBoundingClientRect();
+                const rect = menu.getBoundingClientRect();
+                menu.style.left = `${Math.max(8, Math.min(anchor.right - rect.width, window.innerWidth - rect.width - 8))}px`;
+                menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 8))}px`;
+                menu.querySelector<HTMLButtonElement>("button")?.focus();
+            },
+        });
+        const close = (): void => popover.close();
         cameraMenus.set(tile, { menu, isOpen, close });
         const open = (): void => {
-            const trip = activeTrip();
-            if (!trip || isCameraFlipLocked()) return;
+            if (!activeTrip() || isCameraFlipLocked()) return;
             syncCameraFlips();
-            for (const [otherTile, entry] of cameraMenus) {
-                if (otherTile !== tile && entry.isOpen()) entry.close();
-            }
-            menu.setAttribute("aria-label", button.title);
-            if (hasPopover) menu.showPopover();
-            else {
-                // Tile transforms and overflow would clip an ordinary fixed
-                // menu. Use the visible fullscreen host, or body, while open.
-                const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
-                const host =
-                    fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement)
-                        ? fullscreen
-                        : document.body;
-                host.append(menu);
-                menu.hidden = false;
-            }
-            button.setAttribute("aria-expanded", "true");
-            const anchor = button.getBoundingClientRect();
-            const rect = menu.getBoundingClientRect();
-            menu.style.left = `${Math.max(8, Math.min(anchor.right - rect.width, window.innerWidth - rect.width - 8))}px`;
-            menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 8))}px`;
-            menu.querySelector<HTMLButtonElement>("button")?.focus();
+            popover.open();
         };
         button.addEventListener("click", (event) => {
             event.preventDefault();
@@ -146,17 +150,9 @@ export function initPlayerCameraFlip(): void {
             else open();
         });
         if (hasPopover) {
-            menu.addEventListener("toggle", () => button.setAttribute("aria-expanded", String(isOpen())));
-        } else {
-            document.addEventListener(
-                "pointerdown",
-                (event) => {
-                    const target = event.target;
-                    if (isOpen() && target instanceof Node && !menu.contains(target) && !button.contains(target))
-                        close();
-                },
-                true,
-            );
+            menu.addEventListener("toggle", () => {
+                if (!isOpen()) popover.close();
+            });
         }
         document.addEventListener("fullscreenchange", close);
         document.addEventListener("playerexpansionchange", close);

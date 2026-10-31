@@ -1,6 +1,7 @@
 // Keeps the same live player in native fullscreen or an expanded viewport.
 // Browser-owned transitions are immediate; only the surrounding controls move.
 
+import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { createLogger } from "../log.js";
@@ -8,6 +9,7 @@ import { dom, onActivePlayerEvent } from "./dom.js";
 import { setExportModePreparation, subscribeExportState } from "./export-state.js";
 import { applyMapLayout } from "./map.js";
 import { isCoarsePointer, prefersReducedMotion } from "./media-queries.js";
+import { isolateBackground } from "./inert-background.js";
 import { focusableWithin, isAnyModalOpen } from "./modal-helper.js";
 import { notify } from "./notifications.js";
 import { state } from "./state.js";
@@ -30,7 +32,7 @@ let hasPanelsBelow = false;
 let shouldRestoreFocus = true;
 let savedFocus: HTMLElement | null = null;
 let savedScroll: { element: Element; left: number; top: number }[] = [];
-const backgroundInert = new Map<HTMLElement, boolean>();
+let releaseBackground: (() => void) | null = null;
 const hoveredControls = new Set<Element>();
 const activePointers = new Set<number>();
 
@@ -109,22 +111,9 @@ function fullscreenEntryFocusTarget(): HTMLElement {
 }
 
 function isolateViewportPlayer(): void {
-    // Fixed banners also belong to the background. Dialog overlays must stay
-    // interactive when the modal manager adopts them into the player.
-    for (let child: Element = dom.playerWrap; child.parentElement; child = child.parentElement) {
-        for (const sibling of child.parentElement.children) {
-            if (
-                sibling === child ||
-                !(sibling instanceof HTMLElement) ||
-                sibling.matches(".modal-overlay") ||
-                sibling.getClientRects().length === 0
-            ) {
-                continue;
-            }
-            backgroundInert.set(sibling, sibling.inert);
-            sibling.inert = true;
-        }
-    }
+    releaseBackground?.();
+    // Dialog roots are adopted into the visible player by the modal manager.
+    releaseBackground = isolateBackground(dom.playerWrap, (element) => element.matches(".modal-overlay"));
 }
 
 function syncExpandedState(expanded: boolean): void {
@@ -160,8 +149,8 @@ function syncExpandedState(expanded: boolean): void {
         hintTimer = null;
         const hint = document.getElementById("player-fullscreen-hint");
         if (hint) hint.hidden = true;
-        for (const [element, inert] of backgroundInert) element.inert = inert;
-        backgroundInert.clear();
+        releaseBackground?.();
+        releaseBackground = null;
         for (const { element, left, top } of savedScroll) {
             element.scrollLeft = left;
             element.scrollTop = top;
@@ -285,11 +274,7 @@ export function syncFullscreenButton(): void {
 }
 
 export function initPlayerFullscreen(): void {
-    try {
-        hasPanelsBelow = localStorage.getItem(PANELS_BELOW_STORAGE_KEY) === "1";
-    } catch {
-        hasPanelsBelow = false;
-    }
+    hasPanelsBelow = readLocalStorage(PANELS_BELOW_STORAGE_KEY) === "1";
     dom.playerBar.fullscreen.addEventListener("click", () => {
         // Overflow forwards clicks without focusing the hidden toolbar button.
         void toggleFullscreen(fullscreenEntryFocusTarget());
@@ -305,11 +290,7 @@ export function initPlayerFullscreen(): void {
         if (!isExpanded()) return;
         panelsBelow.focus({ preventScroll: true });
         hasPanelsBelow = !hasPanelsBelow;
-        try {
-            localStorage.setItem(PANELS_BELOW_STORAGE_KEY, hasPanelsBelow ? "1" : "0");
-        } catch {
-            // Keep the in-memory choice when storage is unavailable.
-        }
+        writeLocalStorage(PANELS_BELOW_STORAGE_KEY, hasPanelsBelow ? "1" : "0");
         dom.playerWrap.classList.toggle("player-panels-below", hasPanelsBelow);
         syncFullscreenButton();
         revealControls();

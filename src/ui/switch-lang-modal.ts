@@ -10,9 +10,10 @@
 // action is the default and Enter does not nuke the session by reflex.
 
 import { dom } from "./dom.js";
+import { createModalResult } from "./modal-result.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 
-let pendingResolve: ((confirmed: boolean) => void) | null = null;
+const modalResult = createModalResult<boolean>();
 
 /**
  * Shows the confirm and resolves a promise:
@@ -28,11 +29,7 @@ let pendingResolve: ((confirmed: boolean) => void) | null = null;
 export function showSwitchLangConfirm(): Promise<boolean> {
     if (!dom.switchLangModal) return Promise.resolve(false);
 
-    if (pendingResolve) {
-        const prev = pendingResolve;
-        pendingResolve = null;
-        prev(false);
-    }
+    const result = modalResult.wait(false);
 
     dom.switchLangModal.hidden = false;
     activateModal(dom.switchLangModal, {
@@ -40,20 +37,14 @@ export function showSwitchLangConfirm(): Promise<boolean> {
         initialFocus: dom.switchLangModalCancel,
     });
 
-    return new Promise<boolean>((resolve) => {
-        pendingResolve = resolve;
-    });
+    return result;
 }
 
 function close(confirmed: boolean): void {
     if (!dom.switchLangModal) return;
     dom.switchLangModal.hidden = true;
     deactivateModal(dom.switchLangModal);
-    if (pendingResolve) {
-        const fn = pendingResolve;
-        pendingResolve = null;
-        fn(confirmed);
-    }
+    modalResult.settle(confirmed);
 }
 
 /** Registers close event handlers. Called once from app.ts on startup. */

@@ -9,6 +9,7 @@ import { GpxRoutePreview } from "./gpx-route-preview.js";
 import type { LooseGpxAssignment } from "./loose-gpx-assignment.js";
 import type { LooseGpxChoice, LooseGpxPlan } from "./loose-gpx.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
+import { createModalResult } from "./modal-result.js";
 
 interface GpxAssignmentCopy {
     tripLabel: (name: string) => string;
@@ -39,7 +40,7 @@ interface AssignmentRow {
 
 let rows: AssignmentRow[] = [];
 let routePreview: GpxRoutePreview | null = null;
-let pendingResolve: ((assignments: LooseGpxAssignment[]) => void) | null = null;
+const modalResult = createModalResult<LooseGpxAssignment[]>();
 let pendingSignal: AbortSignal | null = null;
 let pendingAbort: (() => void) | null = null;
 let isInitialized = false;
@@ -106,9 +107,7 @@ function settle(assignments: LooseGpxAssignment[]): void {
     routePreview?.dispose();
     routePreview = null;
     rows = [];
-    const resolve = pendingResolve;
-    pendingResolve = null;
-    resolve?.(assignments);
+    modalResult.settle(assignments);
 }
 
 function skipAll(): void {
@@ -229,25 +228,24 @@ export function showGpxAssignmentModal(
     signal?: AbortSignal,
 ): Promise<LooseGpxAssignment[]> {
     initGpxAssignmentModal();
-    if (pendingResolve) settle([]);
+    if (modalResult.pending) settle([]);
     renderRows(plans, copy);
     elements!.modal.hidden = false;
     routePreview = new GpxRoutePreview(elements!.map);
     setActiveRow(0);
 
-    return new Promise<LooseGpxAssignment[]>((resolve) => {
-        pendingResolve = resolve;
-        if (signal) {
-            pendingSignal = signal;
-            pendingAbort = skipAll;
-            signal.addEventListener("abort", pendingAbort, { once: true });
-        }
-        activateModal(elements!.modal, {
-            onClose: skipAll,
-            initialFocus: rows[0]?.select ?? elements!.skip,
-        });
-        if (signal?.aborted) skipAll();
+    const result = modalResult.wait([]);
+    if (signal) {
+        pendingSignal = signal;
+        pendingAbort = skipAll;
+        signal.addEventListener("abort", pendingAbort, { once: true });
+    }
+    activateModal(elements!.modal, {
+        onClose: skipAll,
+        initialFocus: rows[0]?.select ?? elements!.skip,
     });
+    if (signal?.aborted) skipAll();
+    return result;
 }
 
 function initGpxAssignmentModal(): void {

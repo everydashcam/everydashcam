@@ -80,6 +80,7 @@
     "mediabunny": "1.65.0",
     "native-file-system-adapter": "3.0.1",
     "onnxruntime-web": "1.31.1",
+    "tabbable": "6.5.1",
     "workbox-core": "^7.4.1",
     "workbox-expiration": "^7.4.1",
     "workbox-precaching": "^7.4.1",

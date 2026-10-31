@@ -15,6 +15,7 @@
 import { escapeHtml } from "../escape.js";
 import { t } from "../i18n/index.js";
 import { dom } from "./dom.js";
+import { createModalResult } from "./modal-result.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 
 /** Extensions we definitively cannot play. Lowercase, with dot. Everything outside this set is either playable (.mp4/.mov) or non-video (.txt/.gpx/.bin/...) and handled by classify(). */
@@ -44,7 +45,7 @@ export function countUnplayableByExtension(filenames: Iterable<string>): Map<str
     return out;
 }
 
-let pendingResolve: (() => void) | null = null;
+const modalResult = createModalResult<void>();
 
 /**
  * Shows the modal and resolves when the user closes it (Got it / Esc / backdrop click).
@@ -54,12 +55,7 @@ let pendingResolve: (() => void) | null = null;
 export function showUnsupportedFormatsModal(byExt: Map<string, number>): Promise<void> {
     if (!dom.unsupportedModal || !dom.unsupportedModalList) return Promise.resolve();
 
-    // Resolve previous promise to avoid accumulating hanging resolves.
-    if (pendingResolve) {
-        const prev = pendingResolve;
-        pendingResolve = null;
-        prev();
-    }
+    const result = modalResult.wait(undefined);
 
     // Sort descending so the most common extension appears first.
     const entries = [...byExt.entries()].sort((a, b) => b[1] - a[1]);
@@ -74,9 +70,7 @@ export function showUnsupportedFormatsModal(byExt: Map<string, number>): Promise
     dom.unsupportedModal.hidden = false;
     activateModal(dom.unsupportedModal, { onClose: closeModal, initialFocus: dom.unsupportedModalClose });
 
-    return new Promise<void>((resolve) => {
-        pendingResolve = resolve;
-    });
+    return result;
 }
 
 /** Hides the modal and resolves the pending promise. */
@@ -84,11 +78,7 @@ function closeModal(): void {
     if (!dom.unsupportedModal) return;
     dom.unsupportedModal.hidden = true;
     deactivateModal(dom.unsupportedModal);
-    if (pendingResolve) {
-        const fn = pendingResolve;
-        pendingResolve = null;
-        fn();
-    }
+    modalResult.settle(undefined);
 }
 
 /** Wires up event listeners. Called once from app.ts on startup. */

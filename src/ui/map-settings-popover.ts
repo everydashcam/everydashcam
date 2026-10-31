@@ -9,6 +9,7 @@
 
 import { t } from "../i18n/index.js";
 import { dom } from "./dom.js";
+import { createPopover } from "./popover-lifecycle.js";
 import { syncGpsSyncLaunchers } from "./gps-sync-controls.js";
 import {
     getMapLabelScale,
@@ -127,22 +128,20 @@ function fitPopoverToPane(): void {
     pop.style.translate = `0px ${fittedTop - box.top}px`;
 }
 
-function openPopover(): void {
-    renderRows();
-    dom.mapSettingsPopover.hidden = false;
-    dom.mapSettingsPopover.scrollTop = 0;
-    dom.mapSettingsToggle.setAttribute("aria-expanded", "true");
-    fitPopoverToPane();
-}
-
-function closePopover(): void {
-    dom.mapSettingsPopover.hidden = true;
-    dom.mapSettingsToggle.setAttribute("aria-expanded", "false");
-}
+let popover: ReturnType<typeof createPopover>;
 
 /** Wires the gear toggle and the popover's dismiss handlers. Call once at
  *  startup; the popover content itself is (re)rendered on each open. */
 export function initMapSettingsPopover(): void {
+    popover = createPopover({
+        button: dom.mapSettingsToggle,
+        panel: dom.mapSettingsPopover,
+        afterOpen: () => {
+            renderRows();
+            dom.mapSettingsPopover.scrollTop = 0;
+            fitPopoverToPane();
+        },
+    });
     initMapViewControls(dom.mapViewControl, "map");
     subscribeMapProvider((provider) => {
         for (const segment of [dom.mapLabelScaleSegment, dom.mapStreetNamesSegment]) {
@@ -159,26 +158,6 @@ export function initMapSettingsPopover(): void {
     dom.viewer.addEventListener("scroll", fitPopoverToPane, { passive: true });
     dom.mapSettingsToggle.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (dom.mapSettingsPopover.hidden) openPopover();
-        else closePopover();
-    });
-    // Click outside closes. Clicks inside stay open - see renderSegment.
-    document.addEventListener("click", (ev) => {
-        if (dom.mapSettingsPopover.hidden) return;
-        const target = ev.target;
-        if (
-            target instanceof Node &&
-            (dom.mapSettingsPopover.contains(target) || dom.mapSettingsToggle.contains(target))
-        ) {
-            return;
-        }
-        closePopover();
-    });
-    document.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape" && !dom.mapSettingsPopover.hidden) {
-            const hasPopoverFocus = dom.mapSettingsPopover.contains(document.activeElement);
-            closePopover();
-            if (hasPopoverFocus) dom.mapSettingsToggle.focus();
-        }
+        popover.toggle();
     });
 }

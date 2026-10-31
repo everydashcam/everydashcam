@@ -12,6 +12,8 @@ import { createLogger } from "../log.js";
 const log = createLogger("ui:overflow-bar");
 
 /** Describes one "collapsible" toolbar item. */
+import { createPopover } from "./popover-lifecycle.js";
+
 export interface OverflowableItem {
     /** Original element in the bar. On overflow it gets
      *  data-overflow-hidden="true" + CSS hides it. */
@@ -87,51 +89,24 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
     const dropOrder = [...items].sort((a, b) => b.priority - a.priority);
 
     let menuOpen = false;
-    // Lifecycle of a single document-click listener: add it when the menu
-    // opens, remove it on close (or destroy). We used to use { once: true }
-    // + re-attach on a click inside the menu - but if the menu closed
-    // programmatically (Esc, customMenuRow.closeMenu), the pending listener
-    // stayed dangling and fired a no-op on the next click; across many
-    // open/close cycles several of them piled up.
-    let docClickAttached = false;
-
-    function setMenuOpen(open: boolean) {
-        if (open === menuOpen) return;
-        menuOpen = open;
-        overflowMenu.hidden = !open;
-        overflowButton.setAttribute("aria-expanded", String(open));
-        if (open) {
-            document.addEventListener("keydown", onKeyDown);
-            // queueMicrotask - so the same click event that opened the menu
-            // does not fire as an "outside click" right after registration.
-            // (e.stopPropagation on overflowButton also covers it, but defensive.)
-            queueMicrotask(() => {
-                if (menuOpen && !docClickAttached) {
-                    document.addEventListener("click", onDocClick);
-                    docClickAttached = true;
-                }
-            });
-        } else {
-            document.removeEventListener("keydown", onKeyDown);
-            if (docClickAttached) {
-                document.removeEventListener("click", onDocClick);
-                docClickAttached = false;
-            }
-        }
+    const popover = createPopover({
+        button: overflowButton,
+        panel: overflowMenu,
+        show: () => {
+            menuOpen = true;
+            overflowMenu.hidden = false;
+        },
+        hide: () => {
+            menuOpen = false;
+            overflowMenu.hidden = true;
+        },
+    });
+    function setMenuOpen(open: boolean): void {
+        if (open) popover.open();
+        else popover.close();
     }
-
-    function toggleMenu() {
-        setMenuOpen(!menuOpen);
-    }
-
-    function onDocClick(e: MouseEvent) {
-        const target = e.target as Node | null;
-        if (overflowMenu.contains(target) || overflowButton.contains(target)) {
-            // Click inside the menu or button - keep the listener active.
-            // For an item click, onActivate closes the menu itself below.
-            return;
-        }
-        setMenuOpen(false);
+    function toggleMenu(): void {
+        popover.toggle();
     }
 
     function renderMenu(hiddenItems: OverflowableItem[]) {
@@ -375,11 +350,7 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
 
     // Esc closes the menu. We do not keep the listener attached permanently -
     // only while open.
-    function onKeyDown(e: KeyboardEvent) {
-        if (e.key === "Escape" && menuOpen) {
-            setMenuOpen(false);
-        }
-    }
+
     // Initial measure right away - a frame can pass before the first
     // ResizeObserver delivery, and the user would see "all buttons + then
     // collapse".
@@ -405,11 +376,7 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
         destroy: () => {
             ro.disconnect();
             mo.disconnect();
-            document.removeEventListener("keydown", onKeyDown);
-            if (docClickAttached) {
-                document.removeEventListener("click", onDocClick);
-                docClickAttached = false;
-            }
+            popover.close();
         },
     };
 }

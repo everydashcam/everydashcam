@@ -5,6 +5,7 @@
 // No i18n logic here: the banner copy is tagged data-i18n / data-i18n-attr, so
 // applyStaticI18n() (run on every language switch) re-localizes it for free.
 
+import { createPopover } from "./popover-lifecycle.js";
 import { subscribeConnectivity } from "./connectivity.js";
 
 /**
@@ -18,12 +19,21 @@ export function initOfflineBanner(): void {
     const infoBtn = document.getElementById("offline-banner-info");
     const popover = document.getElementById("offline-banner-popover");
 
-    function closePopover(): void {
-        if (!popover || popover.hidden) return;
-        popover.hidden = true;
-        infoBtn?.setAttribute("aria-expanded", "false");
-        infoBtn?.classList.remove("is-open");
-    }
+    const lifecycle =
+        infoBtn && popover
+            ? createPopover({
+                  button: infoBtn,
+                  panel: popover,
+                  show: () => {
+                      popover.hidden = false;
+                      infoBtn.classList.add("is-open");
+                  },
+                  hide: () => {
+                      popover.hidden = true;
+                      infoBtn.classList.remove("is-open");
+                  },
+              })
+            : null;
 
     subscribeConnectivity((offline) => {
         banner.hidden = !offline;
@@ -32,32 +42,11 @@ export function initOfflineBanner(): void {
         document.body.classList.toggle("has-offline-banner", offline);
         // Going back online closes a left-open popover so it can't linger over
         // a now-hidden banner.
-        if (!offline) closePopover();
+        if (!offline) lifecycle?.close();
     });
 
-    if (infoBtn && popover) {
-        infoBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            // hidden is boolean | "until-found"; only an explicit false is visible.
-            const willOpen = popover.hidden !== false;
-            popover.hidden = !willOpen;
-            infoBtn.setAttribute("aria-expanded", willOpen ? "true" : "false");
-            infoBtn.classList.toggle("is-open", willOpen);
-        });
-        // Outside-click + Escape dismiss (mirrors the view-menu popover pattern).
-        document.addEventListener("click", (e) => {
-            if (popover.hidden) return;
-            const target = e.target;
-            if (!(target instanceof Element)) return;
-            if (target.closest("#offline-banner-popover") || target.closest("#offline-banner-info")) return;
-            closePopover();
-        });
-        document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape" && !popover.hidden) {
-                e.preventDefault();
-                closePopover();
-                infoBtn.focus();
-            }
-        });
-    }
+    infoBtn?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        lifecycle?.toggle();
+    });
 }

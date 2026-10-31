@@ -12,11 +12,15 @@
 // modal becomes visible, and deactivateModal(el) right after it is hidden.
 // onClose handles Escape; a busy dialog may keep working instead of closing.
 
+import { tabbable } from "tabbable";
+import { isolateBackground } from "./inert-background.js";
+import { closeActivePopover } from "./popover-lifecycle.js";
+
 interface ModalEntry {
     el: HTMLElement;
     layer: number;
     onClose: () => void;
-    savedFocus: HTMLElement | null;
+    savedFocus: HTMLElement | SVGElement | null;
     /** Original position before joining the shared modal host, restored on close. */
     home: { parent: Node; next: Node | null } | null;
 }
@@ -28,24 +32,16 @@ interface ModalEntry {
 const stack: ModalEntry[] = [];
 let keydownBound = false;
 
-const FOCUSABLE_SELECTOR = [
-    "a[href]",
-    "button:not([disabled])",
-    "input:not([disabled])",
-    "select:not([disabled])",
-    "textarea:not([disabled])",
-    '[tabindex]:not([tabindex="-1"])',
-].join(",");
+let releaseBackground: (() => void) | null = null;
 
-export function focusableWithin(el: HTMLElement): HTMLElement[] {
-    return Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-        // `aria-hidden` alone does not remove descendants from the browser's
-        // tab order. Decorative widgets pair it with `inert`; excluding both
-        // here also keeps them from becoming the trap's false first/last item.
-        (n) =>
-            n.closest('[aria-hidden="true"], [inert]') === null &&
-            (n.offsetParent !== null || n === document.activeElement),
-    );
+export function focusableWithin(el: HTMLElement): (HTMLElement | SVGElement)[] {
+    return tabbable(el);
+}
+
+function syncModalBackground(): void {
+    releaseBackground?.();
+    const top = stack.at(-1);
+    releaseBackground = top ? isolateBackground(top.el) : null;
 }
 
 /** True while at least one modal is tracked (open). Feature-level global
@@ -81,7 +77,7 @@ function onKeydown(ev: KeyboardEvent): void {
     }
     const first = focusable[0]!;
     const last = focusable[focusable.length - 1]!;
-    const active = document.activeElement as HTMLElement | null;
+    const active = document.activeElement;
     if (ev.shiftKey) {
         if (active === first || !top.el.contains(active)) {
             ev.preventDefault();
@@ -110,10 +106,19 @@ export function activateModal(el: HTMLElement, opts: { onClose: () => void; init
         document.addEventListener("keydown", onKeydown, true);
         document.addEventListener("fullscreenchange", syncModalParents);
         document.addEventListener("playerexpansionchange", syncModalParents);
+        const children = new MutationObserver((records) => {
+            const top = stack.at(-1);
+            if (top && records.some((record) => record.target instanceof Element && record.target.contains(top.el))) {
+                syncModalBackground();
+            }
+        });
+        children.observe(document.body, { childList: true, subtree: true });
         keydownBound = true;
     }
 
-    const savedFocus = (document.activeElement as HTMLElement) ?? null;
+    closeActivePopover();
+    const focused = document.activeElement;
+    const savedFocus = focused instanceof HTMLElement || focused instanceof SVGElement ? focused : null;
     if (stack.length === 0) document.body.style.overflow = "hidden";
     const home = adoptIntoModalHost(el);
     const entry: ModalEntry = {
@@ -123,6 +128,10 @@ export function activateModal(el: HTMLElement, opts: { onClose: () => void; init
         savedFocus,
         home,
     };
+    // Release the previous foreground's isolation before inspecting a dialog
+    // that may itself currently be inert in the background.
+    releaseBackground?.();
+    releaseBackground = null;
     const target = opts.initialFocus ?? focusableWithin(el)[0] ?? el;
     const foregroundIndex = stack.findIndex((other) => other.layer > entry.layer);
     if (foregroundIndex !== -1) {
@@ -132,9 +141,11 @@ export function activateModal(el: HTMLElement, opts: { onClose: () => void; init
         entry.savedFocus = foreground.savedFocus;
         foreground.savedFocus = target;
         stack.splice(foregroundIndex, 0, entry);
+        syncModalBackground();
         return;
     }
     stack.push(entry);
+    syncModalBackground();
 
     // preventScroll: several modals put initialFocus on a "Close" button in
     // the card's footer (settings, unsupported-formats). A plain focus()
@@ -177,6 +188,7 @@ function syncModalParents(): void {
         // leaving fullscreen, even if the original markup orders roots otherwise.
         entry.home = adoptIntoModalHost(entry.el);
     }
+    syncModalBackground();
     if (focused instanceof HTMLElement && stack.at(-1)?.el.contains(focused)) {
         focused.focus({ preventScroll: true });
     }
@@ -227,5 +239,6 @@ export function deactivateModal(el: HTMLElement): void {
     // Back to its own place in the document before anything else looks for it
     // there (a later open outside fullscreen, a querySelector on the layout).
     if (entry) restoreModalHome(entry);
+    syncModalBackground();
     if (wasTopmost) entry?.savedFocus?.focus?.();
 }
