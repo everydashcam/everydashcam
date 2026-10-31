@@ -165,7 +165,7 @@ function findAllHtml(dir: string, out: string[] = []): string[] {
 const META_TAG_RE = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/;
 
 describe("meta CSP in built HTML (META_CSP flavor)", () => {
-    const metaOn = Boolean(process.env.META_CSP);
+    const metaOn = process.env.META_CSP === "1";
 
     itIf("recovery always keeps its isolated meta policy before loading resources", () => {
         const html = readFileSync(RECOVERY_HTML, "utf-8");

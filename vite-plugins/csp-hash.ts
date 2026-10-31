@@ -97,8 +97,7 @@ export function metaCspFromHeaderPolicy(headerPolicy: string, options: MetaCspOp
                 .split(/\s+/)
                 .filter(
                     (token) =>
-                        token !== "https://static.cloudflareinsights.com" &&
-                        token !== "https://cloudflareinsights.com",
+                        token !== "https://static.cloudflareinsights.com" && token !== "https://cloudflareinsights.com",
                 )
                 .join(" ");
         });
@@ -173,7 +172,7 @@ export function cspHashPlugin(options: CspHashPluginOptions = {}): Plugin {
                 );
             writeFileSync(headersPath, updated);
 
-            if (!(options.metaCsp ?? Boolean(process.env.META_CSP))) return;
+            if (!(options.metaCsp ?? process.env.META_CSP === "1")) return;
 
             const headerLine = CSP_HEADER_LINE_RE.exec(updated);
             if (!headerLine?.[1]) {
