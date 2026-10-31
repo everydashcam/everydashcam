@@ -392,12 +392,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
 
     const newlyBuiltCandidates: VideoCandidate[] = [];
     for (const d of derived) {
-        const appliedExtractors: string[] = [];
         const fileKey = vendorFileKey(d.cf.file);
-        const fromLog = ctx.logExtractorByFileKey.get(fileKey);
-        if (fromLog) appliedExtractors.push(fromLog);
-        const fromSidecar = ctx.sidecarExtractorByFileKey.get(fileKey);
-        if (fromSidecar) appliedExtractors.push(fromSidecar);
         const candidate = buildProvisionalCandidate({
             file: d.cf.file,
             fingerprint: d.fingerprint,
@@ -406,7 +401,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
             cameraTzSec: ctx.tzByFingerprint.get(d.fingerprint)?.filenameTzSec ?? null,
             durationSec: provisionalDuration.get(d.fingerprint) ?? NOMINAL_DERIVE_DURATION_SEC,
             records: d.records,
-            appliedExtractors,
+            appliedExtractors: [],
             classifierFields: d.classifierFields,
         });
         const writeBlockLease = ctx.cacheWriteBlockLeaseByFileKey.get(fileKey);
@@ -423,8 +418,16 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
         return;
     }
 
-    // A newly added GPS log can belong to carried-over recordings, so attachment
-    // always covers the complete candidate pool.
+    // A newly added GPS log can belong to carried-over recordings, so records
+    // and extractor attribution both cover the complete candidate pool.
+    for (const candidate of ctx.allCandidates) {
+        const key = vendorFileKey(candidate);
+        for (const extractors of [ctx.logExtractorByFileKey, ctx.sidecarExtractorByFileKey]) {
+            const extractor = extractors.get(key);
+            if (extractor && !candidate.appliedExtractors.includes(extractor))
+                candidate.appliedExtractors.push(extractor);
+        }
+    }
     if (state.gpsLog) {
         attachRecordsToCandidates(state.gpsLog, ctx.allCandidates, ctx.videoAssociation);
     }

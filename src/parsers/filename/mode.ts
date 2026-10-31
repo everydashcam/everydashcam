@@ -3,6 +3,7 @@
 // Format-shaped matches outrank unscoped folder heuristics.
 
 import type { RecordingMode, VendorFile } from "../types.js";
+import { matchDailyCsvChannelPath } from "../internal/daily-csv-path.js";
 import {
     matchEaceChannelFolder,
     RX_360_CARDVR_REC_PATH,
@@ -28,6 +29,8 @@ import {
     RX_FITCAMX_PATH_NORMAL,
     RX_FORD,
     RX_HPIM,
+    RX_GRMN_SEQUENCE,
+    RX_GRMN_MODE_PATH,
     RX_IBOX,
     RX_IBOX_PATH_EVENT,
     RX_IBOX_PATH_PARKING,
@@ -189,10 +192,14 @@ function timestampFolderMode(file: VendorFile): RecordingMode | null {
 const ddpaiMode: FilenameModeTechnique = {
     id: "ddpai-mode",
     extract(file: VendorFile): RecordingMode | null {
+        const daily = matchDailyCsvChannelPath(file.relativePath);
+        if (daily) return daily.mode;
         if (RX_DDPAI_TIMELAPSE.test(file.file.name)) return "parking";
         const ev = file.file.name.match(RX_DDPAI_EVENT);
         if (ev) return ev[3]!.toUpperCase() === "X" ? "parking" : "event";
-        if (RX_DDPAI_NORMAL.test(file.file.name)) return timestampFolderMode(file) ?? "normal";
+        if (RX_DDPAI_NORMAL.test(file.file.name)) {
+            return timestampFolderMode(file) ?? "normal";
+        }
         return null;
     },
 };
@@ -492,6 +499,25 @@ const wolfboxMode: FilenameModeTechnique = {
 };
 
 export const FILENAME_MODE: readonly FilenameModeTechnique[] = [
+    {
+        id: "grmn-mode",
+        extract(file) {
+            if (!RX_GRMN_SEQUENCE.test(file.file.name)) return null;
+            switch (file.relativePath.match(RX_GRMN_MODE_PATH)?.[2]?.toLowerCase()) {
+                case "event":
+                    return "event";
+                case "saved":
+                    return "manual";
+                case "parkm":
+                    return "parking";
+                case "tlpse":
+                case "unsvd":
+                    return "normal";
+                default:
+                    return null;
+            }
+        },
+    },
     // Keep exact filename families first for stable diagnostics. The unscoped
     // path branches below are marked heuristic, so they remain useful for
     // renamed files without shadowing a later exact filename.

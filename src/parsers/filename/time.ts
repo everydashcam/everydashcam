@@ -24,6 +24,7 @@ import {
     RX_FITCAMX,
     RX_FORD,
     RX_GENERIC_DATETIME,
+    RX_HMS_CHANNEL_MODE,
     RX_IBOX,
     RX_JUSCAR,
     RX_LIGOGPS_TRAILER_TS,
@@ -381,6 +382,14 @@ const fordTime: FilenameTimeTechnique = {
     },
 };
 
+const hmsChannelModeTime: FilenameTimeTechnique = {
+    id: "hms-channel-mode-time",
+    extract(file: VendorFile): Date | null {
+        const m = file.file.name.match(RX_HMS_CHANNEL_MODE);
+        return m ? ymdHmsFromSplit(m[1]!, `${m[2]}${m[3]}${m[4]}`) : null;
+    },
+};
+
 const genericDatetimeTime: FilenameTimeTechnique = {
     id: "generic-datetime",
     extract(file: VendorFile): Date | null {
@@ -436,5 +445,6 @@ export const FILENAME_TIME: readonly FilenameTimeTechnique[] = [
     wolfboxTime,
     teslaTime,
     fordTime,
+    hmsChannelModeTime,
     genericDatetimeTime,
 ];

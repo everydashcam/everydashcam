@@ -10,7 +10,7 @@ export function hasMeasuredSpeed(sample: SpeedSample): boolean {
 }
 
 export function isSameTrackSegment(a: GpsRecord, b: GpsRecord): boolean {
-    return a.trackSegment === b.trackSegment;
+    return a.trackSegment === b.trackSegment && a.trackSegmentSource === b.trackSegmentSource;
 }
 
 export function interpolateSpeed(a: SpeedSample, b: SpeedSample, fraction: number): SpeedSample {

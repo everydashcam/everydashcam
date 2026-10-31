@@ -119,7 +119,20 @@ export const RX_DDPAI_EVENT = /^G_(\d{14})_(\d{2,5})_([LX])\.mp4$/i;
 export const RX_DDPAI_TIMESTAMP_TOKEN = /(\d{14})/;
 
 // A separator belongs to the channel token; a bare trailing separator is invalid.
-export const RX_E_ACE = /^(\d{8})_(\d{6})(?:[_-]?([A-Z]))?\.mp4$/i;
+// The MOV spelling is used by Type S, with the same timestamp/channel language.
+export const RX_E_ACE = /^(\d{8})_(\d{6})(?:[_-]?([A-Z]))?\.(?:mp4|mov)$/i;
+
+// Counter-only Garmin clips carry their wall clock in the container/GPS.
+export const RX_GRMN_SEQUENCE = /^GRMN(\d+)\.mp4$/i;
+// Folder numbering varies by model (for example 101SAVED vs 102SAVED).
+// Consumers also require a GRMN filename before using the mode suffix.
+export const RX_GRMN_MODE_PATH = /(?:^|\/)DCIM\/(\d{3}(EVENT|SAVED|PARKM|TLPSE|UNSVD))\/[^/]+$/i;
+
+// FineVu documents this clock and FO/OR/FR stream tokens in its file browser:
+// https://finevu.co.uk/wp-content/uploads/2023/10/How-to-download-video-footage.pdf
+// FO = front, OR = rear, FR = combined. Other tokens keep their clock without
+// asserting a mount or interpreting the final letter as a recording mode.
+export const RX_HMS_CHANNEL_MODE = /^(\d{8})[-_](\d{2})h(\d{2})m(\d{2})s_([A-Z]{1,4})_([A-Z])\.mp4$/i;
 // Leaf folder of an E-Ace-shaped 3-channel card that splits streams into
 // `<Mode>_<channel word>/` siblings (RedTiger F17: Video_Front/, Video_Inside/,
 // Video_Rear/, with Event_* next to them). Groups: mode stem, channel word.

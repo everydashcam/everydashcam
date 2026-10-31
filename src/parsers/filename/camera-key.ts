@@ -21,6 +21,9 @@
 
 import type { VendorFile } from "../types.js";
 import {
+    RX_GRMN_SEQUENCE,
+    RX_GRMN_MODE_PATH,
+    RX_HMS_CHANNEL_MODE,
     MAI70_MODE_FOLDERS,
     REDTIGER_MODE_FOLDERS,
     matchEaceChannelFolder,
@@ -69,6 +72,7 @@ import {
     matchNovatekSingleFilename,
     stripNovatekLockedFolder,
 } from "./_patterns.js";
+import { matchDailyCsvChannelPath } from "../internal/daily-csv-path.js";
 import type { FilenameCameraKeyTechnique } from "./types.js";
 import { channelFromFolder, matchChannelFolder } from "./channel-folder.js";
 
@@ -268,6 +272,15 @@ const ddpaiCameraKey: FilenameCameraKeyTechnique = {
     id: "ddpai-camera-key",
     extract(file: VendorFile): string | null {
         const name = file.file.name;
+        const daily = matchDailyCsvChannelPath(file.relativePath);
+        if (daily) {
+            // This layout overlaps DDPai. Retain its normal-folder key so an
+            // optional _A rear sibling still pairs, and fold event clips into
+            // the same camera. The digit mask also handles one-second clips.
+            const path = file.relativePath.replaceAll("\\", "/").replace(/101(?=video\/[^/]+$)/i, "100");
+            const dir = strippedParentDir(path, []);
+            return `ddpai|${dir}|${maskName(name.replace(/_[a-z](?=\.mp4$)/i, "").toLowerCase())}`;
+        }
         // Normalize the channel token and extension spelling together.
         const normal = name.match(RX_DDPAI_NORMAL);
         if (normal) {
@@ -298,7 +311,8 @@ const eaceCameraKey: FilenameCameraKeyTechnique = {
         const m = file.file.name.match(RX_E_ACE);
         if (!m) return null;
         // Channel separators and extension case do not identify a camera.
-        const masked = maskName(`${m[1]}_${m[2]}.mp4`);
+        const extension = file.file.name.slice(file.file.name.lastIndexOf(".")).toLowerCase();
+        const masked = maskName(`${m[1]}_${m[2]}${extension}`);
         const ch = m[3];
         // A `<Mode>_<channel word>` leaf keeps only its mode stem: channels
         // converge, while Event clips keep their own key. Unlike
@@ -730,6 +744,28 @@ const datetimeChannelTsCameraKey: FilenameCameraKeyTechnique = {
  * narrower neighbours to keep diagnostics stable.
  */
 export const FILENAME_CAMERA_KEY: readonly FilenameCameraKeyTechnique[] = [
+    {
+        id: "grmn-camera-key",
+        extract(file) {
+            if (!RX_GRMN_SEQUENCE.test(file.file.name)) return null;
+            const modePath = file.relativePath.match(RX_GRMN_MODE_PATH);
+            const dir = strippedParentDir(file.relativePath, modePath ? [modePath[1]!] : []);
+            return `grmn|${dir}|counter`;
+        },
+    },
+    {
+        id: "hms-channel-mode-camera-key",
+        extract(file) {
+            const m = file.file.name.match(RX_HMS_CHANNEL_MODE);
+            if (!m) return null;
+            const dir = strippedParentDir(file.relativePath, []);
+            // Combined-track names retain their token: they are not another
+            // single-lens channel to merge with independently exported clips.
+            const stream = m[5]!.toUpperCase();
+            const token = stream === "FO" || stream === "OR" ? "single" : stream.toLowerCase();
+            return `hms-channel-mode|${dir}|${token}`;
+        },
+    },
     datetimeChannelTsCameraKey,
     mai70CameraKey,
     beferichCameraKey,

@@ -1422,9 +1422,8 @@ describe("timestamp plus channel-letter MP4 techniques", () => {
         "20260101_120000__F.MP4",
         "20260101_120000_NF.MP4",
         "20260101_120000_F.TS",
-        "20260101_120000_F.MOV",
         "20260101_120000_001_F.MP4",
-    ])("leaves %s outside the timestamp plus channel MP4 family", (name) => {
+    ])("leaves %s outside the timestamp plus channel MP4/MOV family", (name) => {
         expect(RX_E_ACE.test(name)).toBe(false);
     });
 

@@ -40,6 +40,7 @@ import { vueroidTxetPrimitive } from "./vueroid-txet.js";
 import { wolfboxGpmdPrimitive } from "./wolfbox-gpmd.js";
 
 import { csv70maiPrimitive } from "./csv-70mai.js";
+import { dailyCsvGpsPrimitive } from "./daily-csv-gps.js";
 import { nmeaTarPrimitive } from "./nmea-tar.js";
 import { sectionedNmeaLogPrimitive } from "./sectioned-nmea-log.js";
 import { threeSixtyGpsJsonlPrimitive } from "./360gps-jsonl.js";
@@ -176,6 +177,7 @@ export const VIDEO_EMBEDDED_PRIMITIVES: readonly Primitive[] = [
 // by basename (GPX, .map, .3gf) live in src/parsers/sidecars/ instead.
 export const LOG_SIDECAR_PRIMITIVES: readonly Primitive[] = [
     csv70maiPrimitive,
+    dailyCsvGpsPrimitive,
     nmeaTarPrimitive,
     sectionedNmeaLogPrimitive,
     threeSixtyGpsJsonlPrimitive,

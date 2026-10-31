@@ -26,8 +26,9 @@
 // No decryption, no unfuzz - the JSON is plaintext.
 //
 // Implemented from foreign source (ExifTool 13.59 LigoGPS.pm:273-281
-// ProcessGKU + 322-398 ProcessLigoJSON, QuickTime.pm:834-847), not validated
-// against a real sample.
+// ProcessGKU + 322-398 ProcessLigoJSON, QuickTime.pm:834-847). Two real Type S
+// S403 clips validate the GKU wrapper and decode; direct LigoJSON remains
+// foreign-source-only. Fixtures: __fixtures__/supported-gps.
 
 import { type GpsRecord, KNOTS_TO_MS, type ParsedRecords, type SkippedLine } from "../types.js";
 import { utcSecondsFromYmdhms } from "./freegps.js";

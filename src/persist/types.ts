@@ -71,6 +71,7 @@ export interface CachedRecordingMetadata {
 export type CachedEmbeddedGpsRecord = Omit<
     GpsRecord,
     | "videoKey"
+    | "trackSegmentSource"
     | "recordingAssociation"
     | "timeAssociation"
     | "externalTrack"

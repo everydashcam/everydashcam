@@ -17,6 +17,8 @@ import {
     RX_70MAI_PATH_MODE,
     RX_70MAI_PREFIX_MODE,
     RX_DDPAI_TIMELAPSE,
+    RX_GRMN_SEQUENCE,
+    RX_GRMN_MODE_PATH,
     matchNovatekNvtMovFilename,
 } from "./_patterns.js";
 import type { VendorFile } from "../types.js";
@@ -47,7 +49,17 @@ const ddpaiTimelapse: FilenameTechnique<boolean> = {
     },
 };
 
-export const FILENAME_TIMELAPSE: readonly FilenameTechnique<boolean>[] = [mai70Timelapse, ddpaiTimelapse];
+export const FILENAME_TIMELAPSE: readonly FilenameTechnique<boolean>[] = [
+    mai70Timelapse,
+    ddpaiTimelapse,
+    {
+        id: "grmn-timelapse",
+        extract(file) {
+            if (!RX_GRMN_SEQUENCE.test(file.file.name)) return null;
+            return file.relativePath.match(RX_GRMN_MODE_PATH)?.[2]?.toLowerCase() === "tlpse" ? true : null;
+        },
+    },
+];
 
 // A missing mode marker alone is ambiguous on NVT-IM MOV cameras: legacy
 // realtime firmware writes the same no-suffix name. This technique therefore

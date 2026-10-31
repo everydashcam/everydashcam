@@ -25,6 +25,9 @@ export interface GpsRecord extends SpeedSample {
     /** Continuity ID within a record collection: source-local when parsed,
      * remapped across files and channels when the trip is assembled. */
     trackSegment?: number;
+    /** Log collection owning trackSegment's local counter. Adjacent daily
+     * files can continue one video while restarting their segment numbering. */
+    trackSegmentSource?: string;
     // Acceleration in g, gravity-removed (dynamic component). At rest = 0,0,0.
     // Formats without an accelerometer (GPX, GPMF, NMEA sidecar, BlackVue
     // legacy) leave zeros; magnitude 0 -> brake-detector ignores.
@@ -36,8 +39,8 @@ export interface GpsRecord extends SpeedSample {
     // GPS is embedded, or filled after recording-start association.
     mp4Filename: string;
     // Internal identity of the concrete video file this record belongs to.
-    // Parsers leave it absent because most formats only store a basename; the
-    // ingest dispatcher fills it while it still knows the source/path.
+    // Most parsers leave it absent; the ingest dispatcher resolves basenames.
+    // Whole-card logs may retain an exact owner supplied in their parse context.
     videoKey?: string;
     // A recording-scoped log may know the exact UTC start of its owning clip
     // without storing that clip's filename. The ingest layer keeps this hint

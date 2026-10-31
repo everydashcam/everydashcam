@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACCEL_SIDECARS, SIDECARS, classifyOneNonVideo } from "../parsers/registry.js";
+import { dailyCsvGpsPrimitive } from "../parsers/primitives/daily-csv-gps.js";
+import { vendorFileKey } from "../vendor-file-key.js";
 import type { VendorFile } from "../parsers/types.js";
-import type { ClassifyBatchRequestData } from "../workers/ingest-protocol.js";
+import type { ClassifyBatchRequestData, ParseLogRequestData } from "../workers/ingest-protocol.js";
 import { makePairedEndpoints, type PairedEndpoints } from "../workers/_protocol/test-helpers.js";
 import { createWorkerServer } from "../workers/_protocol/worker-server.js";
-import { _resetForTests, classifyFilesViaPool } from "./ingest-shim.js";
+import { _resetForTests, classifyFilesViaPool, dispatchParseLogsViaPool } from "./ingest-shim.js";
 
 function file(name: string, content = ""): VendorFile {
     return { file: new File([content], name), relativePath: name };
@@ -47,6 +49,32 @@ beforeEach(() => {
 afterEach(() => {
     _resetForTests();
     vi.unstubAllGlobals();
+});
+
+it("keeps a daily log's preserved card owner across the worker boundary", async () => {
+    installWorkers((pair) => {
+        createWorkerServer(pair.workerEndpoint, {
+            onRequest: async (_type, data) => {
+                const request = data as ParseLogRequestData;
+                return dailyCsvGpsPrimitive.parse(request.file, undefined, undefined, {
+                    knownVideos: request.knownVideos,
+                });
+            },
+        });
+    });
+    const name = "20240112181400_10.MP4";
+    const own = { ...file(name), relativePath: `card-a/DCIM/100video/${name}`, sourceKey: "old-pick" };
+    const other = { ...file(name, "other"), relativePath: `card-b/DCIM/100video/${name}`, sourceKey: "new-pick" };
+    const log = {
+        ...file("20240112.dat", "#\n20240112181400,2512.6,N,1234.5,E,10,2\n"),
+        relativePath: "card-a/gps/20240112.dat",
+        sourceKey: "new-pick",
+    };
+    const classified = await classifyOneNonVideo(log, new Set([name]), SIDECARS, ACCEL_SIDECARS);
+    const result = await dispatchParseLogsViaPool([classified], [own, other]);
+    expect(result.errors).toEqual([]);
+    expect(result.records.map((record) => record.videoKey)).toEqual([vendorFileKey(own)]);
+    expect([...result.extractorByFileKey]).toEqual([[vendorFileKey(own), "daily-csv-gps"]]);
 });
 
 describe("classifyFilesViaPool", () => {

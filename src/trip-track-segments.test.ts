@@ -24,12 +24,52 @@ function source(records: GpsRecord[], channel: Channel = "front", startSeconds =
 }
 
 describe("normalizeTripTrackSegments", () => {
+    it("does not join a gap across log collections with equal segment counters", () => {
+        const input = source([
+            { ...record(0, 0), trackSegmentSource: "first.dat" },
+            { ...record(1, 0), trackSegmentSource: "first.dat" },
+            { ...record(9, 0), trackSegmentSource: "second.dat" },
+            { ...record(10, 0), trackSegmentSource: "second.dat" },
+        ]);
+        const [records] = normalizeTripTrackSegments([input]);
+        expect(records!.map((value) => value.trackSegment)).toEqual([0, 0, 1, 1]);
+        expect(input.records.map((value) => value.trackSegmentSource)).toEqual([
+            "first.dat",
+            "first.dat",
+            "second.dat",
+            "second.dat",
+        ]);
+    });
+
     it("keeps explicit segments within one source disconnected", () => {
         const input = source([record(0, 7), record(1, 7), record(2, 8), record(3, 8)]);
         const [records] = normalizeTripTrackSegments([input]);
         expect(isSameTrackSegment(records![0]!, records![1]!), "first source segment stays connected").toBe(true);
         expect(isSameTrackSegment(records![2]!, records![3]!), "second source segment stays connected").toBe(true);
         expect(isSameTrackSegment(records![1]!, records![2]!), "explicit cut survives normalization").toBe(false);
+    });
+
+    it.each([0, 1])("preserves daily log continuity across adjacent clips with next counter %s", (nextSegment) => {
+        const first = source(
+            [record(0, 0), record(9, 0)].map((value) => ({ ...value, trackSegmentSource: "20240112.dat" })),
+            "front",
+            0,
+            10,
+        );
+        const second = source(
+            [record(10, nextSegment), record(19, nextSegment)].map((value) => ({
+                ...value,
+                trackSegmentSource: "20240112.dat",
+            })),
+            "front",
+            10,
+            20,
+        );
+        const [firstRecords, secondRecords] = normalizeTripTrackSegments([first, second]);
+        expect(
+            isSameTrackSegment(firstRecords![1]!, secondRecords![0]!),
+            "a video boundary cannot erase a restart in their shared log",
+        ).toBe(nextSegment === 0);
     });
 
     it("uses a continuous second channel to cover a first channel's gap", () => {
@@ -96,6 +136,45 @@ describe("normalizeTripTrackSegments", () => {
         expect(
             isSameTrackSegment(frontRecords![1]!, rearRecords![1]!),
             "copies agree on the second source segment",
+        ).toBe(true);
+    });
+
+    it("preserves overlapping restart spans copied from one daily log to event clips", () => {
+        const original = [record(5, 0), record(6, 1), record(8, 0), record(9, 1)].map((value) => ({
+            ...value,
+            trackSegmentSource: "20240112.dat",
+        }));
+        const copied = original.map((value) => ({ ...value, mp4Filename: "event.mp4", videoKey: "event" }));
+        const [loopRecords, eventRecords] = normalizeTripTrackSegments([
+            source(original, "front", 0, 10),
+            source(copied, "front", 5, 15),
+        ]);
+        expect(
+            isSameTrackSegment(loopRecords![0]!, loopRecords![1]!),
+            "a protected copy cannot bridge a restart with an overlapping clock range",
+        ).toBe(false);
+        for (let i = 0; i < original.length; i++) {
+            expect(
+                isSameTrackSegment(loopRecords![i]!, eventRecords![i]!),
+                "copies of the same daily segment retain continuity",
+            ).toBe(true);
+        }
+    });
+
+    it("attaches a daily log singleton to its matching restart span", () => {
+        const original = [record(5, 0), record(6, 1), record(8, 0), record(9, 1)].map((value) => ({
+            ...value,
+            trackSegmentSource: "20240112.dat",
+        }));
+        const copied = [{ ...original[1]!, mp4Filename: "event.mp4", videoKey: "event" }];
+        const [loopRecords, eventRecords] = normalizeTripTrackSegments([
+            source(original, "front", 0, 20),
+            source(copied, "front", 5, 15),
+        ]);
+        expect(isSameTrackSegment(loopRecords![0]!, eventRecords![0]!)).toBe(false);
+        expect(
+            isSameTrackSegment(loopRecords![1]!, eventRecords![0]!),
+            "the first overlapping span from another restart does not hide the matching one",
         ).toBe(true);
     });
 

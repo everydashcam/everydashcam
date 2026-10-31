@@ -23,6 +23,7 @@ import {
     type VideoAssociationIndex,
 } from "../gps-association.js";
 import { createLogger } from "../log.js";
+import { vendorFileKey } from "../vendor-file-key.js";
 import { splitVideosByExtension, type ClassifiedFile } from "../parsers/registry-light.js";
 import type { AccelSample, GpsRecord, SkippedLine, VendorFile } from "../parsers/types.js";
 import { gpxSidecar } from "../parsers/sidecars/gpx.js";
@@ -254,6 +255,7 @@ export async function dispatchParseLogsViaPool(
         sameName.map((video) => ({
             name: video.file.name,
             relativePath: video.relativePath,
+            videoKey: vendorFileKey(videoIndex.canonicalByFileKey.get(vendorFileKey(video)) ?? video),
             ...(video.sourceKey === undefined ? {} : { sourceKey: video.sourceKey }),
         })),
     );

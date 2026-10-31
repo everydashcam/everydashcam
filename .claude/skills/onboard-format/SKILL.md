@@ -30,6 +30,7 @@ Capability-first architecture: there is no "vendor" concept in the code. A new c
 ### Step 1. Identify the format
 
 - Read the filenames in `incoming/`. Try to identify the GPS storage format and filename pattern from names, hex signatures, MP4 metadata (`software`/`encoder` via `ffprobe`).
+- Establish whether names come from the camera, documented export software, or a person who renamed the files. Renamed review clips can validate retained container/GPS bytes, but their descriptive names do not justify filename techniques or source hints. Preserve unknown channel/mode fields when naming evidence is absent.
 - If there are several candidates - ask the user.
 - Fix a `formatId` (short kebab-case slug, by format not by vendor: `freegps`, `gpmf`, `ligogps`, not `viofo`/`gopro`/`carcam`).
 
@@ -38,7 +39,7 @@ Capability-first architecture: there is no "vendor" concept in the code. A new c
 Run ingest on the sample locally, look at `diagnostic.json`:
 
 - **All four classifierMatches fields are filled, appliedExtractors is non-empty, records exist** - the format is fully covered by existing techniques. Done.
-- **Records exist, but some classifierMatches field is null** - a filename technique is missing. Go to Step 7 - add one entry to the relevant `filename/<field>.ts`.
+- **Records exist, but some classifierMatches field is null** - check whether the camera or documented export naming actually supplies that field. Add a filename technique in Step 7 only when that evidence exists; a null field alone is not a support gap.
 - **appliedExtractors is empty or contains only "generic-datetime"** - none of the existing primitives fired. Go to Step 6 - extend an existing primitive or create a new one.
 - **The file was skipped by the pre-filter (logged under `byReason: source:none`)** - the format is declared in `gps-source-hints.ts` as `"none"` because there was no support before. If we're adding it now, update the hint to `"embedded"` (Step 8).
 

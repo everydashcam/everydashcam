@@ -70,7 +70,7 @@ export function dedupRecords(records: GpsRecord[]): GpsRecord[] {
         const clock = r.timeUnsynced
             ? `u|${Number.isFinite(r.relStartSeconds) ? r.relStartSeconds : ""}`
             : r.unixSeconds;
-        const key = `${clock}|${r.lat}|${r.lon}|${owner}|${r.trackSegment ?? ""}`;
+        const key = `${clock}|${r.lat}|${r.lon}|${owner}|${r.trackSegmentSource ?? ""}|${r.trackSegment ?? ""}`;
         const existingIdx = indexByKey.get(key);
         if (existingIdx === undefined) {
             indexByKey.set(key, out.length);
@@ -135,7 +135,7 @@ export function thinDenseRecords(records: GpsRecord[]): GpsRecord[] {
         } else {
             bucketKey = String(Math.floor(r.unixSeconds * GPS_THIN_HZ));
         }
-        const key = `${bucketKey}|${recordOwnerKey(r)}|${r.trackSegment ?? ""}`;
+        const key = `${bucketKey}|${recordOwnerKey(r)}|${r.trackSegmentSource ?? ""}|${r.trackSegment ?? ""}`;
         const existingIdx = indexByKey.get(key);
         if (existingIdx === undefined) {
             indexByKey.set(key, out.length);
@@ -374,7 +374,7 @@ function freezeStationaryBearingsByOwner(records: GpsRecord[]): void {
         return;
     }
     const bearingScope = (record: GpsRecord): string =>
-        JSON.stringify([recordOwnerKey(record), record.trackSegment ?? null]);
+        JSON.stringify([recordOwnerKey(record), record.trackSegmentSource ?? null, record.trackSegment ?? null]);
     const firstOwner = bearingScope(records[0]!);
     if (records.every((record) => bearingScope(record) === firstOwner)) {
         freezeStationaryBearings(records);

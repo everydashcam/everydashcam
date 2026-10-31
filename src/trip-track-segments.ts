@@ -10,6 +10,8 @@ export interface TripGpsSource {
 
 interface SourceSegment {
     source: TripGpsSource | string;
+    trackSegmentSource?: string;
+    trackSegment?: number;
     start: number;
     end: number;
     hasFix: boolean;
@@ -27,7 +29,18 @@ function component(segment: SourceSegment): SourceSegment {
     return root;
 }
 
+function isSharedLogCut(a: SourceSegment, b: SourceSegment): boolean {
+    return (
+        a.trackSegmentSource !== undefined &&
+        a.trackSegmentSource === b.trackSegmentSource &&
+        a.trackSegment !== b.trackSegment
+    );
+}
+
 function join(a: SourceSegment, b: SourceSegment): void {
+    // Overlapping event copies and adjacent clips from one daily log are not
+    // independent evidence of continuity across its explicit restart cuts.
+    if (isSharedLogCut(a, b)) return;
     const first = component(a);
     const second = component(b);
     if (first !== second) second.parent = first;
@@ -45,6 +58,8 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
     const sourceSegments = sources.map((source) => {
         let fixRun = 0;
         let previousHasFix: boolean | undefined;
+        let previousRecord: GpsRecord | undefined;
+        let previousSegment: SourceSegment | undefined;
         return source.records.map((record) => {
             const hasFix = isValidGpsFix(record);
             if (previousHasFix !== undefined && previousHasFix !== hasFix) fixRun++;
@@ -55,11 +70,13 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
                 segments = new Map();
                 bySource.set(identity, segments);
             }
-            const key = `${record.trackSegment ?? ""}|${fixRun}`;
+            const key = JSON.stringify([record.trackSegmentSource, record.trackSegment, fixRun]);
             let segment = segments.get(key);
             if (!segment) {
                 segment = {
                     source: identity,
+                    trackSegmentSource: record.trackSegmentSource,
+                    trackSegment: record.trackSegment,
                     start: record.unixSeconds,
                     end: record.unixSeconds,
                     hasFix,
@@ -69,6 +86,22 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
             }
             segment.start = Math.min(segment.start, record.unixSeconds);
             segment.end = Math.max(segment.end, record.unixSeconds);
+            // A daily log rollover can occur inside one video. Scope counters
+            // by collection, then join only consecutive fixes across files;
+            // explicit restart boundaries within either file stay separate.
+            if (
+                previousRecord?.trackSegmentSource !== undefined &&
+                record.trackSegmentSource !== undefined &&
+                previousRecord.trackSegmentSource !== record.trackSegmentSource &&
+                previousSegment?.hasFix &&
+                hasFix &&
+                !record.externalTrackKey &&
+                record.unixSeconds > previousRecord.unixSeconds &&
+                record.unixSeconds - previousRecord.unixSeconds <= GPS_POSITION_TOLERANCE_SEC
+            )
+                join(previousSegment, segment);
+            previousRecord = record;
+            previousSegment = segment;
             return segment;
         });
     });
@@ -97,7 +130,7 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
             active.push(spans[spanIndex++]!);
         }
         active = active.filter((other) => other.end >= segment.start);
-        const covered = active.find((other) => other.source !== segment.source);
+        const covered = active.find((other) => other.source !== segment.source && !isSharedLogCut(other, segment));
         if (covered) join(covered, segment);
     }
 
@@ -134,7 +167,8 @@ export function normalizeTripTrackSegments(sources: readonly TripGpsSource[]): r
                 id = ids.size;
                 ids.set(root, id);
             }
-            return { ...record, trackSegment: id };
+            const { trackSegmentSource: _source, ...normalized } = record;
+            return { ...normalized, trackSegment: id };
         }),
     );
 }

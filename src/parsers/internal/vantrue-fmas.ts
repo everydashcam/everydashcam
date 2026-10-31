@@ -6,8 +6,9 @@
 // field offsets below are relative to that magic. Implemented from foreign
 // source (ExifTool 13.59 QuickTimeStream.pl ProcessFMAS:3580-3611, dispatch
 // condition at :196-201; cross-checked against minusbrain/vantrue2gpx
-// businesslogic.py:37-89), NOT validated against a real sample - the
-// extractor+sample+tests hard rule was explicitly waived for this batch.
+// businesslogic.py:37-89). Three real N2S clips validate the 276-byte carrier
+// and empty-status handling only; all have no GPS fix. Positive fields and
+// the speed-unit conflict still rely on the documented foreign-source waiver.
 //
 // Magic-relative layout (magic sits at sample+0x48 in every known record;
 // ExifTool's unpack 'x96vCCCCCCx16AAACCCvCCvvv' at QuickTimeStream.pl:3597

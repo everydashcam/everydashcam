@@ -14,6 +14,7 @@
 //     Vantrue A/B/C where B=cabin) -> not confident (UI shows "Channel N").
 
 import type { Channel, VendorFile } from "../types.js";
+import { matchDailyCsvVideoPath } from "../internal/daily-csv-path.js";
 import {
     RX_DATETIME_CHANNEL_TS,
     RX_70MAI,
@@ -36,6 +37,8 @@ import {
     RX_FITCAMX_PATH_REAR,
     RX_FORD,
     RX_HPIM,
+    RX_GRMN_SEQUENCE,
+    RX_HMS_CHANNEL_MODE,
     RX_IBOX,
     RX_JUSCAR,
     RX_JUSCAR_PATH_FRONT,
@@ -259,6 +262,7 @@ const sstarChnChannel: FilenameChannelTechnique = {
 const ddpaiChannel: FilenameChannelTechnique = {
     id: "ddpai-channel",
     extract(file: VendorFile): ChannelMatch | null {
+        if (matchDailyCsvVideoPath(file.relativePath)) return guess("front");
         // A=rear is a DDPai convention (not a mnemonic), and RX_DDPAI_NORMAL is
         // a generic timestamp pattern, so the mount is a guess. Same for the
         // S/Q timelapse letters and the event default-to-front.
@@ -524,6 +528,33 @@ const novatekVantrueChannel: FilenameChannelTechnique = {
     },
 };
 
+const grmnChannel: FilenameChannelTechnique = {
+    id: "grmn-channel",
+    extract(file: VendorFile): ChannelMatch | null {
+        if (!RX_GRMN_SEQUENCE.test(file.file.name)) return null;
+        const folder = matchChannelFolder(file.relativePath);
+        return folder ? sure(folder.channel) : guess("front");
+    },
+};
+
+const hmsChannelModeChannel: FilenameChannelTechnique = {
+    id: "hms-channel-mode-channel",
+    extract(file: VendorFile): ChannelMatch | null {
+        const m = file.file.name.match(RX_HMS_CHANNEL_MODE);
+        if (!m) return null;
+        switch (m[5]!.toUpperCase()) {
+            case "FO":
+                return sure("front");
+            case "OR":
+                return sure("rear");
+            default:
+                // FR is a composite export; unfamiliar tokens do not identify
+                // a single lens either. The clock can still be read separately.
+                return null;
+        }
+    },
+};
+
 const nextbaseChannel: FilenameChannelTechnique = {
     id: "nextbase-channel",
     extract(file: VendorFile): ChannelMatch | null {
@@ -613,6 +644,8 @@ const spelledFolderChannel: FilenameChannelTechnique = {
 };
 
 export const FILENAME_CHANNEL: readonly FilenameChannelTechnique[] = [
+    grmnChannel,
+    hmsChannelModeChannel,
     // Prefer the adjacent spelled-out folder over unscoped ancestor heuristics.
     // The dispatcher still gives every format-specific match priority over it.
     spelledFolderChannel,

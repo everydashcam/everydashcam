@@ -3,6 +3,7 @@
 // frames share a snapped startUtc.
 
 import type { VendorFile } from "../types.js";
+import { matchDailyCsvVideoPath } from "../internal/daily-csv-path.js";
 import {
     RX_70MAI,
     RX_CARCAM,
@@ -12,6 +13,7 @@ import {
     RX_DDPAI_TIMELAPSE,
     RX_FITCAMX_MP4,
     RX_MAH_SEQUENCE,
+    RX_GRMN_SEQUENCE,
     RX_MOV_SEQ_FRI,
     RX_MP4_SEQ_AC,
     RX_NAVITEL,
@@ -74,6 +76,9 @@ const carcamSequence: FilenameSequenceTechnique = {
 const ddpaiSequence: FilenameSequenceTechnique = {
     id: "ddpai-sequence",
     extract(file: VendorFile): number | null {
+        // Flat paths and channel-suffixed names remain ambiguous with DDPai
+        // counters; only the observed daily layout supplies duration evidence.
+        if (matchDailyCsvVideoPath(file.relativePath)) return null;
         const normal = file.file.name.match(RX_DDPAI_NORMAL);
         if (normal) return Number(normal[2]);
         const tl = file.file.name.match(RX_DDPAI_TIMELAPSE);
@@ -208,6 +213,13 @@ const teslaSequence: FilenameSequenceTechnique = {
 };
 
 export const FILENAME_SEQUENCE: readonly FilenameSequenceTechnique[] = [
+    {
+        id: "grmn-sequence",
+        extract: (file) => {
+            const match = file.file.name.match(RX_GRMN_SEQUENCE);
+            return match ? safeSequence(match[1]!) : null;
+        },
+    },
     mai70Sequence,
     carcamSequence,
     recSingleSequence,

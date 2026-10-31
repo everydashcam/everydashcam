@@ -13,7 +13,7 @@
 //     a short prefix and checks the signature.
 //     Sidecars driven by "filename A is paired with filename B" stay in
 //     src/parsers/sidecars/ via SidecarHandler - those need knownVideos for
-//     matching, Primitive has no such knowledge.
+//     matching. Whole-card primitives receive the selected videos in context.
 //
 // Firmware quirks (70mai 8h-bias, Y-up accel) live INSIDE the extractor -
 // one format, one spec plus quirks, no separate registries.
@@ -25,6 +25,9 @@ export interface PrimitiveVideoRef {
     name: string;
     relativePath: string;
     sourceKey?: string;
+    // Opaque canonical owner supplied by ingest. Preserve it when a parser
+    // resolves a card/path so later basename association cannot choose again.
+    videoKey?: string;
 }
 
 export interface PrimitiveParseContext {

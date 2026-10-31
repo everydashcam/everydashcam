@@ -17,6 +17,7 @@ function cacheKeyOf(file: ClassifiedFile): string {
 function toCachedRecord(record: GpsRecord): CachedEmbeddedGpsRecord {
     const {
         videoKey: _videoKey,
+        trackSegmentSource: _trackSegmentSource,
         recordingAssociation: _recordingAssociation,
         timeAssociation: _timeAssociation,
         externalTrack: _externalTrack,

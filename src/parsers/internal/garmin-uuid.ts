@@ -6,10 +6,11 @@
 // back-to-back 20-byte big-endian records until the end of the box.
 //
 // Implemented from foreign source (ExifTool 13.59, QuickTimeStream.pl
-// ProcessGarminGPS:3514-3543), not validated against a real sample. The
-// 16-byte usertype is an exact signature, so claiming a foreign format is
-// effectively impossible. ExifTool notes the DriveAssist 50 uses a completely
-// different (unsupported) format - the UUID gate naturally excludes it.
+// ProcessGarminGPS:3514-3543), with a real Dash Cam 57 regression fixture
+// in __fixtures__/supported-gps. DriveAssist 51 model attribution remains
+// upstream evidence. The exact 16-byte usertype prevents foreign claims.
+// ExifTool notes the DriveAssist 50 uses a completely different (unsupported)
+// format - the UUID gate naturally excludes it.
 
 import { type GpsRecord, MPH_TO_MS, type ParsedRecords, type SkippedLine } from "../types.js";
 import type { Mp4Index } from "./mp4-index.js";

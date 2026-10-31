@@ -9,7 +9,8 @@
 // record shape - those files keep routing through the chunk path untouched).
 //
 // Implemented from foreign source (ExifTool 13.59 LigoGPS.pm:273-281,
-// 322-398 + QuickTime.pm:834-847), not validated against a real sample.
+// 322-398 + QuickTime.pm:834-847). The GKU carrier has real Type S S403
+// fixtures; direct LigoJSON remains foreign-source-only.
 
 import {
     gkuJsonStart,
