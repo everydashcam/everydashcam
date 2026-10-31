@@ -1,7 +1,8 @@
 // Loader for the onnxruntime-web runtime the detectors run on. Two builds:
 //
 // - "wasm": the plain WASM EP - works everywhere, the floor of performance.
-//   Both builds run single-threaded; see the numThreads note in loadOrt.
+//   Both builds are multithreaded where the page is cross-origin isolated;
+//   see threadCount.
 // - "webgpu": ort's WebGPU EP (the asyncify wasm build), used by the plate
 //   and face detectors to keep automatic detection within the pass budget.
 //
@@ -41,6 +42,19 @@ export async function runOrtSession(
 
 const cached = new Map<string, Promise<OrtModule>>();
 
+/** WASM threads need SharedArrayBuffer, which only a cross-origin isolated
+ * context has; elsewhere ORT runs on this worker alone. WebKit can report
+ * isolation without exposing SharedArrayBuffer, and ORT then warns before it
+ * falls back, so both are checked. Each thread is a module worker that loads
+ * this runtime's own build chunk, which vite-plugins/ort-thread-chunks.ts keeps
+ * free of imports. Half the cores, capped at four, leaves the rest to the video
+ * decoder, the page and other workers, and every runtime instance starts its
+ * own pool. */
+function threadCount(): number {
+    if (!globalThis.crossOriginIsolated || typeof SharedArrayBuffer === "undefined") return 1;
+    return Math.min(4, Math.max(1, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+}
+
 /** Shares assembly between concurrent session requests, but lets a failed
  * download retry. The manifest pairs each module with its exact binary. */
 async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModule> {
@@ -51,16 +65,7 @@ async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModul
         const module = (
             runtime === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")
         ) as OrtModule;
-        // TODO: enable threads when ORT can start its own thread entry. The
-        // hosted app is cross-origin isolated, but Emscripten starts each
-        // thread as `new Worker(import.meta.url, { type: "module" })`. Vite
-        // builds this worker as one IIFE with ORT inlined and replaces
-        // import.meta.url with self.location.href, so a thread would boot the
-        // whole tracker worker. ORT's thread entry sits behind the inlined
-        // dynamic import and never runs, the load handshake never completes,
-        // and initialization stays pending. Either ES-format workers or a
-        // separately served ORT module could fix it; this needs a build decision.
-        module.env.wasm.numThreads = 1;
+        module.env.wasm.numThreads = threadCount();
         // Official bundled ESM contains the matching glue. A URL override would
         // force ORT back to an independently fetched module.
         module.env.wasm.wasmBinary = await loadAssetParts(assets.wasm.parts);
@@ -89,8 +94,9 @@ export async function createOrtSession(
         );
         if (!model) throw new Error("model is absent from the build manifest");
         const session = await ort.InferenceSession.create(await loadAssetParts([model]), options);
-        // The single-threaded runtime is initialized and no longer needs its source
-        // bytes. Emscripten retains aliases to wasmBinary, so clearing env alone
+        // The runtime is initialized and no longer needs its source bytes: the
+        // glue hands threads, including ones it starts later, the compiled
+        // module. Emscripten retains aliases to wasmBinary, so clearing env alone
         // cannot free them. Detach the backing store without retaining a new owner.
         const binary = ort.env.wasm.wasmBinary;
         if (binary instanceof Uint8Array && binary.buffer instanceof ArrayBuffer && binary.byteLength > 0) {

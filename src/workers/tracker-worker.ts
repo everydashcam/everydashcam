@@ -65,8 +65,8 @@ import { createTypedWorkerServer, type WorkerScopeEndpoint } from "./_protocol/w
 
 declare const self: WorkerScopeEndpoint;
 
-/** Manual Follow analysis rate. Inference (the pass's dominant cost - single-thread
- *  WASM, ~95% of the work) runs only ~this many times per second, NOT on every
+/** Manual Follow analysis rate. Inference (the pass's dominant cost, on the WASM
+ *  runtime) runs only ~this many times per second, NOT on every
  *  decoded frame: a plate/face moves little between 15 fps steps, so this roughly
  *  halves-to-thirds the pass at little quality cost. Decode still advances at the
  *  clip's native rate (cheap, 7-36x realtime); we just skip most inferences. The

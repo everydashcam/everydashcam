@@ -1,5 +1,5 @@
-// VitTrack single-object tracker on onnxruntime-web (WASM EP, single thread; the
-// build is chosen by the caller via createOrtSession - see VitTrackerSession.create).
+// VitTrack single-object tracker on onnxruntime-web (WASM EP; the build and its
+// thread count come from createOrtSession - see VitTrackerSession.create).
 //
 // The ORT session is stateless (template is passed on every run - see the
 // contract note below), so ONE VitTrackerSession can drive MANY VitTrack
