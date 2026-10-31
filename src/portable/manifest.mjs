@@ -1,8 +1,9 @@
+import { MAX_HOSTED_ASSET_BYTES } from "../hosting-limits.mjs";
 import { isReleaseTag, legacyPortableFilename, portableFilename } from "./release-tags.mjs";
 
 export const PORTABLE_PRIMARY_ORIGIN = "https://everydashcam.app";
 export const PORTABLE_UPDATE_URL = `${PORTABLE_PRIMARY_ORIGIN}/downloads/portable/latest.json`;
-export const PORTABLE_MAX_BYTES = 25 * 1024 * 1024;
+export const PORTABLE_MAX_BYTES = MAX_HOSTED_ASSET_BYTES;
 
 export function portableDownloadPath(locale) {
     return `/downloads/portable/${locale}.html`;

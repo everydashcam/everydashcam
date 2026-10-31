@@ -1,3 +1,4 @@
+import { MAX_HOSTED_ASSET_BYTES } from "../src/hosting-limits.mjs";
 // Workbox owns precache collection and injection. This adapter supplies the
 // application's shell URLs and integrity metadata after prerendering finishes.
 import { createHash } from "node:crypto";
@@ -15,7 +16,6 @@ export interface PrecacheEntry {
 }
 
 const HTML_REVISION = /<meta name="dc-precache-revision" content="([0-9a-f]{16})">/;
-const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 const shellFiles = (segments: readonly string[]) => [
     "index.html",
     ...segments.map((segment) => `${segment}/index.html`),
@@ -76,7 +76,7 @@ function manifestTransform(
 function manifestOptions(distDir: () => string, localeSegments: readonly string[], shouldStampShells = false) {
     return {
         globPatterns: ["assets/**/*.{js,mjs,css}", "styles/**/*.{json,png}", ...shellFiles(localeSegments)],
-        maximumFileSizeToCacheInBytes: MAX_ASSET_BYTES,
+        maximumFileSizeToCacheInBytes: MAX_HOSTED_ASSET_BYTES,
         manifestTransforms: [manifestTransform(distDir, localeSegments, shouldStampShells)],
     };
 }

@@ -1,15 +1,14 @@
+import { matchesArtifactIntegrity } from "./_artifact-integrity.mjs";
+import { MAX_HOSTED_ASSET_BYTES } from "../src/hosting-limits.mjs";
 // Copy the currently published release's data into the next deployment. Never
 // copy its HTML, SW, headers or manifest; rollback uses the same operation.
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { DeploymentAsset, DeploymentAssets } from "../vite-plugins/deployment-assets.ts";
 
-const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
 const MAX_ATTEMPTS = 3;
-const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 function validUrl(url: unknown): url is string {
     return (
         typeof url === "string" &&
@@ -30,7 +29,7 @@ function parseFiles(value: unknown): DeploymentAsset[] {
             seen.has(file.url) ||
             !Number.isSafeInteger(file.bytes) ||
             file.bytes <= 0 ||
-            file.bytes > MAX_BYTES ||
+            file.bytes > MAX_HOSTED_ASSET_BYTES ||
             typeof file.sha256 !== "string" ||
             !/^[a-f0-9]{64}$/.test(file.sha256)
         ) {
@@ -157,7 +156,7 @@ export async function retainDeploymentAssets(root: string, origin: string): Prom
     const currentFiles = new Map(current.files.map((file) => [file.url, file]));
     for (const file of current.files) {
         const bytes = readFileSync(resolve(root, file.url.slice(1)));
-        if (bytes.length !== file.bytes || digest(bytes) !== file.sha256) {
+        if (!matchesArtifactIntegrity(bytes, file)) {
             throw new Error(`current asset integrity mismatch: ${file.url}`);
         }
     }
@@ -189,12 +188,12 @@ export async function retainDeploymentAssets(root: string, origin: string): Prom
         const path = resolve(root, file.url.slice(1));
         if (existsSync(path)) {
             const bytes = readFileSync(path);
-            if (bytes.length !== file.bytes || digest(bytes) !== file.sha256) {
+            if (!matchesArtifactIntegrity(bytes, file)) {
                 throw new Error(`immutable asset collision: ${file.url}`);
             }
         } else {
-            const bytes = await download(new URL(file.url, base), MAX_BYTES);
-            if (bytes.length !== file.bytes || digest(bytes) !== file.sha256) {
+            const bytes = await download(new URL(file.url, base), MAX_HOSTED_ASSET_BYTES);
+            if (!matchesArtifactIntegrity(bytes, file)) {
                 throw new Error(`previous asset integrity mismatch: ${file.url}`);
             }
             previousBytes.set(file.url, bytes);

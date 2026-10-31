@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { matchesArtifactIntegrity } from "./_artifact-integrity.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -48,7 +48,7 @@ async function verifyDownloads(expected, origin, allowDevelopment) {
         if (!response.headers.get("x-robots-tag")?.includes("noindex"))
             throw new Error("portable download is indexable");
         const bytes = Buffer.from(await response.arrayBuffer());
-        if (bytes.length !== file.bytes || createHash("sha256").update(bytes).digest("hex") !== file.sha256)
+        if (!matchesArtifactIntegrity(bytes, file))
             throw new Error(`published portable bytes differ from the release: ${file.filename}`);
     }
 }

@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../scripts/_artifact-integrity.mjs";
+import { MAX_HOSTED_ASSET_BYTES } from "../src/hosting-limits.mjs";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
@@ -39,8 +40,8 @@ export function collectDeploymentAssets(
     const files: DeploymentAsset[] = [];
     for (const url of [...new Set(urls)].sort()) {
         const bytes = readFileSync(resolve(root, url.slice(1)));
-        if (bytes.length > 25 * 1024 * 1024) throw new Error(`hosting file limit exceeded: ${url}`);
-        files.push({ url, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") });
+        if (bytes.length > MAX_HOSTED_ASSET_BYTES) throw new Error(`hosting file limit exceeded: ${url}`);
+        files.push({ url, bytes: bytes.length, sha256: sha256Hex(bytes) });
     }
     return { schema: 1, files, publicAssetUrls: publicUrls };
 }

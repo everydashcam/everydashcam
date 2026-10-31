@@ -1,5 +1,5 @@
+import { sha256Hex } from "./_artifact-integrity.mjs";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -72,7 +72,7 @@ for (const { code: locale } of locales) {
         path: `/downloads/portable/${version}/${filename.replace(/\.html$/, "")}`,
         filename,
         bytes: bytes.length,
-        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sha256: sha256Hex(bytes),
     };
     console.log(`portable: ${filename} (${bytes.length} bytes)`);
 }

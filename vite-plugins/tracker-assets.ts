@@ -1,13 +1,13 @@
+import { sha256Hex } from "../scripts/_artifact-integrity.mjs";
+import { MAX_HOSTED_ASSET_BYTES } from "../src/hosting-limits.mjs";
 // Snapshot immutable binary bytes once, before either dev serving or emission.
 // ONNX's official bundled ESM supplies its matching JS glue; only binary data
 // needs separate delivery. Large WASM remains below the Pages 25 MiB file cap.
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, type Stats, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 import type { AssetPart, TrackerAssetManifest } from "../src/tracking/ort-assets.js";
 
-const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 const PART_BYTES = 16 * 1024 * 1024;
 const RUNTIMES = { wasm: "ort-wasm-simd-threaded", webgpu: "ort-wasm-simd-threaded.asyncify" } as const;
 const MODELS = {
@@ -36,12 +36,12 @@ export function computeTrackerAssets(command: "serve" | "build", root = process.
         const stat = statSync(path);
         const bytes = readFileSync(path);
         if (bytes.length === 0) throw new Error(`empty tracker runtime source: ${path}`);
-        sources.set(path, { hash: createHash("sha256").update(bytes).digest("hex"), stat });
+        sources.set(path, { hash: sha256Hex(bytes), stat });
         return bytes;
     };
     const files = new Map<string, Buffer>();
     const part = (path: string, bytes: Buffer): AssetPart => {
-        const sha256 = createHash("sha256").update(bytes).digest("hex");
+        const sha256 = sha256Hex(bytes);
         const url = path.replace(/(\.[^.]+)$/, `.${sha256}$1`);
         files.set(url, bytes);
         return { url, bytes: bytes.length, sha256 };
@@ -52,7 +52,7 @@ export function computeTrackerAssets(command: "serve" | "build", root = process.
         const binary = snapshot(resolve(root, "node_modules/onnxruntime-web/dist", `${name}.wasm`));
         snapshot(resolve(root, "node_modules/onnxruntime-web/dist", `ort.${runtime}.bundle.min.mjs`));
         const parts: AssetPart[] = [];
-        const step = binary.length > MAX_ASSET_BYTES ? PART_BYTES : binary.length;
+        const step = binary.length > MAX_HOSTED_ASSET_BYTES ? PART_BYTES : binary.length;
         for (let offset = 0; offset < binary.length; offset += step) {
             const path = step === binary.length ? `/ort/${name}.wasm` : `/ort/${name}.part-${parts.length}.bin`;
             parts.push(part(path, binary.subarray(offset, offset + step)));
@@ -63,7 +63,7 @@ export function computeTrackerAssets(command: "serve" | "build", root = process.
     for (const key of ["tracker", "plate", "face"] as const) {
         const bytes = readFileSync(resolve(root, "public", MODELS[key]));
         if (bytes.length === 0) throw new Error(`empty tracker model: ${key}`);
-        if (bytes.length > MAX_ASSET_BYTES) throw new Error(`tracker model ${key} exceeds hosting file limit`);
+        if (bytes.length > MAX_HOSTED_ASSET_BYTES) throw new Error(`tracker model ${key} exceeds hosting file limit`);
         models[key] = part(`/${MODELS[key]}`, bytes);
     }
     return {
@@ -77,7 +77,7 @@ export function computeTrackerAssets(command: "serve" | "build", root = process.
                 // Dev requests need only cheap metadata checks until a source
                 // changes. Build emission still verifies the complete bytes.
                 if (command === "serve" && sameSourceVersion(stat, source.stat)) continue;
-                if (createHash("sha256").update(readFileSync(path)).digest("hex") !== source.hash) {
+                if (sha256Hex(readFileSync(path)) !== source.hash) {
                     throw new Error("onnxruntime changed during this build; restart the development server or rebuild");
                 }
                 source.stat = stat;

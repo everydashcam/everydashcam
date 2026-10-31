@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { matchesArtifactIntegrity } from "./_artifact-integrity.mjs";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { parsePortableManifest } from "../src/portable/manifest.mjs";
@@ -12,7 +12,7 @@ export function readPortableArtifacts(manifestPath, allowDevelopment = false, al
     if (!manifest) throw new Error("invalid portable artifact manifest");
     for (const file of Object.values(manifest.files)) {
         const bytes = readFileSync(resolve(dirname(manifestPath), file.filename));
-        if (bytes.length !== file.bytes || createHash("sha256").update(bytes).digest("hex") !== file.sha256) {
+        if (!matchesArtifactIntegrity(bytes, file)) {
             throw new Error(`portable artifact integrity mismatch: ${file.filename}`);
         }
     }

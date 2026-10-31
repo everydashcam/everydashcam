@@ -1,3 +1,4 @@
+import { hostedHtmlFiles } from "../scripts/_build-files.mjs";
 // Computes SHA-256 of the inline <script id="dc-bootstrap"> in
 // dist/index.html and delivers the CSP two ways:
 //
@@ -46,7 +47,7 @@
 // time.
 
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
@@ -119,20 +120,6 @@ export function injectMetaCsp(html: string, policy: string): string {
     return html.slice(0, at) + tag + html.slice(at);
 }
 
-function findHtmlFiles(dir: string, out: string[] = []): string[] {
-    for (const entry of readdirSync(dir)) {
-        // Portable files carry their own final inline-script hashes.
-        if (entry === "downloads") continue;
-        const full = resolve(dir, entry);
-        if (statSync(full).isDirectory()) {
-            findHtmlFiles(full, out);
-        } else if (entry.endsWith(".html")) {
-            out.push(full);
-        }
-    }
-    return out;
-}
-
 export interface CspHashPluginOptions extends MetaCspOptions {
     metaCsp?: boolean;
 }
@@ -179,7 +166,7 @@ export function cspHashPlugin(options: CspHashPluginOptions = {}): Plugin {
                 throw new Error("csp-hash: Content-Security-Policy line not found in dist/_headers");
             }
             const metaPolicy = metaCspFromHeaderPolicy(headerLine[1], options);
-            for (const file of findHtmlFiles(distDir)) {
+            for (const file of hostedHtmlFiles(distDir)) {
                 const pageHtml = readFileSync(file, "utf-8");
                 if (file === resolve(distDir, "migrate/index.html")) {
                     const recoveryPolicy = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(

@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { matchesArtifactIntegrity } from "../scripts/_artifact-integrity.mjs";
+import { hostedHtmlFiles } from "../scripts/_build-files.mjs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Plugin } from "vite";
 import { readPortableArtifacts, stagePortableArtifacts } from "../scripts/_portable-artifacts.mjs";
 import { type PortableManifest, portableDownloadPath } from "../src/portable/manifest.mjs";
@@ -12,7 +13,10 @@ function renderPortableDownload(html: string, manifest: PortableManifest | null,
     return html.replace(DOWNLOAD_ANCHOR, (anchor) => {
         if (!file) return "";
         const size = new Intl.NumberFormat(locale ?? "en", {
-            style: "unit", unit: "megabyte", unitDisplay: "short", maximumFractionDigits: 1,
+            style: "unit",
+            unit: "megabyte",
+            unitDisplay: "short",
+            maximumFractionDigits: 1,
         }).format(file.bytes / 1000000);
         const details = `${manifest?.version} · ${size}`;
         const withTitle = /\stitle="[^"]*"/.test(anchor)
@@ -22,7 +26,10 @@ function renderPortableDownload(html: string, manifest: PortableManifest | null,
             .replace(/\s+data-i18n-attr="title:portable.download.description"/, "")
             .replace(/\s+hidden(?:="[^"]*")?/, "")
             .replace(/\s+download(?:="[^"]*")?/, "")
-            .replace("<a ", `<a href="${portableDownloadPath(locale!)}" download="${file.filename}" data-portable-bytes="${file.bytes}" data-portable-version="${manifest?.version}" `);
+            .replace(
+                "<a ",
+                `<a href="${portableDownloadPath(locale!)}" download="${file.filename}" data-portable-bytes="${file.bytes}" data-portable-version="${manifest?.version}" `,
+            );
     });
 }
 
@@ -36,20 +43,15 @@ export function publishPortableDownloads(
         ? stagePortableArtifacts(resolve(manifestPath), dist, allowCustom, allowDevelopment)
         : null;
     // Process shells and their marketing descendants after prerendering.
-    function updatePages(directory: string, locale?: string): void {
-        for (const entry of readdirSync(directory, { withFileTypes: true })) {
-            if (entry.name === "downloads") continue;
-            const path = join(directory, entry.name);
-            if (entry.isDirectory()) {
-                updatePages(path, locale ?? (/^[a-z]{2}$/.test(entry.name) ? entry.name : undefined));
-            } else if (entry.name.endsWith(".html")) {
-                const html = readFileSync(path, "utf8");
-                const updated = renderPortableDownload(html, manifest, locale);
-                if (html !== updated) writeFileSync(path, updated);
-            }
-        }
+    for (const path of hostedHtmlFiles(dist)) {
+        const locale = relative(dist, path)
+            .split(sep)
+            .slice(0, -1)
+            .find((part) => /^[a-z]{2}$/.test(part));
+        const html = readFileSync(path, "utf8");
+        const updated = renderPortableDownload(html, manifest, locale);
+        if (html !== updated) writeFileSync(path, updated);
     }
-    updatePages(dist);
     if (!manifest) return;
     // Keep one copy of the current binaries. A temporary redirect is not
     // heuristically cached, so saved locale links follow each new deployment.
@@ -64,7 +66,10 @@ export function publishPortableDownloads(
     const headers = join(dist, "_headers");
     // Binary assets retain the dated .html download filename. Pages Analytics
     // checks the uploaded asset type before these response headers apply.
-    writeFileSync(headers, `${readFileSync(headers, "utf8")}\n/downloads/portable/:version/:filename\n  Content-Type: application/octet-stream\n  Content-Disposition: attachment; filename=":filename.html"\n  Cache-Control: public, max-age=31536000, immutable, no-transform\n  X-Robots-Tag: noindex\n\n/downloads/portable/latest.json\n  Content-Type: application/json; charset=utf-8\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n  X-Robots-Tag: noindex\n`);
+    writeFileSync(
+        headers,
+        `${readFileSync(headers, "utf8")}\n/downloads/portable/:version/:filename\n  Content-Type: application/octet-stream\n  Content-Disposition: attachment; filename=":filename.html"\n  Cache-Control: public, max-age=31536000, immutable, no-transform\n  X-Robots-Tag: noindex\n\n/downloads/portable/latest.json\n  Content-Type: application/json; charset=utf-8\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n  X-Robots-Tag: noindex\n`,
+    );
 }
 
 export function portableDownloadsPlugin(options: { allowCustom?: boolean } = {}): Plugin {
@@ -88,7 +93,12 @@ export function portableDownloadsPlugin(options: { allowCustom?: boolean } = {})
             }
             const manifest = developmentManifest;
             const files = new Map(Object.values(manifest?.files ?? {}).map((file) => [file.path, file]));
-            const redirects = new Map(Object.entries(manifest?.files ?? {}).map(([locale, file]) => [portableDownloadPath(locale), file.path]));
+            const redirects = new Map(
+                Object.entries(manifest?.files ?? {}).map(([locale, file]) => [
+                    portableDownloadPath(locale),
+                    file.path,
+                ]),
+            );
             server.middlewares.use((request, response, next) => {
                 const pathname = request.url?.split("?")[0] ?? "";
                 if (!pathname.startsWith("/downloads/portable/")) return next();
@@ -125,7 +135,7 @@ export function portableDownloadsPlugin(options: { allowCustom?: boolean } = {})
                 try {
                     const bytes = readFileSync(resolve(dirname(manifestPath), file.filename));
                     // Rebuilding while Vite runs must never serve bytes under stale metadata.
-                    if (bytes.length !== file.bytes || createHash("sha256").update(bytes).digest("hex") !== file.sha256) {
+                    if (!matchesArtifactIntegrity(bytes, file)) {
                         throw new Error("portable artifact integrity mismatch");
                     }
                     response.setHeader("Content-Type", "application/octet-stream");
