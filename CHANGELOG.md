@@ -7,6 +7,16 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-10-31
+
+- **Fixed:** Fixed app launch and face and license plate detection failures after updates.
+- **Improved:** Improved recording recognition for WonVon, Garmin, and Type S.
+- **New camera support:** Added support for Kaiser Baas R50 GPS files.
+
+## 2026-10-28
+
+- **Fixed:** Fixed navigation to events from trip cards.
+
 ## 2026-10-24
 
 - **Improved:** Improved support for 70mai dashcams.
