@@ -37,6 +37,18 @@ describe("localized date search", () => {
         vi.resetModules();
     });
 
+    it("finds Russian month names both as headings and as parts of dates", async () => {
+        vi.stubGlobal("location", { pathname: "/ru/" });
+        vi.resetModules();
+        const { tripSearchText } = await import("./trip-search.js");
+        const text = tripSearchText(trip(Date.UTC(2026, 9, 31, 18, 30) / 1000, 0, "clip.mp4"));
+        for (const query of ["октябрь", "октябрь 31", "31 октября"]) {
+            expect(matchesTripSearch(text, query), query).toBe(true);
+        }
+        expect(matchesTripSearch(text, "сентябрь")).toBe(false);
+        expect(matchesTripSearch(text, "октябрь 30")).toBe(false);
+    });
+
     it.each([
         ["de", "oktober"],
         ["ja", "10月"],

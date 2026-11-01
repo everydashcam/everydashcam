@@ -13,6 +13,8 @@ import { cachedDateTimeFormat } from "./date-format.js";
 // display clock (timeZone UTC: the shift is already inside the Date).
 const SEARCH_DATE_FORMATS: readonly Intl.DateTimeFormatOptions[] = [
     { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" },
+    // Standalone names can differ from dates: Russian "октябрь" vs "31 октября".
+    { month: "long", timeZone: "UTC" },
     { day: "numeric", month: "short", timeZone: "UTC" },
     { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" },
     { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" },
