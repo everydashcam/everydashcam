@@ -1,8 +1,44 @@
 // Pure math for wheel-zoom and wheel-pan over the trip time axis.
 // Used by both the export slider (selection range) and the main player chart (zoom view).
+// Also owns wheel-event normalization and zoom sensitivity, which the video
+// digital zoom shares so a wheel gesture zooms alike on both surfaces.
 //
 // Zoom-view state is {viewStartPct, viewEndPct} in [0, 1] where 1 = trip.durationSec.
 // All functions are stateless: they take the current state + event and return the new state.
+
+/** Wheel zoom sensitivity: change of the zoom's natural log per normalized
+ *  wheel pixel. One classic wheel notch (100 px in Chromium on Windows) is
+ *  about a 16% zoom step. */
+const WHEEL_ZOOM_LOG_PER_PX = 0.0015;
+
+/** Chromium delivers a trackpad pinch as a ctrl+wheel event with
+ *  deltaY = -100 * ln(scale) (components/input/touchpad_pinch_event_queue.cc),
+ *  so this rate makes the zoom follow the fingers 1:1. */
+const PINCH_WHEEL_LOG_PER_PX = 0.01;
+
+/** Largest zoom change a single wheel event may make (natural log): one
+ *  classic notch, x1.15. Bounds accelerated, page-mode and ctrl+mouse-wheel
+ *  deltas without slowing the classic notch. */
+const MAX_WHEEL_ZOOM_LOG_PER_EVENT = Math.log(1.15);
+
+/**
+ * Scale multiplier for one wheel event over a zoomable surface; above 1 zooms
+ * in. deltaYPx is the vertical delta after normalizeWheelDelta (negative =
+ * wheel up = zoom in). isCtrlWheel marks a ctrl+wheel event, which is how
+ * Chromium reports a trackpad pinch.
+ *
+ * The change is proportional to the delta. High-resolution and free-spinning
+ * wheels and trackpad momentum send dozens of small events per notch or
+ * swipe; a fixed step per event would jump across the whole zoom range in a
+ * fraction of a second. Each event is capped at one classic notch. Returns 1
+ * for a zero or non-finite delta.
+ */
+export function wheelZoomScaleFactor(deltaYPx: number, isCtrlWheel: boolean): number {
+    if (!Number.isFinite(deltaYPx) || deltaYPx === 0) return 1;
+    const rate = isCtrlWheel ? PINCH_WHEEL_LOG_PER_PX : WHEEL_ZOOM_LOG_PER_PX;
+    const logChange = Math.max(-MAX_WHEEL_ZOOM_LOG_PER_EVENT, Math.min(MAX_WHEEL_ZOOM_LOG_PER_EVENT, -deltaYPx * rate));
+    return Math.exp(logChange);
+}
 
 /** Absolute minimum viewport width as a fraction of the trip (~22 s on a 6 h trip). */
 const MIN_VIEW_WIDTH = 0.001;
@@ -101,7 +137,7 @@ export function applyWheelZoom(
     if (wantsZoomIn && viewSpan <= normalMinSpan * (1 + 1e-3)) return null;
 
     const cursorTripPct = view.viewStartPct + cursorRatio * viewSpan;
-    const zoomFactor = Math.exp(deltaY * 0.0015);
+    const zoomFactor = Math.exp(deltaY * WHEEL_ZOOM_LOG_PER_PX);
     let newSpan = viewSpan * zoomFactor;
     newSpan = Math.max(minSpan, Math.min(1, newSpan));
     let newStart = cursorTripPct - cursorRatio * newSpan;

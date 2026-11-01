@@ -31,10 +31,12 @@ import { attachPinchGesture, type PinchGeometry, type PinchGesture } from "./pin
 import { isMobileLayout } from "./media-queries.js";
 import { videoAttachedFile } from "./player-video-src.js";
 import { isFocusLayout, state } from "./state.js";
+import { normalizeWheelDelta, wheelZoomScaleFactor } from "./strip-zoom.js";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
-const ZOOM_WHEEL_FACTOR = 1.15;
+// Below this the zoom badge (one decimal) already reads "1x".
+const ZOOM_OUT_SNAP_TO_MIN = 1.05;
 const DRAG_PIXEL_THRESHOLD = 5;
 
 /** Active pointer-drag on the main video (pan). */
@@ -402,10 +404,15 @@ function handleVideoWheel(e: WheelEvent): void {
 
     e.preventDefault();
     const z = state.videoZoom;
-    const delta = -Math.sign(e.deltaY); // up = zoom in
-    if (delta === 0) return;
-    const factor = delta > 0 ? ZOOM_WHEEL_FACTOR : 1 / ZOOM_WHEEL_FACTOR;
-    const newScale = clamp(z.scale * factor, ZOOM_MIN, ZOOM_MAX);
+    const factor = wheelZoomScaleFactor(normalizeWheelDelta(e).dy, e.ctrlKey);
+    if (factor === 1) return;
+    let newScale = clamp(z.scale * factor, ZOOM_MIN, ZOOM_MAX);
+    // Proportional steps rarely land on exactly 1 when zooming back out, and
+    // float rounding leaves 1.0000000000000002 even after symmetric notches.
+    // Either would keep the minimap and a "1x" badge up, so a zoom-out that
+    // reaches what the badge already shows as 1x ends the zoom. Zoom-in from
+    // 1 is unaffected, so a slow wheel can still start from tiny steps.
+    if (factor < 1 && newScale < ZOOM_OUT_SNAP_TO_MIN) newScale = ZOOM_MIN;
     if (newScale === z.scale) return;
 
     // Anchor in UNTRANSFORMED video-element coordinates. Use the tile rect,

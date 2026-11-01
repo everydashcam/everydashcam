@@ -6,6 +6,7 @@ import {
     computeEffectiveMinViewSpan,
     computeFollowPan,
     resizeZoomViewEdge,
+    wheelZoomScaleFactor,
     type ZoomViewState,
 } from "./strip-zoom.js";
 
@@ -85,6 +86,54 @@ describe("applyWheelZoom", () => {
 
     it("does not zoom farther in from a view below the normal floor", () => {
         expect(applyWheelZoom({ viewStartPct: 0.4, viewEndPct: 0.45 }, 0.5, -240, 10)).toBeNull();
+    });
+});
+
+describe("wheelZoomScaleFactor", () => {
+    const composeEvents = (deltaYPx: number, count: number, isCtrlWheel = false): number => {
+        let scale = 1;
+        for (let i = 0; i < count; i++) scale *= wheelZoomScaleFactor(deltaYPx, isCtrlWheel);
+        return scale;
+    };
+
+    it("zooms one classic wheel notch by one 15% step", () => {
+        expect(wheelZoomScaleFactor(-100, false)).toBeCloseTo(1.15, 6);
+        expect(wheelZoomScaleFactor(100, false)).toBeCloseTo(1 / 1.15, 6);
+    });
+
+    it("zooms high-resolution sub-notch events about as much as one notch in total", () => {
+        // A high-resolution wheel splits one notch into several small events.
+        expect(composeEvents(-12.5, 8)).toBeCloseTo(Math.exp(0.15), 6);
+    });
+
+    it("does not saturate the zoom range from a burst of small events", () => {
+        // A fixed 15% step per event would reach 8x after fifteen events of any size.
+        const scale = composeEvents(-12.5, 15);
+        expect(scale).toBeGreaterThan(1);
+        expect(scale).toBeLessThan(1.5);
+    });
+
+    it("zooms in and out symmetrically for opposite deltas", () => {
+        expect(wheelZoomScaleFactor(-40, false) * wheelZoomScaleFactor(40, false)).toBeCloseTo(1, 12);
+        expect(wheelZoomScaleFactor(-500, false) * wheelZoomScaleFactor(500, false)).toBeCloseTo(1, 12);
+    });
+
+    it("caps a single large event at one notch", () => {
+        expect(wheelZoomScaleFactor(-800, false)).toBeCloseTo(1.15, 6);
+        expect(wheelZoomScaleFactor(-100, true), "ctrl + mouse wheel notch").toBeCloseTo(1.15, 6);
+    });
+
+    it("follows a Chromium trackpad pinch 1:1", () => {
+        // Chromium encodes a pinch update of scale s as deltaY = -100 * ln(s).
+        const pinchDelta = (scale: number) => -100 * Math.log(scale);
+        expect(wheelZoomScaleFactor(pinchDelta(1.05), true)).toBeCloseTo(1.05, 6);
+        expect(wheelZoomScaleFactor(pinchDelta(0.97), true)).toBeCloseTo(0.97, 6);
+    });
+
+    it("returns 1 for zero and non-finite deltas", () => {
+        expect(wheelZoomScaleFactor(0, false)).toBe(1);
+        expect(wheelZoomScaleFactor(Number.NaN, true)).toBe(1);
+        expect(wheelZoomScaleFactor(Number.POSITIVE_INFINITY, false)).toBe(1);
     });
 });
 
