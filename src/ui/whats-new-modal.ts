@@ -10,7 +10,7 @@ import { escapeHtml } from "../escape.js";
 import { getCurrentLang, t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
 import { initChangelogSeen, markChangelogSeen } from "../persist/changelog-seen.js";
-import { formatDate } from "./date-format.js";
+import { formatDate, subscribeDateFormatChange } from "./date-format.js";
 import { activateModal, deactivateModal, isAnyModalOpen, wireBackdropDismiss } from "./modal-helper.js";
 
 import type { ChangelogCategory, ChangelogEntry } from "../changelog/entries.js";
@@ -134,6 +134,9 @@ export function initWhatsNewModal(): void {
     const m = modalEl();
     const btn = document.getElementById("whats-new-btn");
     if (!m || !btn) return;
+    subscribeDateFormatChange(() => {
+        bodyRendered = false;
+    });
     // The first-visit stamp is the storage contract and runs regardless of
     // whether the dot element exists on this page.
     const hasUnseen = initChangelogSeen();

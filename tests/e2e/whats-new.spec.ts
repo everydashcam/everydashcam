@@ -61,4 +61,28 @@ test.describe("what's new panel", () => {
         await expect(firstItem).toBeVisible();
         await expect(firstItem, "the ru page must show Russian entry text").toContainText(/[А-Яа-яЁё]/);
     });
+
+    test("refreshes dates when reopened after changing the date format", async ({ page }) => {
+        await presetLocalStorage(page);
+        await gotoApp(page, "en");
+        await page.locator("#whats-new-btn").click();
+        const modal = page.locator("#whats-new-modal");
+        const heading = modal.locator(".whats-new-group h3").first();
+        await expect(heading).toContainText(/[A-Za-z]+ \d+, \d{4}/);
+        const localizedDate = await heading.innerText();
+        await page.keyboard.press("Escape");
+
+        await page.locator("#settings-btn").click();
+        await page.locator("#settings-date-format-select").selectOption("iso");
+        await page.locator("#settings-modal-close").click();
+        await page.locator("#whats-new-btn").click();
+        await expect(heading).toHaveText(LATEST_CHANGELOG_ID.slice(0, 10));
+        await page.keyboard.press("Escape");
+
+        await page.locator("#settings-btn").click();
+        await page.locator("#settings-date-format-select").selectOption("locale");
+        await page.locator("#settings-modal-close").click();
+        await page.locator("#whats-new-btn").click();
+        await expect(heading).toHaveText(localizedDate, { useInnerText: true });
+    });
 });

@@ -77,6 +77,27 @@ test.describe("GPS synchronization", () => {
         await expect(page.locator("#gps-sync-pill")).toHaveText("Sync GPS");
     });
 
+    test("refreshes the open desktop preview after changing the date format", async ({ page }) => {
+        await loadTrip(page, SAMPLE_70MAI);
+        await page.locator("#gps-sync-pill").click();
+        const panel = page.locator("#gps-sync-modal");
+        const preview = page.locator("#gps-sync-timezone-preview");
+        await expect(panel).toHaveClass(/is-modeless/);
+        await expect(preview).toContainText("Jan 1, 2026");
+        const localizedPreview = await preview.innerText();
+
+        await page.locator("#settings-btn").click();
+        await page.locator("#settings-date-format-select").selectOption("iso");
+        await page.locator("#settings-modal-close").click();
+        await expect(panel).toBeVisible();
+        await expect(preview).toContainText("2026-01-01");
+
+        await page.locator("#settings-btn").click();
+        await page.locator("#settings-date-format-select").selectOption("locale");
+        await page.locator("#settings-modal-close").click();
+        await expect(preview).toHaveText(localizedPreview, { useInnerText: true });
+    });
+
     test("a confirmed loose GPX keeps its timestamp until the user explicitly aligns it", async ({ page }) => {
         await loadTrip(page, SAMPLE_NOGPS);
         await expect(page.locator("#gps-sync-pill")).toBeHidden();

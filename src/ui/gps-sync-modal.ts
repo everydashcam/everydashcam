@@ -19,7 +19,7 @@ import { t } from "../i18n/index.js";
 import { contentToWallUtc, type Trip } from "../trips.js";
 
 import { getTripCameraTimezoneState, setTripCameraTimezone } from "./camera-timezone.js";
-import { formatDateTime } from "./date-format.js";
+import { formatDateTime, subscribeDateFormatChange } from "./date-format.js";
 import { dom } from "./dom.js";
 import { initGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { requestGpsSyncSurfaceRefresh } from "./gps-sync-refresh.js";
@@ -205,6 +205,7 @@ export function initGpsSyncModal(opts: { getTripCurrentTime: () => number }): vo
     dom.gpsSyncOffsetInput.max = String(GPS_OFFSET_MAX_SEC);
     initTimezoneOptions();
     initGpsSyncLaunchers(openGpsSync, syncGpsSyncDialog);
+    subscribeDateFormatChange(syncGpsSyncDialog);
     dom.gpsSyncTimezoneSelect.addEventListener("change", () => {
         const value = dom.gpsSyncTimezoneSelect.value;
         if (value === "auto") applyTimezone(null);
