@@ -68,6 +68,7 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
         ["real-anonymized-count.TS", 120],
         ["real-anonymized-empty.TS", 0],
         ["real-anonymized-empty-capacity.TS", 0],
+        ["real-anonymized-zero-header.TS", 28],
     ])("keeps every trailer coordinate in %s at whole degrees", (name, count) => {
         const bytes = readFileSync(resolve(HERE, name));
         const trailerLength = bytes.readUInt32BE(bytes.length - 4);
@@ -134,6 +135,31 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
             expect(record.accelXg).toBe(0);
             expect(record.accelYg).toBe(0);
             expect(record.accelZg).toBe(0);
+        }
+    });
+
+    it("parses the GKU table whose header field is zero", async () => {
+        const name = "20261101_130845_F.TS";
+        const file = new File([Uint8Array.from(readFileSync(resolve(HERE, "real-anonymized-zero-header.TS")))], name);
+        const vf = { file, relativePath: `Video_front/${name}` };
+        const index = await buildMp4Index(file);
+        expect(await ligoGpsTrailerTsPrimitive.marker(vf, index)).toBe(true);
+        const result = await ligoGpsTrailerTsPrimitive.parse(vf, index);
+        expect(result.skipped).toHaveLength(0);
+        expect(result.records).toHaveLength(14);
+        expectPlausibleGpsTrack(result.records, { minCount: 14, monotonicTime: true });
+        const first = result.records[0]!;
+        // Unlike the other TS firmwares this clock is UTC: the CET filename
+        // stamp 13:08:45 is one hour and one second later.
+        expect(first.unixSeconds).toBe(Date.UTC(2026, 10, 1, 12, 8, 44) / 1000);
+        expect(result.records[13]!.unixSeconds - first.unixSeconds).toBe(13);
+        for (const record of result.records) {
+            expect(record.lat).toBe(53);
+            expect(record.lon).toBe(10);
+            expect(record.bearingDeg).toBeCloseTo(154.6);
+            // The stationary source clip reads 0-1 km/h.
+            expect(record.speedMs).toBeLessThanOrEqual(1 / 3.6 + 1e-9);
+            expect(record.mp4Filename).toBe(name);
         }
     });
 

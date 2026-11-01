@@ -43,12 +43,12 @@ const SLOT_SIZE = 132;
 const SLOTS_OFFSET = 28;
 const TRAILER_FIXED_SIZE = 36;
 const MAX_TRAILER_BYTES = 16 * 1024 * 1024;
-const MAX_TRAILER_SLOTS = Math.floor((MAX_TRAILER_BYTES - TRAILER_FIXED_SIZE) / SLOT_SIZE);
 
+// The u32 field after the flags is ignored, as in src/ts-trailer.ts.
 const TRAILER_DIALECTS = [
-    { magic: "SKIPLCAIGPSINFO", terminator: 0x23232323, header: "length-or-count" },
-    { magic: "SKIPLIGOGPSINFO", terminator: 0x23232323, header: "length" },
-    { magic: "SKIPLIGOGPSINFO", terminator: 0x26262626, header: "slot-capacity" },
+    { magic: "SKIPLCAIGPSINFO", terminator: 0x23232323 },
+    { magic: "SKIPLIGOGPSINFO", terminator: 0x23232323 },
+    { magic: "SKIPLIGOGPSINFO", terminator: 0x26262626 },
 ];
 
 // --- Step 1: extract the trailer from the real file (known marker + u32 BE len).
@@ -83,9 +83,7 @@ function scrubPairedTrailer(full) {
             trailer.readUInt32BE(0) !== 2 * blockLength ||
             trailer.readUInt32BE(blockLength - 4) !== 2 * blockLength ||
             trailer.toString("latin1", blockLength - 8, blockLength - 4) !== "&&&&" ||
-            trailer.readUInt32BE(blockLength) !== blockLength ||
-            trailer.readUInt32LE(24) !== slotCount ||
-            trailer.readUInt32BE(blockLength + 24) !== slotCount
+            trailer.readUInt32BE(blockLength) !== blockLength
         )
             continue;
         // The enciphered twin also carries the original route. Keep only its
@@ -149,20 +147,6 @@ function scrubStandardTrailer() {
         process.exit(1);
     }
     const slotCount = (trailerLen - TRAILER_FIXED_SIZE) / SLOT_SIZE;
-    const headerValue = trailer.readUInt32LE(24);
-    const hasValidHeader = isEmptySkip
-        ? headerValue === 0
-        : dialect.header === "length-or-count"
-          ? headerValue === trailerLen ||
-            headerValue === slotCount ||
-            (slotCount === 0 && headerValue > 0 && headerValue <= MAX_TRAILER_SLOTS)
-          : dialect.header === "length"
-            ? headerValue === trailerLen
-            : headerValue >= slotCount && headerValue <= MAX_TRAILER_SLOTS;
-    if (!hasValidHeader) {
-        console.error(`unexpected trailer header value ${headerValue}`);
-        process.exit(1);
-    }
     console.error(`trailer: ${trailerLen} bytes, magic ${magic}`);
 
     // --- Step 2: zero the coordinate fractions in every slot, in place.

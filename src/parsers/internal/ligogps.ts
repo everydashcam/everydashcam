@@ -590,9 +590,10 @@ export async function parseLigoGpsTrailer(file: VendorFile, index: Mp4Index): Pr
 // from choking on the same bytes); the slot layout is the Beferich trailer's:
 // 132-byte slots of u32 index + ASCII record, speed already km/h.
 //
-// The record datetime is the camera's local clock (it tracks the filename
-// stamp to the second on the real corpus) - parsed as UTC here, shifted by
-// the orchestrator via estimateTzByFingerprint, the juscar-ts convention.
+// Most firmwares write the camera's local clock (it tracks the filename stamp
+// to the second); GKU writes UTC. Either way it is parsed as UTC here and
+// estimateTzByFingerprint derives the per-camera offset, the juscar-ts
+// convention.
 
 /**
  * Extracts GpsRecords from the plaintext trailer of a MPEG-TS file. Throws

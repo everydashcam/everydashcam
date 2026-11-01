@@ -41,22 +41,31 @@ describe("findTsGpsTrailer", () => {
         expect(await findTsGpsTrailer(blobOf(lcaiWithAmpersands))).toBeNull();
     });
 
-    it("rejects invalid dialect header values", async () => {
-        const lcaiWithSlotCount = Buffer.from(happy);
-        lcaiWithSlotCount.writeUInt32LE(2, HAPPY_CLEAN + 24);
-        expect(await findTsGpsTrailer(blobOf(lcaiWithSlotCount))).toBeNull();
-
-        const ligoWithUndersizedCapacity = Buffer.from(realAmpersand);
-        const ligoTrailerLength = ligoWithUndersizedCapacity.readUInt32BE(ligoWithUndersizedCapacity.length - 4);
-        ligoWithUndersizedCapacity.writeUInt32LE(59, ligoWithUndersizedCapacity.length - ligoTrailerLength + 24);
-        expect(await findTsGpsTrailer(blobOf(ligoWithUndersizedCapacity))).toBeNull();
+    it.each([
+        ["synthetic-happy.TS", 0],
+        ["synthetic-happy.TS", 2],
+        ["real-anonymized-ampersand.TS", 59],
+        ["real-anonymized-empty-capacity.TS", 200_000],
+        ["real-anonymized-zero-header.TS", 0xffffffff],
+    ])("ignores the field after the flags in %s set to %i", async (name, value) => {
+        const bytes = readFileSync(resolve(FIXTURES, name));
+        const trailerLength = bytes.readUInt32BE(bytes.length - 4);
+        bytes.writeUInt32LE(value, bytes.length - trailerLength + 24);
+        expect(await findTsGpsTrailer(blobOf(bytes))).toEqual({
+            cleanLength: bytes.length - trailerLength,
+            trailerLength,
+        });
     });
 
-    it.each(["count", "empty"])("detects and demuxes the real %s dialect", async (dialect) => {
+    it.each([
+        ["count", 7956],
+        ["empty", 36],
+        ["zero-header", 1884],
+    ])("detects and demuxes the real %s dialect", async (dialect, trailerLength) => {
         const bytes = readFileSync(resolve(FIXTURES, `real-anonymized-${dialect}.TS`));
         const file = new File([Uint8Array.from(bytes)], "20260904_202849F.ts");
         const trailer = await findTsGpsTrailer(file);
-        expect(trailer?.trailerLength).toBe(dialect === "count" ? 7956 : 36);
+        expect(trailer?.trailerLength).toBe(trailerLength);
         const input = new Input({ source: new BlobSource(await clampTsTrailingBytes(file)), formats: [MPEG_TS] });
         try {
             expect(await input.computeDuration()).toBeGreaterThanOrEqual(2);
@@ -85,17 +94,6 @@ describe("findTsGpsTrailer", () => {
         const populated = Buffer.from(happy);
         populated.fill(0, HAPPY_CLEAN + 8, HAPPY_CLEAN + 28);
         expect(await findTsGpsTrailer(blobOf(populated))).toBeNull();
-    });
-
-    it("rejects an LCAI capacity when slots are present or it exceeds the sanity bound", async () => {
-        const populated = Buffer.from(happy);
-        populated.writeUInt32LE(35, HAPPY_CLEAN + 24);
-        expect(await findTsGpsTrailer(blobOf(populated))).toBeNull();
-
-        const excessive = Buffer.from(realEmptyCapacity);
-        const trailerStart = excessive.length - 36;
-        excessive.writeUInt32LE(200_000, trailerStart + 24);
-        expect(await findTsGpsTrailer(blobOf(excessive))).toBeNull();
     });
 
     it("rejects a foreign magic even with valid structure", async () => {
@@ -154,13 +152,6 @@ describe("findTsGpsTrailer", () => {
         expect(t!.cleanLength % 188).toBe(0);
         expect(t!.trailerLength).toBe(7956);
     });
-
-    it("accepts an ampersand trailer whose capacity exceeds its written slots", async () => {
-        const patched = Buffer.from(realAmpersand);
-        const trailerLength = patched.readUInt32BE(patched.length - 4);
-        patched.writeUInt32LE(61, patched.length - trailerLength + 24);
-        expect(await findTsGpsTrailer(blobOf(patched))).not.toBeNull();
-    });
 });
 
 describe("paired TS trailers", () => {
@@ -173,11 +164,10 @@ describe("paired TS trailers", () => {
         expect((await findTsGpsTrailer(file))?.cleanLength).toBe(cleanLength);
     });
 
-    it("uses each table's own length and slot count", async () => {
+    it("uses each table's own length", async () => {
         const first = Buffer.from(realPaired.subarray(cleanLength, cleanLength + 8680 - 132));
         const total = 17360 - 132;
         first.writeUInt32BE(total, 0);
-        first.writeUInt32LE(64, 24);
         first.write("&&&&", first.length - 8, "latin1");
         first.writeUInt32BE(total, first.length - 4);
         const bytes = Buffer.concat([
@@ -196,8 +186,6 @@ describe("paired TS trailers", () => {
         const blocks = [0, 8680].map((offset) => {
             const block = Buffer.from(realPaired.subarray(cleanLength + offset, cleanLength + offset + 1024));
             block.writeUInt32BE(offset === 0 ? 2048 : 1024, 0);
-            if (offset === 0) block.writeUInt32LE(7, 24);
-            else block.writeUInt32BE(7, 24);
             block.write("&&&&", 1016, "latin1");
             block.writeUInt32BE(offset === 0 ? 2048 : 1024, 1020);
             return block;
@@ -220,7 +208,14 @@ describe("paired TS trailers", () => {
         expect((await clampTsTrailingBytes(file)).size).toBe(cleanLength);
     });
 
-    it.each([0, 4, 24, 28, 8680 - 8, 8680 - 4, 8680, 8680 + 4, 8680 + 24, 8680 + 28, 17360 - 8, 17360 - 4])(
+    it("ignores the slot-count fields of both tables", async () => {
+        const bytes = Buffer.from(realPaired);
+        bytes.writeUInt32LE(1, cleanLength + 24);
+        bytes.writeUInt32BE(0xffffffff, cleanLength + 8680 + 24);
+        expect((await findTsGpsTrailer(blobOf(bytes)))?.cleanLength).toBe(cleanLength);
+    });
+
+    it.each([0, 4, 28, 8680 - 8, 8680 - 4, 8680, 8680 + 4, 8680 + 28, 17360 - 8, 17360 - 4])(
         "rejects a damaged paired header or footer at offset %i",
         async (offset) => {
             const bytes = Buffer.from(realPaired);

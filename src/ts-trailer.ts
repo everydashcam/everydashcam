@@ -24,17 +24,19 @@ const TRAILER_SLOT_BYTES = 132;
 const HASH_BYTE = 0x23;
 const AMPERSAND_BYTE = 0x26;
 /** Known magic/terminator pairs. Anything else stays undetected on purpose:
- *  a wrong clamp on an unknown trailer is worse than the old failure mode. */
+ *  a wrong clamp on an unknown trailer is worse than the old failure mode.
+ *  The u32 field after the flags is deliberately ignored: firmwares store the
+ *  trailer length, the written slot count, a slot capacity or zero there, and
+ *  no reader needs it - the length copies and the slot grid bound the table. */
 const TRAILER_DIALECTS = [
-    { magic: "SKIPLIGOGPSINFO", terminatorByte: AMPERSAND_BYTE, header: "slot-capacity" },
-    { magic: "SKIPLIGOGPSINFO", terminatorByte: HASH_BYTE, header: "length" },
-    { magic: "SKIPLCAIGPSINFO", terminatorByte: HASH_BYTE, header: "length-or-count" },
+    { magic: "SKIPLIGOGPSINFO", terminatorByte: AMPERSAND_BYTE },
+    { magic: "SKIPLIGOGPSINFO", terminatorByte: HASH_BYTE },
+    { magic: "SKIPLCAIGPSINFO", terminatorByte: HASH_BYTE },
 ] as const;
 /** Empty table: u32 len + magic 15 + 5 flags + u32 field + marker + u32 len. */
 const MIN_TRAILER_BYTES = 36;
 /** Sanity cap: 24 h at 1 Hz is ~11.4 MB of 132-byte slots. */
 const MAX_TRAILER_BYTES = 16 * 1024 * 1024;
-const MAX_TRAILER_SLOTS = Math.floor((MAX_TRAILER_BYTES - MIN_TRAILER_BYTES) / TRAILER_SLOT_BYTES);
 const PAIRED_SLOTS_OFFSET = 92;
 const MAX_ZERO_PADDING_BYTES = 64 * 1024 * 1024;
 const ZERO_SCAN_BYTES = 1024 * 1024;
@@ -103,33 +105,14 @@ async function findStandardTsGpsTrailer(blob: Blob, size: number): Promise<TsGps
         return { cleanLength, trailerLength };
     }
     const magic = asciiAt(head, 4, 15);
-    const dialect = TRAILER_DIALECTS.find(
+    const isKnownDialect = TRAILER_DIALECTS.some(
         (candidate) => candidate.magic === magic && candidate.terminatorByte === terminatorByte,
     );
-    if (!dialect) return null;
-    const slotCount = (trailerLength - MIN_TRAILER_BYTES) / TRAILER_SLOT_BYTES;
-    const headerValue = headView.getUint32(24, true);
-    if (dialect.header === "length" && headerValue !== trailerLength) return null;
-    // An empty LCAI table may retain its nominal slot capacity even though
-    // no GPS slots were written. Keep this exception limited to empty tables.
-    if (
-        dialect.header === "length-or-count" &&
-        headerValue !== trailerLength &&
-        headerValue !== slotCount &&
-        !(slotCount === 0 && headerValue > 0 && headerValue <= MAX_TRAILER_SLOTS)
-    ) {
-        return null;
-    }
-    // Partial clips retain their nominal slot capacity, so it may exceed the
-    // number of slots that were actually appended.
-    if (dialect.header === "slot-capacity" && (headerValue < slotCount || headerValue > MAX_TRAILER_SLOTS)) {
-        return null;
-    }
-
-    return { cleanLength, trailerLength };
+    return isKnownDialect ? { cleanLength, trailerLength } : null;
 }
 
-/** The lowercase-skip dialect pairs an enciphered table with a plaintext twin. */
+/** The lowercase-skip dialect pairs an enciphered table with a plaintext twin.
+ *  Like the standard dialects, the slot-count fields at offset 24 go unchecked. */
 async function findPairedTsGpsTrailer(blob: Blob, end: number): Promise<TsGpsTrailer | null> {
     if (end < TS_PACKET + 2 * (PAIRED_SLOTS_OFFSET + 8)) return null;
     const tail = new Uint8Array(await blob.slice(end - 8, end).arrayBuffer());
@@ -155,16 +138,13 @@ async function findPairedTsGpsTrailer(blob: Blob, end: number): Promise<TsGpsTra
 
     const bytes = new Uint8Array(await blob.slice(cleanLength, end).arrayBuffer());
     const view = new DataView(bytes.buffer);
-    const slotCount = slotBytes / TRAILER_SLOT_BYTES;
     if (
         view.getUint32(0) !== trailerLength ||
         asciiAt(bytes, 4, 15) !== "skipLIGOGPSINFO" ||
-        view.getUint32(24, true) !== firstSlotBytes / TRAILER_SLOT_BYTES ||
         view.getUint32(firstLength) !== blockLength ||
         asciiAt(bytes, firstLength + 4, 4) !== "skip" ||
         !bytes.subarray(firstLength + 8, firstLength + 19).every((byte) => byte >= 0x20 && byte < 0x7f) ||
         !bytes.subarray(firstLength + 19, firstLength + 24).every((byte) => byte === 0) ||
-        view.getUint32(firstLength + 24) !== slotCount ||
         !bytes.subarray(28, PAIRED_SLOTS_OFFSET).every((byte) => byte === 0) ||
         !bytes.subarray(firstLength + 28, firstLength + PAIRED_SLOTS_OFFSET).every((byte) => byte === 0)
     ) {
