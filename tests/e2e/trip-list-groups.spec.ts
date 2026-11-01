@@ -55,7 +55,9 @@ test("groups the date-sorted list by month and day and folds a parking night", a
     const run = days.nth(1).locator(".trip-parking-run");
     await expect(run).toHaveCount(1);
     await expect(toggle(run)).toHaveAttribute("aria-expanded", "false");
-    await expect(toggle(run)).toContainText("Parked 23:10 → Tue 03:45");
+    // The badge says "parking" on screen; screen readers hear the word.
+    await expect(run.locator(".trip-parking-run__range")).toHaveText("23:10 → Tue 03:45");
+    await expect(toggle(run)).toHaveAccessibleName(/^Parked 23:10 → Tue 03:45 /);
     await expect(toggle(run)).toContainText("3 trips");
     const visibleCards = page.locator("#trip-list li.trip:visible");
     await expect(visibleCards).toHaveCount(3);
@@ -102,8 +104,7 @@ test("keeps separate parking stays when the drive between them is favorited or f
     await page.locator("#notes-storage-browser").click();
     await expect(page.locator("#notes-storage-modal")).toBeHidden();
     await expect(runs).toHaveCount(2);
-    await expect(toggle(runs.nth(0))).toContainText("Parked 11:00 → 11:30");
-    await expect(toggle(runs.nth(1))).toContainText("Parked 09:00 → 09:30");
+    await expect(runs.locator(".trip-parking-run__range")).toHaveText(["11:00 → 11:30", "09:00 → 09:30"]);
 
     await page.locator('.trip-fav[aria-pressed="true"]').click();
     await page.locator("#trip-filter-toggle").click();

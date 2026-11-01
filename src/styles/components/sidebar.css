@@ -2037,6 +2037,15 @@ body.export-mode .sidebar-toggle,
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* The spoken title (buildParkingRun in sidebar.ts); the badge shows it. */
+.trip-parking-run__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 .trip-parking-run__badge {
     display: inline-grid;
     flex: none;

@@ -569,13 +569,12 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards, da
     title.className = "trip-parking-run__title";
     const badge = textSpan("trip-parking-run__badge", t("trip.chip.parking"));
     badge.setAttribute("aria-hidden", "true");
-    title.append(
-        badge,
-        textSpan(
-            "trip-parking-run__range",
-            t("sidebar.parkingRun.title", { range: formatTimeRange(first.startUtc, endUtc, first.cameraTzSec) }),
-        ),
-    );
+    // On screen the badge says "parking": the clock range alone fills the row
+    // at the default sidebar width. Screen readers get the whole phrase.
+    const range = formatTimeRange(first.startUtc, endUtc, first.cameraTzSec);
+    const visibleRange = textSpan("trip-parking-run__range", range);
+    visibleRange.setAttribute("aria-hidden", "true");
+    title.append(badge, visibleRange, textSpan("trip-parking-run__label", t("sidebar.parkingRun.title", { range })));
     const meta = document.createElement("span");
     meta.className = "trip-parking-run__meta";
     // Folded, the run hides its cards, so without a day heading only the run
