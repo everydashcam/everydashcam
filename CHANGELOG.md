@@ -9,6 +9,7 @@ release tag. Localized texts ship inside the app (the "What's new" panel).
 
 ## 2026-11-01
 
+- **Improved:** Updated the trip list and speed and event chart interface.
 - **Improved:** Following moving objects and automatic plate and face hiding are faster.
 - **Improved:** Time-lapse exports are faster.
 

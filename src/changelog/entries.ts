@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-01.3",
+        category: "improvement",
+        text: {
+            en: "Updated the trip list and speed and event chart interface.",
+            ru: "Обновлён интерфейс списка поездок и графика скорости и событий.",
+            de: "Die Oberfläche der Fahrtenliste und des Geschwindigkeits- und Ereignisdiagramms wurde überarbeitet.",
+            es: "Actualizada la interfaz de la lista de trayectos y del gráfico de velocidad y eventos.",
+            fr: "Mise à jour de l’interface de la liste des trajets et du graphique de vitesse et d’événements.",
+            pl: "Zaktualizowano interfejs listy przejazdów oraz wykresu prędkości i zdarzeń.",
+            pt: "Atualizada a interface da lista de viagens e do gráfico de velocidade e eventos.",
+            zh: "更新了行程列表及速度与事件图表的界面。",
+            ja: "走行一覧と速度・イベントグラフのインターフェースを更新しました。",
+            ko: "주행 목록과 속도·이벤트 그래프의 인터페이스를 업데이트했어요.",
+        },
+    },
+    {
         id: "2026-11-01.2",
         category: "improvement",
         text: {
