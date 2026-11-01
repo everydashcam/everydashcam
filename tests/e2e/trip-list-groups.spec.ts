@@ -16,10 +16,10 @@ const filenames = [
     "Normal/Front/NO20261001-090000-000006F.MP4",
 ];
 
-async function addRecordings(page: Page): Promise<void> {
+async function addRecordings(page: Page, names: readonly string[] = filenames): Promise<void> {
     const directory = mkdtempSync(path.join(tmpdir(), "everydashcam-trip-groups-"));
     fixtureDirectories.push(directory);
-    for (const name of filenames) {
+    for (const name of names) {
         const filename = path.join(directory, name);
         mkdirSync(path.dirname(filename), { recursive: true });
         writeFileSync(filename, footage);
@@ -77,6 +77,40 @@ test("groups the date-sorted list by month and day and folds a parking night", a
     await expect(toggle(page.locator(".trip-parking-run"))).toHaveAttribute("aria-expanded", "true");
 });
 
+test("keeps separate parking stays when the drive between them is favorited or filtered out", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await addRecordings(page, [
+        "Lapse/Front/LA20260914-090000-000001F.MP4",
+        "Lapse/Front/LA20260914-093000-000002F.MP4",
+        "Normal/Front/NO20260914-100000-000003F.MP4",
+        "Lapse/Front/LA20260914-110000-000004F.MP4",
+        "Lapse/Front/LA20260914-113000-000005F.MP4",
+    ]);
+    const runs = page.locator(".trip-parking-run");
+    await expect(runs).toHaveCount(2);
+
+    await page
+        .locator("li.trip")
+        .filter({ has: page.locator(".trip-title", { hasText: "10:00" }) })
+        .locator(".trip-fav")
+        .click();
+    await page.locator("#notes-storage-browser").click();
+    await expect(page.locator("#notes-storage-modal")).toBeHidden();
+    await expect(runs).toHaveCount(2);
+    await expect(toggle(runs.nth(0))).toContainText("Parked 11:00 → 11:30");
+    await expect(toggle(runs.nth(1))).toContainText("Parked 09:00 → 09:30");
+
+    await page.locator('.trip-fav[aria-pressed="true"]').click();
+    await page.locator("#trip-filter-toggle").click();
+    await page.locator('[data-trip-filter-kind="parking"]').click();
+    await expect(page.locator("#trip-filter-result")).toHaveText("Showing 4 of 5");
+    await expect(runs).toHaveCount(2);
+    await expect(toggle(runs.nth(0))).toContainText("2 trips");
+    await expect(toggle(runs.nth(1))).toContainText("2 trips");
+});
+
 test("opens the folded parking night when playback advances into it", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
@@ -114,6 +148,11 @@ test("switches to compact rows and keeps the choice after a reload", async ({ pa
     await expect(october.locator("li.trip .trip-thumb")).toHaveCount(1);
     const box = await october.locator("li.trip").boundingBox();
     expect(box?.height ?? 0).toBeLessThan(60);
+
+    // The run belongs to Sep 14, but its after-midnight rows must retain Sep 15.
+    const run = page.locator(".trip-parking-run");
+    await toggle(run).click();
+    await expect(run.locator(".trip-title")).toHaveText([/Sep 15.*03:45/, /Sep 15.*01:30/, "23:10 → 23:10"]);
 
     await page.reload();
     await expect(page.locator('#trip-density [data-density="rows"]')).toHaveAttribute("aria-pressed", "true");

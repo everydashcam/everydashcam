@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Trip } from "../trips.js";
-import { PARKING_RUN_MAX_GAP_SEC, foldParkingRuns, groupByMonthDay, type TripListNode } from "./trip-list-layout.js";
+import {
+    PARKING_RUN_MAX_GAP_SEC,
+    foldParkingRuns,
+    groupByMonthDay,
+    nodeEntries,
+    tripDayKey,
+    type TripListNode,
+} from "./trip-list-layout.js";
 
 interface TripFacts {
     start: number;
@@ -95,6 +102,43 @@ describe("foldParkingRuns", () => {
         expect(folded.map((node) => node.kind)).toEqual(["parking", "trip"]);
     });
 
+    it.each(["asc", "desc"])("keeps stays separate when the drive between them is hidden in %s order", (dir) => {
+        const chronology = entries([
+            trip({ start: at(9, 31, 9), parking: true }),
+            trip({ start: at(9, 31, 9, 30), parking: true }),
+            trip({ start: at(9, 31, 10) }),
+            trip({ start: at(9, 31, 11), parking: true }),
+            trip({ start: at(9, 31, 11, 30), parking: true }),
+        ]);
+        if (dir === "desc") chronology.reverse();
+        const folded = foldParkingRuns(chronology, identity, new Set([0, 1, 3, 4]));
+        expect(folded.map((node) => node.kind)).toEqual(["parking", "parking"]);
+        expect(folded.map((node) => nodeEntries(node).map((entry) => entry.tripIdx))).toEqual(
+            dir === "asc"
+                ? [
+                      [0, 1],
+                      [3, 4],
+                  ]
+                : [
+                      [4, 3],
+                      [1, 0],
+                  ],
+        );
+    });
+
+    it("keeps a stay's identity when its earliest trip is hidden and unfolds a lone match", () => {
+        const chronology = entries([
+            trip({ start: at(9, 31, 23), parking: true }),
+            trip({ start: at(10, 1, 1), parking: true }),
+            trip({ start: at(10, 1, 3), parking: true }),
+        ]);
+        const full = foldParkingRuns(chronology, identity);
+        const filtered = foldParkingRuns(chronology, identity, new Set([1, 2]));
+        expect(filtered[0]).toEqual({ ...full[0], entries: chronology.slice(1) });
+        expect(foldParkingRuns(chronology, identity, new Set([1]))).toEqual([{ kind: "trip", entry: chronology[1] }]);
+        expect(foldParkingRuns(chronology, identity, new Set())).toEqual([]);
+    });
+
     it("puts a run that crosses midnight on the day it began", () => {
         const months = groupByMonthDay(
             foldParkingRuns(
@@ -103,5 +147,18 @@ describe("foldParkingRuns", () => {
             ),
         );
         expect(months.map((m) => m.days.map((d) => d.key))).toEqual([["d:2026-10-31"]]);
+    });
+});
+
+describe("tripDayKey", () => {
+    it("keeps each trip's camera-clock date inside an overnight stay", () => {
+        const night = entries([
+            trip({ start: at(9, 31, 21), tz: 7200, parking: true }),
+            trip({ start: at(9, 31, 23), tz: 7200, parking: true }),
+        ]);
+        const [month] = groupByMonthDay(foldParkingRuns(night, identity));
+        const heading = month!.days[0]!.key;
+        expect(heading).toBe("d:2026-10-31");
+        expect(night.map(({ trip }) => tripDayKey(trip))).toEqual([heading, "d:2026-11-01"]);
     });
 });

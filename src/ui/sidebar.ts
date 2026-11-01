@@ -48,7 +48,7 @@ import { tripSearchText } from "./trip-search.js";
 import { readTripDensity, writeTripDensity } from "./trip-density-pref.js";
 import { initTripJump, syncTripJump } from "./trip-jump.js";
 import type { TripListDayStats } from "./trip-jump.js";
-import { foldParkingRuns, groupByMonthDay, nodeEntries } from "./trip-list-layout.js";
+import { foldParkingRuns, groupByMonthDay, nodeEntries, tripDayKey } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
 
 interface SidebarCallbacks {
@@ -253,9 +253,9 @@ export function renderTrips(): void {
         displayed = [...displayed.filter(isFavoriteEntry), ...displayed.filter((d) => !isFavoriteEntry(d))];
     }
 
-    const appendCards: AppendCards = (entries, parent, underDayHeading) => {
+    const appendCards: AppendCards = (entries, parent, dayKey) => {
         for (const { trip, idx } of entries) {
-            const card = buildTripCard(trip, idx, underDayHeading);
+            const card = buildTripCard(trip, idx, dayKey);
             seedCardHeight(card, cardHeights);
             parent.appendChild(card);
         }
@@ -279,9 +279,12 @@ export function renderTrips(): void {
     renderedDays = [];
     if (state.tripSortKey === "date") {
         // Month and day sections only make sense in date order.
+        const chronology = entries.map(({ trip, idx }) => ({ trip, tripIdx: idx })).sort((a, b) => cmp(a.trip, b.trip));
+        if (state.tripSortDir === "desc") chronology.reverse();
         const nodes = foldParkingRuns(
-            rest.map(({ trip, idx }) => ({ trip, tripIdx: idx })),
+            chronology,
             (trip) => tripFocusKey(trip) ?? `start:${trip.startUtc}`,
+            new Set(rest.map(({ idx }) => idx)),
         );
         const months = groupByMonthDay(nodes);
         renderedDays = months.flatMap((month) => month.days.map(dayJumpStats));
@@ -291,7 +294,7 @@ export function renderTrips(): void {
         if (favoriteCount > 0 && rest.length > 0) {
             dom.list.appendChild(buildBandSection("o:others", t("sidebar.bucket.others"), rest, appendCards));
         } else {
-            appendCards(rest, dom.list, false);
+            appendCards(rest, dom.list, null);
         }
     }
 
@@ -319,8 +322,8 @@ export function renderTrips(): void {
     scheduleRecognitionHelp();
 }
 
-/** Appends cards for `entries`; `underDayHeading` lets a row drop the date its day heading shows. */
-type AppendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element, underDayHeading: boolean) => void;
+/** Appends cards for `entries`; a row can omit a date only when its day heading names it. */
+type AppendCards = (entries: readonly { trip: Trip; idx: number }[], parent: Element, dayKey: string | null) => void;
 
 /** A top-level section outside the months (favorites, everything else) in the month band style. */
 function buildBandSection(
@@ -334,7 +337,7 @@ function buildBandSection(
         // A count only: totals of hand-picked trips say nothing.
         textSpan("trip-group-toggle__stats", String(entries.length)),
     ]);
-    appendCards(entries, list, false);
+    appendCards(entries, list, null);
     return section;
 }
 
@@ -414,8 +417,8 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
     content.push(buildDayStats(day));
     const { section, list } = buildGroupSection(day.key, "trip-day", content);
     for (const node of day.nodes) {
-        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list, true);
-        else list.appendChild(buildParkingRun(node, appendCards));
+        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list, day.key);
+        else list.appendChild(buildParkingRun(node, appendCards, day.key));
     }
     return section;
 }
@@ -510,7 +513,7 @@ function buildDayStats(day: TripListDay): HTMLElement {
  * one-minute trips. Folded by default; unfolding lists the trips themselves,
  * which keep every card action.
  */
-function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): HTMLLIElement {
+function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards, dayKey: string): HTMLLIElement {
     const trips = node.entries.map((entry) => entry.trip);
     let first = trips[0]!;
     let endUtc = first.endUtc;
@@ -569,7 +572,7 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards): H
     appendCards(
         node.entries.map((entry) => ({ trip: entry.trip, idx: entry.tripIdx })),
         list,
-        true,
+        dayKey,
     );
     return section;
 }
@@ -657,7 +660,7 @@ function buildTripActions(tripIdx: number, isFavorite: boolean): HTMLElement {
  * (refreshTripCard) without tearing down the whole list while recording data
  * arrives in the background.
  */
-function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): HTMLLIElement {
+function buildTripCard(trip: Trip, tripIdx: number, dayKey: string | null): HTMLLIElement {
     const li = document.createElement("li");
     li.className = "trip";
     // Compact rows reuse every control of the card; only the header layout and
@@ -704,8 +707,9 @@ function buildTripCard(trip: Trip, tripIdx: number, underDayHeading: boolean): H
     // Custom name replaces the generated title; the generated one (date/time)
     // moves to the tooltip so it stays discoverable.
     const generatedTitle = provisional ? formatTripStartTitle(trip) : formatTripTitle(trip);
-    // A row inside a day section sits below the heading that already names the date.
-    const shownTitle = asRow && underDayHeading ? formatTripClockTitle(trip, !provisional) : generatedTitle;
+    // A parking run can cross midnight: only omit the date when the heading
+    // actually names this trip's day.
+    const shownTitle = asRow && dayKey === tripDayKey(trip) ? formatTripClockTitle(trip, !provisional) : generatedTitle;
     title.textContent = tripMeta?.name || shownTitle;
     if (tripMeta?.name || shownTitle !== generatedTitle) title.title = generatedTitle;
     // Keyboard / screen-reader affordance: the title IS the trip's open/play
@@ -1083,7 +1087,8 @@ export function refreshTripCard(tripIdx: number): void {
     const oldLi = dom.list.querySelector<HTMLElement>(`li.trip[data-trip-index="${tripIdx}"]`);
     if (!oldLi) return;
     const focus = captureListFocus(oldLi);
-    const card = buildTripCard(trip, tripIdx, oldLi.closest(".trip-day") !== null);
+    const daySection = oldLi.closest(".trip-day");
+    const card = buildTripCard(trip, tripIdx, daySection ? (groupKeys.get(daySection) ?? null) : null);
     // Reuse the height seeded by the last full render. Measuring the old card
     // here would force a list layout on every call, and ingest refreshes many
     // cards in one task.

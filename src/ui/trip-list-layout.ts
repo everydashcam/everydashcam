@@ -85,17 +85,25 @@ function pauseSec(a: Trip, b: Trip): number {
 /**
  * Folds runs of parking trips that are neighbours in list order - no other
  * trip between them, pauses up to PARKING_RUN_MAX_GAP_SEC - into parking
- * nodes. A lone parking trip stays a trip node. `identity` returns a trip's
+ * nodes. Pass the complete chronology so hidden or favorited drives still
+ * separate stays. `includedTripIndices` limits the rendered members only.
+ * A lone included parking trip stays a trip node. `identity` returns a trip's
  * recording identity, which keys the run for its expanded state.
  */
-export function foldParkingRuns(entries: readonly TripListEntry[], identity: (trip: Trip) => string): TripListNode[] {
+export function foldParkingRuns(
+    entries: readonly TripListEntry[],
+    identity: (trip: Trip) => string,
+    includedTripIndices?: ReadonlySet<number>,
+): TripListNode[] {
     const nodes: TripListNode[] = [];
+    const isIncluded = (entry: TripListEntry): boolean => includedTripIndices?.has(entry.tripIdx) ?? true;
     let run: TripListEntry[] = [];
     const flushRun = (): void => {
-        if (run.length >= 2) {
-            nodes.push({ kind: "parking", key: `p:${identity(earliestEntry(run).trip)}`, entries: run });
+        const included = run.filter(isIncluded);
+        if (included.length >= 2) {
+            nodes.push({ kind: "parking", key: `p:${identity(earliestEntry(run).trip)}`, entries: included });
         } else {
-            for (const entry of run) nodes.push({ kind: "trip", entry });
+            for (const entry of included) nodes.push({ kind: "trip", entry });
         }
         run = [];
     };
@@ -105,13 +113,22 @@ export function foldParkingRuns(entries: readonly TripListEntry[], identity: (tr
             flushRun();
         }
         if (entry.trip.isParking) run.push(entry);
-        else nodes.push({ kind: "trip", entry });
+        else if (isIncluded(entry)) nodes.push({ kind: "trip", entry });
     }
     flushRun();
     return nodes;
 }
 
 const pad2 = (value: number): string => String(value).padStart(2, "0");
+
+function dayKey(date: Date): string {
+    return `d:${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+}
+
+/** The trip's own display-clock day, which can differ from its parking run's day. */
+export function tripDayKey(trip: Trip): string {
+    return dayKey(displayClockDate(trip.startUtc, trip.cameraTzSec));
+}
 
 /**
  * Splits list-ordered nodes into months and days by the display-clock date of
@@ -137,11 +154,11 @@ export function groupByMonthDay(nodes: readonly TripListNode[]): TripListMonth[]
             monthsByKey.set(monthKey, monthGroup);
             months.push(monthGroup);
         }
-        const dayKey = `d:${year}-${pad2(month + 1)}-${pad2(day)}`;
-        let dayGroup = daysByKey.get(dayKey);
+        const key = dayKey(date);
+        let dayGroup = daysByKey.get(key);
         if (!dayGroup) {
-            dayGroup = { key: dayKey, year, month, day, nodes: [] };
-            daysByKey.set(dayKey, dayGroup);
+            dayGroup = { key, year, month, day, nodes: [] };
+            daysByKey.set(key, dayGroup);
             monthGroup.days.push(dayGroup);
         }
         dayGroup.nodes.push(node);
