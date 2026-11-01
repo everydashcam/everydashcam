@@ -27,6 +27,9 @@ export function tripSearchText(trip: Trip, meta?: Pick<TripMetaAnnotation, "name
         meta?.note,
         // The display-clock fields are the Date's UTC fields, so this is the local ISO date.
         start.toISOString().slice(0, 10),
+        // Keep the day searchable as a whole word in phrases even when the
+        // locale attaches punctuation or a suffix ("31. Oktober", "10月31日").
+        String(start.getUTCDate()),
         ...SEARCH_DATE_FORMATS.map((options) => cachedDateTimeFormat(locale, options).format(start)),
         ...tripAllCandidates(trip).map((candidate) => candidate.file.name),
     ];

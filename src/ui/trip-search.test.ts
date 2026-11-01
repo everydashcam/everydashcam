@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { matchesTripSearch } from "../trip-filters.js";
 import type { Trip } from "../trips.js";
 import { tripSearchText } from "./trip-search.js";
@@ -28,5 +28,27 @@ describe("tripSearchText", () => {
     it("finds a trip by name, note and file name", () => {
         expect(matchesTripSearch(text, "lake bridge")).toBe(true);
         expect(matchesTripSearch(text, "no20261031")).toBe(true);
+    });
+});
+
+describe("localized date search", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.resetModules();
+    });
+
+    it.each([
+        ["de", "oktober"],
+        ["ja", "10月"],
+        ["zh", "10月"],
+        ["ko", "10월"],
+    ])("finds a day and month in %s without requiring date punctuation", async (lang, month) => {
+        vi.stubGlobal("location", { pathname: `/${lang}/` });
+        vi.resetModules();
+        const { tripSearchText } = await import("./trip-search.js");
+        const text = tripSearchText(trip(Date.UTC(2026, 9, 31, 18, 30) / 1000, 0, "clip.mp4"));
+        expect(matchesTripSearch(text, `${month} 31`)).toBe(true);
+        expect(matchesTripSearch(text, `${month} 30`)).toBe(false);
+        expect(matchesTripSearch(text, `${month} 3`)).toBe(false);
     });
 });
