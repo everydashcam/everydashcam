@@ -9,7 +9,8 @@
 //      winding forest road.
 //      Three time-separated trips on one day exercise trip splitting, channel
 //      pairing and the speed-colored track end to end; each trip has its own
-//      front scene so the sidebar card previews visibly differ.
+//      front scene so the sidebar card previews visibly differ. The newest
+//      trip has a detected hard-braking event, a note and a favorite star.
 //   2. Starts Vite preview against the EXISTING dist/ (never rebuilds) and
 //      drives it with headless Chromium (Playwright), pre-seeding localStorage
 //      exactly like tests/e2e/_fixtures.ts so no onboarding overlay is in
@@ -59,7 +60,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { preview } from "vite";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -157,6 +158,7 @@ const HERO_BRAKE_SEC = 72;
 const HERO_BRAKE_START_SEC = 68;
 const HERO_ACCEL_START_SEC = 74;
 const HERO_ACCEL_END_SEC = 88;
+const HERO_TRIP_NOTE = "I met a deer!";
 
 // Winding Black-Forest stretch (Schwarzwaldhochstraße / B500 near Mummelsee),
 // hand-traced N->S so vector tiles render green/scenic. Purely synthetic -
@@ -367,8 +369,13 @@ function buildGpsLog(clips) {
             // Write raw field[0] 8h behind the intended UTC (parser adds +8h back).
             const rawTs = clip.clipStartPseudoUnix - FIRMWARE_BIAS_SEC + t;
             const ax = 0;
-            const ay = 100; // Y-up gravity (parser subtracts 1g)
-            const az = 0;
+            const ay = 100; // Y-up gravity (removed by the parser's per-axis baseline)
+            // Longitudinal acceleration follows the speed profile, in g × 100.
+            // The hard stop crosses the event threshold; the gentler restart
+            // stays below it, so the real parser/detector produces one event.
+            const az = Math.round(
+                ((speedAt(tripSecond + 0.5, clip.tripIdx) - speedAt(tripSecond - 0.5, clip.tripIdx)) / 9.80665) * 100,
+            );
             // 13 fields: ts, validity, lat, lon, bearing(x100), speed(cm/s),
             // ax, ay, az, mp4Filename, _, _, _.
             lines.push(
@@ -544,6 +551,21 @@ async function ingest(page, fixtureRoot) {
     return page.locator("li.trip:not(.unindexed-note)").count();
 }
 
+// Use the real annotation flow before selecting the trip: the mobile player
+// hides the sidebar. Both screenshots get their own isolated browser storage.
+async function annotateTopTrip(page) {
+    const trip = page.locator("li.trip:not(.unindexed-note)").first();
+    await trip.locator(".trip-edit").click();
+    await page.locator("#trip-meta-note").fill(HERO_TRIP_NOTE);
+    await page.locator("#trip-meta-save").click();
+    await page.locator("#trip-meta-modal").waitFor({ state: "hidden" });
+    await page.locator("#notes-storage-browser").click();
+    await page.locator("#notes-storage-modal").waitFor({ state: "hidden" });
+    await trip.locator(".trip-fav").click();
+    await expect(trip.locator(".trip-fav")).toHaveAttribute("aria-pressed", "true");
+    await expect(trip.locator(".trip-note")).toHaveText(HERO_TRIP_NOTE);
+}
+
 // Selects the top (newest) trip and waits until it is actually active/playable
 // (chart rendered, or the total-time readout advanced past 0:00) - mirrors
 // _fixtures.ts loadTrip. The app never auto-selects, so this click is required.
@@ -567,6 +589,14 @@ async function selectTopTrip(page) {
         undefined,
         { timeout: 15_000 },
     );
+    const events = await page.evaluate(() => {
+        const state = window.__everydashcam.state;
+        return state.trips[state.active.trip].events;
+    });
+    expect(events, "the deer encounter produces exactly one detected event").toHaveLength(1);
+    expect(events[0].kind).toBe("brake");
+    expect(events[0].relSec).toBeGreaterThanOrEqual(HERO_BRAKE_START_SEC);
+    expect(events[0].relSec).toBeLessThanOrEqual(HERO_BRAKE_SEC);
 }
 
 // Seek through the real scrubber rather than reaching into app modules. Pausing
@@ -626,6 +656,7 @@ async function shotDesktop(browser, fixtureRoot) {
 
     const tripCount = await ingest(page, fixtureRoot);
     if (tripCount < 3) throw new Error(`desktop: expected >=3 trips, got ${tripCount}`);
+    await annotateTopTrip(page);
     await selectTopTrip(page);
 
     // Split view: focus is the default; the toggle is shown only on multichannel
@@ -683,6 +714,9 @@ async function shotDesktop(browser, fixtureRoot) {
     });
     await seekToHeroBrake(page);
     await waitForMapIdle(page);
+    const events = page.locator("li.trip:not(.unindexed-note)").first().locator(".trip-events-list");
+    await events.locator("summary").click();
+    await expect(events.locator(".trip-event-row")).toBeVisible();
 
     const out = join(OUT_DIR, "app-desktop.png");
     await page.screenshot({ path: out, fullPage: false });
@@ -708,6 +742,7 @@ async function shotMobilePlayer(browser, fixtureRoot) {
 
     const tripCount = await ingest(page, fixtureRoot);
     if (tripCount < 3) throw new Error(`mobile-player: expected >=3 trips, got ${tripCount}`);
+    await annotateTopTrip(page);
     await selectTopTrip(page);
 
     await seekToHeroBrake(page);
