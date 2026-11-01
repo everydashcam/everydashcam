@@ -227,6 +227,25 @@ export function initTripJump(jumpOptions: TripJumpOptions): void {
 export function syncTripJump(hasDaySections: boolean): void {
     dom.tripJump.hidden = !hasDaySections;
     if (!popover?.isOpen) return;
-    if (hasDaySections) render();
-    else popover.close();
+    if (!hasDaySections) {
+        popover.close();
+        return;
+    }
+    // Background recording analysis can rebuild the list while the user is
+    // navigating the calendar. Keep that control focused without taking focus
+    // back from another part of the page.
+    const panel = dom.tripJumpPanel;
+    const active = document.activeElement;
+    const focused = active instanceof HTMLButtonElement && panel.contains(active) ? active : null;
+    render();
+    if (!focused) return;
+    const buttons = Array.from(panel.querySelectorAll<HTMLButtonElement>("button:enabled"));
+    const replacement = buttons.find((button) =>
+        focused.dataset.dayKey
+            ? button.dataset.dayKey === focused.dataset.dayKey
+            : button.dataset.step === focused.dataset.step,
+    );
+    (replacement ?? panel.querySelector<HTMLButtonElement>(".trip-jump__day:enabled") ?? buttons[0])?.focus({
+        preventScroll: true,
+    });
 }
