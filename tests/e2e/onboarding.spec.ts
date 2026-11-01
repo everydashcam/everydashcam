@@ -231,19 +231,44 @@ test.describe("onboarding", () => {
         await shot(page, "onboarding-03-mobile-sheet");
     });
 
-    test("mobile: player tour docks to the TOP when the target sits in the player bar", async ({ page }) => {
+    test("mobile: player tour keeps the chart clear and docks above the bottom player bar", async ({ page }) => {
         await page.setViewportSize(MOBILE);
+        await page.emulateMedia({ reducedMotion: "reduce" });
         await clearOnboarding(page, ["player"]);
         await gotoApp(page, "en");
         await loadTrip(page, SAMPLE_70MAI);
 
         const pop = page.locator(".dc-onb__pop");
+        const spot = page.locator(".dc-onb__spot");
         await expect(pop).toBeVisible({ timeout: 5_000 });
-        // The first player step highlights the timeline/chart low on the screen,
-        // so the sheet must dock to the top to avoid covering it.
+        await expect(page.locator(".dc-onb")).toHaveAttribute("data-mode", "anchor");
+        // The compact chart sits beneath the video, leaving room for a bottom
+        // sheet. Its spotlight must remain completely above the explanation.
+        await expect(pop).toHaveAttribute("data-placement", "sheet");
+        const chartBox = await page.locator("#player-chart").boundingBox();
+        const chartSpot = await spot.boundingBox();
+        const bottomSheet = await pop.boundingBox();
+        expect(chartBox, "chart must have a box").not.toBeNull();
+        expect(chartSpot, "chart spotlight must have a box").not.toBeNull();
+        expect(bottomSheet, "bottom sheet must have a box").not.toBeNull();
+        expect(chartSpot!.y).toBeLessThanOrEqual(chartBox!.y);
+        expect(chartSpot!.y + chartSpot!.height).toBeGreaterThanOrEqual(chartBox!.y + chartBox!.height);
+        expect(bottomSheet!.y).toBeGreaterThan(chartSpot!.y + chartSpot!.height);
+        expect(bottomSheet!.y + bottomSheet!.height).toBeCloseTo(MOBILE.height, 0);
+
+        // The export control lives in the sticky bottom player bar, so this
+        // step needs the opposite edge to keep its highlighted target visible.
+        await page.locator(".dc-onb__next").click();
+        await expect(page.locator(".dc-onb__count")).toHaveText("2 / 2");
         await expect(pop).toHaveAttribute("data-placement", "sheet-top");
-        const box = await pop.boundingBox();
-        expect(box, "sheet must have a box").not.toBeNull();
-        expect(box!.y).toBeLessThan(4);
+        const topSheet = await pop.boundingBox();
+        const playerSpot = await spot.boundingBox();
+        const playerBar = await page.locator("#player-bar").boundingBox();
+        expect(topSheet, "top sheet must have a box").not.toBeNull();
+        expect(playerSpot, "player control spotlight must have a box").not.toBeNull();
+        expect(playerBar, "player bar must have a box").not.toBeNull();
+        expect(topSheet!.y).toBeCloseTo(0, 0);
+        expect(topSheet!.y + topSheet!.height).toBeLessThan(playerSpot!.y);
+        expect(playerSpot!.y + playerSpot!.height).toBeGreaterThan(playerBar!.y);
     });
 });
