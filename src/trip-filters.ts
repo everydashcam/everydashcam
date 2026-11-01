@@ -36,12 +36,16 @@ export function normalizeSearchText(text: string): string {
 /**
  * True when every word of `query` occurs in the already normalized
  * `searchText`, anywhere - so the tail of a file name finds its trip. The one
- * exception is a bare one- or two-digit number: it is a day or an hour and
- * must be a whole word, because every trip's text is full of digits and
- * "sep 2" would otherwise match all of September 2026.
+ * exception is a one- or two-digit number: it must match a complete component,
+ * not a piece of a year or filename. A number on its own also finds date/time
+ * components without spaces ("18:05", "31日"). In a phrase such as "oct 30",
+ * keep word boundaries so the minutes of an October 31 trip cannot match it.
  */
 export function matchesTripSearch(searchText: string, query: string): boolean {
     const words = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+    if (words.length === 1 && /^\d{1,2}$/.test(words[0]!)) {
+        return searchText.split(/\D+/).includes(words[0]!);
+    }
     let textWords: string[] | null = null;
     return words.every((word) => {
         if (!/^\d{1,2}$/.test(word)) return searchText.includes(word);

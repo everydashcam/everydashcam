@@ -11,10 +11,20 @@ describe("trip search", () => {
         expect(matchesTripSearch(text, "cafe ноября")).toBe(false);
     });
 
-    it("matches a day or hour number only as a whole word", () => {
+    it("matches numeric terms in date phrases only as whole words", () => {
         expect(matchesTripSearch(text, "31 окт")).toBe(true);
         expect(matchesTripSearch(text, "3 окт")).toBe(false);
         expect(matchesTripSearch(text, "2 октября")).toBe(false);
+    });
+
+    it("finds standalone numbers in clocks and dates without matching longer numbers", () => {
+        const text = normalizeSearchText("2026年10月31日土曜日 | 2026/10/31 | 18:05 | NO20261031-180500-000001F.MP4");
+        for (const query of ["31", "18", "05"]) {
+            expect(matchesTripSearch(text, query), query).toBe(true);
+        }
+        for (const query of ["3", "26", "1"]) {
+            expect(matchesTripSearch(text, query), query).toBe(false);
+        }
     });
 
     it("finds any longer piece of a file name, including its tail", () => {

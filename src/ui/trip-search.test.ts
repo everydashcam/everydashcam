@@ -21,6 +21,8 @@ describe("tripSearchText", () => {
             expect(matchesTripSearch(text, query), query).toBe(true);
         }
         expect(matchesTripSearch(text, "oct 30")).toBe(false);
+        expect(matchesTripSearch(text, "01")).toBe(true);
+        expect(matchesTripSearch(text, "30")).toBe(true);
     });
 
     it("finds a trip by name, note and file name", () => {
