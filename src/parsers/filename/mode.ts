@@ -5,7 +5,7 @@
 import type { RecordingMode, VendorFile } from "../types.js";
 import { matchDailyCsvChannelPath } from "../internal/daily-csv-path.js";
 import {
-    matchEaceChannelFolder,
+    matchModeChannelFolder,
     RX_360_CARDVR_REC_PATH,
     RX_70MAI,
     RX_70MAI_PATH_MODE,
@@ -16,6 +16,7 @@ import {
     RX_CARCAM_PATH_PARKING,
     RX_DATE_SEQUENCE_CAM,
     RX_DATE_SEQUENCE_CAM_PATH,
+    RX_DATETIME_CHANNEL_TS,
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
     RX_DDPAI_TIMELAPSE,
@@ -208,9 +209,23 @@ const eaceMode: FilenameModeTechnique = {
     id: "e-ace-mode",
     extract(file: VendorFile): RecordingMode | null {
         if (!RX_E_ACE.test(file.file.name)) return null;
-        const folder = matchEaceChannelFolder(file.relativePath);
+        const folder = matchModeChannelFolder(file.relativePath);
         if (folder) return folder[1]!.toLowerCase() === "event" ? "event" : "normal";
         return timestampFolderMode(file) ?? "normal";
+    },
+};
+
+// GKU `_GAP_` time-lapse runs for hours between drives on the real card, so it
+// is the parking loop. The other clips must read as normal, not unknown: an
+// unknown mode defines no trip class, and the drive next to a parking session
+// would then glue into it.
+const datetimeChannelTsMode: FilenameModeTechnique = {
+    id: "datetime-channel-ts-mode",
+    extract(file: VendorFile): RecordingMode | null {
+        const m = file.file.name.match(RX_DATETIME_CHANNEL_TS);
+        if (!m) return null;
+        if (m[3]) return "parking";
+        return matchModeChannelFolder(file.relativePath)?.[1]?.toLowerCase() === "event" ? "event" : "normal";
     },
 };
 
@@ -530,6 +545,7 @@ export const FILENAME_MODE: readonly FilenameModeTechnique[] = [
     recSingleMode,
     ddpaiMode,
     eaceMode,
+    datetimeChannelTsMode,
     escortMode,
     dateSequenceCamMode,
     // novatek-mode precedes fitcamx-mode so the mnemonic P/E letter and the

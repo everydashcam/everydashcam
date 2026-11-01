@@ -171,6 +171,63 @@ describe("collected recording filenames", () => {
         },
     );
 
+    it.each(["GKU", "\\"])("pairs GKU Video_front and Video_rear clips under %s", (root) => {
+        const names = [
+            "Video_front/20261101_130759_F.TS",
+            "Video_rear/20261101_130759_R.TS",
+            "Video_front/20261101_130908_GAP_F.TS",
+            "Video_rear/20261101_130908_GAP_R.TS",
+        ];
+        const files = names.map((name) => vf(`${root}/${name}`));
+        expect(files.map((file) => classifyFilenameChannel(file)?.channel)).toEqual(["front", "rear", "front", "rear"]);
+        expect(files.map(classifyFilenameTimelapse)).toEqual([false, false, true, true]);
+        expect(files.map(classifyFilenameMode)).toEqual(["normal", "normal", "parking", "parking"]);
+        expect(classifyFilenameTime(files[2]!)?.toISOString()).toBe("2026-11-01T13:09:08.000Z");
+        expect(files.every((file) => shouldTryEmbeddedGps(file, false))).toBe(true);
+        expect(new Set(files.map(cameraFingerprint)).size).toBe(1);
+        expect(cameraFingerprint(files[0]!)).not.toBe(cameraFingerprint(vf(`other/${names[0]}`)));
+
+        const loopCandidates = files.slice(0, 2).map((file) =>
+            buildProvisionalCandidate({
+                file,
+                fingerprint: cameraFingerprint(file),
+                startUtc: classifyFilenameTime(file)!.getTime() / 1000,
+                startSource: "name",
+                cameraTzSec: null,
+                durationSec: 26,
+                records: [],
+                appliedExtractors: [],
+            }),
+        );
+        const trips = groupTrips(loopCandidates);
+        expect(trips).toHaveLength(1);
+        expect(Object.keys(trips[0]!.frames[0]!.channels).sort()).toEqual(["front", "rear"]);
+    });
+
+    it("splits a GKU parking time-lapse from the drives right before and after it", () => {
+        // Seconds-apart clips, the shape of the reported card around a stop.
+        const clips = [
+            ["Video_front/20261031_153237_F.TS", 87],
+            ["Video_front/20261031_153407_GAP_F.TS", 180],
+            ["Video_front/20261031_153710_F.TS", 60],
+        ] as const;
+        const candidates = clips.map(([path, durationSec]) => {
+            const file = vf(`GKU/${path}`);
+            return buildProvisionalCandidate({
+                file,
+                fingerprint: cameraFingerprint(file),
+                startUtc: classifyFilenameTime(file)!.getTime() / 1000,
+                startSource: "name",
+                cameraTzSec: null,
+                durationSec,
+                records: [],
+                appliedExtractors: [],
+            });
+        });
+        const trips = groupTrips(candidates);
+        expect(trips.map((trip) => trip.isParking)).toEqual([false, true, false]);
+    });
+
     it.each([
         ["Vantrue S1 Pro Max", ["20250617_133014_00031_N_A.MP4", "20250617_133014_00031_N_B.MP4"]],
         ["Mikavi PQ6", ["20210913120104_0000574A.MP4", "20210913120104_0000575B.MP4", "20210913120104_0000576C.MP4"]],

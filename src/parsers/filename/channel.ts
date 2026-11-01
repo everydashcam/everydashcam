@@ -67,7 +67,7 @@ import {
     RX_WOLFBOX_PATH_INTERIOR,
     RX_WOLFBOX_PATH_REAR,
     matchNovatekSingleFilename,
-    matchEaceChannelFolder,
+    matchModeChannelFolder,
 } from "./_patterns.js";
 import { channelFromFolder, matchChannelFolder } from "./channel-folder.js";
 import type { ChannelMatch, FilenameChannelTechnique } from "./types.js";
@@ -294,7 +294,7 @@ const eaceChannel: FilenameChannelTechnique = {
         const ch = m[3];
         if (ch) return mnemonicChannel(ch);
         const folder = matchChannelFolder(file.relativePath);
-        return folderChannel(matchEaceChannelFolder(file.relativePath)?.[2]) ?? (folder ? sure(folder.channel) : null);
+        return folderChannel(matchModeChannelFolder(file.relativePath)?.[2]) ?? (folder ? sure(folder.channel) : null);
     },
 };
 
@@ -630,7 +630,7 @@ const datetimeChannelTsChannel: FilenameChannelTechnique = {
     id: "datetime-channel-ts-channel",
     extract(file: VendorFile): ChannelMatch | null {
         const m = file.file.name.match(RX_DATETIME_CHANNEL_TS);
-        return m ? mnemonicChannel(m[3]!) : null;
+        return m ? mnemonicChannel(m[4]!) : null;
     },
 };
 

@@ -26,7 +26,7 @@ import {
     RX_HMS_CHANNEL_MODE,
     MAI70_MODE_FOLDERS,
     REDTIGER_MODE_FOLDERS,
-    matchEaceChannelFolder,
+    matchModeChannelFolder,
     RX_DATETIME_CHANNEL_TS,
     RX_70MAI,
     RX_70MAI_CHANNEL_STRIP,
@@ -319,7 +319,7 @@ const eaceCameraKey: FilenameCameraKeyTechnique = {
         // redtiger-camera-key, no corpus shows whether an event replaces its
         // loop segment or duplicates it; a shared key would turn a duplicate
         // into a dup frame inside the drive.
-        const stem = matchEaceChannelFolder(file.relativePath)?.[1] ?? null;
+        const stem = matchModeChannelFolder(file.relativePath)?.[1] ?? null;
         const path = stem === null ? file.relativePath : file.relativePath.replace(/[^/]+(?=\/[^/]+$)/, stem);
         const dir = strippedParentDir(path, [], [ch ?? ""]);
         return `e-ace|${dir}|${masked}`;
@@ -728,8 +728,13 @@ const datetimeChannelTsCameraKey: FilenameCameraKeyTechnique = {
     extract(file: VendorFile): string | null {
         const m = file.file.name.match(RX_DATETIME_CHANNEL_TS);
         if (!m) return null;
+        // GKU splits channels into Video_front/Video_rear: keep only the mode
+        // stem, as e-ace-camera-key does. Time-lapse clips keep the loop key:
+        // they are the same clock and never overlap loop clips in time.
+        const stem = matchModeChannelFolder(file.relativePath)?.[1] ?? null;
+        const path = stem === null ? file.relativePath : file.relativePath.replace(/[^/]+(?=\/[^/]+$)/, stem);
         // Only the leaf is a channel; an enclosing root may itself be named front/back.
-        const dir = strippedParentDir(file.relativePath, [], ["f", "r", m[3]!]);
+        const dir = strippedParentDir(path, [], ["f", "r", m[4]!]);
         return `datetime-channel-ts|${dir}|${maskName(`${m[1]}_${m[2]}.ts`)}`;
     },
 };

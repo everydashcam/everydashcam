@@ -137,16 +137,17 @@ export const RX_GRMN_MODE_PATH = /(?:^|\/)DCIM\/(\d{3}(EVENT|SAVED|PARKM|TLPSE|U
 // FO = front, OR = rear, FR = combined. Other tokens keep their clock without
 // asserting a mount or interpreting the final letter as a recording mode.
 export const RX_HMS_CHANNEL_MODE = /^(\d{8})[-_](\d{2})h(\d{2})m(\d{2})s_([A-Z]{1,4})_([A-Z])\.mp4$/i;
-// Leaf folder of an E-Ace-shaped 3-channel card that splits streams into
-// `<Mode>_<channel word>/` siblings (RedTiger F17: Video_Front/, Video_Inside/,
-// Video_Rear/, with Event_* next to them). Groups: mode stem, channel word.
-const RX_E_ACE_CHANNEL_FOLDER = /^(video|event)_(front|rear|inside)$/i;
+// Leaf folder of a card that splits streams into `<Mode>_<channel word>/`
+// siblings: RedTiger F17 (Video_Front/, Video_Inside/, Video_Rear/, with
+// Event_* next to them) and GKU 600 Pro (Video_front/, Video_rear/).
+// Groups: mode stem, channel word.
+const RX_MODE_CHANNEL_FOLDER = /^(video|event)_(front|rear|inside)$/i;
 
-/** Mode and channel of an E-Ace leaf folder, preserving the card's spelling. */
-export function matchEaceChannelFolder(relativePath: string): RegExpMatchArray | null {
+/** Mode and channel of a `<Mode>_<channel>` leaf folder, preserving the card's spelling. */
+export function matchModeChannelFolder(relativePath: string): RegExpMatchArray | null {
     const segs = relativePath.split("/");
     if (segs.length < 2) return null;
-    return segs[segs.length - 2]!.match(RX_E_ACE_CHANNEL_FOLDER);
+    return segs[segs.length - 2]!.match(RX_MODE_CHANNEL_FOLDER);
 }
 
 // Escort M2: digits_digits_CAM.mp4. Time has no seconds field.
@@ -447,5 +448,7 @@ export const RX_GENERIC_DATETIME = /(\d{4})[-_T]?(\d{2})[-_T]?(\d{2})[-_T ]?(\d{
 export const RX_SEI_DOUBLE_GPS = /^\d{6}_\d{3}_\d{3}_[A-Z]\.mp4$/i;
 export const RX_SEI_DOUBLE_GPS_PATH = /(?:^|\/)(InternalView|ExteriorView)\/(\d{6})\/[^/]+$/i;
 
-// INNOVV N2: date, clock and mnemonic camera suffix in separate tokens.
-export const RX_DATETIME_CHANNEL_TS = /^(20\d{6})_(\d{6})_([A-Z])\.ts$/i;
+// INNOVV N2, GKU 600 Pro: date, clock and mnemonic camera suffix in separate
+// tokens. GKU inserts `_GAP` before the suffix on its time-lapse clips.
+// Groups: date, clock, GAP token (or undefined), channel letter.
+export const RX_DATETIME_CHANNEL_TS = /^(20\d{6})_(\d{6})(?:_(GAP))?_([A-Z])\.ts$/i;

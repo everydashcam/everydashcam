@@ -41,13 +41,16 @@ describe("classifyGpsSource", () => {
         }
     });
 
-    it.each(["20260904_202849F.ts", "20260904_235813R_SOS.ts", "20260902_174435F_PARK.ts"])(
-        "keeps embedded probing enabled for %s",
-        (name) => {
-            expect(classifyGpsSource(vf(name))).toBe("embedded");
-            expect(shouldTryEmbeddedGps(vf(name), false)).toBe(true);
-        },
-    );
+    it.each([
+        "20260904_202849F.ts",
+        "20260904_235813R_SOS.ts",
+        "20260902_174435F_PARK.ts",
+        "20261101_130845_F.TS",
+        "20261101_130908_GAP_R.TS",
+    ])("keeps embedded probing enabled for %s", (name) => {
+        expect(classifyGpsSource(vf(name))).toBe("embedded");
+        expect(shouldTryEmbeddedGps(vf(name), false)).toBe(true);
+    });
 
     it("basename-sidecar formats", () => {
         expect(classifyGpsSource(vf("20240429_1830_CAM.mp4"))).toBe("basename-sidecar"); // Escort

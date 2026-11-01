@@ -16,6 +16,7 @@ import {
     RX_70MAI,
     RX_70MAI_PATH_MODE,
     RX_70MAI_PREFIX_MODE,
+    RX_DATETIME_CHANNEL_TS,
     RX_DDPAI_TIMELAPSE,
     RX_GRMN_SEQUENCE,
     RX_GRMN_MODE_PATH,
@@ -41,6 +42,15 @@ const mai70Timelapse: FilenameTechnique<boolean> = {
     },
 };
 
+// GKU `_GAP_` clips: on the real card ~180 s of video covers ~45 min of wall
+// time, and the trailer GPS of a short clip spans ~15x its video duration.
+const datetimeChannelTsTimelapse: FilenameTechnique<boolean> = {
+    id: "datetime-channel-ts-timelapse",
+    extract(file: VendorFile): boolean | null {
+        return file.file.name.match(RX_DATETIME_CHANNEL_TS)?.[3] ? true : null;
+    },
+};
+
 // DDPai time-lapse parking clips (S_/Q_ name variant, RX_DDPAI_TIMELAPSE).
 const ddpaiTimelapse: FilenameTechnique<boolean> = {
     id: "ddpai-timelapse",
@@ -52,6 +62,7 @@ const ddpaiTimelapse: FilenameTechnique<boolean> = {
 export const FILENAME_TIMELAPSE: readonly FilenameTechnique<boolean>[] = [
     mai70Timelapse,
     ddpaiTimelapse,
+    datetimeChannelTsTimelapse,
     {
         id: "grmn-timelapse",
         extract(file) {
