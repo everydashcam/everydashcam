@@ -272,7 +272,7 @@ export async function dispatchParseLogsViaPool(
         // 130k+ records and the spread overflows the call-argument limit.
         extendArray(allSkipped, r.skipped);
         if (r.records.length > 0) {
-            associateRecordsWithVideos(r.records, c.file, videoIndex);
+            associateRecordsWithVideos(r.records, c.file, videoIndex, extractorId);
             extendArray(allRecords, r.records);
             used.add(extractorId);
             for (const rec of r.records) {

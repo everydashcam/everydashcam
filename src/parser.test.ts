@@ -1318,6 +1318,30 @@ describe("rebindOrphanLogRecords (70mai ghost names in GPSData)", () => {
         expect(rebound).toBe(0);
     });
 
+    it("re-keys a bare core from the dated log onto the prefixed file on disk", () => {
+        const log = logWith(
+            rec(100, 43, 7, { mp4Filename: "20261021-211901-002571F.MP4" }),
+            rec(101, 43, 7, { mp4Filename: "20261008-011452-002127F.MP4" }),
+        );
+        const rebound = rebindOrphanLogRecords(log, ["NO20261021-211901-002571F.MP4", "EV20261008-011452-002127F.MP4"]);
+        expect(rebound).toBe(2);
+        expect(log.records.map((r) => r.mp4Filename)).toEqual([
+            "NO20261021-211901-002571F.MP4",
+            "EV20261008-011452-002127F.MP4",
+        ]);
+    });
+
+    it("does not treat a bare generic datetime name as a 70mai core", () => {
+        // Without the counter and channel letter the bare name is a generic
+        // camera clock, not a 70mai clip; neither side may join through it.
+        const log = logWith(
+            rec(100, 43, 7, { mp4Filename: "20261021-211901.MP4" }),
+            rec(101, 43, 7, { mp4Filename: "NO20261021-211902.MP4" }),
+        );
+        const rebound = rebindOrphanLogRecords(log, ["NO20261021-211901.MP4", "20261021-211902.MP4"]);
+        expect(rebound).toBe(0);
+    });
+
     // Real-card regressions. Clip names below are verbatim from user SD cards
     // (A810 and X800); filenames carry only datetime+sequence+channel, no
     // location, so they are safe to commit. These lock the exact scenarios the

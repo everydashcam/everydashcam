@@ -98,7 +98,8 @@ const GPS_SOURCE_HINTS: readonly GpsSourceHint[] = [
     },
     // 70mai: two storage paths depending on model.
     //  - Older / lower-tier (X800, ...): $V02 CSV log-sidecar (csv-70mai
-    //    primitive) - GPSData*.txt next to the MP4, no embedded GPS.
+    //    primitive) - GPSData*.txt next to the MP4, no embedded GPS. The older
+    //    A800 writes a dated CSV instead (csv-70mai-dated), same log-first flow.
     //  - Newer 4K (A810, M500, ...): NO CSV; GPS is embedded as a 70mai-specific
     //    freeGPS block (freegps-70mai primitive) plus a top-level `gps ` index.
     // Declaring "embedded" is safe for the CSV models too: when their

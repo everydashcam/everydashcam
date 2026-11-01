@@ -42,6 +42,16 @@ export interface GpsRecord extends SpeedSample {
     // Most parsers leave it absent; the ingest dispatcher resolves basenames.
     // Whole-card logs may retain an exact owner supplied in their parse context.
     videoKey?: string;
+    // A named log can arrive before its video. Keep the original reference,
+    // source scope and extractor until its concrete owner commits to the trip
+    // list. A cancelled provisional binding can then return to the original
+    // name; pending rows never use an unscoped basename lookup.
+    filenameAssociation?: {
+        mp4Filename: string;
+        sourcePath: string;
+        sourceKey?: string;
+        extractorId: string;
+    };
     // A recording-scoped log may know the exact UTC start of its owning clip
     // without storing that clip's filename. The ingest layer keeps this hint
     // until MP4 metadata is available, then replaces the placeholder owner

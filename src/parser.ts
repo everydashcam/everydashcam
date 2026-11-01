@@ -39,6 +39,15 @@ export function accelMagnitude(xg: number, yg: number, zg: number): number {
 
 function recordOwnerKey(record: GpsRecord): string {
     if (record.videoKey !== undefined) return record.videoKey;
+    const filenameHint = record.filenameAssociation;
+    if (filenameHint) {
+        return JSON.stringify([
+            filenameHint.sourceKey ?? null,
+            filenameHint.sourcePath,
+            filenameHint.extractorId,
+            record.mp4Filename,
+        ]);
+    }
     const hint = record.timeAssociation;
     return hint ? JSON.stringify([hint.sourceKey ?? null, hint.sourcePath, hint.extractorId]) : record.mp4Filename;
 }
@@ -748,8 +757,11 @@ export function rebindOrphanLogRecords(log: ParsedLog, loadedVideoNames: Iterabl
         if (core === null) continue;
         const target = coreToName.get(core);
         if (target === undefined || target === null) continue;
-        for (const rec of bucket) rec.mp4Filename = target;
-        rebound += bucket.length;
+        for (const rec of bucket) {
+            if (rec.filenameAssociation !== undefined) continue;
+            rec.mp4Filename = target;
+            rebound++;
+        }
     }
     return rebound;
 }
@@ -817,7 +829,9 @@ export function cloneRecordsAcrossChannels(log: ParsedLog, loadedVideos: Iterabl
                 const records = owned?.length
                     ? owned
                     : nameOwners.get(physical.file.name)?.size === 1
-                      ? (log.byFilename.get(physical.file.name) ?? []).filter((record) => record.videoKey === undefined)
+                      ? (log.byFilename.get(physical.file.name) ?? []).filter(
+                            (record) => record.videoKey === undefined && record.filenameAssociation === undefined,
+                        )
                       : [];
                 if (records.length > 0) recordsByOwner.set(ownerKey, records);
             }

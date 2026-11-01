@@ -55,6 +55,7 @@ recognize and reject the layout with a code comment explaining why.
 | 70mai embedded freeGPS (ddmm×1e5) | 70mai A510, A810, M500 | Coordinates cross-checked against OSD and ExifTool; speed is recorded, timing is relative. A510 rear files have no GPS. Omni/X200 remains unverified. [Fixtures](../src/parsers/__fixtures__/70mai-embedded/real-anonymized.test.ts). |
 | 70mai Pro `GPS `-box (direct 36-byte records) | public sample | Real public GPS-box data cross-checks coordinates and speed, but the committed fixture is synthetic. Pro/Midrive D02/D03 family attribution; relative timestamps preserve receiver gaps. [Decoder](../src/parsers/primitives/gps-box-70mai.ts). |
 | 70mai `$V02` CSV sidecar | 70mai X800, A810, Dash Cam Pro Plus A500S; unidentified model with extensionless references | Firmware clock correction and model-dependent accel axes are documented in the [format reference](format-70mai-x800-gps.md). A500S unnamed sessions bind by video time windows. [Fixtures](../src/parsers/__fixtures__/70mai/real-anonymized.test.ts). |
+| 70mai dated CSV sidecar (`.GPS/GPSData*.txt`) | 70mai A800 (owner-reported; the same row shape is [publicly attributed to the A800](https://forum.mapillary.com/t/using-the-70mai-a810-dashcam-for-mapillary/9130/50)) | UTC rows bound by mode-less clip names to normal and event files. No course or accelerometer; course is inferred per clip. Valid fixes with an all-zero clip name are skipped. Rear-clip rows (`B` channel) are publicly shown but not in our sample. [Fixtures](../src/parsers/__fixtures__/70mai-dated/real-anonymized.test.ts). |
 | GoPro GPMF (GPS5) | HERO5, HERO6, MAX (HERO mode); HERO7/HERO8 no-fix cases | HERO7/HERO8 verify no-fix handling only. HERO11 dual GPS5/GPS9 behavior remains unverified. [Evidence](../tests/testdata/gopro-gpmf/README.md). |
 | Thinkware GPS-in-subtitle | F200 PRO (real-anonymized) | Front-file GPS and accel verified on F200 PRO; legacy F770/F750 dialects are implemented without that model evidence. [Fixture notes](../src/parsers/__fixtures__/thinkware/README.md). |
 | BlackVue X `gps`-in-`free` | DR900X Plus (no-fix sample) | Verifies the container and no-fix handling, not a route or measured speed. Positive decoding has synthetic coverage. |
@@ -90,7 +91,7 @@ receiver or that every export loses telemetry.
 
 | Sample model or family | Evidence / limitation |
 | --- | --- |
-| 70mai A800; unidentified NO-series and app exports | A800 samples and most app exports yield no embedded GPS. One clip in the app-export set retains `freegps-70mai` records: filenames alone cannot decide whether telemetry survived. |
+| 70mai A800; unidentified NO-series and app exports | A800 samples and most app exports yield no embedded GPS; A800 GPS comes from the dated `.GPS` log above. One clip in the app-export set retains `freegps-70mai` records: filenames alone cannot decide whether telemetry survived. |
 | DDPAI MOLA N3, Z50, Z60 | The video-only sample sets have no readable GPS. NMEA companion logs are required where available; Z60 Pro USB telemetry is verified separately above. |
 | JOOYFACT A1 | The original MOV plays; no GPS records found. The supplied A1 label does not establish an A1G/A1P variant. |
 | Rexing SC4KS | The original MPEG-TS plays, including seeking; no GPS records found. This does not validate Rexing V1-family GPS formats. |

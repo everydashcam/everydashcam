@@ -1,10 +1,16 @@
 import { mergeIntoGpsLog } from "./parser.js";
+import { mai70NameCore } from "./parsers/filename/_patterns.js";
 import type { GpsRecord, ParsedLog, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 
 export interface VideoAssociationIndex {
     videosByFilename: ReadonlyMap<string, readonly VendorFile[]>;
+    // 70mai logs can name a clip by another mode prefix, no prefix at all, or
+    // with bytes after ".MP4" (see mai70NameCore). Exact names always win; the
+    // core is the fallback key, so these rows still get a concrete owner and
+    // extractor attribution instead of a later name-only rebind.
+    videosByNameCore: ReadonlyMap<string, readonly VendorFile[]>;
     canonicalByFileKey: ReadonlyMap<string, VideoWithRecordingCopies>;
 }
 
@@ -68,8 +74,15 @@ function findRecordingStartCandidate(
     return match;
 }
 
+function pushToBucket<T>(map: Map<string, T[]>, key: string, value: T): void {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(value);
+    else map.set(key, [value]);
+}
+
 export function buildVideoAssociationIndex(videos: readonly VideoWithRecordingCopies[]): VideoAssociationIndex {
     const mutable = new Map<string, VendorFile[]>();
+    const videosByNameCore = new Map<string, VendorFile[]>();
     const canonicalByFileKey = new Map<string, VideoWithRecordingCopies>();
     for (const video of videos) {
         for (const physical of [video, ...(video.recordingCopies ?? [])]) {
@@ -82,15 +95,12 @@ export function buildVideoAssociationIndex(videos: readonly VideoWithRecordingCo
                 continue;
             }
             canonicalByFileKey.set(key, video);
-            let sameName = mutable.get(physical.file.name);
-            if (!sameName) {
-                sameName = [];
-                mutable.set(physical.file.name, sameName);
-            }
-            sameName.push(physical);
+            pushToBucket(mutable, physical.file.name, physical);
+            const core = mai70NameCore(physical.file.name);
+            if (core !== null) pushToBucket(videosByNameCore, core, physical);
         }
     }
-    return { videosByFilename: mutable, canonicalByFileKey };
+    return { videosByFilename: mutable, videosByNameCore, canonicalByFileKey };
 }
 
 /**
@@ -172,9 +182,10 @@ function commonPrefixLength(a: string[], b: string[]): number {
 }
 
 /**
- * Resolves a basename carried by a log/sidecar to one concrete video. Source
- * scope wins, then directory proximity; an unresolved tie stays unowned so it
- * cannot contaminate several same-named recordings.
+ * Resolves a basename carried by a log/sidecar to one concrete video. An exact
+ * basename wins; only when none is loaded does a 70mai name core stand in for
+ * it. Source scope wins, then directory proximity; an unresolved tie stays
+ * unowned so it cannot contaminate several same-named recordings.
  */
 export function resolveVideoKey(source: VendorFile, mp4Filename: string, videos: VideosOrIndex): string | null {
     const video = resolveVideo(source, mp4Filename, asIndex(videos));
@@ -191,8 +202,16 @@ function uniqueCanonicalVideo(videos: readonly VendorFile[], index: VideoAssocia
     return canonical;
 }
 
-function resolveVideo(source: VendorFile, mp4Filename: string, index: VideoAssociationIndex): VendorFile | null {
+function resolveVideo(
+    source: Pick<VendorFile, "relativePath" | "sourceKey">,
+    mp4Filename: string,
+    index: VideoAssociationIndex,
+): VendorFile | null {
     let candidates = [...(index.videosByFilename.get(mp4Filename) ?? [])];
+    if (candidates.length === 0) {
+        const core = mai70NameCore(mp4Filename);
+        if (core !== null) candidates = [...(index.videosByNameCore.get(core) ?? [])];
+    }
     if (candidates.length === 0) return null;
 
     if (source.sourceKey !== undefined) {
@@ -220,11 +239,16 @@ export function associateRecordsWithVideos(
     records: readonly GpsRecord[],
     source: VendorFile,
     videos: VideosOrIndex,
+    extractorId?: string,
 ): void {
     const index = asIndex(videos);
     const videoByFilename = new Map<string, VendorFile | null>();
     for (const record of records) {
-        if (record.timeAssociation !== undefined && record.videoKey === undefined) continue;
+        if (
+            record.videoKey === undefined &&
+            (record.timeAssociation !== undefined || record.recordingAssociation !== undefined)
+        )
+            continue;
         let video: VendorFile | null | undefined;
         if (record.videoKey !== undefined) {
             // A concrete owner from another source is stronger than a matching
@@ -234,6 +258,14 @@ export function associateRecordsWithVideos(
             video = index.canonicalByFileKey.get(record.videoKey);
             if (!video) continue;
         } else {
+            if (extractorId !== undefined) {
+                record.filenameAssociation ??= {
+                    mp4Filename: record.mp4Filename,
+                    sourcePath: source.relativePath,
+                    ...(source.sourceKey === undefined ? {} : { sourceKey: source.sourceKey }),
+                    extractorId,
+                };
+            }
             video = videoByFilename.get(record.mp4Filename);
             if (video === undefined) {
                 video = resolveVideo(source, record.mp4Filename, index);
@@ -245,6 +277,74 @@ export function associateRecordsWithVideos(
             record.mp4Filename = video.file.name;
         }
     }
+}
+
+/** Resolves named logs retained from earlier drops with their original source scope. */
+export function bindRecordsByFilename(
+    log: ParsedLog,
+    videos: VideosOrIndex,
+): { log: ParsedLog; boundRecords: number; extractorByFileKey: Map<string, string> } {
+    const index = asIndex(videos);
+    const videoByReference = new Map<string, VendorFile | null>();
+    const replacements = new Map<GpsRecord, GpsRecord>();
+    const extractorByFileKey = new Map<string, string>();
+    // Filename hints resolve only on ingest, not during each metadata update.
+    // Keep them outside pendingByFilename so large card logs do not slow the
+    // recording-start and directory-time binders' progressive passes.
+    for (const bucket of log.byFilename.values()) {
+        for (const record of bucket) {
+            const hint = record.filenameAssociation;
+            if (!hint || record.videoKey !== undefined) continue;
+            const reference = JSON.stringify([hint.sourceKey ?? null, hint.sourcePath, record.mp4Filename]);
+            let video = videoByReference.get(reference);
+            if (video === undefined) {
+                video = resolveVideo(
+                    { relativePath: hint.sourcePath, sourceKey: hint.sourceKey },
+                    record.mp4Filename,
+                    index,
+                );
+                videoByReference.set(reference, video);
+            }
+            if (!video) continue;
+            const videoKey = vendorFileKey(video);
+            const bound = { ...record, videoKey, mp4Filename: video.file.name };
+            replacements.set(record, bound);
+            if (!extractorByFileKey.has(videoKey)) extractorByFileKey.set(videoKey, hint.extractorId);
+        }
+    }
+    if (replacements.size === 0) return { log, boundRecords: 0, extractorByFileKey };
+    return {
+        log: mergeIntoGpsLog(null, {
+            records: log.records.map((record) => replacements.get(record) ?? record),
+            appliedExtractors: log.appliedExtractors,
+            skipped: log.skipped,
+        }),
+        boundRecords: replacements.size,
+        extractorByFileKey,
+    };
+}
+
+/**
+ * Settles provisional named bindings against the committed trip list. Mutates
+ * shared records so candidate views lose the hint too; abandoned bindings
+ * return to their original references for the next ingest to retry safely.
+ * Concrete owners without a provisional hint are never reconsidered.
+ */
+export function settleFilenameAssociations(log: ParsedLog, committedVideos: VideosOrIndex): ParsedLog {
+    const index = asIndex(committedVideos);
+    let restored = false;
+    for (const record of log.records) {
+        const hint = record.filenameAssociation;
+        if (!hint || record.videoKey === undefined) continue;
+        if (index.canonicalByFileKey.has(record.videoKey)) {
+            delete record.filenameAssociation;
+        } else {
+            record.mp4Filename = hint.mp4Filename;
+            delete record.videoKey;
+            restored = true;
+        }
+    }
+    return restored ? mergeIntoGpsLog(null, log) : log;
 }
 
 /**
@@ -268,6 +368,7 @@ export function rebindRecordingCopyRecords(
     const records = log.records.map((record) => {
         if (
             record.recordingAssociation !== undefined ||
+            (record.filenameAssociation !== undefined && record.videoKey === undefined) ||
             (record.timeAssociation !== undefined && record.videoKey === undefined)
         )
             return record;
@@ -311,6 +412,7 @@ export function recordsForVideo(log: ParsedLog, video: VendorFile, loadedVideos:
             : (log.byFilename.get(canonical.file.name) ?? []).filter(
                   (record) =>
                       record.videoKey === undefined &&
+                      record.filenameAssociation === undefined &&
                       record.recordingAssociation === undefined &&
                       record.timeAssociation === undefined,
               );

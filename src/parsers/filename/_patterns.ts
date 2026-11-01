@@ -40,13 +40,17 @@ export const RX_70MAI_PREFIX_MODE = /^(NO|EV|VL|LA|PA)/i;
 // ("VL...F.MP4G4"). The core survives both, and it is unique per card
 // (timestamp + sequence + channel), so it is the join key for rebinding log
 // records to loaded videos (rebindOrphanLogRecords in parser.ts).
-const RX_70MAI_NAME_CORE = /^[A-Z]{2}(\d{8}-\d{6}(?:-\d+)?[A-Z]?)\.MP4/i;
+// The dated log (csv-70mai-dated) writes the core alone, without any prefix.
+// A bare core must carry both the counter and the channel letter: a bare
+// "YYYYMMDD-HHMMSS.MP4" is a generic camera name and must not join 70mai clips.
+const RX_70MAI_NAME_CORE = /^(?:[A-Z]{2}(\d{8}-\d{6}(?:-\d+)?[A-Z]?)|(\d{8}-\d{6}-\d+[A-Z]))\.MP4/i;
 
 /** Returns the invariant 70mai name core (uppercased), or null for a name
- *  that does not have the 70mai shape. */
+ *  that does not have the 70mai shape. A prefixed name and the bare core the
+ *  dated log writes for the same clip return the same value. */
 export function mai70NameCore(name: string): string | null {
     const m = name.match(RX_70MAI_NAME_CORE);
-    return m ? m[1]!.toUpperCase() : null;
+    return m ? (m[1] ?? m[2])!.toUpperCase() : null;
 }
 
 // Channel-letter strip for camera fingerprinting: removes the suffix letter

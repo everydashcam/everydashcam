@@ -1,7 +1,8 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { write70maiHiddenGpsCard } from "./_70mai-card.js";
+import type { Channel } from "../../src/parsers/types.js";
+import { write70maiDatedGpsCard, write70maiHiddenGpsCard } from "./_70mai-card.js";
 import {
     DESKTOP,
     expect,
@@ -70,32 +71,103 @@ async function openRecordingTrip(page: Page, name: string): Promise<void> {
     await expect(page.locator("#trip-analysis-status")).toBeHidden();
 }
 
+function recordingGps(page: Page, channel: Channel) {
+    return page.evaluate((wanted) => {
+        const recordings = new Set(
+            window.__everydashcam.state.trips.flatMap((trip) =>
+                trip.frames.flatMap((frame) => Object.values(frame.channels)),
+            ),
+        );
+        return [...recordings]
+            .filter((recording) => recording.channel === wanted)
+            .map((recording) => ({
+                name: recording.file.name,
+                points: recording.records.length,
+                extractors: recording.appliedExtractors,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, channel);
+}
+
+/** Trip tracks that repeat one fix (time and position) more than once. */
+function duplicatedTripFixes(page: Page) {
+    return page.evaluate(() =>
+        window.__everydashcam.state.trips.flatMap((trip) => {
+            const keys = trip.records.map((record) => `${record.unixSeconds}|${record.lat}|${record.lon}`);
+            return keys.filter((key, index) => keys.indexOf(key) !== index);
+        }),
+    );
+}
+
+function datedFrontGps(normalPoints = 3) {
+    return [
+        { name: "EV20260101-120002-000002F.MP4", points: 3, extractors: ["csv-70mai-dated"] },
+        { name: "NO20260101-120000-000001F.MP4", points: normalPoints, extractors: ["csv-70mai-dated"] },
+    ];
+}
+
 /** A synthetic hidden telemetry layout survives the folder ingest filter. */
 export async function check70maiHiddenGps(page: Page, directory: string): Promise<void> {
     write70maiHiddenGpsCard(directory);
     await page.locator("#folder-input").setInputFiles(directory);
     await expect
-        .poll(() =>
-            page.evaluate(() => {
-                const recordings = new Set(
-                    window.__everydashcam.state.trips.flatMap((trip) =>
-                        trip.frames.flatMap((frame) => Object.values(frame.channels)),
-                    ),
-                );
-                return [...recordings]
-                    .filter((recording) => recording.channel === "front")
-                    .map((recording) => ({
-                        name: recording.file.name,
-                        points: recording.records.length,
-                        extractors: recording.appliedExtractors,
-                    }))
-                    .sort((a, b) => a.name.localeCompare(b.name));
-            }),
-        )
+        .poll(() => recordingGps(page, "front"))
         .toEqual([
             { name: "NO20260101-120000-000001F.MP4", points: 3, extractors: ["csv-70mai"] },
             { name: "NO20260101-120002-000002F.MP4", points: 3, extractors: ["csv-70mai"] },
         ]);
+}
+
+/** Prefix-less clip names in a dated `.GPS` log reach normal and event clips. */
+export async function check70maiDatedGps(page: Page, directory: string, hasMalformedFirstRow = false): Promise<void> {
+    write70maiDatedGpsCard(directory);
+    if (hasMalformedFirstRow) {
+        const logPath = join(directory, ".GPS", "GPSData000001.txt");
+        writeFileSync(logPath, readFileSync(logPath, "utf8").replace("050km/h", "broken"));
+    }
+    await page.locator("#folder-input").setInputFiles(directory);
+    await expect.poll(() => recordingGps(page, "front")).toEqual(datedFrontGps(hasMalformedFirstRow ? 2 : 3));
+    // Only the first recording's rear clip is named in the log.
+    expect(await recordingGps(page, "rear")).toEqual([
+        { name: "NO20260101-120000-000001B.MP4", points: 3, extractors: ["csv-70mai-dated"] },
+        { name: "NO20260101-120002-000002B.MP4", points: 0, extractors: [] },
+    ]);
+    expect(await duplicatedTripFixes(page), "front and rear copies of one fix collapse in the trip").toEqual([]);
+}
+
+/** Stored prefix-less rows bind when the matching video arrives in a later drop. */
+export async function check70maiDatedGpsIncremental(
+    page: Page,
+    directory: string,
+    hasInitialVideo: boolean,
+): Promise<void> {
+    write70maiDatedGpsCard(directory);
+    const logPath = join(directory, ".GPS", "GPSData000001.txt");
+    const normalPath = join(directory, "Normal", "Front", "NO20260101-120000-000001F.MP4");
+    const eventPath = join(directory, "Event", "Front", "EV20260101-120002-000002F.MP4");
+    const input = page.locator("#file-input");
+    await input.setInputFiles(hasInitialVideo ? [logPath, normalPath] : [logPath]);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.gpsLog?.records.length)).toBe(9);
+    await expect.poll(() => recordingGps(page, "front")).toEqual(hasInitialVideo ? [datedFrontGps()[1]] : []);
+
+    await input.setInputFiles(hasInitialVideo ? [eventPath] : [normalPath, eventPath]);
+    await expect.poll(() => recordingGps(page, "front")).toEqual(datedFrontGps());
+
+    await input.setInputFiles(logPath);
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const state = window.__everydashcam.state;
+                return (
+                    state.ingestController === null && state.ingestQueue.length === 0 && state.readingTrips.size === 0
+                );
+            }),
+        )
+        .toBe(true);
+    expect(await recordingGps(page, "front"), "reopening the log preserves each recording's GPS once").toEqual(
+        datedFrontGps(),
+    );
+    expect(await duplicatedTripFixes(page), "reopening the log preserves each trip fix once").toEqual([]);
 }
 
 /** Root logs pass through the real parser worker on hosted and file origins. */

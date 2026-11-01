@@ -163,17 +163,21 @@ describe("70mai real-anonymized fixtures", () => {
         }
     });
 
-    it.each(["mp4", "Mp4"])("recovers extensionless references to unambiguous .%s videos during ingest", async (extension) => {
+    it.each(["mp4", "Mp4"])("binds extensionless references to unambiguous .%s videos through the name core", async (extension) => {
         const { result } = await parseFixture("real-anonymized-extensionless.txt");
         const source = makeVendorFile("GPSData.txt", "");
         const names = [...new Set(result.records.map((record) => record.mp4Filename.replace(/MP4$/, extension)))];
         const videos = names.map((name) => makeVendorFile(name, ""));
+        // No exact basename matches the restored ".MP4"; the source-scoped join
+        // falls back to the name core and records a concrete owner.
         associateRecordsWithVideos(result.records, source, videos);
-        expect(result.records.every((record) => record.videoKey === undefined)).toBe(true);
+        const videoByKey = new Map(videos.map((video) => [vendorFileKey(video), video]));
+        for (const record of result.records) {
+            expect(videoByKey.get(record.videoKey!)?.file.name, "owner").toBe(record.mp4Filename);
+        }
 
-        // Ingest applies name-core recovery after the exact, source-scoped join.
         let log = mergeIntoGpsLog(null, { ...result, appliedExtractors: [csv70maiPrimitive.id] });
-        expect(rebindOrphanLogRecords(log, names)).toBe(log.records.length);
+        expect(rebindOrphanLogRecords(log, names), "nothing left for the late rebind").toBe(0);
         log = mergeIntoGpsLog(null, log);
         for (const video of videos) {
             const expected = result.records.filter((record) => record.mp4Filename === video.file.name);

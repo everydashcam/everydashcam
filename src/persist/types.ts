@@ -71,6 +71,7 @@ export interface CachedRecordingMetadata {
 export type SessionOnlyGpsField =
     | "videoKey"
     | "trackSegmentSource"
+    | "filenameAssociation"
     | "recordingAssociation"
     | "timeAssociation"
     | "externalTrack"

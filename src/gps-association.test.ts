@@ -1,14 +1,18 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
     associateRecordsWithVideos,
+    bindRecordsByFilename,
     bindRecordsByRecordingStart,
     buildVideoAssociationIndex,
     rebindRecordingCopyRecords,
     recordsForVideo,
     resolveVideoKey,
+    settleFilenameAssociations,
 } from "./gps-association.js";
-import { mergeIntoGpsLog, rebuildLog } from "./parser.js";
+import { mergeIntoGpsLog, rebuildLog, rebindOrphanLogRecords } from "./parser.js";
+import { csv70maiDatedPrimitive } from "./parsers/primitives/csv-70mai-dated.js";
 import type { GpsRecord, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
 import { vendorFileKey } from "./vendor-file-key.js";
@@ -85,6 +89,168 @@ function recordingRecord(startUtc: number, sourceKey?: string): GpsRecord {
         },
     };
 }
+
+const datedLogText = readFileSync(
+    new URL("./parsers/__fixtures__/70mai-dated/real-anonymized-gps-folder.txt", import.meta.url),
+    "utf8",
+);
+
+async function datedLog(sourceKey: string, text = datedLogText) {
+    const source = {
+        file: new File([text], "GPSData000001.txt"),
+        relativePath: "CARD/.GPS/GPSData000001.txt",
+        sourceKey,
+    };
+    const parsed = await csv70maiDatedPrimitive.parse(source);
+    return { source, ...parsed, appliedExtractors: [csv70maiDatedPrimitive.id] };
+}
+
+describe("delayed filename GPS association", () => {
+    it("binds a real dated log when its videos arrive later and deduplicates a re-drop", async () => {
+        const parsed = await datedLog("card");
+        associateRecordsWithVideos(parsed.records, parsed.source, [], csv70maiDatedPrimitive.id);
+        const original = mergeIntoGpsLog(null, parsed);
+        const normal = video("CARD/Normal/Front/NO20261021-211901-002571F.MP4", "card");
+        const event = video("CARD/Event/Front/EV20261008-011452-002127F.MP4", "card");
+        const videos = [normal, event];
+
+        expect(original.pendingByFilename.size, "filename hints do not enter progressive time binding").toBe(0);
+        expect(recordsForVideo(original, normal, videos)).toEqual([]);
+        const bound = bindRecordsByFilename(original, videos);
+        expect(bound.boundRecords).toBe(9);
+        expect(recordsForVideo(bound.log, normal, videos)).toHaveLength(4);
+        expect(recordsForVideo(bound.log, event, videos)).toHaveLength(5);
+        expect(bound.extractorByFileKey).toEqual(
+            new Map(videos.map((file) => [vendorFileKey(file), csv70maiDatedPrimitive.id])),
+        );
+        expect(
+            original.records.every((record) => record.videoKey === undefined),
+            "previous log is unchanged",
+        ).toBe(true);
+        expect(bound.log.byVideoKey.get(vendorFileKey(normal))![0]!.filenameAssociation?.mp4Filename).toBe(
+            "20261021-211901-002571F.MP4",
+        );
+        settleFilenameAssociations(bound.log, videos);
+        expect(bound.log.byVideoKey.get(vendorFileKey(normal))!.every((record) => !record.filenameAssociation)).toBe(
+            true,
+        );
+        expect(bindRecordsByFilename(bound.log, videos).boundRecords).toBe(0);
+
+        const repeated = await datedLog("card");
+        associateRecordsWithVideos(repeated.records, repeated.source, videos, csv70maiDatedPrimitive.id);
+        const merged = mergeIntoGpsLog(bound.log, repeated);
+        expect(merged.records).toHaveLength(bound.log.records.length);
+        expect(recordsForVideo(merged, normal, videos)).toHaveLength(4);
+    });
+
+    it.each(["immediate", "delayed"])(
+        "restores a cancelled %s binding for retry and protects committed owners",
+        async (timing) => {
+            const parsed = await datedLog("log-drop", `${datedLogText.split("\n")[0]}\n`);
+            const referenceName = parsed.records[0]!.mp4Filename;
+            const abandoned = video(`CARD/Normal/NO${referenceName}`, "cancelled-video-drop");
+            associateRecordsWithVideos(
+                parsed.records,
+                parsed.source,
+                timing === "immediate" ? [abandoned] : [],
+                csv70maiDatedPrimitive.id,
+            );
+            let log = mergeIntoGpsLog(null, parsed);
+            if (timing === "delayed") log = bindRecordsByFilename(log, [abandoned]).log;
+            expect(recordsForVideo(log, abandoned, [abandoned])).toHaveLength(1);
+
+            log = settleFilenameAssociations(log, []);
+            expect(log.byVideoKey.size, "abandoned ownership is removed").toBe(0);
+            expect(log.records[0]!.mp4Filename).toBe(referenceName);
+            expect(log.records[0]!.filenameAssociation?.sourceKey).toBe("log-drop");
+            expect(log.byFilename.has(abandoned.file.name)).toBe(false);
+
+            const retry = video(abandoned.relativePath, "retry-video-drop");
+            const bound = bindRecordsByFilename(log, [retry]);
+            expect(bound.boundRecords).toBe(1);
+            expect(bound.extractorByFileKey.get(vendorFileKey(retry))).toBe(csv70maiDatedPrimitive.id);
+            log = settleFilenameAssociations(bound.log, [retry]);
+            expect(log.records[0]!.filenameAssociation).toBeUndefined();
+            expect(recordsForVideo(log, retry, [retry])).toHaveLength(1);
+
+            const foreign = video(abandoned.relativePath, "foreign-card");
+            log = settleFilenameAssociations(log, [foreign]);
+            expect(bindRecordsByFilename(log, [foreign]).boundRecords).toBe(0);
+            associateRecordsWithVideos(log.records, parsed.source, [foreign], csv70maiDatedPrimitive.id);
+            expect(log.records[0]!.videoKey).toBe(vendorFileKey(retry));
+            expect(recordsForVideo(log, foreign, [foreign])).toEqual([]);
+        },
+    );
+
+    it("keeps committed bindings while restoring another uncommitted recording", async () => {
+        const parsed = await datedLog("card");
+        const normal = video("CARD/Normal/Front/NO20261021-211901-002571F.MP4", "card");
+        const event = video("CARD/Event/Front/EV20261008-011452-002127F.MP4", "card");
+        associateRecordsWithVideos(parsed.records, parsed.source, [normal, event], csv70maiDatedPrimitive.id);
+        const log = settleFilenameAssociations(mergeIntoGpsLog(null, parsed), [normal]);
+        expect(recordsForVideo(log, normal, [normal])).toHaveLength(4);
+        expect(log.byVideoKey.has(vendorFileKey(event))).toBe(false);
+        expect(log.byFilename.get("20261008-011452-002127F.MP4")).toHaveLength(5);
+        expect(log.byVideoKey.get(vendorFileKey(normal))!.every((record) => !record.filenameAssociation)).toBe(true);
+    });
+
+    it("preserves pending rows independently by source and front/rear filename", async () => {
+        const frontRow = datedLogText.split("\n")[0]!;
+        const twoChannels = `${frontRow}\n${frontRow.replace(/F\.MP4$/, "B.MP4")}\n`;
+        const first = await datedLog("a", twoChannels);
+        const second = await datedLog("b", twoChannels);
+        for (const parsed of [first, second]) {
+            associateRecordsWithVideos(parsed.records, parsed.source, [], csv70maiDatedPrimitive.id);
+        }
+        let log = mergeIntoGpsLog(mergeIntoGpsLog(null, first), second);
+        expect(log.records).toHaveLength(4);
+        const repeated = await datedLog("a", twoChannels);
+        associateRecordsWithVideos(repeated.records, repeated.source, [], csv70maiDatedPrimitive.id);
+        log = mergeIntoGpsLog(log, repeated);
+        expect(log.records).toHaveLength(4);
+
+        const videos = ["a", "b"].flatMap((sourceKey) =>
+            first.records.map((record) => video(`CARD/Normal/NO${record.mp4Filename}`, sourceKey)),
+        );
+        const bound = bindRecordsByFilename(log, videos);
+        expect(bound.boundRecords).toBe(4);
+        expect(bound.log.records).toHaveLength(4);
+        for (const file of videos) expect(recordsForVideo(bound.log, file, videos)).toHaveLength(1);
+    });
+
+    it("leaves ambiguous source matches pending and blocks legacy basename recovery", async () => {
+        const parsed = await datedLog("third", `${datedLogText.split("\n")[0]}\n`);
+        associateRecordsWithVideos(parsed.records, parsed.source, [], csv70maiDatedPrimitive.id);
+        const log = mergeIntoGpsLog(null, parsed);
+        const bareName = parsed.records[0]!.mp4Filename;
+        const a = video(`CARD/Normal/NO${bareName}`, "a");
+        const b = video(`CARD/Normal/NO${bareName}`, "b");
+        expect(bindRecordsByFilename(log, [a, b])).toEqual({
+            log,
+            boundRecords: 0,
+            extractorByFileKey: new Map(),
+        });
+        expect(rebindOrphanLogRecords(log, [a.file.name])).toBe(0);
+        expect(log.records[0]!.mp4Filename).toBe(bareName);
+
+        const bareCopy = video(`CARD/Normal/${bareName}`, "a");
+        const survivor = { ...a, recordingCopies: [bareCopy] };
+        expect(recordsForVideo(log, bareCopy, [bareCopy])).toEqual([]);
+        expect(rebindRecordingCopyRecords(log, [survivor])).toEqual({ log, reboundRecords: 0 });
+    });
+
+    it("keeps recording and directory hints out of filename association", () => {
+        const source = video("CARD/GPSData.txt", "card");
+        const recording = recordingRecord(100, "card");
+        const directory = {
+            ...record(10),
+            timeAssociation: { sourcePath: source.relativePath, sourceKey: source.sourceKey, extractorId: "nmea" },
+        };
+        associateRecordsWithVideos([recording, directory], source, [], "nmea");
+        expect(recording.filenameAssociation).toBeUndefined();
+        expect(directory).not.toHaveProperty("filenameAssociation");
+    });
+});
 
 describe("GPS video association", () => {
     it("leaves an ordinary log unchanged when no recording copies are known", () => {
@@ -288,6 +454,37 @@ describe("GPS video association", () => {
         const b = video("B/DCIM/clip.mp4", "old-b");
         const sidecar = video("B/DCIM/clip.gpx", "late-drop");
         expect(resolveVideoKey(sidecar, "clip.mp4", [a, b])).toBe(vendorFileKey(b));
+    });
+
+    it("falls back to the 70mai name core only when no exact basename is loaded", () => {
+        const normal = video("CARD/Normal/Front/NO20261021-211901-002571F.MP4", "card");
+        const event = video("CARD/Event/Front/EV20261021-211901-002571F.MP4", "card");
+        const log = video("CARD/.GPS/GPSData000001.txt", "card");
+        // A dated log names the clip without a mode prefix; an exact name, when
+        // loaded, still beats a same-core sibling.
+        expect(resolveVideoKey(log, "20261021-211901-002571F.MP4", [event])).toBe(vendorFileKey(event));
+        expect(resolveVideoKey(log, "EV20261021-211901-002571F.MP4", [normal, event])).toBe(vendorFileKey(event));
+    });
+
+    it("scopes a name-core match to the log's own card", () => {
+        const here = video("A/Event/Front/EV20261021-211901-002571F.MP4", "a");
+        const other = video("B/Normal/Front/NO20261021-211901-002571F.MP4", "b");
+        const log = video("A/.GPS/GPSData000001.txt", "a");
+        expect(resolveVideoKey(log, "20261021-211901-002571F.MP4", [here, other])).toBe(vendorFileKey(here));
+    });
+
+    it("keeps a name core shared by two recordings of one card unowned", () => {
+        const normal = video("CARD/Normal/Front/NO20261021-211901-002571F.MP4", "card");
+        const event = video("CARD/Event/Front/EV20261021-211901-002571F.MP4", "card");
+        const log = video("CARD/.GPS/GPSData000001.txt", "card");
+        expect(resolveVideoKey(log, "20261021-211901-002571F.MP4", [normal, event])).toBeNull();
+    });
+
+    it("does not extend the name-core fallback to non-70mai names", () => {
+        const clip = video("CARD/DCIM/20261021-211901.MP4", "card");
+        const log = video("CARD/gps.txt", "card");
+        expect(resolveVideoKey(log, "NO20261021-211901.MP4", [clip])).toBeNull();
+        expect(resolveVideoKey(log, "clip.mp4", [clip])).toBeNull();
     });
 
     it("keeps an unresolved basename unowned instead of guessing", () => {

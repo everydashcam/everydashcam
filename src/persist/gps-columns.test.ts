@@ -117,6 +117,7 @@ describe("packGpsRecordColumns / unpackGpsRecordColumns", () => {
             accelZg: 0,
             mp4Filename: "clip.mp4",
             videoKey: "previous-session",
+            filenameAssociation: { mp4Filename: "clip.mp4", sourcePath: "GPSData.txt", extractorId: "csv-70mai" },
             recordingAssociation: { startUtc: 90, extractorId: "session-log" },
             timeAssociation: { sourcePath: "GPSData.txt", extractorId: "csv-70mai" },
             timeUnsynced: false,

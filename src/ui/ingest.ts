@@ -9,9 +9,11 @@ import { throwIfCancelled } from "../abort-signals.js";
 import { t } from "../i18n/index.js";
 import {
     attachRecordsToCandidates,
+    bindRecordsByFilename,
     buildVideoAssociationIndex,
     rebindRecordingCopyRecords,
     recordsForVideo,
+    settleFilenameAssociations,
 } from "../gps-association.js";
 import { dropDuplicateFiles } from "../ingest-dedup.js";
 import { mergeRecordingCopies } from "../recording-copies.js";
@@ -21,7 +23,7 @@ import { partitionByIndexCache } from "./ingest-cache.js";
 import { createLogger } from "../log.js";
 import { captureSentryException } from "../sentry.js";
 import { markStage } from "../perf.js";
-import { cloneRecordsAcrossChannels, firstSyncedRecord, mergeIntoGpsLog, rebindOrphanLogRecords } from "../parser.js";
+import { cloneRecordsAcrossChannels, firstSyncedRecord, mergeIntoGpsLog } from "../parser.js";
 import {
     classifyFilesViaPool as dispatchClassifyFiles,
     dispatchParseAccelSidecarsViaPool as dispatchParseAccelSidecars,
@@ -152,6 +154,12 @@ export async function ingestFiles(
             captureSentryException(err, { tags: { feature: "ingest", reason } });
         }
     } finally {
+        if (state.gpsLog) {
+            // Cancellation can occur after GPS binds but before candidate
+            // commit. Keep completed owners; restore references for a retry
+            // whose classic-picker source key will differ from this drop's.
+            state.gpsLog = settleFilenameAssociations(state.gpsLog, state.trips.flatMap(tripAllCandidates));
+        }
         state.ingestController = null;
         if (hasEligibleFiles) {
             hideIngestOverlay();
@@ -381,26 +389,19 @@ async function ingestFilesInternal(
         // Merge if a log already exists (new file may be a rotated version of the old one, or the same file dropped twice).
         // Dedup by (unixSeconds, lat, lon, mp4Filename) is required: re-dropping the same log doubles brake events, distance, and point density.
         state.gpsLog = mergeIntoGpsLog(state.gpsLog, logsResult);
-        // Firmware writes ghost names into the log for locked clips (renamed
-        // across mode prefixes, or with garbage after ".MP4") - re-key those
-        // records onto the loaded video sharing the same name core, then
-        // rebuild the byFilename buckets. Runs here, before any candidate
-        // pulls its records, so every downstream exact-name lookup just works.
-        // Exact aliases were already resolved by videoAssociation. Recovery
-        // from a malformed name must see only survivors: NO/EV aliases of one
-        // recording would otherwise make its name core appear ambiguous.
-        const videoNames = new Set(knownVideoFiles.map((video) => video.file.name));
-        const rebound = rebindOrphanLogRecords(state.gpsLog, videoNames);
-        if (rebound > 0) {
-            state.gpsLog = mergeIntoGpsLog(null, {
-                records: state.gpsLog.records,
-                appliedExtractors: state.gpsLog.appliedExtractors,
-                skipped: state.gpsLog.skipped,
-            });
-            log.info("rebound orphan gps-log records", { count: rebound });
-        }
     }
     if (state.gpsLog) {
+        // Videos can arrive after their log. Resolve stored filename hints on
+        // every drop, while preserving source scope and extractor attribution.
+        // This also covers 70mai's mode-less and firmware-renamed clip names.
+        const named = bindRecordsByFilename(state.gpsLog, videoAssociation);
+        state.gpsLog = named.log;
+        for (const [key, extractor] of named.extractorByFileKey) {
+            if (!logsResult.extractorByFileKey.has(key)) logsResult.extractorByFileKey.set(key, extractor);
+        }
+        if (named.boundRecords > 0) {
+            log.info("bound filename-scoped gps log", { records: named.boundRecords });
+        }
         const bound = reanchorRecordingCandidates(state.trips.flatMap(tripAllCandidates));
         if (bound.boundRecords > 0) {
             log.info("bound recording-scoped gps log", {

@@ -68,6 +68,16 @@ describe("classifyOneNonVideo", () => {
         expect(cf.sidecarId).toBeNull();
     });
 
+    it("returns role=gps-log when the dated 70mai marker matches", async () => {
+        const file = makeVendorFile(
+            ".GPS/GPSData000001.txt",
+            "2026-08-01 20:30:59,B,A,074km/h,43.000000,-9.000000,1,20260801-223057-000001F.MP4\n",
+        );
+        const cf = await classifyOneNonVideo(file, new Set(), [fakeSidecar], [fakeAccelSidecar]);
+        expect(cf.role).toBe("gps-log");
+        expect(cf.logExtractorId).toBe("csv-70mai-dated");
+    });
+
     it("returns role=gps-log for a recording-scoped NMEA .LOG", async () => {
         const file = makeVendorFile("26082300.LOG", "@Sonygps/ver5.0/wgs-84/20260823075402.000/\n");
         const cf = await classifyOneNonVideo(file, new Set(), [fakeSidecar], [fakeAccelSidecar]);
