@@ -1909,7 +1909,8 @@ body.export-mode .sidebar-toggle,
 .trip-list.is-rows .trip:hover .trip-card-actions,
 .trip-list.is-rows .trip:focus-within .trip-card-actions,
 .trip-list.is-rows .trip.expanded .trip-card-actions {
-    visibility: visible;
+    /* Keep actions hidden when the entire sidebar is collapsed. */
+    visibility: inherit;
 }
 @media (pointer: coarse) {
     .trip-list.is-rows {

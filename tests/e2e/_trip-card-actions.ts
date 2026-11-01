@@ -2,6 +2,28 @@ import { type Page, expect } from "@playwright/test";
 
 import { waitForMetadata } from "./_fixtures.js";
 
+/** Compact row controls follow the desktop sidebar's visibility in both directions. */
+export async function checkCollapsedCompactTripActions(page: Page): Promise<void> {
+    await page.locator('#trip-density [data-density="rows"]').click();
+    const card = page.locator("li.trip").first();
+    await card.locator(".trip-chevron").click();
+    const favorite = card.locator(".trip-fav");
+    await expect(favorite).toBeVisible();
+
+    const toggle = page.locator("#sidebar-toggle");
+    await toggle.click();
+    await expect(page.locator("#sidebar")).toBeHidden();
+    await toggle.focus();
+    await favorite.evaluate((button: HTMLButtonElement) => button.focus());
+    await expect(toggle, "hidden row actions cannot take keyboard focus").toBeFocused();
+    await expect(favorite).toBeHidden();
+
+    await toggle.click();
+    await expect(favorite).toBeVisible();
+    await favorite.focus();
+    await expect(favorite).toBeFocused();
+}
+
 /**
  * Checks that the card's corner buttons own their centers and edges, that an
  * edge activation reaches the button instead of opening the trip, and that a

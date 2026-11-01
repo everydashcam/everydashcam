@@ -12,6 +12,7 @@ import {
     presetLocalStorage,
     waitForMetadata,
 } from "./_fixtures.js";
+import { checkCollapsedCompactTripActions } from "./_trip-card-actions.js";
 
 test("sidebar keyboard resizing follows the visible edge and reports its size", async ({ page }) => {
     await presetLocalStorage(page);
@@ -47,6 +48,16 @@ test("export removes the desktop trip list from keyboard navigation and restores
     await expect(sidebar).toHaveAttribute("inert", "");
     await page.locator("#export-panel-close").click();
     await expect(sidebar).not.toHaveAttribute("inert", "");
+});
+
+test("hiding the compact trip list also hides expanded row actions from keyboard navigation @webkit-ui", async ({
+    page,
+}) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await loadTrip(page);
+    await checkCollapsedCompactTripActions(page);
 });
 
 test.describe("trip navigation with touch", () => {
