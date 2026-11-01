@@ -23,6 +23,31 @@ async function release(id: string) {
     return { code, html, sw };
 }
 
+/** The observer stays blank so it does not keep the old worker alive. */
+async function closeForWorkerActivation(current: Page, observer: Page, origin: string): Promise<void> {
+    // A replaced worker can lose its execution context during evaluation.
+    // Observe browser lifecycle state from the surviving blank page instead.
+    const session = await observer.context().newCDPSession(observer);
+    const versions = new Map<string, string>();
+    session.on("ServiceWorker.workerVersionUpdated", ({ versions: updates }) => {
+        for (const version of updates) {
+            if (version.scriptURL === `${origin}/sw.js`) {
+                versions.set(version.versionId, version.status);
+            }
+        }
+    });
+    try {
+        await session.send("ServiceWorker.enable");
+        const waitingVersions = () => [...versions].filter(([, status]) => status === "installed");
+        await expect.poll(waitingVersions).toHaveLength(1);
+        const [waitingVersionId] = waitingVersions()[0]!;
+        await current.close();
+        await expect.poll(() => versions.get(waitingVersionId)).toBe("activated");
+    } finally {
+        await session.detach();
+    }
+}
+
 test.use({ serviceWorkers: "allow" });
 
 test(
@@ -132,22 +157,9 @@ test(
             const restart = async (expected: string) => {
                 // There must be no controlled client left. Reload alone overlaps clients
                 // and must not be used to force activation while a recording is open.
-                const nextPage = await context.newPage();
-                await page.close();
-                page = nextPage;
-                await expect
-                    .poll(async () => {
-                        for (const worker of context.serviceWorkers()) {
-                            const result = await worker
-                                .evaluate<{ active: string; waiting: boolean }>(
-                                    "({active: self.registration.active?.state, waiting: !!self.registration.waiting})",
-                                )
-                                .catch(() => null);
-                            if (result?.active === "activated" && !result.waiting) return true;
-                        }
-                        return false;
-                    })
-                    .toBe(true);
+                const previous = page;
+                page = await context.newPage();
+                await closeForWorkerActivation(previous, page, origin);
                 await page.goto(`${origin}/en/`);
                 expect(await page.title()).toBe(expected);
                 expect(await page.evaluate(() => localStorage.getItem("keep-preference"))).toBe("chosen");
@@ -494,22 +506,9 @@ test("isolates a new tab and its workers when an update reuses files cached with
         await current.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting);
         // Activation waits for every controlled window to close. A reload
         // would overlap the windows instead.
-        const next = await context.newPage();
-        await current.close();
-        current = next;
-        await expect
-            .poll(async () => {
-                for (const worker of context.serviceWorkers()) {
-                    const result = await worker
-                        .evaluate<{ active: string; waiting: boolean }>(
-                            "({active: self.registration.active?.state, waiting: !!self.registration.waiting})",
-                        )
-                        .catch(() => null);
-                    if (result?.active === "activated" && !result.waiting) return true;
-                }
-                return false;
-            })
-            .toBe(true);
+        const previous = current;
+        current = await context.newPage();
+        await closeForWorkerActivation(previous, current, origin);
 
         const navigation = await current.goto(`${origin}/en/`);
         expect(navigation?.fromServiceWorker(), "the updated worker serves the shell").toBe(true);
