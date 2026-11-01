@@ -523,7 +523,12 @@ function attachOverviewHandleEvents(handle: HTMLDivElement, edge: "start" | "end
             overviewResizeMinSpanPct = null;
             if (!isResizing && reason === "up") {
                 const sec = overviewSecAtClientX(e.clientX);
-                if (sec !== null) callbacks.onSeekTripTime(sec);
+                if (sec !== null) {
+                    // Compact handle targets extend past the window. Reveal the
+                    // moment first so a preview cannot clamp this row click.
+                    revealSecInTimelineWindow(sec, "center");
+                    callbacks.onSeekTripTime(sec);
+                }
             }
             // Announce the current span as the next gesture's floor.
             syncChartOverview();

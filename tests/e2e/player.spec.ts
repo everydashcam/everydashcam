@@ -1785,6 +1785,57 @@ test.describe("player timeline with a coarse pointer", () => {
             .toBeGreaterThan(before.max);
     });
 
+    for (const edge of ["start", "end"] as const) {
+        test(`a tap beyond the compact ${edge} handle reveals and seeks outside the preview`, async ({ page }) => {
+            await page.setViewportSize({ width: 320, height: 740 });
+            await pausePlayback(page);
+            await openExport(page);
+            const startInput = page.locator('.export-trim-bar__input[data-range-edge="start"]');
+            const endInput = page.locator('.export-trim-bar__input[data-range-edge="end"]');
+            await endInput.fill("0:02");
+            await endInput.press("Enter");
+            await startInput.fill("0:01");
+            await startInput.press("Enter");
+            await page.locator("#export-trim-preview").click();
+            await pausePlayback(page);
+            // Keep the thumb away from both handle targets: it owns presses
+            // near its centre, which would bypass the handle's click path.
+            await page.keyboard.press("4");
+            const progress = page.locator("#player-mini-progress");
+            await expect(progress).toHaveAttribute("aria-valuenow", "40");
+            const viewport = page.locator("#player-chart-overview-viewport");
+            await viewport.scrollIntoViewIfNeeded();
+            await expect(viewport).toHaveClass(/is-compact/);
+            expect(await page.evaluate(() => window.__everydashcam.state.isPreviewZoom)).toBe(true);
+
+            const before = await chartWindow(page);
+            const frame = await boxOf(page, "#player-chart-overview-viewport");
+            const row = await boxOf(page, "#player-chart-overview");
+            const x = edge === "start" ? frame.x - 4 : frame.x + frame.width + 4;
+            const y = row.y + row.height / 2;
+            const target = ((x - row.x) / row.width) * before.duration;
+            const owner = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, { x, y });
+            expect(owner, "the tap outside the visible frame still belongs to its handle").toBe(
+                `player-chart-overview-${edge}`,
+            );
+            if (edge === "start") expect(target).toBeLessThan(before.min);
+            else expect(target).toBeGreaterThan(before.max);
+
+            await page.touchscreen.tap(x, y);
+            await expect(progress).toHaveAttribute(
+                "aria-valuenow",
+                String(Math.round((target / before.duration) * 100)),
+            );
+            const after = await chartWindow(page);
+            expect(after.min).toBeLessThanOrEqual(target);
+            expect(after.max).toBeGreaterThanOrEqual(target);
+            expect(after.max - after.min, "the tap keeps the zoom level").toBeCloseTo(before.max - before.min, 4);
+            expect(await page.evaluate(() => window.__everydashcam.state.isPreviewZoom)).toBe(false);
+            await expect(startInput).toHaveValue("0:01");
+            await expect(endInput).toHaveValue("0:02");
+        });
+    }
+
     test("a tap on the playhead resting on an event opens the event menu", async ({ page }) => {
         await pausePlayback(page);
         const canvas = await boxOf(page, "#player-chart-canvas");
