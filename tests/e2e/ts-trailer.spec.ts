@@ -52,6 +52,7 @@ test.describe("TS trailer recording ingest", () => {
             await expect(trips).toHaveCount(1);
             await expect(page.locator('[data-trip-filter-kind="unknown"]')).toHaveCount(0);
             if (suffix === "_SOS") {
+                await page.locator("#trip-filter-toggle").click();
                 await page.locator('[data-trip-filter-toggle="event"]').click();
                 await expect(trips).toHaveCount(1);
                 await expect(page.locator('[data-trip-filter-kind="normal"]')).toBeHidden();
