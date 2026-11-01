@@ -647,7 +647,7 @@
     background: var(--ev-stop);
 }
 .inferred-strip-tooltip__chip--brake {
-    background: var(--ev-brake);
+    background: var(--ev-brake-chip);
 }
 .inferred-strip-tooltip__chip--turn {
     background: var(--ev-turn);

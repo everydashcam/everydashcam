@@ -178,6 +178,7 @@
        taken by the |G| curve, the playhead, the selection tint, the brand
        wordmark and the primary CTA. Cut per theme in the blocks below. */
     --ev-brake: var(--dc-brick);
+    --ev-brake-chip: var(--dc-brick-deep); /* white tooltip text needs this darker fill in both themes */
     --ev-accel: var(--dc-leaf);
     --ev-turn: var(--dc-yellow);
     --ev-stop: var(--dc-ash-5); /* dim grey - stop is a state, not a magnitude */
