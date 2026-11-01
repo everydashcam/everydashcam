@@ -27,6 +27,7 @@ import {
     comparatorFor,
     formatBytes,
     formatDayHeading,
+    formatStartDate,
     formatTime,
     formatTimeRange,
     formatTotalDuration,
@@ -48,7 +49,7 @@ import { tripSearchText } from "./trip-search.js";
 import { readTripDensity, writeTripDensity } from "./trip-density-pref.js";
 import { initTripJump, syncTripJump } from "./trip-jump.js";
 import type { TripListDayStats } from "./trip-jump.js";
-import { foldParkingRuns, groupByMonthDay, nodeEntries, tripDayKey } from "./trip-list-layout.js";
+import { foldParkingRuns, groupByMonthDay, headingLevels, nodeEntries, tripDayKey } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
 
 interface SidebarCallbacks {
@@ -287,8 +288,16 @@ export function renderTrips(): void {
             new Set(rest.map(({ idx }) => idx)),
         );
         const months = groupByMonthDay(nodes);
-        renderedDays = months.flatMap((month) => month.days.map(dayJumpStats));
-        for (const month of months) dom.list.appendChild(buildMonthSection(month, appendCards));
+        const levels = headingLevels(months, favoriteCount > 0);
+        // The calendar navigates day sections, so it goes with them.
+        if (levels.days) renderedDays = months.flatMap((month) => month.days.map(dayJumpStats));
+        if (levels.months) {
+            for (const month of months) dom.list.appendChild(buildMonthSection(month, levels.days, appendCards));
+        } else if (levels.days) {
+            for (const day of months[0]!.days) dom.list.appendChild(buildDaySection(day, appendCards));
+        } else {
+            appendNodes(nodes, dom.list, null, appendCards);
+        }
     } else {
         // Under other sorts a single "everything else" section follows the favorites.
         if (favoriteCount > 0 && rest.length > 0) {
@@ -400,13 +409,17 @@ function rememberGroupCollapsed(key: string, collapsed: boolean): void {
     }
 }
 
-function buildMonthSection(month: TripListMonth, appendCards: AppendCards): HTMLLIElement {
+/** A month section; without day headings its trips and parking runs sit directly in it. */
+function buildMonthSection(month: TripListMonth, withDays: boolean, appendCards: AppendCards): HTMLLIElement {
     const trips = month.days.flatMap((day) => nodeTrips(day.nodes));
     const { section, list } = buildGroupSection(month.key, "trip-month", [
         textSpan("trip-group-toggle__label", formatMonthYear(month.year, month.month)),
         textSpan("trip-group-toggle__stats", tripsSummaryText(trips)),
     ]);
-    for (const day of month.days) list.appendChild(buildDaySection(day, appendCards));
+    for (const day of month.days) {
+        if (withDays) list.appendChild(buildDaySection(day, appendCards));
+        else appendNodes(day.nodes, list, null, appendCards);
+    }
     return section;
 }
 
@@ -416,11 +429,21 @@ function buildDaySection(day: TripListDay, appendCards: AppendCards): HTMLLIElem
     if (heading.relative) content.push(textSpan("trip-group-toggle__date", heading.date));
     content.push(buildDayStats(day));
     const { section, list } = buildGroupSection(day.key, "trip-day", content);
-    for (const node of day.nodes) {
-        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], list, day.key);
-        else list.appendChild(buildParkingRun(node, appendCards, day.key));
-    }
+    appendNodes(day.nodes, list, day.key, appendCards);
     return section;
+}
+
+/** Appends trip cards and parking runs; `dayKey` names the day heading above them, if any. */
+function appendNodes(
+    nodes: readonly TripListNode[],
+    parent: Element,
+    dayKey: string | null,
+    appendCards: AppendCards,
+): void {
+    for (const node of nodes) {
+        if (node.kind === "trip") appendCards([{ trip: node.entry.trip, idx: node.entry.tripIdx }], parent, dayKey);
+        else parent.appendChild(buildParkingRun(node, appendCards, dayKey));
+    }
 }
 
 /** A day section summarized for the jump-to-date calendar. */
@@ -450,7 +473,7 @@ function findGroupSection(selector: string, key: string): HTMLElement | undefine
 }
 
 /**
- * Brings a day section to the top of the list, below the stuck month heading:
+ * Brings a day section to the top of the list, below the stuck month heading if any:
  * opens its month and the day if folded, scrolls, briefly highlights the
  * heading and moves focus there, where the calendar left the user.
  */
@@ -476,7 +499,7 @@ function jumpToDay(key: string): void {
         ?.focus({ preventScroll: true });
 }
 
-/** Key of the first day section still visible below the stuck month heading. */
+/** Key of the first day section still visible below the stuck month heading, if any. */
 function currentDayKey(): string | null {
     const top = dom.sidebar.getBoundingClientRect().top;
     for (const section of dom.list.querySelectorAll<HTMLElement>("li.trip-day")) {
@@ -513,7 +536,7 @@ function buildDayStats(day: TripListDay): HTMLElement {
  * one-minute trips. Folded by default; unfolding lists the trips themselves,
  * which keep every card action.
  */
-function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards, dayKey: string): HTMLLIElement {
+function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards, dayKey: string | null): HTMLLIElement {
     const trips = node.entries.map((entry) => entry.trip);
     let first = trips[0]!;
     let endUtc = first.endUtc;
@@ -555,6 +578,10 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards, da
     );
     const meta = document.createElement("span");
     meta.className = "trip-parking-run__meta";
+    // Folded, the run hides its cards, so without a day heading only the run
+    // itself can say which day the stay began. The meta line has the room; the
+    // title already runs out of width on its clock range.
+    if (dayKey === null) meta.append(`${formatStartDate(first.startUtc, first.cameraTzSec)} · `);
     meta.append(`${t("plurals.trip", { n: trips.length })} · `);
     if (events > 0) {
         const eventCount = document.createElement("span");

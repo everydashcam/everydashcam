@@ -9,6 +9,7 @@ import {
     formatEventSeverity,
     formatFileMeta,
     formatRateBytes,
+    formatStartDate,
     formatTimeRange,
     formatTotalDuration,
     formatTripClockTitle,
@@ -176,6 +177,17 @@ describe("formatTimeRange", () => {
         const start = Date.UTC(2026, 9, 31, 20, 4) / 1000;
         expect(formatTimeRange(start, start + 3600, 3 * 3600)).toBe("23:04 → Sun 00:04");
         expect(formatTimeRange(start, start + 600, 0)).toBe("20:04 → 20:14");
+    });
+});
+
+describe("formatStartDate", () => {
+    it("dates the start on the camera clock with the year only outside the current year", () => {
+        const now = new Date(Date.UTC(2026, 5, 15, 12));
+        // 22:10 UTC is already Sep 15 on a +3 h camera clock.
+        const start = Date.UTC(2026, 8, 14, 22, 10) / 1000;
+        expect(formatStartDate(start, 3 * 3600, now)).toBe("Sep 15");
+        expect(formatStartDate(start, 0, now)).toBe("Sep 14");
+        expect(formatStartDate(Date.UTC(2024, 6, 2, 9) / 1000, 0, now)).toBe("Jul 2, 2024");
     });
 });
 

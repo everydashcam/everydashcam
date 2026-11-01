@@ -52,6 +52,15 @@ export function formatTripStartTitle(trip: Trip, now: Date = new Date()): string
 }
 
 /**
+ * The display-clock date a span starts on, for a row that no day heading
+ * dates: "Sep 14", with the year outside the current year like trip titles.
+ */
+export function formatStartDate(startUtc: number, cameraTzSec: number | null, now: Date = new Date()): string {
+    const start = displayClockDate(startUtc, cameraTzSec);
+    return formatDate(start, { year: showsTripYear(start, start, now) });
+}
+
+/**
  * True when either edge of a trip is outside the viewer's current year - the
  * rare Dec 31 crossing shows the year on both edges for consistency.
  */

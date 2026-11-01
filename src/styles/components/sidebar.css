@@ -651,6 +651,14 @@
 .trip-day {
     scroll-margin-top: var(--trip-month-header-h);
 }
+/* A list within one month has no month headings (headingLevels in
+   trip-list-layout.ts), so its days take the top. */
+.trip-list > .trip-day {
+    scroll-margin-top: 0;
+}
+.trip-list > .trip-day > .trip-day__header {
+    top: var(--trip-sticky-top);
+}
 .trip-day.is-jump-target > .trip-group__header {
     animation: trip-jump-flash 1.2s var(--dc-ease);
 }

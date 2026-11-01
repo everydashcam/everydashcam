@@ -90,6 +90,9 @@ test("keeps separate parking stays when the drive between them is favorited or f
     ]);
     const runs = page.locator(".trip-parking-run");
     await expect(runs).toHaveCount(2);
+    // One day needs no headings, so each run carries its date itself.
+    await expect(page.locator(".trip-group:not(.trip-parking-run)")).toHaveCount(0);
+    await expect(runs.nth(0).locator(".trip-parking-run__meta")).toHaveText(/^Sep 14\b.* · 2 trips · /);
 
     await page
         .locator("li.trip")
@@ -144,7 +147,7 @@ test("keeps keyboard focus when a starred trip moves into a folded favorites sec
     await toggle(favorites).click();
     await expect(toggle(favorites)).toHaveAttribute("aria-expanded", "false");
 
-    await page.locator(".trip-day .trip-fav").focus();
+    await page.locator(".trip-month").nth(1).locator(".trip-fav").focus();
     await page.keyboard.press("Space");
     await expect(favorites.locator("li.trip")).toHaveCount(2);
     await expect(favorites.locator(".trip-fav").last()).toBeFocused();
@@ -189,8 +192,16 @@ test("searches trips by date and clears the search with the filters", async ({ p
     await expect(page.locator("#trip-filter-tray")).toBeHidden();
 
     await page.locator("#trip-search").fill("oct 1");
-    await expect(page.locator(".trip-month")).toHaveCount(1);
     await expect(page.locator("#trip-filter-result")).toHaveText("Showing 1 of 6");
+    // A single day needs neither headings nor the calendar.
+    await expect(page.locator(".trip-group")).toHaveCount(0);
+    await expect(page.locator("#trip-list li.trip")).toHaveCount(1);
+    await expect(page.locator("#trip-jump")).toBeHidden();
+    // Within one month the days lead, under the list summary.
+    await page.locator("#trip-search").fill("sep");
+    await expect(page.locator(".trip-month")).toHaveCount(0);
+    await expect(page.locator("#trip-list > .trip-day")).toHaveCount(2);
+    await expect(page.locator("#trip-jump")).toBeVisible();
     // A one-digit day matches only that day, not every date with a 1 in it.
     await page.locator("#trip-search").fill("sep 1");
     await expect(page.locator(".trip-filter-empty")).toBeVisible();

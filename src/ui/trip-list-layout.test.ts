@@ -4,6 +4,7 @@ import {
     PARKING_RUN_MAX_GAP_SEC,
     foldParkingRuns,
     groupByMonthDay,
+    headingLevels,
     nodeEntries,
     tripDayKey,
     type TripListNode,
@@ -62,6 +63,27 @@ describe("groupByMonthDay", () => {
             ["d:2026-06-15", 2],
             ["d:2026-06-16", 1],
         ]);
+    });
+});
+
+describe("headingLevels", () => {
+    const months = (...starts: number[]) => groupByMonthDay(nodes(starts.map((start) => trip({ start }))));
+
+    it("drops both levels when every trip falls on one day", () => {
+        expect(headingLevels(months(at(6, 2, 9), at(6, 2, 18)), false)).toEqual({ months: false, days: false });
+    });
+
+    it("keeps days but drops the month within a single month", () => {
+        expect(headingLevels(months(at(6, 3, 9), at(6, 2, 9)), false)).toEqual({ months: false, days: true });
+    });
+
+    it("keeps both levels across months", () => {
+        expect(headingLevels(months(at(7, 1, 9), at(6, 2, 9)), false)).toEqual({ months: true, days: true });
+    });
+
+    it("keeps a lone month after a favorites section", () => {
+        expect(headingLevels(months(at(6, 2, 9)), true)).toEqual({ months: true, days: false });
+        expect(headingLevels([], true)).toEqual({ months: false, days: false });
     });
 });
 

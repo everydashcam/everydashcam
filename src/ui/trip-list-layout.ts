@@ -1,7 +1,8 @@
 // Display structure of the date-sorted trip list: month and day sections on the
-// display clock (camera clock when known) and runs of parking trips folded into
-// one row. Pure - no DOM, no app state - so the grouping rules stay
-// unit-testable apart from the sidebar that renders them.
+// display clock (camera clock when known), which of those heading levels are
+// worth showing, and runs of parking trips folded into one row. Pure - no DOM,
+// no app state - so the grouping rules stay unit-testable apart from the
+// sidebar that renders them.
 
 import { displayClockDate } from "../trips.js";
 import type { Trip } from "../trips.js";
@@ -58,6 +59,24 @@ export interface TripListMonth {
     readonly year: number;
     readonly month: number;
     readonly days: TripListDay[];
+}
+
+/** Which heading levels the date-sorted list renders. */
+export interface TripListHeadingLevels {
+    readonly months: boolean;
+    readonly days: boolean;
+}
+
+/**
+ * A heading level earns its place only by splitting the list. A lone month or
+ * day heading repeats the totals of the list summary above it and the date on
+ * every card below it. Months stay after a favorites section even when there is
+ * one: the rest of the list then keeps a heading of the same rank instead of
+ * reading as part of the favorites.
+ */
+export function headingLevels(months: readonly TripListMonth[], hasFavoritesSection: boolean): TripListHeadingLevels {
+    const dayCount = months.reduce((count, month) => count + month.days.length, 0);
+    return { months: months.length > 1 || (hasFavoritesSection && months.length > 0), days: dayCount > 1 };
 }
 
 /** Every trip a node stands for, in list order. */
