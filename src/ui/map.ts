@@ -25,7 +25,7 @@ import { probeWebGL } from "../capabilities.js";
 import { mercatorY, unwrapLongitude, unwrapTrackCoordinates, wrapDegrees } from "../coordinates.js";
 import { gMagnitude, hasAccelData } from "../events.js";
 import { escapeHtml } from "../escape.js";
-import { getCurrentLang, getDateLocale, t } from "../i18n/index.js";
+import { getCurrentLang, t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
 import { emitLifecycle } from "../perf.js";
 import { isValidGpsFix } from "../parser.js";
@@ -55,7 +55,8 @@ const log = createLogger("map");
 import { isOffline, subscribeConnectivity } from "./connectivity.js";
 import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
-import { cachedDateTimeFormat, formatNumber, formatTime, POPUP_CLOCK_FORMAT } from "./format.js";
+import { formatDateTime } from "./date-format.js";
+import { formatNumber, formatTime } from "./format.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeFrame, activeTrip, state } from "./state.js";
 import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
@@ -1739,10 +1740,9 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
     // "abs" below stays real wall-clock.
     const relSec = wallToContentSec(trip.timeline, rec.unixSeconds);
     // Display clock (camera clock when known) - see displayClockDate contract.
-    const absFmt = cachedDateTimeFormat(getDateLocale(), POPUP_CLOCK_FORMAT);
     const titleStr = t("popup.title", {
         rel: formatTime(relSec),
-        abs: absFmt.format(displayClockDate(rec.unixSeconds, trip.cameraTzSec)),
+        abs: formatDateTime(displayClockDate(rec.unixSeconds, trip.cameraTzSec), { seconds: true }),
     });
     // Show speed in the user-selected units (km/h or mph). The track color
     // gradient is still computed from km/h - we don't shift its breakpoints

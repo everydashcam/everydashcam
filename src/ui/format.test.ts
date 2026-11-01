@@ -1,15 +1,13 @@
 // Pure formatter coverage without DOM dependencies.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import {
-    cachedDateTimeFormat,
     clipBasename,
     eventLabel,
     formatBytes,
     formatDayHeading,
     formatEventSeverity,
     formatFileMeta,
-    formatMonthHeading,
     formatRateBytes,
     formatTimeRange,
     formatTotalDuration,
@@ -19,6 +17,7 @@ import {
     formatTripDistance,
 } from "./format.js";
 import { setUnits, getUnits } from "../units-pref.js";
+import { _resetForTests as resetDateFormat, setDateFormat } from "./date-format.js";
 import { t } from "../i18n/index.js";
 import { buildTripTimeline, type Trip, type TripFrame, type VideoCandidate } from "../trips.js";
 
@@ -122,11 +121,30 @@ describe("formatTripTitle", () => {
             makeTitleTrip(secOf(new Date(2026, 3, 29, 23, 50, 0)), secOf(new Date(2026, 3, 30, 0, 15, 0))),
             now,
         );
-        // Same-day form has a comma between the single date and the time range;
-        // the overnight form repeats "date time" on both sides of the arrow.
-        expect(sameDay).toContain(", ");
-        expect(overnight).not.toContain(", ");
-        expect(overnight.split("→")).toHaveLength(2);
+        expect(sameDay).toBe("Apr 29, 18:26 → 18:42");
+        expect(overnight).toBe("Apr 29, 23:50 → Apr 30, 00:15");
+    });
+
+    describe("with ISO dates", () => {
+        afterEach(() => {
+            setDateFormat("locale");
+            resetDateFormat();
+        });
+
+        it("writes the date with its year and the clock", () => {
+            setDateFormat("iso");
+            const sameDay = formatTripTitle(
+                makeTitleTrip(secOf(new Date(2026, 3, 29, 18, 26, 0)), secOf(new Date(2026, 3, 29, 18, 42, 0))),
+                now,
+            );
+            const overnight = formatTripTitle(
+                makeTitleTrip(secOf(new Date(2026, 3, 29, 23, 50, 0)), secOf(new Date(2026, 3, 30, 0, 15, 0))),
+                now,
+            );
+            expect(sameDay).toBe("2026-04-29 18:26 → 18:42");
+            expect(overnight).toBe("2026-04-29 23:50 → 2026-04-30 00:15");
+            expect(formatDayHeading(2026, 3, 29, now).date).toBe("2026-04-29 Wed");
+        });
     });
 });
 
@@ -188,17 +206,6 @@ describe("formatTotalDuration", () => {
         expect(formatTotalDuration(3600)).toBe("1h");
         expect(formatTotalDuration(4320)).toBe("1h 12min");
         expect(formatTotalDuration(28 * 3600 + 1700)).toBe("28h");
-    });
-});
-
-describe("formatMonthHeading", () => {
-    it("names the month and the year", () => {
-        expect(formatMonthHeading(2026, 9)).toBe("October 2026");
-    });
-
-    it("drops a year abbreviation but keeps a month marker", () => {
-        expect(formatMonthHeading(2026, 9, "ru-RU")).toBe("Октябрь 2026");
-        expect(formatMonthHeading(2026, 9, "ja-JP")).toBe("2026年10月");
     });
 });
 
@@ -269,23 +276,5 @@ describe("formatTripDistance", () => {
         expect(formatTripDistance(0.02)).toBe(`<0.1 ${t("units.km")}`);
         expect(formatTripDistance(12.3)).toBe(`12 ${t("units.km")}`);
         setUnits(previous);
-    });
-});
-
-describe("cachedDateTimeFormat", () => {
-    it("shares one formatter per locale and option set", () => {
-        const options: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", timeZone: "UTC" };
-        const first = cachedDateTimeFormat("en", options);
-        expect(cachedDateTimeFormat("en", { ...options })).toBe(first);
-        expect(cachedDateTimeFormat("ru", options)).not.toBe(first);
-        expect(cachedDateTimeFormat("en", { ...options, second: "2-digit" })).not.toBe(first);
-    });
-
-    it("formats like a freshly constructed formatter", () => {
-        const options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone: "UTC" };
-        const date = new Date(Date.UTC(2026, 9, 31, 12));
-        expect(cachedDateTimeFormat("de", options).format(date)).toBe(
-            new Intl.DateTimeFormat("de", options).format(date),
-        );
     });
 });

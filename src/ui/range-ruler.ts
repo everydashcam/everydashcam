@@ -6,24 +6,15 @@
 // elements are created so the ruler fits in a single line without consuming
 // vertical space.
 
-import { getDateLocale } from "../i18n/index.js";
 import { contentToWallUtc, displayClockDate, type Trip } from "../trips.js";
 
-import { cachedDateTimeFormat, formatTime } from "./format.js";
+import { formatClock } from "./date-format.js";
+import { formatTime } from "./format.js";
 import { pickRulerInterval } from "./strip-zoom.js";
-
-const CLOCK_MINUTES: Intl.DateTimeFormatOptions = {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-};
-const CLOCK_WITH_SECONDS: Intl.DateTimeFormatOptions = { ...CLOCK_MINUTES, second: "2-digit" };
 
 /** Display clock (camera clock when known) - see displayClockDate contract. */
 function formatAbsoluteClock(unixSec: number, withSeconds: boolean, cameraTzSec: number | null): string {
-    const d = displayClockDate(unixSec, cameraTzSec);
-    return cachedDateTimeFormat(getDateLocale(), withSeconds ? CLOCK_WITH_SECONDS : CLOCK_MINUTES).format(d);
+    return formatClock(displayClockDate(unixSec, cameraTzSec), { seconds: withSeconds });
 }
 
 /**

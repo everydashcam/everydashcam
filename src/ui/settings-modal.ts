@@ -18,7 +18,7 @@ import {
     getBrakeThresholdG,
     setBrakeThresholdG,
 } from "../events.js";
-import { t } from "../i18n/index.js";
+import { type I18nKey, t } from "../i18n/index.js";
 import { getEncoderPreference, isEncoderPreference, setEncoderPreference } from "../encoder-pref.js";
 import { createLogger, downloadLogBuffer } from "../log.js";
 import { crashReportingEnabled, isCrashReportingBuilt, setCrashReportingEnabled } from "../sentry.js";
@@ -34,6 +34,7 @@ import { clearIndexCache, getIndexCacheStats, pruneIndexCacheToLimit } from "../
 import { getUnits, setUnits, type Units } from "../units-pref.js";
 import { APP_VERSION } from "../version.js";
 import { rebuildChartFromTrip } from "./chart.js";
+import { type DateFormat, formatDate, getDateFormat, isDateFormat, setDateFormat } from "./date-format.js";
 import {
     downloadPortableNotesBackup,
     flushPendingSidecarWrites,
@@ -119,6 +120,7 @@ function openSettings(): void {
     if (!m) return;
     if (!__PORTABLE__) syncCrashToggleFromState();
     syncUnitsSelect();
+    syncDateFormatSelect();
     syncEncoderSelect();
     syncMapLabelScaleSelect();
     syncMapMarkerControl();
@@ -178,6 +180,26 @@ function syncUnitsSelect(): void {
     const sel = document.getElementById("settings-units-select") as HTMLSelectElement | null;
     if (sel) sel.value = getUnits();
 }
+
+// A day above 12 keeps the day and month apart in every style.
+const DATE_FORMAT_SAMPLE = new Date(Date.UTC(2026, 11, 31));
+
+/** Each choice shows one sample date written its way, so the difference is visible before picking. */
+function syncDateFormatSelect(): void {
+    const select = document.getElementById("settings-date-format-select") as HTMLSelectElement | null;
+    if (!select) return;
+    for (const option of Array.from(select.options)) {
+        if (!isDateFormat(option.value)) continue;
+        const example = formatDate(DATE_FORMAT_SAMPLE, { year: true, format: option.value });
+        option.textContent = t(DATE_FORMAT_LABEL_KEYS[option.value], { example });
+    }
+    select.value = getDateFormat();
+}
+
+const DATE_FORMAT_LABEL_KEYS: Record<DateFormat, I18nKey> = {
+    locale: "settings.playback.dateFormat.locale",
+    iso: "settings.playback.dateFormat.iso",
+};
 
 function syncEncoderSelect(): void {
     const select = document.getElementById("settings-encoder-select") as HTMLSelectElement | null;
@@ -436,6 +458,11 @@ export function initSettingsModal(): void {
         if (v === "metric" || v === "imperial") {
             setUnits(v as Units);
         }
+    });
+
+    document.getElementById("settings-date-format-select")?.addEventListener("change", (ev) => {
+        const value = (ev.target as HTMLSelectElement).value;
+        if (isDateFormat(value)) setDateFormat(value);
     });
 
     document.getElementById("settings-encoder-select")?.addEventListener("change", (ev) => {

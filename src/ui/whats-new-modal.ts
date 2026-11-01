@@ -7,9 +7,10 @@
 
 import { changelogIdDate } from "../changelog/id.js";
 import { escapeHtml } from "../escape.js";
-import { getCurrentLang, getDateLocale, t } from "../i18n/index.js";
+import { getCurrentLang, t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
 import { initChangelogSeen, markChangelogSeen } from "../persist/changelog-seen.js";
+import { formatDate } from "./date-format.js";
 import { activateModal, deactivateModal, isAnyModalOpen, wireBackdropDismiss } from "./modal-helper.js";
 
 import type { ChangelogCategory, ChangelogEntry } from "../changelog/entries.js";
@@ -45,15 +46,14 @@ function renderIcon(category: ChangelogCategory): string {
 
 function renderModalBody(entries: readonly ChangelogEntry[]): string {
     const lang = getCurrentLang();
-    // Explicit UTC on both ends: the id's date part is calendar data, not an
-    // instant - local-zone parsing or formatting could shift it by a day.
-    const dateFormat = new Intl.DateTimeFormat(getDateLocale(), { dateStyle: "long", timeZone: "UTC" });
     const sections: string[] = [];
     let currentDate: string | null = null;
     let items: string[] = [];
     const flush = () => {
         if (currentDate === null || items.length === 0) return;
-        const heading = dateFormat.format(new Date(`${currentDate}T00:00:00Z`));
+        // Parsed as UTC midnight, the zone the formatters read: the id's date
+        // part is calendar data, not an instant, so no zone may shift its day.
+        const heading = formatDate(new Date(`${currentDate}T00:00:00Z`), { year: true, month: "long" });
         sections.push(`<section class="whats-new-group">
             <h3>${escapeHtml(heading)}</h3>
             <ul>${items.join("")}</ul>

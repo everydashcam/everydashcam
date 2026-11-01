@@ -2662,9 +2662,10 @@
                 </div>
             </div>
             <!-- web-only:end -->
-            <!-- Playback: unit preference + arrow-key seek step.
+            <!-- Playback: unit preference, date format + arrow-key seek step.
                  Units drive chart axis label, map popup speed, trip distance display
-                 (see src/units-pref.ts).
+                 (see src/units-pref.ts). The date format applies to every date
+                 in the interface (see src/ui/date-format.ts).
                  Seek-step inputs override the previously hardcoded 5s / 30s in
                  src/ui/player-hotkeys.ts; storage in src/ui/seek-step-pref.ts. -->
             <div class="export-modal-section">
@@ -2675,6 +2676,16 @@
                         <select id="settings-units-select" class="settings-select">
                             <option value="metric" data-i18n="settings.playback.units.metric">Metric (km/h, km)</option>
                             <option value="imperial" data-i18n="settings.playback.units.imperial">Imperial (mph, mi)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label class="settings-select-row">
+                        <span class="settings-select-label" data-i18n="settings.playback.dateFormat.label">Date format</span>
+                        <select id="settings-date-format-select" class="settings-select">
+                            <!-- Option text carries a sample date in each style; settings-modal.ts fills it. -->
+                            <option value="locale">Language default</option>
+                            <option value="iso">ISO 8601</option>
                         </select>
                     </label>
                 </div>

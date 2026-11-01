@@ -13,6 +13,7 @@ import type { Channel } from "../parsers/types.js";
 import type { Trip, VideoCandidate } from "../trips.js";
 import { frameChannels, needsRecordingMetadata, tripAllCandidates } from "../trips.js";
 
+import { formatMonthYear, subscribeDateFormatChange } from "./date-format.js";
 import { buildEventList } from "./event-list.js";
 import { dom } from "./dom.js";
 import { syncEmptyState } from "./empty-state.js";
@@ -26,7 +27,6 @@ import {
     comparatorFor,
     formatBytes,
     formatDayHeading,
-    formatMonthHeading,
     formatTime,
     formatTimeRange,
     formatTotalDuration,
@@ -403,7 +403,7 @@ function rememberGroupCollapsed(key: string, collapsed: boolean): void {
 function buildMonthSection(month: TripListMonth, appendCards: AppendCards): HTMLLIElement {
     const trips = month.days.flatMap((day) => nodeTrips(day.nodes));
     const { section, list } = buildGroupSection(month.key, "trip-month", [
-        textSpan("trip-group-toggle__label", formatMonthHeading(month.year, month.month)),
+        textSpan("trip-group-toggle__label", formatMonthYear(month.year, month.month)),
         textSpan("trip-group-toggle__stats", tripsSummaryText(trips)),
     ]);
     for (const day of month.days) list.appendChild(buildDaySection(day, appendCards));
@@ -1602,6 +1602,10 @@ export function initSidebar(cb: SidebarCallbacks): void {
     // summary row aggregates them. Without this the inline speed toggle flips
     // the player overlay but leaves the sidebar showing the old unit.
     subscribeUnitsChange(() => {
+        renderTrips();
+    });
+    // Titles, day and month headings carry dates.
+    subscribeDateFormatChange(() => {
         renderTrips();
     });
 }

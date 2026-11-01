@@ -10,35 +10,12 @@ import { isValidGpsFix } from "../parser.js";
 import { contentToFrame, contentToWallUtc, displayClockDate, type Trip } from "../trips.js";
 import type { GpsRecord } from "../parser.js";
 import { formatDistanceFromKm, formatSpeedFromMs, getUnits, subscribeUnitsChange, toggleUnits } from "../units-pref.js";
+import { formatClock } from "./date-format.js";
 import { dom } from "./dom.js";
 import { formatNumber } from "./format.js";
 import { syncGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { activeCandidate, activeFrame } from "./state.js";
 import { type FixState, resolvePlayerMetrics } from "./player-metrics-data.js";
-
-// timeupdate fires every 15-250 ms (Chromium: 250 ms); Intl.DateTimeFormat
-// construction (locale-data resolution + ICU pattern compile) is the only
-// expensive op in refreshMetrics. Memoize it, keyed by locale - the langchange
-// subscription re-runs the refresh after the locale flips, so a new key
-// rebuilds naturally with no stale-formatter risk.
-let cachedTimeFmt: Intl.DateTimeFormat | null = null;
-let cachedTimeFmtLocale: string | null = null;
-function localTimeFormatter(): Intl.DateTimeFormat {
-    const locale = getDateLocale();
-    if (!cachedTimeFmt || cachedTimeFmtLocale !== locale) {
-        cachedTimeFmt = new Intl.DateTimeFormat(locale, {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false,
-            // The zone shift lives inside the displayClockDate value, so the
-            // formatter is constant and the locale-keyed memoization holds.
-            timeZone: "UTC",
-        });
-        cachedTimeFmtLocale = locale;
-    }
-    return cachedTimeFmt;
-}
 
 /** Writes speed into both places it is shown: the readout row on desktop and
  *  the bar's speed-only copy on phones. Only one of them is on screen at a
@@ -147,9 +124,8 @@ function refreshMetrics(
     // 4 decimal places = ~11m accuracy at mid-latitudes, enough for viewing.
     // Full 5-place accuracy is in tooltip popups.
     dom.metrics.coords.textContent = `${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}`;
-    // GPS time on the display clock (camera clock when known). Locale from
-    // i18n so 24h/12h follows the UI language.
-    dom.metrics.time.textContent = localTimeFormatter().format(displayClockDate(rec.unixSeconds, cameraTzSec));
+    // GPS time on the display clock (camera clock when known).
+    dom.metrics.time.textContent = formatClock(displayClockDate(rec.unixSeconds, cameraTzSec), { seconds: true });
     const distance = formatDistanceFromKm(distanceKm ?? 0);
     dom.metrics.distance.textContent = formatNumber(distance.value, 1);
     dom.metrics.distanceUnit.textContent = t(distance.unitKey);

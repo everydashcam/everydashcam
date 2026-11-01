@@ -7,7 +7,7 @@ import type { TripMetaAnnotation } from "../persist/types.js";
 import { normalizeSearchText } from "../trip-filters.js";
 import { displayClockDate, tripAllCandidates } from "../trips.js";
 import type { Trip } from "../trips.js";
-import { cachedDateTimeFormat } from "./format.js";
+import { cachedDateTimeFormat } from "./date-format.js";
 
 // Long and short month names, the numeric date and the clock, all on the
 // display clock (timeZone UTC: the shift is already inside the Date).

@@ -15,6 +15,7 @@ import {
 } from "../trips.js";
 import { formatDistanceFromKm } from "../units-pref.js";
 
+import { formatClock, formatDate, formatDateTime, formatWeekday } from "./date-format.js";
 import type { TripSortKey } from "./state.js";
 
 /** True when both display-clock dates (displayClockDate) fall on the same calendar day. */
@@ -29,126 +30,36 @@ function isSameDisplayDay(a: Date, b: Date): boolean {
 /**
  * Trip title on the display clock - the camera's own clock when the
  * per-fingerprint estimate exists, browser-local otherwise (displayClockDate).
- * "Apr 29, 18:26 → 18:42" for same-day trips, "Apr 29 18:26 → Apr 30 02:15" for overnight.
- * Year is shown only when the trip year differs from the current year.
+ * "Apr 29, 18:26 → 18:42" for same-day trips, "Apr 29, 23:50 → Apr 30, 00:15"
+ * for overnight. The year is shown only when the trip year differs from the
+ * current year (ISO dates always carry it, see date-format.ts).
  *
  * `now` defaults to the wall clock; injectable so the "hide the current year"
  * branch is deterministically testable (and mockable) without freezing time.
  */
 export function formatTripTitle(trip: Trip, now: Date = new Date()): string {
-    const { start, end, dateFmt, timeFmt } = tripTitleClock(trip, now);
-    if (isSameDisplayDay(start, end)) {
-        return `${dateFmt.format(start)}, ${timeFmt.format(start)} → ${timeFmt.format(end)}`;
-    }
-    return `${dateFmt.format(start)} ${timeFmt.format(start)} → ${dateFmt.format(end)} ${timeFmt.format(end)}`;
+    const start = displayClockDate(trip.startUtc, trip.cameraTzSec);
+    const end = displayClockDate(trip.endUtc, trip.cameraTzSec);
+    const year = showsTripYear(start, end, now);
+    const endText = isSameDisplayDay(start, end) ? formatClock(end) : formatDateTime(end, { year });
+    return `${formatDateTime(start, { year })} → ${endText}`;
 }
 
 /** Formats only the known start while the trip's end is still being read. */
 export function formatTripStartTitle(trip: Trip, now: Date = new Date()): string {
-    const { start, dateFmt, timeFmt } = tripTitleClock(trip, now);
-    return `${dateFmt.format(start)}, ${timeFmt.format(start)}`;
-}
-
-function tripTitleClock(
-    trip: Trip,
-    now: Date,
-): {
-    start: Date;
-    end: Date;
-    dateFmt: Intl.DateTimeFormat;
-    timeFmt: Intl.DateTimeFormat;
-} {
     const start = displayClockDate(trip.startUtc, trip.cameraTzSec);
-    const end = displayClockDate(trip.endUtc, trip.cameraTzSec);
-    // hour12:false forces 24-hour format regardless of system locale (en-US otherwise gives "04:43 PM").
-    // Explicit locale from i18n (ru-RU or en-US) keeps date language in sync with UI language.
-    const locale = getDateLocale();
-    // `now` is the viewer's clock - project it the same way (browser zone) so
-    // the year comparison happens between display-clock values.
-    const currentYear = displayClockDate(now.getTime() / 1000, null).getUTCFullYear();
-    // Show year if EITHER edge is in a different year - covers the rare Dec 31 crossing: both edges show the year for consistency.
-    const includeYear = start.getUTCFullYear() !== currentYear || end.getUTCFullYear() !== currentYear;
-    // timeZone:"UTC" everywhere a displayClockDate is formatted - the shift is
-    // already inside the Date (see the displayClockDate contract).
-    const { dateFmt, timeFmt } = tripTitleFormatters(locale, includeYear);
-    return { start, end, dateFmt, timeFmt };
-}
-
-// Constructing an Intl.DateTimeFormat resolves locale data and compiles a
-// pattern, which costs far more than formatting with it. Hover popups and the
-// range rulers format on every pointer move or view change, so immutable
-// formatters are shared per locale and option set.
-const dateTimeFormatCache = new Map<string, Intl.DateTimeFormat>();
-
-/** Day, month and clock with seconds; hover popups format the display clock. */
-export const POPUP_CLOCK_FORMAT: Intl.DateTimeFormatOptions = {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-};
-
-/** A shared formatter for `locale` and `options`; same arguments, same instance. */
-export function cachedDateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-    const key = `${locale}|${JSON.stringify(options)}`;
-    let formatter = dateTimeFormatCache.get(key);
-    if (!formatter) {
-        formatter = new Intl.DateTimeFormat(locale, options);
-        dateTimeFormatCache.set(key, formatter);
-    }
-    return formatter;
-}
-
-// Intl.DateTimeFormat construction resolves locale data and compiles a
-// pattern; the sidebar builds two per card on every full render, which on a
-// long list is the single most expensive part of the rebuild. The pair only
-// varies by locale and year visibility, so it is memoized on that key.
-const tripTitleFormatterCache = new Map<string, { dateFmt: Intl.DateTimeFormat; timeFmt: Intl.DateTimeFormat }>();
-
-function tripTitleFormatters(
-    locale: string,
-    includeYear: boolean,
-): { dateFmt: Intl.DateTimeFormat; timeFmt: Intl.DateTimeFormat } {
-    const key = `${locale}|${includeYear ? "y" : "n"}`;
-    const cached = tripTitleFormatterCache.get(key);
-    if (cached) return cached;
-    const dateOpts: Intl.DateTimeFormatOptions = includeYear
-        ? { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }
-        : { day: "numeric", month: "short", timeZone: "UTC" };
-    const formatters = {
-        dateFmt: new Intl.DateTimeFormat(locale, dateOpts),
-        timeFmt: new Intl.DateTimeFormat(locale, {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-        }),
-    };
-    tripTitleFormatterCache.set(key, formatters);
-    return formatters;
+    return formatDateTime(start, { year: showsTripYear(start, start, now) });
 }
 
 /**
- * Month section heading for the date-sorted trip list ("October 2026"). The
- * month and year are display-clock calendar fields (see trip-list-layout.ts).
- * Locales that write month names in lower case get a capital first letter,
- * because the heading starts a line. `locale` is injectable for tests.
+ * True when either edge of a trip is outside the viewer's current year - the
+ * rare Dec 31 crossing shows the year on both edges for consistency.
  */
-export function formatMonthHeading(year: number, month: number, locale: string = getDateLocale()): string {
-    const parts = cachedDateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).formatToParts(
-        new Date(Date.UTC(year, month, 1)),
-    );
-    // Some locales close the year with an abbreviation (ru "октябрь 2026 г."),
-    // which only costs width in a narrow heading. A literal after the month
-    // (ja "2026年10月") is part of the date and stays.
-    let end = parts.length;
-    while (end > 0 && parts[end - 1]!.type === "literal") end--;
-    const kept = parts[end - 1]?.type === "year" ? parts.slice(0, end) : parts;
-    const text = kept.map((part) => part.value).join("");
-    return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+function showsTripYear(start: Date, end: Date, now: Date): boolean {
+    // `now` is the viewer's clock - project it the same way (browser zone) so
+    // the year comparison happens between display-clock values.
+    const currentYear = displayClockDate(now.getTime() / 1000, null).getUTCFullYear();
+    return start.getUTCFullYear() !== currentYear || end.getUTCFullYear() !== currentYear;
 }
 
 /**
@@ -164,12 +75,7 @@ export function formatDayHeading(
     day: number,
     now: Date = new Date(),
 ): { relative: string | null; date: string } {
-    const date = cachedDateTimeFormat(getDateLocale(), {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-    }).format(new Date(Date.UTC(year, month, day)));
+    const date = formatDate(new Date(Date.UTC(year, month, day)), { weekday: true });
     const today = displayClockDate(now.getTime() / 1000, null);
     const dayDiff = Math.round(
         (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) - Date.UTC(year, month, day)) /
@@ -179,22 +85,16 @@ export function formatDayHeading(
     return { relative, date };
 }
 
-// 24-hour clock regardless of the locale default, as in the trip titles.
-const CLOCK_FORMAT: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" };
-
 /**
  * Clock range on the display clock: "23:04 → 06:20". An end on another
  * calendar day gets its weekday ("23:04 → Sun 06:20"), so a stay over a
  * weekend does not read as a few hours.
  */
 export function formatTimeRange(startUtc: number, endUtc: number, cameraTzSec: number | null): string {
-    const locale = getDateLocale();
-    const time = cachedDateTimeFormat(locale, CLOCK_FORMAT);
     const start = displayClockDate(startUtc, cameraTzSec);
     const end = displayClockDate(endUtc, cameraTzSec);
-    if (isSameDisplayDay(start, end)) return `${time.format(start)} → ${time.format(end)}`;
-    const weekday = cachedDateTimeFormat(locale, { weekday: "short", timeZone: "UTC" });
-    return `${time.format(start)} → ${weekday.format(end)} ${time.format(end)}`;
+    if (isSameDisplayDay(start, end)) return `${formatClock(start)} → ${formatClock(end)}`;
+    return `${formatClock(start)} → ${formatWeekday(end)} ${formatClock(end)}`;
 }
 
 /**
@@ -214,9 +114,7 @@ export function formatTripRowMeta(trip: Trip, loading: TripLoadingState = "loade
  */
 export function formatTripClockTitle(trip: Trip, endKnown: boolean): string {
     if (endKnown) return formatTimeRange(trip.startUtc, trip.endUtc, trip.cameraTzSec);
-    return cachedDateTimeFormat(getDateLocale(), CLOCK_FORMAT).format(
-        displayClockDate(trip.startUtc, trip.cameraTzSec),
-    );
+    return formatClock(displayClockDate(trip.startUtc, trip.cameraTzSec));
 }
 
 /** Which recording fact is still being resolved for a trip card. */

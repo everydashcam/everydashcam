@@ -230,3 +230,27 @@ test("jumps to a day from the calendar", async ({ page }) => {
     await page.locator("#trip-sort-key").selectOption("duration");
     await expect(jump).toBeHidden();
 });
+
+test("writes ISO dates across the list once chosen in settings", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await addRecordings(page);
+
+    await page.locator("#settings-btn").click();
+    const select = page.locator("#settings-date-format-select");
+    // Each choice previews one sample date in its own style.
+    await expect(select.locator('option[value="iso"]')).toHaveText("ISO 8601 (2026-12-31)");
+    await expect(select.locator('option[value="locale"]')).toHaveText("Language default (Dec 31, 2026)");
+    await select.selectOption("iso");
+    await page.locator("#settings-modal-close").click();
+
+    const months = page.locator(".trip-month");
+    await expect(toggle(months.nth(0))).toContainText("2026-10");
+    await expect(toggle(months.nth(1).locator(".trip-day").nth(0))).toContainText("2026-09-15 Tue");
+    await expect(months.nth(0).locator("li.trip .trip-title")).toHaveText("2026-10-01 09:00 → 09:00");
+
+    await page.reload();
+    await page.locator("#settings-btn").click();
+    await expect(page.locator("#settings-date-format-select")).toHaveValue("iso");
+});

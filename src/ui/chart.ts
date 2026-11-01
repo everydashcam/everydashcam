@@ -53,15 +53,8 @@ import { formatSpeedFromMs, subscribeUnitsChange } from "../units-pref.js";
 import { gapAwareDecimationPlugin } from "./chart-decimation.js";
 import { dom } from "./dom.js";
 import { openExportMode, setRange } from "./export-state.js";
-import {
-    cachedDateTimeFormat,
-    eventLabel,
-    formatDuration,
-    formatEventSeverity,
-    formatNumber,
-    formatTime,
-    POPUP_CLOCK_FORMAT,
-} from "./format.js";
+import { formatClock, formatDateTime } from "./date-format.js";
+import { eventLabel, formatDuration, formatEventSeverity, formatNumber, formatTime } from "./format.js";
 import { extractFrameAt } from "./frame-extract.js";
 import { buildRecordPopupHtml } from "./map.js";
 import { isCoarsePointer } from "./media-queries.js";
@@ -225,19 +218,11 @@ function setOverviewHandleValue(handle: HTMLDivElement, valueSec: number, minSec
 
 // Navigator drags sync on every pointer move. Reuse the locale formatters so
 // updating the compact status does not compile ICU patterns in that hot path.
-let chartZoomClockFormatter: Intl.DateTimeFormat | null = null;
 const chartZoomFactorFormatters: Array<Intl.NumberFormat | undefined> = [];
 
 function formatChartZoomClock(trip: Trip, contentSec: number): string {
-    chartZoomClockFormatter ??= new Intl.DateTimeFormat(getDateLocale(), {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-    });
     const unixSec = contentToWallUtc(trip.timeline, contentSec);
-    return chartZoomClockFormatter.format(displayClockDate(unixSec, trip.cameraTzSec));
+    return formatClock(displayClockDate(unixSec, trip.cameraTzSec), { seconds: true });
 }
 
 function formatChartZoomFactor(factor: number, isFullView: boolean): string {
@@ -2421,10 +2406,9 @@ function buildNoGpsTooltipHtml(relSec: number, trip: Trip, file: VideoCandidate 
     // relSec is footage-axis; map to wall-clock for the absolute timestamp.
     const absUtc = contentToWallUtc(trip.timeline, relSec);
     // Display clock (camera clock when known) - see displayClockDate contract.
-    const absFmt = cachedDateTimeFormat(getDateLocale(), POPUP_CLOCK_FORMAT);
     const titleStr = t("popup.title", {
         rel: formatTime(relSec),
-        abs: absFmt.format(displayClockDate(absUtc, trip.cameraTzSec)),
+        abs: formatDateTime(displayClockDate(absUtc, trip.cameraTzSec), { seconds: true }),
     });
     // Filename comes from the local FS - user may have renamed it to anything,
     // including HTML/JS injection. Escape before innerHTML.

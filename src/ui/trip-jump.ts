@@ -6,7 +6,8 @@
 import { getDateLocale, t } from "../i18n/index.js";
 import { firstDayOfWeek, monthGridCells, weekdayOrder } from "./calendar-grid.js";
 import { dom } from "./dom.js";
-import { cachedDateTimeFormat, formatDayHeading, formatMonthHeading } from "./format.js";
+import { formatMonthYear, formatWeekday } from "./date-format.js";
+import { formatDayHeading } from "./format.js";
 import { buildLucideIcon } from "./icons.js";
 import { createPopover } from "./popover-lifecycle.js";
 
@@ -86,24 +87,22 @@ function render(): void {
     shownMonth = Math.min(last, Math.max(first, shownMonth));
     const year = Math.floor(shownMonth / 12);
     const month = shownMonth % 12;
-    const locale = getDateLocale();
 
     const header = element("div", "trip-jump__header");
-    const title = element("span", "trip-jump__title", formatMonthHeading(year, month));
+    const title = element("span", "trip-jump__title", formatMonthYear(year, month));
     title.id = "trip-jump-title";
     header.append(stepButton(-1, shownMonth <= first), title, stepButton(1, shownMonth >= last));
 
     const grid = element("div", "trip-jump__grid");
     grid.setAttribute("role", "group");
     grid.setAttribute("aria-labelledby", title.id);
-    const weekStart = firstDayOfWeek(locale);
-    const weekdayFormat = cachedDateTimeFormat(locale, { weekday: "narrow", timeZone: "UTC" });
+    const weekStart = firstDayOfWeek(getDateLocale());
     for (const weekday of weekdayOrder(weekStart)) {
         // January 4, 2026 is a Sunday, so day 4 + n is weekday n.
         const label = element(
             "span",
             "trip-jump__weekday",
-            weekdayFormat.format(new Date(Date.UTC(2026, 0, 4 + weekday))),
+            formatWeekday(new Date(Date.UTC(2026, 0, 4 + weekday)), "narrow"),
         );
         label.setAttribute("aria-hidden", "true");
         grid.appendChild(label);

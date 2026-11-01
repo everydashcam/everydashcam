@@ -15,10 +15,11 @@ import {
     setTripGpsTrimToVideo,
     tripHasRawGps,
 } from "../gps-sync.js";
-import { getDateLocale, t } from "../i18n/index.js";
+import { t } from "../i18n/index.js";
 import { contentToWallUtc, type Trip } from "../trips.js";
 
 import { getTripCameraTimezoneState, setTripCameraTimezone } from "./camera-timezone.js";
+import { formatDateTime } from "./date-format.js";
 import { dom } from "./dom.js";
 import { initGpsSyncLaunchers } from "./gps-sync-controls.js";
 import { requestGpsSyncSurfaceRefresh } from "./gps-sync-refresh.js";
@@ -90,15 +91,11 @@ function syncDialog(trip: Trip | null): void {
                   ? "gpsSync.timezone.source.device"
                   : "gpsSync.timezone.source.recordings";
         dom.gpsSyncTimezoneSource.textContent = t(sourceKey, { offset: formatTimezoneOffset(timezone.effectiveSec) });
-        const formatter = new Intl.DateTimeFormat(getDateLocale(), {
-            dateStyle: "medium",
-            timeStyle: "medium",
-            timeZone: "UTC",
-            hourCycle: "h23",
-        });
+        const format = (unixSec: number): string =>
+            formatDateTime(new Date(unixSec * 1000), { year: true, seconds: true });
         dom.gpsSyncTimezonePreview.textContent = t("gpsSync.timezone.preview", {
-            camera: formatter.format(new Date(timezone.cameraUnix * 1000)),
-            utc: formatter.format(new Date(timezone.utcUnix * 1000)),
+            camera: format(timezone.cameraUnix),
+            utc: format(timezone.utcUnix),
         });
     }
     dom.gpsSyncNoTrack.hidden = hasGps || timezone !== null;

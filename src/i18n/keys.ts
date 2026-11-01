@@ -1195,6 +1195,12 @@ export type I18nKey =
     | "settings.playback.units.label"
     | "settings.playback.units.metric"
     | "settings.playback.units.imperial"
+    // Date style for the whole interface except the video overlay: the
+    // language's own or ISO 8601. {example} is a sample date in that style
+    // (src/ui/date-format.ts); stored in localStorage["everydashcam:date-format"].
+    | "settings.playback.dateFormat.label"
+    | "settings.playback.dateFormat.locale"
+    | "settings.playback.dateFormat.iso"
     // Arrow-key seek step. Two separate inputs - plain Arrow and Shift+Arrow.
     // Defaults 5s / 30s. Stored in localStorage["everydashcam:hotkeys:seekStepSec"]
     // and "...seekStepShiftSec".

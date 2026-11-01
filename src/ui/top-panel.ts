@@ -30,9 +30,10 @@ import { scheduleRecognitionHelp } from "./recognition-help.js";
 // idempotent and cheap (few dozen DOM nodes).
 
 import type { Channel } from "../parsers/types.js";
-import { getDateLocale, t } from "../i18n/index.js";
+import { t } from "../i18n/index.js";
 import type { Trip } from "../trips.js";
 import { displayClockDate, tripChannels } from "../trips.js";
+import { formatDateTime, subscribeDateFormatChange } from "./date-format.js";
 import { dom } from "./dom.js";
 import { channelDisplayLabel, formatDuration } from "./format.js";
 import { notifyExportStateChanged, subscribeExportState } from "./export-state.js";
@@ -97,6 +98,7 @@ export function initTopPanel(opts: { onCompositionApply: () => void; resetZoom?:
     mobile.addEventListener("change", syncControls);
     syncControls();
     subscribeExportState(syncTopPanel);
+    subscribeDateFormatChange(syncTopPanel);
     syncTopPanel();
 }
 
@@ -580,20 +582,5 @@ function hasMultipleChannels(trip: Trip): boolean {
 function formatTripHeader(trip: Trip): string {
     // Display clock (camera clock when known) - must match the sidebar card.
     const start = displayClockDate(trip.startUtc, trip.cameraTzSec);
-    // Explicit UI locale (never undefined/OS default - i18n invariant) and
-    // hour12:false to match formatTripTitle in the sidebar card.
-    const locale = getDateLocale();
-    const dateStr = start.toLocaleDateString(locale, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-    });
-    const timeStr = start.toLocaleTimeString(locale, {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-    });
-    return `${dateStr} · ${timeStr} · ${formatDuration(trip.timeline.contentDurationSec)}`;
+    return `${formatDateTime(start, { year: true })} · ${formatDuration(trip.timeline.contentDurationSec)}`;
 }
