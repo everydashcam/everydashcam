@@ -117,6 +117,10 @@ For browser tests, install Playwright's pinned full browser with
   actionable and out of frame/record/packet loops and `timeupdate`. Preserve the
   local ring buffer and optional, errors-only, PII-scrubbed reporting in
   `src/sentry.ts` and `src/sentry-scrub.ts`; no DSN must remove the SDK from builds.
+- Design for the whole change, not the first call site. A setting, format or
+  policy that several surfaces share gets one owning module; call sites state
+  what they need instead of branching on it themselves. Fix a fault where it
+  originates rather than compensating at each symptom.
 - Search for existing helpers before adding utilities; share duplicated logic.
   Comments explain current constraints or reasons, not obvious steps, personal
   attribution, or change history. Doc comments are prose, not `@param`/`@returns`
