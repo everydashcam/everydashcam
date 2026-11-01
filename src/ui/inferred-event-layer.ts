@@ -25,6 +25,7 @@ import {
 import type { Trip } from "../trips.js";
 
 import { formatTime } from "./format.js";
+import { compositeOver, oklabRamp, parseHexRgb, type Rgb } from "./oklab-ramp.js";
 import type { themeColors } from "./theme.js";
 
 /** Lane thickness in CSS px. */
@@ -50,9 +51,14 @@ const SEGMENT_HIT_SLACK_PX = 3;
 const BASE_ALPHA = 0.16;
 /** Opacity of the lane labels, as quiet as the axis unit labels. */
 const LABEL_ALPHA = 0.8;
-/** Share of the "very strong" cap that already paints the full colour, so
- *  ordinary braking (~1 m/s^2, a third of the cap) reads clearly. */
-const FULL_COLOUR_SHARE_OF_CAP = 0.8;
+/** Share of the "very strong" cap that already paints the full colour: low
+ *  enough that ordinary braking (~1 m/s^2, a third of the cap) is a clear
+ *  colour rather than a pale tint of the track, high enough that a hard brake
+ *  still stands out from it. */
+const FULL_COLOUR_SHARE_OF_CAP = 0.6;
+/** Steps a lane's colour ramp is quantised to: finer than the eye separates on
+ *  a 10 px lane, and a lookup instead of a colour conversion per column. */
+const RAMP_STEPS = 64;
 /** Space between a lane label and the plot edge. */
 const LABEL_GAP_PX = 4;
 /** Lane label font size. */
@@ -89,6 +95,56 @@ function laneTop(lane: Lane, geometry: InferredLaneGeometry): number {
 function strength(magnitude: number, cap: number): number {
     const t = Math.min(1, Math.max(0, magnitude / (cap * FULL_COLOUR_SHARE_OF_CAP)));
     return t * t * (3 - 2 * t);
+}
+
+type LaneColors = ReturnType<typeof themeColors>;
+
+/** Ramps from the grey track to each lane's full colour, RAMP_STEPS + 1 long. */
+interface LaneRamps {
+    brake: readonly string[];
+    accel: readonly string[];
+    turn: readonly string[];
+}
+
+/** Ramps per palette. themeColors() hands out a new object after a theme
+ *  change, so a stale palette's entry simply stops being used. */
+const laneRampsCache = new WeakMap<LaneColors, LaneRamps | null>();
+
+/**
+ * The lane colour ramps for a palette, mixed in OKLab so a partial strength is
+ * a lighter step of the lane's own hue: painting the full colour at partial
+ * alpha blends in sRGB and turns the red pink and the green mint. Each ramp
+ * starts at the grey track as it shows on the chart surface, so strength 0
+ * matches the track. Null when a palette colour does not resolve to an opaque
+ * sRGB colour; the lanes then fall back to alpha.
+ */
+function laneRamps(ctx: CanvasRenderingContext2D, colors: LaneColors): LaneRamps | null {
+    const cached = laneRampsCache.get(colors);
+    if (cached !== undefined) return cached;
+    // The canvas normalises any CSS colour syntax to #rrggbb, including the
+    // shorthands and names a CSS minifier may substitute in the tokens.
+    const resolve = (color: string): Rgb | null => {
+        ctx.fillStyle = color;
+        return parseHexRgb(String(ctx.fillStyle));
+    };
+    ctx.save();
+    const surface = resolve(colors.chartSurface);
+    const trackInk = resolve(colors.chartTickText);
+    const brake = resolve(colors.inferredBrake);
+    const accel = resolve(colors.inferredAccel);
+    const turn = resolve(colors.inferredTurn);
+    ctx.restore();
+    let ramps: LaneRamps | null = null;
+    if (surface && trackInk && brake && accel && turn) {
+        const track = compositeOver(trackInk, BASE_ALPHA, surface);
+        ramps = {
+            brake: oklabRamp(track, brake, RAMP_STEPS),
+            accel: oklabRamp(track, accel, RAMP_STEPS),
+            turn: oklabRamp(track, turn, RAMP_STEPS),
+        };
+    }
+    laneRampsCache.set(colors, ramps);
+    return ramps;
 }
 
 /** Returns segments active at the given trip-relative time. Exported so the
@@ -138,11 +194,12 @@ export function drawDrivingDynamicsLanes(
     ctx: CanvasRenderingContext2D,
     spans: readonly DrivingDynamicsSpan[],
     geometry: InferredLaneGeometry,
-    colors: ReturnType<typeof themeColors>,
+    colors: LaneColors,
     labels: InferredLaneLabels,
 ): void {
     const columns = Math.ceil(geometry.right - geometry.left);
     if (spans.length === 0 || columns <= 0) return;
+    const ramps = laneRamps(ctx, colors);
     const hasData = new Uint8Array(columns);
     const accel = new Float32Array(columns);
     const turn = new Float32Array(columns);
@@ -214,22 +271,37 @@ export function drawDrivingDynamicsLanes(
     ctx.globalAlpha = BASE_ALPHA;
     ctx.fill(tracks);
     // Colour over the grey, one column at a time.
+    const paint = (
+        column: number,
+        top: number,
+        colourStrength: number,
+        ramp: readonly string[] | undefined,
+        fullColour: string,
+    ): void => {
+        if (colourStrength <= 0) return;
+        if (ramp) {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = ramp[Math.round(colourStrength * RAMP_STEPS)]!;
+        } else {
+            ctx.globalAlpha = colourStrength;
+            ctx.fillStyle = fullColour;
+        }
+        ctx.fillRect(geometry.left + column, top, 1, LANE_H);
+    };
     for (let column = 0; column < columns; column++) {
         if (!hasData[column]) continue;
         const value = accel[column]!;
         const isBrake = value < 0;
         const accelStrength = strength(Math.abs(value), isBrake ? BRAKE_INTENSITY_CAP_MS2 : ACCEL_INTENSITY_CAP_MS2);
-        if (accelStrength > 0) {
-            ctx.fillStyle = isBrake ? colors.inferredBrake : colors.inferredAccel;
-            ctx.globalAlpha = accelStrength;
-            ctx.fillRect(geometry.left + column, accelTop, 1, LANE_H);
-        }
-        const turnStrength = strength(turn[column]!, TURN_INTENSITY_CAP_DEG_PER_SEC);
-        if (turnStrength > 0) {
-            ctx.fillStyle = colors.inferredTurn;
-            ctx.globalAlpha = turnStrength;
-            ctx.fillRect(geometry.left + column, turnTop, 1, LANE_H);
-        }
+        if (isBrake) paint(column, accelTop, accelStrength, ramps?.brake, colors.inferredBrake);
+        else paint(column, accelTop, accelStrength, ramps?.accel, colors.inferredAccel);
+        paint(
+            column,
+            turnTop,
+            strength(turn[column]!, TURN_INTENSITY_CAP_DEG_PER_SEC),
+            ramps?.turn,
+            colors.inferredTurn,
+        );
     }
     // Labels, right-aligned against the plot, outside the track clip.
     ctx.restore();

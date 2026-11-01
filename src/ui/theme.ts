@@ -120,13 +120,14 @@ interface ThemeColors {
     chartCursor: string; // --dc-red
     chartGrid: string; // --border (axis-grid + zoom-overlay border)
     chartTickText: string; // --fg-dim
-    eventBrake: string; // --dc-red
+    chartSurface: string; // --bg-elev (the chart panel's background)
+    eventBrake: string; // --event-brake
     markerStart: string; // --dc-green
     markerEnd: string; // --dc-red
     markerStroke: string; // --dc-marker-stroke (#fff on dark / #0E0E0E on light)
-    // Inferred event strip bars (under the chart). Match canonical signal
-    // colors used elsewhere - red for brake, yellow for turn (caution),
-    // green for accel (go), dim fg for stop.
+    // Driving-dynamics lanes under the chart (--ev-*): their own warm red for
+    // braking, green for acceleration and yellow for turns, cut per theme;
+    // dim fg for stop.
     inferredStop: string;
     inferredBrake: string;
     inferredTurn: string;
@@ -171,13 +172,14 @@ export function themeColors(): ThemeColors {
         chartCursor: getCssVar("--dc-red"),
         chartGrid: border,
         chartTickText: getCssVar("--fg-dim"),
-        eventBrake: getCssVar("--dc-red"),
+        chartSurface: getCssVar("--bg-elev"),
+        eventBrake: getCssVar("--event-brake"),
         markerStart: getCssVar("--dc-green"),
         markerEnd: getCssVar("--dc-red"),
         markerStroke: getCssVar("--dc-marker-stroke"),
-        // Read through the semantic --ev-* aliases so the light-theme override
-        // (--ev-stop = --dc-stone-3) flows through automatically. Direct
-        // physical tokens would freeze the strip on the dark palette.
+        // Read through the semantic --ev-* aliases so the per-theme overrides
+        // flow through automatically. Direct physical tokens would freeze the
+        // lanes on the dark palette.
         inferredStop: getCssVar("--ev-stop"),
         inferredBrake: getCssVar("--ev-brake"),
         inferredTurn: getCssVar("--ev-turn"),
@@ -251,7 +253,7 @@ export function speedKmhToColor(kmh: number): string {
     return t[4]; // red: very fast
 }
 
-/** Event marker colors for the chart canvas. Mirrors --ev-* CSS variables (canvas cannot read CSS vars). Palette must stay in sync with tooltip styles that use those variables. */
+/** Event marker colors for the chart canvas. Mirrors --event-* CSS variables (canvas cannot read CSS vars). Palette must stay in sync with tooltip styles that use those variables. */
 export function eventColors(): Record<EventKind, string> {
     return { brake: themeColors().eventBrake };
 }

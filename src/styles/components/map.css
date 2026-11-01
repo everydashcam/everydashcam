@@ -959,7 +959,7 @@ body.map-unavailable #player-map {
     margin-bottom: var(--dc-space-1);
 }
 .track-popup-event.ev-brake {
-    background: var(--ev-brake);
+    background: var(--event-brake);
     color: var(--dc-white);
 }
 

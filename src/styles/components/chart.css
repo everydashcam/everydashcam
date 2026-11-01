@@ -655,6 +655,7 @@
 }
 .inferred-strip-tooltip__chip--accel {
     background: var(--ev-accel);
+    color: var(--dc-black); /* light green background -> black text for contrast */
 }
 .inferred-strip-tooltip__range {
     flex: 1 1 auto;

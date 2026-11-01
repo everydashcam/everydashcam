@@ -50,6 +50,18 @@
     --dc-blue: #1aa7ec; /* info, low-speed end of gradient */
     --dc-violet: #8b5cf6; /* event-recording spans on the timeline */
 
+    /* ----- DRIVING DYNAMICS (lanes under the speed chart) -----
+       A warm red/green pair of their own rather than --dc-red/--dc-green:
+       brick and leaf sit with the bone/stone palette. In each theme braking
+       is clearly darker than acceleration, so the two stay apart by lightness
+       for red-green colour-blind viewers, who see both hues as olive. The
+       deep cuts are for light surfaces. */
+    --dc-brick: #da452c;
+    --dc-brick-deep: #b3260e;
+    --dc-leaf: #77d163;
+    --dc-leaf-deep: #5eb749;
+    --dc-amber: #e5ae0d; /* turns on light surfaces, where yellow fades into the grey track */
+
     /* ----- SPEED-GRADIENT (track polyline colored by speed) ----- */
     --dc-track-1: #1aa7ec; /* slow */
     --dc-track-2: #1fa463;
@@ -160,18 +172,22 @@
     --err-ink: #ff7a8a;
     --info-ink: var(--dc-blue);
 
-    /* ----- INFERRED EVENTS (strip + scrub-thumb) -----
-       Semantic aliases for bar colors of events inferred from speed/bearing
-       (see src/inferred-events.ts). Green for accel is a deliberate choice,
-       NOT orange: orange is already taken by the speed line on chart, the
-       current-position playhead, the brand wordmark and the primary CTA.
-       Orange accel would visually clash with the speed line during hard
-       acceleration. */
-    --ev-brake: var(--dc-red);
-    --ev-accel: var(--dc-green);
+    /* ----- INFERRED EVENTS (driving-dynamics lanes + tooltip chips) -----
+       Driving dynamics inferred from speed/bearing (see src/inferred-events.ts).
+       Green for accel is a deliberate choice, NOT orange: orange is already
+       taken by the |G| curve, the playhead, the selection tint, the brand
+       wordmark and the primary CTA. Cut per theme in the blocks below. */
+    --ev-brake: var(--dc-brick);
+    --ev-accel: var(--dc-leaf);
     --ev-turn: var(--dc-yellow);
     --ev-stop: var(--dc-ash-5); /* dim grey - stop is a state, not a magnitude */
     --ev-overlap: var(--dc-orange); /* diamond marker on brake+turn coincident */
+
+    /* ----- RECORDED EVENTS -----
+       Hard brakes the camera itself flagged: markers on the chart and the map
+       and their tooltip chip. They stay on the system red, apart from the
+       inferred lanes above. */
+    --event-brake: var(--dc-red);
 
     /* ----- EXPORT RANGE PULL-TABS -----
        Green start / red end mirrors the map's start/end trip markers
@@ -295,6 +311,9 @@
            close to black; on light it gives strong contrast and reads as
            "important". stone-3 gives a soft grey under semantic "neutral". */
         --ev-stop: var(--dc-stone-3);
+        --ev-brake: var(--dc-brick-deep);
+        --ev-accel: var(--dc-leaf-deep);
+        --ev-turn: var(--dc-amber);
     }
 }
 
@@ -318,6 +337,9 @@ html.dc-light {
     --border-strong: var(--dc-stone-3);
     --dc-marker-stroke: var(--dc-ink);
     --ev-stop: var(--dc-stone-3);
+    --ev-brake: var(--dc-brick-deep);
+    --ev-accel: var(--dc-leaf-deep);
+    --ev-turn: var(--dc-amber);
 }
 /* dc-dark - forced dark even on a light system theme. We set the vars
    from :root explicitly to beat the prefers-color-scheme: light above. */
@@ -338,7 +360,10 @@ html.dc-dark {
     --border: var(--dc-ash-3);
     --border-strong: var(--dc-ash-4);
     --dc-marker-stroke: var(--dc-white);
-    /* Without this reset a system-light user forcing dark kept the light
-       stone-3 stop bars - the only semantic var the block did not restore. */
+    /* Without these resets a system-light user forcing dark keeps the
+       light-surface cuts of the lanes and stop bars. */
     --ev-stop: var(--dc-ash-5);
+    --ev-brake: var(--dc-brick);
+    --ev-accel: var(--dc-leaf);
+    --ev-turn: var(--dc-yellow);
 }
