@@ -596,6 +596,15 @@ function setGroupCollapsed(section: HTMLElement, collapsed: boolean): void {
     if (wasStuck) section.scrollIntoView({ block: "start", behavior: "instant" });
 }
 
+/** Opens only the sections hiding a card that playback or keyboard focus needs. */
+function revealContainingGroups(card: Element): void {
+    let section = card.parentElement?.closest<HTMLElement>("li.trip-group");
+    while (section) {
+        if (section.classList.contains("is-collapsed")) setGroupCollapsed(section, false);
+        section = section.parentElement?.closest<HTMLElement>("li.trip-group");
+    }
+}
+
 /**
  * Opens every collapsed section around the active trip's card, once per
  * activation: the trip that starts playing must be visible in the list, but a
@@ -614,11 +623,7 @@ function revealActiveTrip(): void {
     const card = dom.list.querySelector(`li.trip[data-trip-index="${active.trip}"]`);
     if (!card) return;
     revealedActiveKey = key;
-    let section = card.parentElement?.closest<HTMLElement>("li.trip-group");
-    while (section) {
-        if (section.classList.contains("is-collapsed")) setGroupCollapsed(section, false);
-        section = section.parentElement?.closest<HTMLElement>("li.trip-group");
-    }
+    revealContainingGroups(card);
 }
 
 /** The card's annotation controls - favorite star, name/note pencil - as one
@@ -1248,6 +1253,9 @@ function restoreListFocus(focus: ListFocus | null, root: Element): void {
         if (hasTripFilters(state.tripFilters)) dom.tripFilterReset.focus({ preventScroll: true });
         return;
     }
+    // Favoriting can move the focused card into a folded section. Reveal its
+    // destination before focusing, since hidden controls cannot receive focus.
+    revealContainingGroups(owner);
     if (focus.kind === "title") {
         owner.querySelector<HTMLElement>(".trip-title")?.focus();
         return;

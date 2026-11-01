@@ -128,6 +128,29 @@ test("opens the folded parking night when playback advances into it", async ({ p
     await expect(run.locator("li.trip.active")).toBeVisible();
 });
 
+test("keeps keyboard focus when a starred trip moves into a folded favorites section", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await addRecordings(page, [
+        "Normal/Front/NO20260914-080000-000001F.MP4",
+        "Normal/Front/NO20261001-090000-000002F.MP4",
+    ]);
+
+    await page.locator("li.trip .trip-fav").first().click();
+    await page.locator("#notes-storage-browser").click();
+    await expect(page.locator("#notes-storage-modal")).toBeHidden();
+    const favorites = page.locator(".trip-month").first();
+    await toggle(favorites).click();
+    await expect(toggle(favorites)).toHaveAttribute("aria-expanded", "false");
+
+    await page.locator(".trip-day .trip-fav").focus();
+    await page.keyboard.press("Space");
+    await expect(favorites.locator("li.trip")).toHaveCount(2);
+    await expect(favorites.locator(".trip-fav").last()).toBeFocused();
+    await expect(toggle(favorites)).toHaveAttribute("aria-expanded", "true");
+});
+
 test("switches to compact rows and keeps the choice after a reload", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
