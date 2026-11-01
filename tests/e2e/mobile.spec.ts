@@ -107,11 +107,12 @@ test.describe("mobile portrait", () => {
         await shot(page, "mobile-04-view-menu");
     });
 
-    test("hiding both panels reveals the mini-progress scrubber", async ({ page }) => {
+    test("hiding the chart keeps the whole-trip scrubber", async ({ page }) => {
         await loadTrip(page, SAMPLE_70MAI);
         await page.locator("#player-view-menu").click();
         await page.locator('.view-menu-row[data-panel="chart"]').click();
-        await page.locator('.view-menu-row[data-panel="strip"]').click();
+        // The events layer is drawn on the chart, so its item goes inert.
+        await expect(page.locator('.view-menu-row[data-panel="strip"]')).toHaveAttribute("aria-disabled", "true");
         await page.locator("body").click(); // close popover
         await expect(page.locator("#player-mini-progress")).toBeVisible();
         await shot(page, "mobile-05-mini-progress");

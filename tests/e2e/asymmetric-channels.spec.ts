@@ -65,15 +65,9 @@ async function expectPosition(page: Page, seconds: number): Promise<void> {
 }
 
 async function seekTo(page: Page, seconds: number): Promise<void> {
+    // The whole-trip track maps the 104 s trip onto its own width.
     const bar = await boxOf(page, "#player-mini-progress");
-    const { left, right } = await page.locator("#player-mini-progress").evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-            left: Number.parseFloat(style.getPropertyValue("--timeline-gutter-left")) / 100,
-            right: Number.parseFloat(style.getPropertyValue("--timeline-gutter-right")) / 100,
-        };
-    });
-    await page.mouse.click(bar.x + bar.width * (left + ((1 - left - right) * seconds) / 104), bar.y + bar.height / 2);
+    await page.mouse.click(bar.x + (bar.width * seconds) / 104, bar.y + bar.height / 2);
     await expectPosition(page, seconds);
 }
 

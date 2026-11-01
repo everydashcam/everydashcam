@@ -1567,32 +1567,83 @@
                                     data-i18n="recognition.gps.help">Expected GPS in these recordings? Tell me</button>
                         </div>
                         <!-- Cross-cutting pointers for the current moment and hover position
-                             run through the viewport-mapped rows as single visual elements.
-                             The playhead is orange while visible and neutral when its moment
-                             lies outside the zoom window; neither pointer crosses the separate
-                             whole-trip navigator. Position is updated from src/ui/chart.ts. -->
+                             run through the viewport-mapped rows (ruler and chart) as single
+                             visual elements. The playhead is orange while visible and neutral
+                             when its moment lies outside the zoom window; neither pointer
+                             crosses the whole-trip row on top. Position is updated from
+                             src/ui/chart.ts. The grip is the playhead's drag target: it seeks
+                             at the zoom window's precision (src/ui/player-scrubber.ts). -->
                         <div id="player-chart-playhead" class="player-chart-playhead" hidden></div>
+                        <div id="player-chart-playhead-grip" class="player-chart-playhead-grip" hidden aria-hidden="true"></div>
                         <div id="player-chart-hover-cursor" class="player-chart-hover-cursor" hidden></div>
                         <!-- Timeline-marker pins (annotations). Populated by
                              src/ui/timeline-markers.ts via the chart overlay-sync
                              hook; empty when the trip has no markers. -->
                         <div id="player-chart-markers" class="timeline-markers"></div>
-                        <!-- Always-on progress scrubber: time-labelled seek bar in the
-                             viewport-mapped stack. Visible in every mode (chart / strip are
-                             optional via the View menu). It sits next to the transport bar;
-                             the chart/strip below are the analytics block and the separate
-                             whole-trip navigator is last. Click/drag to seek; updated from
-                             updatePlayerProgressUi. -->
-                        <div class="player-mini-progress" id="player-mini-progress" role="slider"
-                             aria-label="Trip progress"
-                             data-i18n-attr="aria-label:player.progress"
-                             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
-                             tabindex="0">
-                            <div class="player-mini-progress__thumb" id="player-mini-progress-thumb" aria-hidden="true"></div>
-                            <!-- Hover/drag tooltip: thumbnail + mm:ss above the cursor. -->
-                            <div class="player-mini-progress__tooltip" id="player-mini-progress-tooltip" aria-hidden="true" hidden>
-                                <canvas class="player-mini-progress__preview" id="player-mini-progress-thumb-canvas" width="160" height="90"></canvas>
-                                <span class="player-mini-progress__time mono" id="player-mini-progress-time">0:00</span>
+                        <!-- Top row: the whole trip at every zoom level, next to the transport
+                             bar. The seek track carries the current moment as a thumb and the
+                             zoom window as a frame: drag the thumb or click to seek, drag the
+                             frame to pan, drag either edge to zoom. The track spans exactly the
+                             plot below it; the explicit zoom controls sit in the plot's side
+                             gutters. Updated from src/ui/chart.ts and src/ui/player-scrubber.ts. -->
+                        <div class="chart-zoom-row" id="player-chart-zoom-row">
+                            <div class="chart-zoom-lead">
+                                <button class="range-overview-reset is-concealed" id="player-chart-overview-reset"
+                                        type="button" disabled aria-hidden="true"
+                                        data-i18n-attr="aria-label:chart.zoomReset,title:chart.zoomReset"
+                                        aria-label="Full view" title="Full view">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                                </button>
+                            </div>
+                            <div class="range-overview" id="player-chart-overview" role="group"
+                                 data-i18n-attr="aria-label:chart.zoomNavigator"
+                                 aria-label="Timeline zoom navigator">
+                                <div class="player-mini-progress" id="player-mini-progress" role="slider"
+                                     aria-label="Trip progress"
+                                     data-i18n-attr="aria-label:player.progress"
+                                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+                                     tabindex="0"></div>
+                                <div class="range-overview-markers" id="player-chart-overview-markers" aria-hidden="true"></div>
+                                <div class="range-overview-viewport" id="player-chart-overview-viewport" hidden>
+                                    <div class="range-overview-handle range-overview-handle--start"
+                                         id="player-chart-overview-start" role="slider" tabindex="0"
+                                         aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100"
+                                         aria-valuenow="0" data-i18n-attr="aria-label:chart.zoomRangeStart"
+                                         aria-label="Visible range start"></div>
+                                    <div class="range-overview-handle range-overview-handle--end"
+                                         id="player-chart-overview-end" role="slider" tabindex="0"
+                                         aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100"
+                                         aria-valuenow="100" data-i18n-attr="aria-label:chart.zoomRangeEnd"
+                                         aria-label="Visible range end"></div>
+                                </div>
+                                <div class="player-mini-progress__thumb" id="player-mini-progress-thumb" aria-hidden="true"></div>
+                                <div class="chart-zoom-status" id="player-chart-zoom-status" role="group" hidden>
+                                    <span class="chart-zoom-status__factor" id="player-chart-zoom-factor"
+                                          aria-hidden="true">1×</span>
+                                    <span class="chart-zoom-status__separator" aria-hidden="true">·</span>
+                                    <span class="chart-zoom-status__range" id="player-chart-zoom-range"
+                                          aria-hidden="true"></span>
+                                </div>
+                                <!-- Hover/drag tooltip: thumbnail + mm:ss above the cursor. -->
+                                <div class="player-mini-progress__tooltip" id="player-mini-progress-tooltip" aria-hidden="true" hidden>
+                                    <canvas class="player-mini-progress__preview" id="player-mini-progress-thumb-canvas" width="160" height="90"></canvas>
+                                    <span class="player-mini-progress__time mono" id="player-mini-progress-time">0:00</span>
+                                </div>
+                            </div>
+                            <!-- Explicit zoom controls mirror the keyboard shortcuts and keep
+                                 zoom reversible on devices without a wheel. Full view (above)
+                                 shows only while zoomed and keeps its slot otherwise. -->
+                            <div class="chart-zoom-controls">
+                                <button class="chart-zoom-control" id="player-chart-zoom-out" type="button" disabled
+                                        data-i18n-attr="aria-label:chart.zoomOut,title:chart.zoomOut"
+                                        aria-label="Zoom out" title="Zoom out">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+                                </button>
+                                <button class="chart-zoom-control" id="player-chart-zoom-in" type="button" disabled
+                                        data-i18n-attr="aria-label:chart.zoomIn,title:chart.zoomIn"
+                                        aria-label="Zoom in" title="Zoom in">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                </button>
                             </div>
                         </div>
                         <!-- Time-scale over the chart: one label per tick -
@@ -1622,68 +1673,6 @@
                              the dataset color - blue for speed, orange for |G|. -->
                         <span class="chart-axis-label chart-axis-label--speed" data-i18n="chart.unit.speed">km/h</span>
                         <span class="chart-axis-label chart-axis-label--accel" data-i18n="chart.unit.accel">g</span>
-                        <!-- Inferred event strip Variant B: a 52px strip with a bipolar
-                             longitudinal + turn + stop ribbon. X-axis is synced
-                             with the chart via chart.scales.x.getPixelForValue. The wrap
-                             is needed for position: relative for the absolute axis labels;
-                             the canvas itself takes 100% of the wrap's area. Hidden while
-                             there's no active trip with records. -->
-                        <div class="chart-inferred-strip" id="player-chart-inferred-strip-wrap">
-                            <canvas id="player-chart-inferred-strip" class="chart-inferred-strip__canvas" aria-hidden="true"></canvas>
-                            <span class="chart-inferred-strip__axis-label chart-inferred-strip__axis-label--acc"
-                                  data-i18n="chart.inferredStrip.axis.acc">↑ACC</span>
-                            <span class="chart-inferred-strip__axis-label chart-inferred-strip__axis-label--brk"
-                                  data-i18n="chart.inferredStrip.axis.brk">↓BRK</span>
-                        </div>
-                        <div class="chart-zoom-row" id="player-chart-zoom-row" hidden>
-                            <!-- Full-trip zoom navigator. The highlighted viewport stays visible
-                                 at every zoom level: drag its body to pan, drag either edge to
-                                 resize, or click the track to centre the window. -->
-                            <div class="range-overview" id="player-chart-overview" role="group" hidden
-                                 data-i18n-attr="aria-label:chart.zoomNavigator"
-                                 aria-label="Timeline zoom navigator">
-                                <div class="range-overview-viewport" id="player-chart-overview-viewport">
-                                    <div class="range-overview-handle range-overview-handle--start"
-                                         id="player-chart-overview-start" role="slider" tabindex="0"
-                                         aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100"
-                                         aria-valuenow="0" data-i18n-attr="aria-label:chart.zoomRangeStart"
-                                         aria-label="Visible range start"></div>
-                                    <div class="range-overview-handle range-overview-handle--end"
-                                         id="player-chart-overview-end" role="slider" tabindex="0"
-                                         aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100"
-                                         aria-valuenow="100" data-i18n-attr="aria-label:chart.zoomRangeEnd"
-                                         aria-label="Visible range end"></div>
-                                </div>
-                                <div class="chart-zoom-status" id="player-chart-zoom-status" role="group" hidden>
-                                    <span class="chart-zoom-status__factor" id="player-chart-zoom-factor"
-                                          aria-hidden="true">1×</span>
-                                    <span class="chart-zoom-status__separator" aria-hidden="true">·</span>
-                                    <span class="chart-zoom-status__range" id="player-chart-zoom-range"
-                                          aria-hidden="true"></span>
-                                </div>
-                            </div>
-                            <!-- Explicit zoom controls mirror the keyboard shortcuts and keep
-                                 zoom reversible on devices without a wheel. -->
-                            <div class="chart-zoom-controls">
-                                <button class="range-overview-reset is-concealed" id="player-chart-overview-reset"
-                                        type="button" disabled aria-hidden="true"
-                                        data-i18n-attr="aria-label:chart.zoomReset,title:chart.zoomReset"
-                                        aria-label="Full view" title="Full view">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
-                                    <span data-i18n="chart.zoomReset">Full view</span>
-                                </button>
-                                <button class="chart-zoom-control" id="player-chart-zoom-out" type="button" disabled
-                                        data-i18n-attr="aria-label:chart.zoomOut,title:chart.zoomOut"
-                                        aria-label="Zoom out" title="Zoom out">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
-                                </button>
-                                <button class="chart-zoom-control" id="player-chart-zoom-in" type="button" disabled
-                                        data-i18n-attr="aria-label:chart.zoomIn,title:chart.zoomIn"
-                                        aria-label="Zoom in" title="Zoom in">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div id="video-map-resize" class="player-col-resize" role="separator" aria-orientation="vertical"

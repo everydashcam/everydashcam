@@ -488,13 +488,15 @@ initViewMenu({
     popover: dom.viewMenuPopover,
     panels: {
         // Hide ONLY the canvas (not the whole .player-chart box), otherwise
-        // the strip and ruler inside would also disappear when "unchecking the
-        // chart". chart-axis-labels are tied to the canvas via :has() in CSS -
-        // they hide by cascade. The ruler stays visible - the time-scale is
-        // useful even without the speed chart. The .player-chart height is
-        // recomputed via :has(...) in viewer.css.
+        // the whole-trip row and ruler inside would also disappear when
+        // "unchecking the chart". chart-axis-labels are tied to the canvas via
+        // :has() in CSS - they hide by cascade. The ruler stays visible - the
+        // time-scale is useful even without the speed chart. The .player-chart
+        // height is recomputed via :has(...) in viewer.css.
         chart: dom.chartCanvas,
-        strip: dom.chartInferredStripWrap,
+        // The events layer is painted on the chart canvas; chart.ts reads
+        // isPanelShown("strip") and redraws on view-panel notifications.
+        strip: null,
         // We do NOT pass the map element - view-menu only stores the
         // preference and notifies subscribers. The only writer for
         // .mini-map.hidden is applyMapLayout in map.ts, subscribed via

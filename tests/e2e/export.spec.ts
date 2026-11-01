@@ -17,6 +17,7 @@ import {
     presetLocalStorage,
     shot,
     test,
+    pausePlayback,
 } from "./_fixtures.js";
 
 test.describe.configure({ mode: "parallel" });
@@ -329,6 +330,11 @@ test.describe("export", () => {
     });
 
     test("viewport navigator stays independent from the export clip range", async ({ page }) => {
+        // Park the moment mid-trip: the thumb wins a press over the frame's
+        // edge grips, and a moment near the trip start would sit under one.
+        await pausePlayback(page);
+        await page.locator("#player-mini-progress").focus();
+        await page.keyboard.press("5");
         const startInput = page.locator('.export-trim-bar__input[data-range-edge="start"]');
         const endInput = page.locator('.export-trim-bar__input[data-range-edge="end"]');
         const readClip = async (): Promise<string[]> => [await startInput.inputValue(), await endInput.inputValue()];
@@ -358,8 +364,8 @@ test.describe("export", () => {
         ] as const) {
             const overlay = await boxOf(page, selector);
             expect(
-                Math.abs(overlay.y + overlay.height - zoomRow.y),
-                `${label} stops at the whole-trip navigator`,
+                Math.abs(overlay.y - (zoomRow.y + zoomRow.height)),
+                `${label} starts below the whole-trip navigator`,
             ).toBeLessThanOrEqual(1);
         }
 
@@ -1301,7 +1307,6 @@ test.describe("export", () => {
     test("range selection stays usable with the chart hidden", async ({ page }) => {
         await page.locator("#player-view-menu").click();
         await page.locator('.view-menu-row[data-panel="chart"]').click();
-        await page.locator('.view-menu-row[data-panel="strip"]').click();
         await page.keyboard.press("Escape");
         await expect(page.locator("#player-chart-canvas")).toBeHidden();
         await expect(page.locator("#timeline-range")).toBeVisible();

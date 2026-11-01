@@ -44,6 +44,23 @@ async function chartWindow(page: Page): Promise<{ min: number; max: number; dura
     });
 }
 
+/** The chart's plot rectangle in viewport coordinates. The whole-trip row's
+ *  track spans exactly this width. */
+async function plotBox(page: Page): Promise<{ x: number; width: number; bottom: number }> {
+    return page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const chart = (window as any).__everydashcam.state.chart;
+        const canvas = document.querySelector<HTMLCanvasElement>("#player-chart-canvas");
+        if (!chart || !canvas) throw new Error("chart unavailable");
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: rect.left + chart.chartArea.left,
+            width: chart.chartArea.right - chart.chartArea.left,
+            bottom: rect.top + chart.chartArea.bottom,
+        };
+    });
+}
+
 /** Seek through the public scrubber and wait for the media seek itself, not
  * merely for currentTime to read zero. A cross-file seek swaps in a fresh
  * <video> whose currentTime starts at zero before its source is playable; that
@@ -692,11 +709,12 @@ test.describe("player", () => {
             scrollWidth: el.scrollWidth,
         }));
         expect(overviewAtFull.height, "fine-pointer navigator height").toBeCloseTo(24, 0);
-        expect(
-            Math.abs(overviewAtFull.x + overviewAtFull.width / 2 - (playerChartAtFull.x + playerChartAtFull.width / 2)),
-            "desktop navigator stays centered on the whole chart",
-        ).toBeLessThanOrEqual(1);
-        expect(overviewAtFull.width, "desktop navigator keeps a usable width").toBeGreaterThan(40);
+        expect(overviewAtFull.y, "the whole-trip row is the top of the timeline").toBeLessThanOrEqual(
+            playerChartAtFull.y + 1,
+        );
+        const plot = await plotBox(page);
+        expect(Math.abs(overviewAtFull.x - plot.x), "track starts at the plot's left edge").toBeLessThanOrEqual(1);
+        expect(Math.abs(overviewAtFull.width - plot.width), "track spans the plot").toBeLessThanOrEqual(1);
         expect(desktopRowOverflow.scrollWidth, "desktop zoom row has no horizontal overflow").toBeLessThanOrEqual(
             desktopRowOverflow.clientWidth + 1,
         );
@@ -729,7 +747,7 @@ test.describe("player", () => {
         await expect(zoomOut).toBeEnabled();
         await expect(reset).toBeVisible();
         await expect(reset).toHaveAccessibleName("Full view");
-        await expect(reset).toHaveText("Full view");
+        await expect(reset).toHaveAttribute("title", "Full view");
         await expect(reset).toBeEnabled();
         await expect(reset).not.toHaveAttribute("aria-hidden", "true");
         await expect(status).toBeVisible();
@@ -749,8 +767,9 @@ test.describe("player", () => {
             expect(value).toContain(rangeText);
         }
 
-        // Reset owns a concealed slot at full view. Revealing it must not resize
-        // the navigator or move the two zoom buttons under the pointer.
+        // Reset owns a concealed slot left of the track at full view. Revealing
+        // it must not resize the track or move the two zoom buttons under the
+        // pointer.
         const overviewZoomed = await boxOf(page, "#player-chart-overview");
         const resetZoomed = await boxOf(page, "#player-chart-overview-reset");
         const zoomOutZoomed = await boxOf(page, "#player-chart-zoom-out");
@@ -761,7 +780,10 @@ test.describe("player", () => {
         );
         expect(Math.abs(zoomOutZoomed.x - zoomOutAtFull.x), "zoom-out keeps its x position").toBeLessThanOrEqual(1);
         expect(Math.abs(zoomInZoomed.x - zoomInAtFull.x), "zoom-in keeps its x position").toBeLessThanOrEqual(1);
-        expect(resetZoomed.x + resetZoomed.width, "Full view sits before zoom-out").toBeLessThanOrEqual(
+        expect(resetZoomed.x + resetZoomed.width, "Full view sits left of the track").toBeLessThanOrEqual(
+            overviewZoomed.x + 1,
+        );
+        expect(overviewZoomed.x + overviewZoomed.width, "zoom-out sits right of the track").toBeLessThanOrEqual(
             zoomOutZoomed.x + 1,
         );
 
@@ -893,13 +915,13 @@ test.describe("player", () => {
         await expect(zoomOut).toBeEnabled();
     });
 
-    test("timeline zoom row preserves the chart stack at 390px", async ({ page }) => {
+    test("timeline zoom row stays on top of the chart stack at 390px", async ({ page }) => {
         await page.setViewportSize(MOBILE);
         try {
             await expect(page.locator("#player-chart-zoom-row")).toBeVisible();
             const playerChart = await boxOf(page, "#player-chart");
+            const ruler = await boxOf(page, "#player-chart-ruler-top");
             const canvas = await boxOf(page, "#player-chart-canvas");
-            const strip = await boxOf(page, "#player-chart-inferred-strip-wrap");
             const zoomRow = await boxOf(page, "#player-chart-zoom-row");
             const overview = await boxOf(page, "#player-chart-overview");
             const rowOverflow = await page.locator("#player-chart-zoom-row").evaluate((el) => ({
@@ -907,40 +929,34 @@ test.describe("player", () => {
                 scrollWidth: el.scrollWidth,
             }));
 
-            expect(zoomRow.y, "zoom row starts below the chart canvas").toBeGreaterThanOrEqual(
-                canvas.y + canvas.height - 1,
-            );
-            expect(zoomRow.y, "zoom row starts below the event strip").toBeGreaterThanOrEqual(
-                strip.y + strip.height - 1,
-            );
+            expect(zoomRow.y + zoomRow.height, "zoom row ends above the ruler").toBeLessThanOrEqual(ruler.y + 1);
+            expect(ruler.y + ruler.height, "ruler ends above the chart canvas").toBeLessThanOrEqual(canvas.y + 1);
             expect(zoomRow.x, "zoom row stays inside the chart on the left").toBeGreaterThanOrEqual(playerChart.x - 1);
             expect(zoomRow.x + zoomRow.width, "zoom row stays inside the chart on the right").toBeLessThanOrEqual(
                 playerChart.x + playerChart.width + 1,
             );
-            expect(zoomRow.y + zoomRow.height, "zoom row stays inside the chart at the bottom").toBeLessThanOrEqual(
-                playerChart.y + playerChart.height + 1,
-            );
-            expect(
-                Math.abs(overview.x + overview.width / 2 - (playerChart.x + playerChart.width / 2)),
-                "390px navigator stays centered on the whole chart",
-            ).toBeLessThanOrEqual(1);
-            expect(overview.x, "navigator stays inside the chart on the left").toBeGreaterThanOrEqual(
-                playerChart.x - 1,
-            );
-            expect(overview.x + overview.width, "navigator stays inside the chart on the right").toBeLessThanOrEqual(
-                playerChart.x + playerChart.width + 1,
-            );
+            const plot = await plotBox(page);
+            expect(Math.abs(overview.x - plot.x), "390px track starts at the plot").toBeLessThanOrEqual(1);
+            expect(Math.abs(overview.width - plot.width), "390px track spans the plot").toBeLessThanOrEqual(1);
             expect(rowOverflow.scrollWidth, "zoom row has no horizontal overflow at 390px").toBeLessThanOrEqual(
                 rowOverflow.clientWidth + 1,
             );
-            expect(overview.width, "navigator keeps a usable width beside the controls").toBeGreaterThan(40);
+            for (const id of ["player-chart-zoom-out", "player-chart-zoom-in"]) {
+                const control = await boxOf(page, `#${id}`);
+                expect(control.x, `${id} sits right of the track`).toBeGreaterThanOrEqual(
+                    overview.x + overview.width - 1,
+                );
+                expect(control.x + control.width, `${id} stays inside the chart`).toBeLessThanOrEqual(
+                    playerChart.x + playerChart.width + 1,
+                );
+            }
             expect(canvas.height, "mobile chart keeps a readable plot area").toBeGreaterThan(24);
         } finally {
             await page.setViewportSize(DESKTOP);
         }
     });
 
-    test("timeline zoom row stays stable across the former 520px breakpoint", async ({ page }) => {
+    test("timeline zoom row keeps its track over the plot as the player narrows", async ({ page }) => {
         await page.locator("#player-chart-zoom-in").click();
         await expect(page.locator("#player-chart-overview-reset")).toBeVisible();
 
@@ -948,68 +964,45 @@ test.describe("player", () => {
             await page.setViewportSize({ width, height: MOBILE.height });
             await expect.poll(async () => (await boxOf(page, "#player-chart-zoom-row")).width).toBeCloseTo(width, 0);
             const overview = await boxOf(page, "#player-chart-overview");
-            const controls = await boxOf(page, ".chart-zoom-controls");
-            const playerChart = await boxOf(page, "#player-chart");
+            const reset = await boxOf(page, "#player-chart-overview-reset");
+            const zoomIn = await boxOf(page, "#player-chart-zoom-in");
+            const plot = await plotBox(page);
             const rowOverflow = await page.locator("#player-chart-zoom-row").evaluate((el) => ({
                 clientWidth: el.clientWidth,
                 scrollWidth: el.scrollWidth,
             }));
-            const resetLabelDisplay = await page
-                .locator("#player-chart-overview-reset span")
-                .evaluate((el) => getComputedStyle(el).display);
             const rangeDisplay = await page
                 .locator("#player-chart-zoom-range")
                 .evaluate((el) => getComputedStyle(el).display);
-            return { overview, controls, playerChart, rowOverflow, resetLabelDisplay, rangeDisplay };
+            return { overview, reset, zoomIn, plot, rowOverflow, rangeDisplay };
         };
 
         try {
-            const at520 = await geometryAt(520);
-            const at521 = await geometryAt(521);
-            expect(
-                Math.abs(at521.overview.width - at520.overview.width),
-                "navigator has no breakpoint width jump",
-            ).toBeLessThanOrEqual(2);
-            expect(
-                Math.abs(at521.controls.width - at520.controls.width),
-                "controls grow continuously",
-            ).toBeLessThanOrEqual(2);
-            for (const [sample, width] of [
-                [at520, 520],
-                [at521, 521],
-            ] as const) {
+            // Widths within the drawer layout, where the row spans the viewport.
+            for (const width of [520, 647, 648, 760]) {
+                const sample = await geometryAt(width);
                 expect(
-                    Math.abs(
-                        sample.overview.x +
-                            sample.overview.width / 2 -
-                            (sample.playerChart.x + sample.playerChart.width / 2),
-                    ),
-                    `${width}px navigator stays centred`,
+                    Math.abs(sample.overview.x - sample.plot.x),
+                    `${width}px track starts at the plot`,
                 ).toBeLessThanOrEqual(1);
+                expect(
+                    Math.abs(sample.overview.width - sample.plot.width),
+                    `${width}px track spans the plot`,
+                ).toBeLessThanOrEqual(1);
+                expect(sample.reset.x + sample.reset.width, `${width}px Full view fits its gutter`).toBeLessThanOrEqual(
+                    sample.overview.x + 1,
+                );
+                expect(sample.zoomIn.x + sample.zoomIn.width, `${width}px zoom-in fits the row`).toBeLessThanOrEqual(
+                    width + 1,
+                );
                 expect(sample.rowOverflow.scrollWidth, `${width}px row does not overflow`).toBeLessThanOrEqual(
                     sample.rowOverflow.clientWidth + 1,
                 );
-                expect(sample.resetLabelDisplay, `${width}px reset stays icon-only`).toBe("none");
-                expect(sample.rangeDisplay, `${width}px status does not reveal a clipped range`).toBe("none");
+                // The narrow status keeps the factor and drops the clock range
+                // instead of clipping it.
+                if (width < 648) expect(sample.rangeDisplay, `${width}px hides the range`).toBe("none");
+                else expect(sample.rangeDisplay, `${width}px shows the range`).not.toBe("none");
             }
-
-            // The text returns only once its continuously-grown slot can show
-            // the full English label; revealing it does not resize the row.
-            const at647 = await geometryAt(647);
-            const at648 = await geometryAt(648);
-            expect(
-                Math.abs(at648.overview.width - at647.overview.width),
-                "label reveal keeps navigator width",
-            ).toBeLessThanOrEqual(2);
-            expect(at647.resetLabelDisplay).toBe("none");
-            expect(at648.resetLabelDisplay).not.toBe("none");
-            const labelOverflow = await page.locator("#player-chart-overview-reset span").evaluate((el) => ({
-                clientWidth: el.clientWidth,
-                scrollWidth: el.scrollWidth,
-            }));
-            expect(labelOverflow.scrollWidth, "expanded Full view label is not truncated").toBeLessThanOrEqual(
-                labelOverflow.clientWidth + 1,
-            );
         } finally {
             await page.setViewportSize(DESKTOP);
         }
@@ -1051,33 +1044,113 @@ test.describe("player", () => {
 
         await expect(playerChart).toHaveClass(/is-playhead-outside-view/);
         const outside = await cursorColors();
-        expect(outside.line, "outside line and thumb share the neutral color").toBe(outside.thumb);
         expect(outside.line, "outside color differs from the active accent").not.toBe(accent.line);
-
+        // The whole-trip row always shows the true moment, so its thumb keeps
+        // the accent at the trip start while the line clamps to the window edge.
+        expect(outside.thumb, "the whole-trip thumb stays the accent").toBe(accent.thumb);
+        const plot = await plotBox(page);
         const lineAtEdge = await boxOf(page, "#player-chart-playhead");
-        const thumbAtEdge = await boxOf(page, "#player-mini-progress-thumb");
-        const progress = await boxOf(page, "#player-mini-progress");
-        const lineCenter = lineAtEdge.x + lineAtEdge.width / 2;
-        const thumbCenter = thumbAtEdge.x + thumbAtEdge.width / 2;
-        expect(Math.abs(lineCenter - thumbCenter), "line and thumb clamp to the same edge").toBeLessThanOrEqual(1);
-        expect(lineCenter, "excluded trip start clamps at the left edge").toBeLessThan(
-            progress.x + progress.width * 0.2,
+        expect(lineAtEdge.x + lineAtEdge.width / 2, "excluded trip start clamps at the left edge").toBeLessThan(
+            plot.x + plot.width * 0.05,
+        );
+        const thumbAtStart = await boxOf(page, "#player-mini-progress-thumb");
+        const overview = await boxOf(page, "#player-chart-overview");
+        expect(thumbAtStart.x + thumbAtStart.width / 2, "thumb sits at the trip start").toBeLessThan(
+            overview.x + overview.width * 0.05,
         );
 
-        // The scrubber maps to the visible inspection window, so its midpoint
-        // is an unambiguous seek back inside without resetting the zoom.
-        await page.mouse.click(progress.x + progress.width * 0.5, progress.y + progress.height / 2);
+        // A click inside the zoom window's frame on the whole-trip row seeks
+        // there without moving the window.
+        const before = await chartWindow(page);
+        const insideRatio = (before.min + before.max) / 2 / before.duration;
+        await page.mouse.click(overview.x + overview.width * insideRatio, overview.y + overview.height / 2);
         await expect(playerChart).not.toHaveClass(/is-playhead-outside-view/);
         await expect.poll(cursorColors).toEqual(accent);
-        const lineInside = await boxOf(page, "#player-chart-playhead");
-        const thumbInside = await boxOf(page, "#player-mini-progress-thumb");
-        expect(
-            Math.abs(lineInside.x + lineInside.width / 2 - (thumbInside.x + thumbInside.width / 2)),
-            "line and thumb stay aligned after the seek",
-        ).toBeLessThanOrEqual(1);
+        const after = await chartWindow(page);
+        expect(after.min, "the window stays put").toBeCloseTo(before.min, 3);
+        expect(after.max, "the window stays put").toBeCloseTo(before.max, 3);
+    });
+
+    test("whole-trip row clicks outside the zoom window move the window to the moment", async ({ page }) => {
+        await pausePlayback(page);
+        await page.locator("#player-chart-zoom-in").click();
+        await page.locator("#player-chart-zoom-in").click();
+        const zoomed = await chartWindow(page);
+        expect(zoomed.zoomed).toBe(true);
+        const overview = await boxOf(page, "#player-chart-overview");
+        // Click well outside the frame, on the side away from it.
+        const ratio = zoomed.max / zoomed.duration < 0.5 ? 0.9 : 0.1;
+        await page.mouse.click(overview.x + overview.width * ratio, overview.y + overview.height / 2);
+        await expect
+            .poll(
+                async () => {
+                    const view = await chartWindow(page);
+                    const target = ratio * view.duration;
+                    return view.min <= target && target <= view.max;
+                },
+                { message: "the window jumps to the clicked moment" },
+            )
+            .toBe(true);
+        const after = await chartWindow(page);
+        expect(after.max - after.min, "the jump keeps the zoom level").toBeCloseTo(zoomed.max - zoomed.min, 3);
+        await expect(page.locator("#player-chart")).not.toHaveClass(/is-playhead-outside-view/);
+    });
+
+    test("whole-trip row drag on the zoom frame pans the window", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        await page.locator("#player-chart-zoom-in").click();
+        await page.locator("#player-chart-zoom-in").click();
+        const before = await chartWindow(page);
+        const overview = await boxOf(page, "#player-chart-overview");
+        const frame = await boxOf(page, "#player-chart-overview-viewport");
+        // Grab the frame body away from the thumb (at the trip start) and handles.
+        const startX = frame.x + frame.width * 0.6;
+        const y = overview.y + overview.height / 2;
+        await page.mouse.move(startX, y);
+        await page.mouse.down();
+        await page.mouse.move(startX + overview.width * 0.2, y, { steps: 6 });
+        await page.mouse.up();
+        const after = await chartWindow(page);
+        expect(after.min, "the window moved later").toBeGreaterThan(before.min + before.duration * 0.1);
+        expect(after.max - after.min, "panning keeps the span").toBeCloseTo(before.max - before.min, 3);
+        const current = await page.locator("#player-current").textContent();
+        expect(current?.trim(), "panning does not seek").toBe("0:00");
+    });
+
+    test("dragging the playhead line seeks within the zoom window", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        await page.locator("#player-chart-zoom-in").click();
+        await page.locator("#player-chart-zoom-in").click();
+        const view = await chartWindow(page);
+        const grip = await boxOf(page, "#player-chart-playhead-grip");
+        const plot = await plotBox(page);
+        const y = grip.y + grip.height * 0.6;
+        await page.mouse.move(grip.x + grip.width / 2, y);
+        await page.mouse.down();
+        await page.mouse.move(plot.x + plot.width * 0.5, y, { steps: 6 });
+        await page.mouse.up();
+        // The line maps onto the zoom window: its middle is the window's
+        // middle. The whole-trip slider announces the trip position in percent.
+        const tripSec = async (): Promise<number> =>
+            (Number(await page.locator("#player-mini-progress").getAttribute("aria-valuenow")) / 100) * view.duration;
+        const expected = (view.min + view.max) / 2;
+        const tolerance = (view.max - view.min) * 0.15 + view.duration * 0.01;
+        await expect
+            .poll(async () => Math.abs((await tripSec()) - expected), { message: "the drag lands mid-window" })
+            .toBeLessThan(tolerance);
+        const after = await chartWindow(page);
+        expect(after.min, "the drag does not zoom or pan").toBeCloseTo(view.min, 3);
+        expect(after.max).toBeCloseTo(view.max, 3);
     });
 
     test("timeline overview edge drag narrows and restores the visible window", async ({ page }) => {
+        // Park the moment mid-trip: the thumb wins a press over the frame's
+        // edge grips, and a playing trip start would sit right under one.
+        await pausePlayback(page);
+        await page.locator("#player-mini-progress").focus();
+        await page.keyboard.press("5");
         const overview = await boxOf(page, "#player-chart-overview");
         const startHandle = page.locator("#player-chart-overview-start");
         await expect(startHandle).toBeVisible();
@@ -1373,7 +1446,6 @@ test.describe("player", () => {
         const reset = page.locator("#player-chart-overview-reset");
         await expect(reset).toBeVisible();
         await expect(reset).toHaveAccessibleName("Full view");
-        await expect(reset).toHaveText("Full view");
         await expect(reset).toBeEnabled();
         await shot(page, "player-05b-timeline-zoom-reset");
         await reset.click();
@@ -1514,12 +1586,13 @@ test.describe("player", () => {
     });
 
     test("timeline click seeks even when the chart canvas is hidden", async ({ page }) => {
-        // Hide chart + strip -> the canvas is display:none, exactly the no-GPS
+        // Hide the chart -> the canvas is display:none, exactly the no-GPS
         // layout. Clicking the ruler must still seek (shared handler, not the
         // dead plot area).
         await page.locator("#player-view-menu").click();
         await page.locator('.view-menu-row[data-panel="chart"]').click();
-        await page.locator('.view-menu-row[data-panel="strip"]').click();
+        // The events layer is drawn on the chart, so its item goes inert.
+        await expect(page.locator('.view-menu-row[data-panel="strip"]')).toHaveAttribute("aria-disabled", "true");
         await page.locator("body").click(); // close popover
         await expect(page.locator("#player-chart-canvas")).toBeHidden();
 
@@ -1710,6 +1783,70 @@ test.describe("player timeline with a coarse pointer", () => {
         await expect
             .poll(async () => (await chartWindow(page)).max, { message: "coarse end target remains draggable" })
             .toBeGreaterThan(before.max);
+    });
+
+    test("a tap on the playhead resting on an event opens the event menu", async ({ page }) => {
+        await pausePlayback(page);
+        const canvas = await boxOf(page, "#player-chart-canvas");
+        const eventX =
+            canvas.x +
+            (await page.evaluate(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                () => (window as any).__everydashcam.state.chart.scales.x.getPixelForValue(2) as number,
+            ));
+        // Park the playhead at 2 s, then put an event there: a jump to an event
+        // leaves the playhead on its marker.
+        await page.touchscreen.tap(eventX, canvas.y + canvas.height / 2);
+        await expect
+            .poll(async () => {
+                const grip = await boxOf(page, "#player-chart-playhead-grip");
+                return Math.abs(grip.x + grip.width / 2 - eventX);
+            })
+            .toBeLessThan(2);
+        await page.evaluate(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const st = (window as any).__everydashcam.state;
+            const trip = st.trips[st.active.trip];
+            trip.events.push({
+                kind: "brake",
+                unixSeconds: trip.startUtc + 2,
+                relSec: 2,
+                severity: 0.42,
+                recordIndex: 0,
+            });
+        });
+        const markerY = canvas.y + 4;
+        const owner = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.id, [eventX, markerY]);
+        expect(owner, "the playhead grip covers the marker").toBe("player-chart-playhead-grip");
+
+        await page.touchscreen.tap(eventX, markerY);
+        await expect(page.locator("#event-popup .event-popup-export").first()).toBeVisible();
+    });
+
+    test("trim grips stay inside the panel while the chart is hidden", async ({ page }) => {
+        await pausePlayback(page);
+        await page.locator("#player-view-menu").tap();
+        await page.locator('.view-menu-row[data-panel="chart"]').tap();
+        await expect(page.locator("#player-chart-canvas")).toBeHidden();
+        await page.keyboard.press("Escape");
+        await openExport(page, false);
+        const panel = await boxOf(page, "#player-chart");
+        for (const edge of ["start", "end"] as const) {
+            const selector = `.timeline-range__tab--${edge}`;
+            const tab = await boxOf(page, selector);
+            const grip = await page.locator(selector).evaluate((el) => {
+                const style = getComputedStyle(el, "::after");
+                return { top: Number.parseFloat(style.top), height: Number.parseFloat(style.height) };
+            });
+            expect(tab.y + grip.top + grip.height, `the ${edge} grip fits in the panel`).toBeLessThanOrEqual(
+                panel.y + panel.height,
+            );
+            const owner = await page.evaluate(
+                ([x, y]) => document.elementFromPoint(x!, y!)?.closest(".timeline-range__tab")?.className ?? null,
+                [tab.x + tab.width / 2, tab.y + grip.top + grip.height / 2],
+            );
+            expect(owner, `the middle of the ${edge} grip grabs its tab`).toContain(`timeline-range__tab--${edge}`);
+        }
     });
 });
 

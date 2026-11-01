@@ -36,12 +36,15 @@
     display: grid;
     /* Default grid: video full-width on top, chart + bar below.
        Chart-panel height is fixed (--chart-height) - resize removed (see
-       player-resize.ts): inside lives a fixed stack progress 14 + ruler 14 +
-       canvas ~90 + strip 52 + zoom row 28. The 200px default is declared
-       once here; the :has() rules below and mobile blocks override the
-       variable, and every usage reads the bare var with no per-usage fallback.
+       player-resize.ts): inside lives a fixed stack of the whole-trip row
+       (one control target tall) + ruler 14 + canvas 104 (plot ~70 + the
+       two driving lanes under it), plus the panel's 1px
+       top border. The default is declared once here; the :has() rules below
+       and mobile blocks override the variable, and every usage reads the bare
+       var with no per-usage fallback.
        When map is expanded grid-template-areas change (see .map-expanded). */
-    --chart-height: 200px;
+    --chart-zoom-target-size: 24px;
+    --chart-height: calc(var(--chart-zoom-target-size) + 119px);
     grid-template-rows: minmax(0, 1fr) auto auto var(--chart-height);
     /* minmax(0, 1fr) instead of 1fr: a bare track falls back to min-content,
        and the chart-canvas with inline width=Npx would prevent the column from shrinking. */
@@ -111,36 +114,33 @@ body.export-mode .player-wrap:not(.player-expanded):not(.map-expanded) {
         "readout readout readout"
         "chart chart chart";
 }
+/* Touch targets: the whole-trip row and its controls grow with them. */
+@media (pointer: coarse) {
+    .player-wrap {
+        --chart-zoom-target-size: 36px;
+    }
+}
 /* In no-gps trips the chart.js canvas is hidden (see chart.css); keep the
-   fixed timeline rows and navigator readable without reserving chart space. */
+   timeline rows and the no-GPS note readable without reserving chart space.
+   The panel takes the note's height: its wrapping depends on the locale and
+   the panel width, which no fixed height covers. */
 .player-wrap.no-chart-data {
-    --chart-height: 112px;
+    --chart-height: auto;
 }
-/* "View" menu now hides chart canvas and strip separately (not the whole
-   .player-chart box), so --chart-height is recomputed via :has() based on
-   what exactly is hidden:
-
-   1) Strip only hidden - drop the 52px strip from total height, canvas
-      keeps the same height as with strip. This fixes the bug
-      "chart content shrinks when strip is enabled" - canvas size stays
-      stable regardless of strip visibility.
-   2) Canvas only hidden - progress + ruler + strip + navigator remain (same
-      as no-gps).
-   3) Both hidden - keep only the progress, ruler, and navigator rows.
-
-   :not(.no-chart-data) - in no-gps canvas is hidden via display:none (no
-   hidden attribute), rule 2 must not match there. */
-.player-wrap:has(.chart-inferred-strip[hidden]):not(:has(#player-chart-canvas[hidden])):not(.no-chart-data) {
-    --chart-height: 148px;
+/* Canvas hidden from the "View" menu: .player-chart no longer collapses - it
+   still holds the whole-trip row and the ruler, and shrinks to them. The events
+   layer is drawn on the canvas, so it takes no height of its own.
+   :not(.no-chart-data) - in no-gps the canvas is hidden via display:none (no
+   hidden attribute) and the rule above applies. */
+.player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-data) {
+    --chart-height: calc(var(--chart-zoom-target-size) + 15px);
 }
-.player-wrap:has(#player-chart-canvas[hidden]):not(:has(.chart-inferred-strip[hidden])):not(.no-chart-data) {
-    --chart-height: 122px;
-}
-/* Both chart canvas and strip hidden via the "View" menu: .player-chart no
-   longer collapses - it still holds the ruler + navigator + always-on progress
-   bar, and shrinks to those rows via a small --chart-height. */
-.player-wrap:has(#player-chart-canvas[hidden]):has(.chart-inferred-strip[hidden]):not(.no-chart-data) {
-    --chart-height: 74px;
+/* Export mode adds trim tabs over the ruler. Leave room for their grips (a 4px
+   inset, the grip and 4px of clearance), or the panel clips the grips and a tap
+   on their lower half lands on the player bar. The body qualifier outranks the
+   mobile repeat of the rule above. */
+body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-data) {
+    --chart-height: calc(var(--chart-zoom-target-size) + 9px + var(--range-tab-grip-h));
 }
 .player-wrap .video-frame {
     grid-area: video;
@@ -165,9 +165,9 @@ body.export-mode .player-wrap:not(.player-expanded):not(.map-expanded) {
 .player-wrap .player-col-resize {
     grid-area: vmr;
 }
-/* Without a GPS track the data canvas disappears, but the recorded-time ruler,
-   inferred strip, scrubber and whole-trip navigator remain useful for seeking,
-   zooming and selecting an export range. */
+/* Without a GPS track the data canvas disappears, but the recorded-time ruler
+   and the whole-trip row remain useful for seeking, zooming and selecting an
+   export range. */
 
 .player-wrap:not(.map-expanded) .map-wrap,
 .player-wrap:not(.map-expanded) .player-col-resize {
@@ -1168,8 +1168,8 @@ body.has-expanded-player .viewer {
         overflow-y: auto;
         overflow-x: hidden;
     }
-    /* Chart panel: 24 progress + 14 ruler + ~36 canvas + 52 strip + 40 zoom
-       row. The compact canvas keeps the mobile footprint tight.
+    /* Chart panel: the whole-trip row + 14 ruler + 80 canvas + 1 border. The
+       compact canvas keeps the mobile footprint tight.
        --mobile-bar-h mirrors the player-bar min-height in player-bar.css
        (60px base + env(safe-area-inset-bottom) for the iOS home indicator
        in landscape). Exposed as a var so the video-frame max-height calc
@@ -1178,7 +1178,7 @@ body.has-expanded-player .viewer {
     .player-wrap:not(.player-expanded) {
         flex: 0 0 auto;
         min-height: 100%;
-        --chart-height: 166px;
+        --chart-height: calc(var(--chart-zoom-target-size) + 95px);
         --mobile-bar-h: var(--player-controls-measured-h, calc(60px + env(safe-area-inset-bottom, 0px)));
     }
     /* Video-frame on mobile: 16:9, ALWAYS fully visible in the first viewport
@@ -1216,19 +1216,13 @@ body.has-expanded-player .viewer {
         margin: 0 auto;
         min-height: 0;
     }
-    /* On mobile we need separate :has overrides because desktop values
-       (strip-hidden case) are excessive for the thin mobile panel. */
-    .player-wrap:has(.chart-inferred-strip[hidden]):not(:has(#player-chart-canvas[hidden])):not(.no-chart-data) {
-        --chart-height: 114px;
-    }
-    .player-wrap:has(#player-chart-canvas[hidden]):not(:has(.chart-inferred-strip[hidden])):not(.no-chart-data) {
-        --chart-height: 134px;
-    }
-    .player-wrap:has(#player-chart-canvas[hidden]):has(.chart-inferred-strip[hidden]):not(.no-chart-data) {
-        --chart-height: 86px;
+    /* The mobile default above comes later than the desktop overrides with the
+       same specificity, so the hidden-canvas and no-GPS heights repeat here. */
+    .player-wrap:not(.player-expanded):has(#player-chart-canvas[hidden]):not(.no-chart-data) {
+        --chart-height: calc(var(--chart-zoom-target-size) + 15px);
     }
     .player-wrap.no-chart-data {
-        --chart-height: 124px;
+        --chart-height: auto;
     }
     /* Stacked no-map grid: video, chart, a flexible spacer, then the bar.
        Same for portrait and landscape - landscape just overflows the viewport
@@ -1443,7 +1437,7 @@ body.has-expanded-player .viewer {
 .player-wrap.player-expanded.player-panels-below .player-chart {
     overflow: visible;
 }
-.player-wrap.player-expanded.player-panels-below .player-mini-progress {
+.player-wrap.player-expanded.player-panels-below .chart-zoom-row {
     position: sticky;
     top: 0;
     z-index: 8;

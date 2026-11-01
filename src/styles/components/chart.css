@@ -1,11 +1,9 @@
 /* =========================================================================
    8. CHART PANEL
    ========================================================================= */
-/* The "View" menu now hides INDIVIDUAL children of .player-chart
-   (#player-chart-canvas, .chart-inferred-strip), not the whole box, so
-   strip and ruler can be toggled independently from chart. Full collapse
-   is done via the grid-template-rows override in viewer.css when both are
-   hidden at once. */
+/* The "View" menu hides the chart canvas, not the whole box: the whole-trip
+   row and the ruler stay as the timeline, and viewer.css shrinks the panel
+   to them. The events item switches the lanes painted on the canvas. */
 /* When canvas is hidden via "View" - km/h and |G| axis labels are hidden
    too (they belong to the canvas datasets). :has() is supported in all
    current browsers (see CLAUDE.md target). */
@@ -13,13 +11,13 @@
     display: none;
 }
 /* Cross-cutting cursor overlays sit on top of the viewport-mapped timeline
-   rows: scrubber, ruler, chart and strip end up under one continuous vertical
-   line. The whole-trip navigator below them has a different coordinate basis,
-   so every viewport overlay stops at --chart-zoom-row-h. */
+   rows: ruler and chart end up under one continuous vertical line. The
+   whole-trip row above them has a different coordinate basis, so every
+   viewport overlay starts below --chart-zoom-row-h. */
 .player-chart-playhead {
     position: absolute;
-    top: 0;
-    bottom: var(--chart-zoom-row-h);
+    top: var(--chart-zoom-row-h);
+    bottom: 0;
     width: 2px;
     background: var(--accent);
     pointer-events: none;
@@ -27,10 +25,28 @@
        the chart, strip and seek track. */
     box-shadow: 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent);
     /* Above the export range overlay (z6) so the current-position line stays
-       visible over the dimming masks. No separate head marker: the scrubber
-       thumb in the top row sits on the same x (shared timelineSecToFrac
-       mapping) and IS the handle. */
+       visible over the dimming masks. Inert: the grip below is its drag
+       target. */
     z-index: 7;
+}
+/* Drag target of the playhead: a column a little wider than the line. Under
+   the marker flags (z3) and the export range tabs (z6), so those keep their
+   own clicks where they cross the playhead. JS writes `left` (the playhead x);
+   the margin centres the column on it. */
+.player-chart-playhead-grip {
+    --playhead-grip-w: 12px;
+    position: absolute;
+    top: var(--chart-zoom-row-h);
+    bottom: 0;
+    left: 0;
+    width: var(--playhead-grip-w);
+    margin-left: calc(var(--playhead-grip-w) / -2);
+    z-index: 2;
+    cursor: ew-resize;
+    touch-action: none;
+}
+.player-chart-playhead-grip[hidden] {
+    display: none;
 }
 .player-chart-playhead[hidden] {
     display: none;
@@ -41,10 +57,10 @@
 }
 .player-chart-hover-cursor {
     position: absolute;
-    top: 0;
+    top: var(--chart-zoom-row-h);
     /* Anchored at the origin; setHoverCursorRelSec moves it with transform. */
     left: 0;
-    bottom: var(--chart-zoom-row-h);
+    bottom: 0;
     width: 1px;
     background: rgba(255, 255, 255, 0.35);
     pointer-events: none;
@@ -71,8 +87,8 @@
    export masks (z6) and the playhead (z7). */
 .chart-drag-select {
     position: absolute;
-    top: 0;
-    bottom: var(--chart-zoom-row-h);
+    top: var(--chart-zoom-row-h);
+    bottom: 0;
     z-index: 5;
     pointer-events: none;
     background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -80,15 +96,16 @@
 }
 
 .player-chart {
-    --chart-zoom-target-size: 24px;
-    --chart-zoom-row-h: calc(var(--chart-zoom-target-size) + var(--dc-space-1));
+    /* --chart-zoom-target-size lives on .player-wrap (viewer.css), which
+       sizes the panel from it. */
+    --chart-zoom-row-h: var(--chart-zoom-target-size);
 
     position: relative;
     background: var(--bg-elev);
     border-top: 1px solid var(--border);
-    /* Flex-column layout: scrubber on top (next to the transport bar), then
-       ruler, canvas in the middle (flex:1), strip + zoom row at the bottom.
-       Canvas stays flex:1, the fixed rows are auto. min-width:0 +
+    /* Flex-column layout: the whole-trip row on top (next to the transport
+       bar), then the ruler and the canvas (flex:1). The fixed rows are auto.
+       min-width:0 +
        overflow:hidden is the same chicken-egg fix as
        before: the Chart.js canvas gets an inline width=Npx, and without
        overflow it would keep the parent bloated and ResizeObserver would
@@ -100,8 +117,8 @@
     overflow: hidden;
 }
 /* Dedicated canvas wrapper: takes the flex share inside .player-chart,
-   isolates Chart.js responsive sizing from siblings (ruler, strip,
-   overview, axis labels). Without the wrapper Chart.js measures
+   isolates Chart.js responsive sizing from siblings (ruler, whole-trip row,
+   axis labels). Without the wrapper Chart.js measures
    parentNode.offsetHeight = whole .player-chart, which leads to
    canvas.height >> CSS height and fonts get squished on Y.
    position:relative is required for the absolute canvas inside. */
@@ -174,73 +191,110 @@
     left: auto;
 }
 
-/* Dedicated bottom row keeps the navigator and explicit controls out of the
-   plotted data. The navigator yields width first; controls keep usable targets. */
+/* Whole-trip row: full view | the seek track with the zoom-window frame |
+   zoom out, zoom in. The track spans exactly the plot below it, so at full
+   view its thumb sits on the playhead; the controls live in the plot's side
+   gutters, which chart.ts widens to fit them (syncChartRulers writes the
+   gutter vars). No row gap: it would shift the track off the plot. */
 .chart-zoom-row {
-    /* Keep a useful navigator in the middle while the labelled reset action
-       grows into the available room. The two equal side slots still centre
-       the navigator, but unlike a breakpoint jump this changes continuously
-       as the player gets wider. */
-    --chart-zoom-compact-actions-width: calc(
-        var(--chart-zoom-target-size) +
-        var(--chart-zoom-target-size) +
-        var(--chart-zoom-target-size) +
-        4px
-    );
-    --chart-zoom-actions-width: clamp(var(--chart-zoom-compact-actions-width), calc((100cqi - 288px) / 2), 180px);
-
     display: flex;
     box-sizing: border-box;
     align-items: center;
-    gap: var(--dc-space-1);
     min-width: 0;
     height: var(--chart-zoom-row-h);
-    /* The chart canvas normally consumes the remaining height. When GPS-dependent
-       rows collapse, keep this row at the panel bottom so the playhead's matching
-       bottom inset still ends exactly above the navigator. */
-    margin-top: auto;
-    padding-top: var(--dc-space-1);
 }
-.chart-zoom-row[hidden] {
-    display: none;
-}
-.chart-zoom-row::before {
-    content: "";
-    flex: 0 0 var(--chart-zoom-actions-width);
+.chart-zoom-lead {
+    display: flex;
+    flex: 0 0 var(--timeline-gutter-left, 0%);
+    align-items: center;
+    min-width: 0;
 }
 
-/* Full-trip zoom navigator. The highlighted viewport stays in the layout at
-   full view so its two edge handles are always discoverable. */
+/* The track and everything on it share one box mapped to the whole trip.
+   Every layer is absolute, so nothing inside changes the track width - an
+   edge drag reads its pointer ratio against that width. */
 .range-overview {
     position: relative;
     flex: 1 1 auto;
     /* At least two adjacent control targets fit in the track. At extreme zoom
-       the visual viewport may be sub-pixel, but its two edge hit zones must
+       the visual frame may be sub-pixel, but its two edge hit zones must
        remain independently grabbable. */
     min-width: calc(var(--chart-zoom-target-size) * 2 + 2px);
-    height: var(--chart-zoom-target-size);
-    border-radius: var(--dc-radius-sm);
-    overflow: hidden;
-    background: var(--bg);
-    border: 1px solid var(--border);
+    height: 100%;
     cursor: pointer;
     user-select: none;
-    /* Drag-to-pan surface: block the browser's native touch scroll so a finger
-       drag pans the zoom window instead of scrolling the page (matches the other
-       drag surfaces: .player-mini-progress, .mini-map, .timeline-range__tab). */
+    /* Drag surface: block the browser's native touch scroll so a finger drag
+       seeks or pans instead of scrolling the page (matches the other drag
+       surfaces: .mini-map, .timeline-range__tab). */
     touch-action: none;
 }
-.range-overview[hidden] {
-    display: none;
+.range-overview.is-over-thumb,
+.range-overview.is-dragging {
+    cursor: grab;
+}
+.range-overview.is-dragging {
+    cursor: grabbing;
+}
+.range-overview.is-over-frame {
+    cursor: move;
+}
+.range-overview.is-panning {
+    cursor: grabbing;
+}
+/* The visible track: a slim pill through the middle of the full-height hit
+   area. The zoom frame stands taller than it, so the window reads as a lens
+   over the trip. */
+.range-overview {
+    --overview-track-h: 6px;
+    --overview-frame-h: 16px;
+}
+.range-overview::before {
+    content: "";
+    position: absolute;
+    inset: calc(50% - var(--overview-track-h) / 2) 0;
+    border-radius: calc(var(--overview-track-h) / 2);
+    background: color-mix(in srgb, var(--fg) 16%, transparent);
+    pointer-events: none;
 }
 
-/* Keep status out of flex geometry: changing the navigator width during an
-   edge drag would change its pointer ratio and make the handle oscillate. */
+/* The seek slider: transparent, covers the row, owns keyboard focus. Pointer
+   gestures are read on the row (player-scrubber.ts) so the frame and thumb
+   above it do not split the hit area. */
+.player-mini-progress {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--dc-radius-sm);
+}
+.player-mini-progress:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Marker positions over the whole trip: small notches on the track's top
+   edge. Inert - the pins under the ruler take the clicks. */
+.range-overview-markers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.range-overview-marker {
+    position: absolute;
+    top: calc(50% - var(--overview-frame-h) / 2);
+    width: 0;
+    height: 0;
+    border-inline: 3px solid transparent;
+    border-top: 4px solid var(--accent);
+    transform: translateX(-50%);
+}
+
+/* Keep status out of flex geometry: changing the track width during an edge
+   drag would change its pointer ratio and make the handle oscillate. Under the
+   thumb (z3), which stays visible when it crosses the middle of the track. */
 .chart-zoom-status {
     position: absolute;
     top: 50%;
     left: 50%;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     align-items: baseline;
     gap: var(--dc-space-1);
@@ -276,15 +330,14 @@
     text-overflow: ellipsis;
 }
 
-/* Reset keeps its slot while concealed, so the navigator and trailing -/+
-   controls do not move when zoom first makes it visible. */
 .chart-zoom-controls {
     display: flex;
-    flex: 0 0 var(--chart-zoom-actions-width);
+    flex: 0 0 var(--timeline-gutter-right, 0%);
     align-items: center;
+    justify-content: flex-end;
     gap: 2px;
-    width: var(--chart-zoom-actions-width);
-    min-width: 0;
+    /* Before the first trip lays out the plot there is no gutter yet. */
+    min-width: calc(var(--chart-zoom-target-size) * 2 + 2px);
 }
 .chart-zoom-control,
 .range-overview-reset {
@@ -298,10 +351,13 @@
     cursor: pointer;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
-.chart-zoom-control {
+.chart-zoom-control,
+.range-overview-reset {
     flex: 0 0 var(--chart-zoom-target-size);
     width: var(--chart-zoom-target-size);
     padding: 0;
+}
+.chart-zoom-control {
     background: var(--bg-elev);
     color: var(--fg);
 }
@@ -316,21 +372,8 @@
     cursor: default;
 }
 .range-overview-reset {
-    flex: 1 1 auto;
-    min-width: var(--chart-zoom-target-size);
-    padding: 0 var(--dc-space-2);
-    gap: var(--dc-space-1);
-    overflow: hidden;
     background: var(--accent);
     color: var(--dc-black);
-    font-size: var(--dc-text-xs);
-    font-weight: 650;
-}
-.range-overview-reset span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .range-overview-reset:hover:not(:disabled) {
     background: var(--accent-hot);
@@ -340,35 +383,38 @@
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
+/* Full view shows only while zoomed. */
 .range-overview-reset.is-concealed {
     visibility: hidden;
     pointer-events: none;
 }
-@media (pointer: coarse) {
-    .player-chart {
-        --chart-zoom-target-size: 36px;
-    }
-    .chart-zoom-row {
-        /* Touch never needs a text label beside the standard full-view icon.
-           Keeping the compact slot on tablets gives that width back to the
-           navigator and avoids a permanently truncated label. */
-        --chart-zoom-actions-width: var(--chart-zoom-compact-actions-width);
-    }
-    .range-overview-reset span {
-        display: none;
-    }
-}
+/* Zoom window frame. Spans the full row height so its edge handles get full
+   targets, draws only within the track band, and lets presses on its body
+   through to the row (pan is a row gesture). */
 .range-overview-viewport {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: color-mix(in srgb, var(--accent) 30%, transparent);
-    border-inline: 1.5px solid var(--accent);
-    cursor: grab;
-    pointer-events: auto;
+    z-index: 1;
+    pointer-events: none;
 }
-.range-overview.is-panning .range-overview-viewport {
-    cursor: grabbing;
+.range-overview-viewport[hidden] {
+    display: none;
+}
+.range-overview-viewport::before {
+    content: "";
+    position: absolute;
+    inset: calc(50% - var(--overview-frame-h) / 2) 0;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+    border-radius: var(--dc-radius-xs);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* At full view the frame is the whole track: nothing drawn, so the row reads
+   as a plain seek track, while the edge grips still offer zoom. */
+.range-overview-viewport.is-full-view::before {
+    border-color: transparent;
+    background: transparent;
 }
 .range-overview-handle {
     position: absolute;
@@ -378,6 +424,7 @@
     width: var(--chart-zoom-target-size);
     cursor: ew-resize;
     touch-action: none;
+    pointer-events: auto;
 }
 .range-overview-handle--start {
     left: 0;
@@ -388,21 +435,33 @@
 .range-overview-handle::before {
     content: "";
     position: absolute;
-    top: 2px;
-    bottom: 2px;
+    top: calc(50% - var(--overview-frame-h) / 2 + 3px);
+    bottom: calc(50% - var(--overview-frame-h) / 2 + 3px);
     width: 3px;
     border-radius: 2px;
     background: var(--accent);
 }
+/* At full view the grips are only an invitation to zoom: quiet until the
+   pointer comes to the row. */
+.range-overview-viewport.is-full-view .range-overview-handle::before {
+    background: var(--fg-mute);
+    opacity: 0.6;
+}
+.range-overview:hover .range-overview-viewport.is-full-view .range-overview-handle::before {
+    background: var(--accent);
+    opacity: 1;
+}
 .range-overview-handle--start::before {
-    left: 1px;
+    left: 2px;
 }
 .range-overview-handle--end::before {
-    right: 1px;
+    right: 2px;
 }
 .range-overview-handle:hover::before,
-.range-overview-handle.is-dragging::before {
+.range-overview-handle.is-dragging::before,
+.range-overview-viewport.is-full-view .range-overview-handle:is(:hover, .is-dragging)::before {
     background: var(--accent-hot);
+    opacity: 1;
 }
 .range-overview-handle:focus-visible {
     outline: 2px solid var(--accent);
@@ -430,8 +489,8 @@
 .range-overview-viewport.is-compact .range-overview-handle::before {
     display: none;
 }
-.range-overview-viewport.is-compact:has(.range-overview-handle:hover),
-.range-overview-viewport.is-compact:has(.range-overview-handle.is-dragging) {
+.range-overview-viewport.is-compact:has(.range-overview-handle:hover)::before,
+.range-overview-viewport.is-compact:has(.range-overview-handle.is-dragging)::before {
     border-inline-color: var(--accent-hot);
 }
 .range-overview-viewport.is-compact:has(.range-overview-handle:focus-visible) {
@@ -447,9 +506,6 @@
     .chart-zoom-status__range {
         display: none;
     }
-    .range-overview-reset span {
-        display: none;
-    }
 }
 
 /* Keyframe kept for the map.css mini-map shimmer (shared name, shared util);
@@ -462,18 +518,18 @@
         transform: translateX(100%);
     }
 }
-/* We do NOT hide rulers and navigator in no-gps: they show the time-scale +
-   navigation, and work without GPS data. */
+/* We do NOT hide the ruler and the whole-trip row in no-gps: they show the
+   time-scale + navigation, and work without GPS data. */
 
-/* UX-16: unit labels in the corners of the ruler row (top: 0..14 - outside
-   the chart canvas area). Thin (line-height 1.1, font 10), inline in the
+/* UX-16: unit labels in the corners of the ruler row (outside the chart
+   canvas area). Thin (line-height 1.1, font 10), inline in the
    ruler row without a background so they do not intersect the chart area.
    Hidden on narrow widths (mobile block below): there they share the ruler's
    top band with its first/last time ticks and would collide - the desktop chart
    keeps them. */
 .chart-axis-label {
     position: absolute;
-    top: 1px;
+    top: calc(var(--chart-zoom-row-h) + 1px);
     font-family: var(--dc-font-mono);
     font-size: var(--dc-text-2xs);
     font-weight: 600;
@@ -498,91 +554,23 @@
     display: none;
 }
 
-/* Inferred event strip.
-   52px strip under chart canvas with three rows:
-     - bipolar longitudinal (brake down / accel up from the center line)
-     - turn (bars grow up)
-     - stop ribbon (fixed 4px)
-   Intensity is encoded by bar HEIGHT (not opacity); mild events get
-   alpha-falloff for extra readability. The canvas is rendered from
-   src/ui/inferred-strip-canvas.ts; axis labels are an absolute overlay on
-   top of the canvas inside the same wrap. In no-gps there are no records
-   -> hide the same way as chart axis labels. */
-.chart-inferred-strip {
-    position: relative;
-    display: block;
-    flex: 0 0 auto;
-    width: 100%;
-    height: 52px;
-    background: var(--bg-elev);
-    border-top: 1px solid var(--border);
-}
-.chart-inferred-strip[hidden] {
-    display: none;
-}
-/* No-GPS mode: no speed/accel data, no events to infer. Both the chart
-   canvas and the strip are marked unavailable in the View menu by
-   refreshTrack (src/ui/map.ts), which sets hidden=true on each. The
-   :has() collapse rule in viewer.css then drops the whole chart row
-   and shows the thin mini-progress scrubber instead. This display:none
-   stays as a belt-and-braces fallback (also hides the canvas if the JS
-   path ever fails to disable the panel). */
+/* No-GPS mode: no speed/accel data. The chart canvas is marked unavailable in
+   the View menu by refreshTrack (src/ui/map.ts), which sets hidden=true. The
+   :has() collapse rule in viewer.css then shrinks the panel to the timeline
+   rows. This display:none stays as a belt-and-braces fallback (also hides the
+   canvas if the JS path ever fails to disable the panel). */
 .player-wrap.no-chart-data #player-chart-canvas {
     display: none;
 }
-.chart-inferred-strip__canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-}
-.chart-inferred-strip__axis-label {
-    position: absolute;
-    /* Labels sit in the LEFT padding gutter of the strip - the same zone
-       chart.js uses for Y-axis labels. This keeps bars unobstructed and
-       gives the labels a stable empty surface to read on. On narrow chart
-       panels (mobile) where chartArea.left ≈ 0 the labels would crowd the
-       first bars - we hide them via the @media query below. */
-    left: 4px;
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-3xs);
-    font-weight: 600;
-    pointer-events: none;
-    user-select: none;
-    line-height: 1;
-    opacity: 0.85;
-    letter-spacing: 0.02em;
-}
-.chart-inferred-strip__axis-label--acc {
-    top: 3px;
-    color: var(--ev-accel);
-}
-.chart-inferred-strip__axis-label--brk {
-    top: 19px;
-    color: var(--ev-brake);
-}
-
-/* Overlap marker - 5x5 orange diamond above the longitudinal row when
-   brake and turn coincide in time (see spec/01-strip.md "Overlap
-   markers"). One div per coincidence, no animation. */
-.inferred-strip__overlap {
-    position: absolute;
-    top: 1px;
-    width: 5px;
-    height: 5px;
-    background: var(--ev-overlap);
-    transform: rotate(45deg);
-    pointer-events: none;
-    z-index: 2;
-}
 
 /* Click flash - single 600ms radial pulse on the clicked column. Element
-   inserted at .player-chart level (not strip) so the pulse spans chart
-   canvas + ruler + strip as one visual unit, matching the cross-cutting
-   playhead. Removed on animationend - no infinite loops per perf brief. */
+   inserted at .player-chart level so the pulse spans ruler and chart canvas
+   as one visual unit, matching the cross-cutting playhead. Removed on
+   animationend - no infinite loops per perf brief. */
 .player-chart-flash {
     position: absolute;
-    top: 0;
-    bottom: var(--chart-zoom-row-h);
+    top: var(--chart-zoom-row-h);
+    bottom: 0;
     width: 24px;
     background: radial-gradient(
         ellipse at 50% 50%,
@@ -608,19 +596,17 @@
         display: none;
     }
 }
-/* Mobile (any orientation) - axis labels too cramped when player-chart is
-   shrunk: the strip's row labels, and the ruler's corner unit labels (which
-   would otherwise collide with the first/last time ticks in the 14px top band).
-   Landscape is caught via max-height + orientation, the same trigger as in
-   viewer.css mobile block. */
+/* Mobile (any orientation) - the ruler's corner unit labels are too cramped
+   when player-chart is shrunk: they would collide with the first/last time
+   ticks in the 14px ruler band. Landscape is caught via max-height +
+   orientation, the same trigger as in viewer.css mobile block. */
 @media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
-    .chart-inferred-strip__axis-label,
     .chart-axis-label {
         display: none;
     }
 }
 
-/* Tooltip popover for hover on the strip. Reuses .track-popup base styles
+/* Tooltip popover with inferred-event rows. Reuses .track-popup base styles
    (background/shadow/radius), adds a compact layout with per-event rows. */
 .inferred-strip-tooltip {
     position: fixed;
@@ -691,65 +677,25 @@
 }
 
 /* =========================================================================
-   PROGRESS SCRUBBER (always-on)
-   The always-visible TOP row of the timeline stack inside .player-chart:
-   a neutral seek track with a round thumb at the current position, adjacent
-   to the transport bar above the stack. The chart canvas and event strip
-   below it are optional (View menu); this bar is not - it is the baseline
-   timeline that also carries the playhead + export range overlays.
-   Click/drag to seek - handler in player-scrubber.ts.
-   --scrubber-h is the single height knob: the marker flag heads and the
-   export-tab grips read it to start BELOW this row, so the top-of-stack
-   drag surfaces never overlap the scrubber's own hit area.
+   PROGRESS THUMB AND TOUCH
+   The current moment on the whole-trip row (handlers in player-scrubber.ts).
+   The row is always visible - the chart canvas is optional (View menu) - so
+   it is the baseline seek surface.
    ========================================================================= */
-.player-chart {
-    --scrubber-h: 14px;
-}
-.player-mini-progress {
-    flex: 0 0 auto;
-    position: relative;
-    height: var(--scrubber-h);
-    /* border-BOTTOM: the row sits at the top of the stack, .player-chart's own
-       border-top already separates it from the readout above. */
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    user-select: none;
-    touch-action: none;
-}
-/* The visible track spans only the timeline content zone (the chart plot
-   area, or the synthetic edge gutter when the chart is hidden) so it matches
-   the thumb's actual travel - a full-width track read as "the thumb never
-   reaches the ends". The gutter vars are written by syncChartRulers. */
-.player-mini-progress::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: var(--timeline-gutter-left, 0%);
-    right: var(--timeline-gutter-right, 0%);
-    background: var(--bg-elev);
-    border-inline: 1px solid var(--border);
-}
-.player-mini-progress:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-}
-/* Touch: this is the always-on baseline scrubber - the only guaranteed seek
-   surface. 14px is a frequent miss on a phone; grow the grabbable height. Not
-   the full 44px touch floor - that would eat scarce chart vertical space. The
-   thumb is center-anchored (top:50%), so it stays put as the bar grows. */
 @media (pointer: coarse) {
     /* Route the two-finger pinch into our zoom handler instead of the browser's
        page zoom: pan-y still lets a single finger scroll the viewer vertically,
        but a pinch is no longer a recognised gesture here so both pointers reach
-       the JS pinch (chart.ts). Children that own a drag (zoom row, mini-progress)
-       keep their own touch-action:none. */
+       the JS pinch (chart.ts). Children that own a drag (whole-trip row,
+       playhead grip) keep their own touch-action:none. */
     .player-chart {
-        --scrubber-h: 24px;
         touch-action: pan-y;
     }
-    /* Keep the persistent navigator compact while widening its edge targets in
-       the drag direction. */
+    .player-chart-playhead-grip {
+        --playhead-grip-w: 28px;
+    }
+    /* Keep the status compact while widening the frame's edge targets in the
+       drag direction. */
     .chart-zoom-status {
         max-width: calc(100% - 76px);
     }
@@ -761,33 +707,27 @@
     position: absolute;
     top: 50%;
     left: 0;
-    /* translate centers the thumb on the playhead position - left is
-       updated from JS to the percentage progress. */
+    z-index: 3;
+    /* translate centers the thumb on the current moment - left is updated
+       from JS to the percentage of the trip. */
     transform: translate(-50%, -50%);
     width: 12px;
     height: 12px;
     border-radius: 50%;
     background: var(--accent);
-    /* Thin dark ring so the thumb reads on top of the track. */
-    box-shadow: 0 0 0 2px var(--bg);
+    /* A ring in the panel colour cuts the thumb out of the track and frame. */
+    box-shadow:
+        0 0 0 2px var(--bg-elev),
+        0 1px 3px rgba(0, 0, 0, 0.35);
     pointer-events: none;
     /* No position transition: the vertical playhead snaps on each timeupdate,
        so the thumb must snap too - an eased thumb drifted behind the playhead. */
 }
-.player-chart.is-playhead-outside-view .player-mini-progress__thumb {
-    background: var(--fg-mute);
-    box-shadow:
-        0 0 0 2px var(--bg),
-        0 0 4px color-mix(in srgb, var(--fg-mute) 45%, transparent);
-}
-.player-mini-progress:hover .player-mini-progress__thumb,
-.player-mini-progress.is-dragging .player-mini-progress__thumb {
+.range-overview:hover .player-mini-progress__thumb,
+.range-overview.is-dragging .player-mini-progress__thumb {
     /* On hover/drag the thumb grows - touch-friendly affordance. */
     width: 16px;
     height: 16px;
-}
-.player-mini-progress.is-dragging {
-    cursor: grabbing;
 }
 /* Hover/drag tooltip above the scrubber - column-flex with a canvas
    (frame preview) on top and a time badge below. position:fixed (the element
@@ -862,9 +802,13 @@
 }
 .player-wrap.no-chart-data .player-no-gps {
     display: block;
-    position: absolute;
-    inset: 36px 16px auto;
-    margin: 0;
+    /* In flow below the whole-trip row and the ruler, so the panel grows with
+       the note however far a translation wraps (viewer.css sizes the no-GPS
+       panel to its content). The note comes first in the markup; order moves
+       it after the rows. */
+    order: 1;
+    flex: 0 0 auto;
+    margin: 6px 16px 8px;
     font-size: var(--dc-text-sm);
     line-height: 1.4;
     color: var(--fg-mute);

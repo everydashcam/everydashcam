@@ -90,15 +90,30 @@ const TURN_MIN_SPEED_MS = 2.0;
 
 /** Hard panic brake. ~0.3g - close to tire-grip limit for a passenger car
  *  on dry asphalt. Anything above this clamps to intensity=1.0. */
-const BRAKE_INTENSITY_CAP_MS2 = 3.0;
+export const BRAKE_INTENSITY_CAP_MS2 = 3.0;
 
 /** Full-throttle launch. ~0.25g - typical for a strong economy car at the
  *  green light. Performance cars exceed this and clamp to 1.0. */
-const ACCEL_INTENSITY_CAP_MS2 = 2.5;
+export const ACCEL_INTENSITY_CAP_MS2 = 2.5;
 
 /** Sharp U-turn at low speed produces ~90 deg/s. Highway emergency lane change
  *  also lives here. */
-const TURN_INTENSITY_CAP_DEG_PER_SEC = 90;
+export const TURN_INTENSITY_CAP_DEG_PER_SEC = 90;
+
+/** Longest pause between two samples that still counts as one movement; a
+ *  longer one means missing data, not a measured change. */
+const MAX_SAMPLE_GAP_SEC = 5;
+
+/** Shortest span one value of the driving-dynamics series covers. High-rate
+ *  GPS (10-18 Hz) would otherwise differentiate speed and bearing quantization
+ *  noise at its native rate; about a second keeps it as calm as a 1 Hz track. */
+const DYNAMICS_MIN_SPAN_SEC = 1;
+
+/** Half-width of the moving average over the dynamics series. GPS speed steps
+ *  by about 1 km/h from one second to the next even at a steady 140 km/h, a
+ *  ±0.3 m/s^2 flicker in its derivative; averaging over about 3 s settles it,
+ *  while a real brake or turn lasts long enough to keep its colour. */
+const DYNAMICS_SMOOTHING_HALF_WINDOW_SEC = 1.5;
 
 /** Stop intensity scales by duration: a 2-minute parking-lot stop is more
  *  visually significant than a 6-second traffic light. 120 s caps it; longer
@@ -208,6 +223,101 @@ function detectBrakeAndAccel(records: GpsRecord[], tripStartUtc: number, out: In
     }
     flushBrake(records.length - 1);
     flushAccel(records.length - 1);
+}
+
+/** One span of the continuous driving-dynamics series. */
+export interface DrivingDynamicsSpan {
+    /** Span start and end on the caller's time axis. */
+    startSec: number;
+    endSec: number;
+    /** Signed speed change along the track, m/s^2: positive speeds up. */
+    accelMs2: number;
+    /** Absolute heading change rate, deg/s. Zero below TURN_MIN_SPEED_MS,
+     *  where GPS bearing is noise - the same gate the turn segments use. */
+    turnRateDegPerSec: number;
+}
+
+/**
+ * Continuous longitudinal acceleration and turn rate over consecutive spans of
+ * at least DYNAMICS_MIN_SPAN_SEC, for the chart's event lanes, each value
+ * averaged with its neighbours within DYNAMICS_SMOOTHING_HALF_WINDOW_SEC.
+ * Gated like the brake/accel segments: valid fixes with measured speed on one
+ * track segment, no pause over MAX_SAMPLE_GAP_SEC. Missing data leaves a hole
+ * - no span covers it, and the average does not reach across it - rather than
+ * a zero that would read as steady driving. `toSec` maps a record's unix time
+ * onto the caller's axis. The average runs on the recording clock before that
+ * mapping: a footage axis plays a time-lapse faster and drops long pauses, so
+ * averaging there would stretch the window over a time-lapse and join the
+ * drives on both sides of a dropped pause.
+ */
+export function detectDrivingDynamics(
+    records: readonly GpsRecord[],
+    toSec: (unixSeconds: number) => number,
+): DrivingDynamicsSpan[] {
+    const out: DrivingDynamicsSpan[] = [];
+    let anchor: GpsRecord | null = null;
+    let previous: GpsRecord | null = null;
+    for (const cur of records) {
+        const usable = isValidGpsFix(cur) && hasMeasuredSpeed(cur);
+        const continues =
+            usable &&
+            previous !== null &&
+            anchor !== null &&
+            isSameTrackSegment(previous, cur) &&
+            cur.unixSeconds - previous.unixSeconds <= MAX_SAMPLE_GAP_SEC;
+        previous = usable ? cur : null;
+        if (!continues) {
+            anchor = usable ? cur : null;
+            continue;
+        }
+        const dt = cur.unixSeconds - anchor!.unixSeconds;
+        if (dt < DYNAMICS_MIN_SPAN_SEC) continue;
+        const isMoving = cur.speedMs >= TURN_MIN_SPEED_MS && anchor!.speedMs >= TURN_MIN_SPEED_MS;
+        out.push({
+            startSec: anchor!.unixSeconds,
+            endSec: cur.unixSeconds,
+            accelMs2: (cur.speedMs - anchor!.speedMs) / dt,
+            turnRateDegPerSec: isMoving ? Math.abs(shortestBearingArc(cur.bearingDeg - anchor!.bearingDeg)) / dt : 0,
+        });
+        anchor = cur;
+    }
+    return smoothDynamics(out).map((span) => ({ ...span, startSec: toSec(span.startSec), endSec: toSec(span.endSec) }));
+}
+
+/** Duration-weighted moving average within each contiguous run of spans,
+ *  on whatever axis the spans carry. */
+function smoothDynamics(spans: DrivingDynamicsSpan[]): DrivingDynamicsSpan[] {
+    const mid = (span: DrivingDynamicsSpan): number => (span.startSec + span.endSec) / 2;
+    // A run is spans that join end to start; its first index for each span.
+    const runStart: number[] = [];
+    for (let i = 0; i < spans.length; i++) {
+        const joins = i > 0 && spans[i]!.startSec <= spans[i - 1]!.endSec + 1e-6;
+        runStart.push(joins ? runStart[i - 1]! : i);
+    }
+    return spans.map((span, i) => {
+        let weight = 0;
+        let accel = 0;
+        let turn = 0;
+        for (let j = i; j >= runStart[i]! && mid(span) - mid(spans[j]!) <= DYNAMICS_SMOOTHING_HALF_WINDOW_SEC; j--) {
+            const w = spans[j]!.endSec - spans[j]!.startSec;
+            weight += w;
+            accel += spans[j]!.accelMs2 * w;
+            turn += spans[j]!.turnRateDegPerSec * w;
+        }
+        for (
+            let j = i + 1;
+            j < spans.length &&
+            runStart[j] === runStart[i] &&
+            mid(spans[j]!) - mid(span) <= DYNAMICS_SMOOTHING_HALF_WINDOW_SEC;
+            j++
+        ) {
+            const w = spans[j]!.endSec - spans[j]!.startSec;
+            weight += w;
+            accel += spans[j]!.accelMs2 * w;
+            turn += spans[j]!.turnRateDegPerSec * w;
+        }
+        return weight > 0 ? { ...span, accelMs2: accel / weight, turnRateDegPerSec: turn / weight } : span;
+    });
 }
 
 /** Turn: |dbearing|/dt above TURN_RATE_DEG_PER_SEC, with samples at

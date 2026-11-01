@@ -27,12 +27,18 @@ export async function loadChart(): Promise<void> {
 
 import { gMagnitude, hasAccelData } from "../events.js";
 import type { TripEvent } from "../events.js";
+import { detectDrivingDynamics, type DrivingDynamicsSpan } from "../inferred-events.js";
 import {
+    drawDrivingDynamicsLanes,
+    INFERRED_LANE_RESERVE_PX,
+    inferredLaneLabelFont,
+    inferredLaneLabelWidthPx,
+    inferredSegmentAtLane,
     inferredSegmentsAtRelSec,
-    initInferredStrip,
     renderInferredEventChipsHtml,
-    type InferredStripHandle,
-} from "./inferred-strip-canvas.js";
+    type InferredLaneGeometry,
+    type InferredLaneLabels,
+} from "./inferred-event-layer.js";
 import { escapeHtml } from "../escape.js";
 import { getDateLocale, t } from "../i18n/index.js";
 import { emitLifecycle } from "../perf.js";
@@ -73,8 +79,8 @@ import {
     resizeZoomViewEdge,
     type ZoomViewState,
 } from "./strip-zoom.js";
-import { eventColors, subscribeThemeChange, themeColors } from "./theme.js";
-import { subscribeViewPanels } from "./view-menu.js";
+import { eventColors, themeColors } from "./theme.js";
+import { isPanelShown, subscribeViewPanels } from "./view-menu.js";
 
 interface ChartCallbacks {
     /** Current player position in seconds from trip start. Needed by cursorPlugin. */
@@ -157,9 +163,8 @@ function syncChartRulers(): void {
     if (!view) return;
     const viewStartPct = view.startSec / dur;
     const viewEndPct = view.endSec / dur;
-    // Expose the gutter to CSS: the mini-progress track (::before) insets
-    // itself to the content span so the visible track matches the thumb's
-    // actual travel instead of running under the gutters.
+    // Expose the gutter to CSS: the whole-trip row starts its track at the
+    // plot's left edge, so at full view its thumb sits over the playhead.
     const host = dom.playerChartEl;
     if (host) {
         host.style.setProperty("--timeline-gutter-left", `${(view.leftFrac * 100).toFixed(3)}%`);
@@ -169,15 +174,6 @@ function syncChartRulers(): void {
         // The gutter goes in as label-percentage math, not host padding: the
         // labels are position:absolute, so padding cannot shift them.
         renderRangeRuler(top, trip, viewStartPct, viewEndPct, view.leftFrac, view.rightFrac);
-    }
-    // Strip wrap padding makes the (in-flow) strip canvas occupy exactly the
-    // chartArea width, so bars line up with chart datasets. Axis labels live
-    // inside the canvas edge so they sit in the first visible bar column
-    // instead of in the padding gutter.
-    const wrap = dom.chartInferredStripWrap;
-    if (wrap) {
-        wrap.style.paddingLeft = `${(view.leftFrac * 100).toFixed(3)}%`;
-        wrap.style.paddingRight = `${(view.rightFrac * 100).toFixed(3)}%`;
     }
 }
 
@@ -197,9 +193,10 @@ function concealChartZoomReset(isConcealed: boolean): void {
     else dom.playerChartOverviewReset.removeAttribute("aria-hidden");
 }
 
+/** The row stays in the layout without a trip - it is also the seek track -
+ *  but the zoom window and its controls have nothing to act on. */
 function hideChartZoomNavigation(): void {
-    dom.playerChartZoomRow.hidden = true;
-    dom.playerChartOverview.hidden = true;
+    dom.playerChartOverviewViewport.hidden = true;
     dom.playerChartZoomStatus.hidden = true;
     concealChartZoomReset(true);
     dom.playerChartZoomOut.disabled = true;
@@ -251,14 +248,34 @@ function syncChartZoomStatus(trip: Trip, startSec: number, endSec: number, isFul
     dom.playerChartZoomStatus.setAttribute("aria-label", accessibleText);
 }
 
+/** Space between the zoom status and the frame edge it sits beside. */
+const ZOOM_STATUS_MARGIN_PX = 6;
+
+/**
+ * Puts the zoom status inside the frame when it fits there, otherwise beside
+ * the frame on the side with room, so it never straddles the frame's border.
+ */
+function placeChartZoomStatus(frameStartPx: number, frameEndPx: number, trackWidthPx: number): void {
+    const status = dom.playerChartZoomStatus;
+    const statusWidthPx = status.offsetWidth;
+    const room = statusWidthPx + ZOOM_STATUS_MARGIN_PX * 2;
+    let centerPx = (frameStartPx + frameEndPx) / 2;
+    if (frameEndPx - frameStartPx < room) {
+        if (trackWidthPx - frameEndPx >= room) centerPx = frameEndPx + ZOOM_STATUS_MARGIN_PX + statusWidthPx / 2;
+        else if (frameStartPx >= room) centerPx = frameStartPx - ZOOM_STATUS_MARGIN_PX - statusWidthPx / 2;
+    }
+    const half = statusWidthPx / 2;
+    status.style.left = `${Math.max(half, Math.min(trackWidthPx - half, centerPx))}px`;
+}
+
 // While one edge owns pointer capture, ARIA bounds keep the floor captured at
 // pointerdown. A programmatic export preview can be narrower than the normal
 // navigation floor, and reversing that same drag must remain possible.
 let overviewResizeMinSpanPct: number | null = null;
 
 /**
- * Full-trip navigator for the current visible window. It remains present at
- * full view so its edge handles also provide a visible way to zoom in.
+ * Zoom window frame on the whole-trip row. It remains present at full view so
+ * its edge handles also provide a visible way to zoom in.
  *
  * Works in no-gps mode too: it only depends on the trip duration and x scale.
  */
@@ -289,8 +306,8 @@ function syncChartOverview(): void {
     const edgeMinSpan = overviewResizeMinSpanPct ?? computeEffectiveMinViewSpan(dur, span);
     const isFullView = span >= 1 - 1e-6;
 
-    dom.playerChartZoomRow.hidden = false;
-    dom.playerChartOverview.hidden = false;
+    dom.playerChartOverviewViewport.hidden = false;
+    dom.playerChartOverviewViewport.classList.toggle("is-full-view", isFullView);
     dom.playerChartZoomStatus.hidden = isFullView;
     concealChartZoomReset(isFullView);
     dom.playerChartZoomOut.disabled = isFullView;
@@ -323,6 +340,8 @@ function syncChartOverview(): void {
     const startSec = viewStartPct * dur;
     const endSec = viewEndPct * dur;
     syncChartZoomStatus(trip, startSec, endSec, isFullView);
+    if (!isFullView)
+        placeChartZoomStatus(viewStartPct * overviewWidthPx, viewEndPct * overviewWidthPx, overviewWidthPx);
     setOverviewHandleValue(dom.playerChartOverviewStart, startSec, 0, endSec - minSpanSec);
     setOverviewHandleValue(dom.playerChartOverviewEnd, endSec, startSec + minSpanSec, dur);
 }
@@ -361,7 +380,104 @@ function currentOverviewView(): { durationSec: number; view: ZoomViewState } | n
     };
 }
 
+// One gesture on the whole-trip row at a time: an edge resize, or the seek /
+// pan gesture player-scrubber.ts runs on the track. A second finger must not
+// start another one mid-drag.
 let overviewGesturePointerId: number | null = null;
+
+/** Pointer distance (CSS px) from the progress thumb's centre that grabs the
+ *  thumb. The thumb wins over the zoom-window handles, which share the row's
+ *  ends with it at the trip start and end. */
+const OVERVIEW_THUMB_HIT_PX = 8;
+const OVERVIEW_THUMB_HIT_TOUCH_PX = 14;
+
+/** Movement (CSS px) that turns a press on a zoom-window handle into a resize.
+ *  Below it the press is a click on the row and seeks, like anywhere else on
+ *  it - at full view the handles cover the row's first and last target widths. */
+const OVERVIEW_HANDLE_DRAG_THRESHOLD_PX = 3;
+
+/** Whether a pointer at clientX grabs the whole-trip row's progress thumb. */
+export function isOverOverviewThumb(clientX: number): boolean {
+    const thumb = dom.miniProgressThumb.getBoundingClientRect();
+    if (thumb.width <= 0) return false;
+    const hitPx = isCoarsePointer() ? OVERVIEW_THUMB_HIT_TOUCH_PX : OVERVIEW_THUMB_HIT_PX;
+    return Math.abs(clientX - (thumb.left + thumb.width / 2)) <= hitPx;
+}
+
+/** Trip-seconds under clientX on the whole-trip row. */
+export function overviewSecAtClientX(clientX: number): number | null {
+    const current = currentOverviewView();
+    const ratio = overviewRatioAt(clientX);
+    if (!current || ratio === null) return null;
+    return ratio * current.durationSec;
+}
+
+/** The visible window in content-seconds, for the whole-trip row's gestures. */
+export interface TimelineZoomWindow {
+    durationSec: number;
+    startSec: number;
+    endSec: number;
+    isFullView: boolean;
+}
+
+export function getTimelineZoomWindow(): TimelineZoomWindow | null {
+    const current = currentOverviewView();
+    if (!current) return null;
+    const { durationSec, view } = current;
+    return {
+        durationSec,
+        startSec: view.viewStartPct * durationSec,
+        endSec: view.viewEndPct * durationSec,
+        isFullView: view.viewEndPct - view.viewStartPct >= 1 - 1e-6,
+    };
+}
+
+/**
+ * Claims the whole-trip row for one pointer. False while another gesture owns
+ * it. Every claim ends with finishTimelineWindowGesture.
+ */
+export function beginTimelineWindowGesture(pointerId: number): boolean {
+    if (overviewGesturePointerId !== null) return false;
+    overviewGesturePointerId = pointerId;
+    return true;
+}
+
+/**
+ * Releases the row and refreshes the export actions that wait until the
+ * timeline can no longer move under the pointer (they may change the trim-bar
+ * height).
+ */
+export function finishTimelineWindowGesture(): void {
+    overviewGesturePointerId = null;
+    callbacks.onSelectionChange?.();
+}
+
+/**
+ * Moves the zoom window so it starts at startSec, keeping its span and staying
+ * inside the trip. An inspection gesture like wheel and pinch (see
+ * applyNavigatorView). No-op at full view.
+ */
+export function panTimelineWindowTo(startSec: number): void {
+    const current = currentOverviewView();
+    if (!current) return;
+    const span = current.view.viewEndPct - current.view.viewStartPct;
+    if (span >= 1 - 1e-6) return;
+    const startPct = Math.max(0, Math.min(startSec / current.durationSec, 1 - span));
+    applyNavigatorView({ viewStartPct: startPct, viewEndPct: startPct + span }, current.durationSec);
+}
+
+/**
+ * Pans the zoom window to show sec: the least distance ("nearest", so a scrub
+ * drags the window along) or centred on it ("center", for a jump). No-op at
+ * full view or when sec is already visible.
+ */
+export function revealSecInTimelineWindow(sec: number, placement: "nearest" | "center"): void {
+    const zoom = getTimelineZoomWindow();
+    if (!zoom || zoom.isFullView || (sec >= zoom.startSec && sec <= zoom.endSec)) return;
+    const span = zoom.endSec - zoom.startSec;
+    const start = placement === "center" ? sec - span / 2 : sec < zoom.startSec ? sec : sec - span;
+    panTimelineWindowTo(start);
+}
 
 function attachOverviewHandleEvents(handle: HTMLDivElement, edge: "start" | "end"): void {
     suppressEdgeSwipeNav(handle);
@@ -376,32 +492,42 @@ function attachOverviewHandleEvents(handle: HTMLDivElement, edge: "start" | "end
     };
 
     let gestureMinSpan = 0;
+    let startClientX = 0;
+    let isResizing = false;
     attachPointerDrag(handle, {
         onStart: (e) => {
-            if (overviewGesturePointerId !== null) return false;
+            // Let the press reach the track, where it grabs the thumb.
+            if (isOverOverviewThumb(e.clientX)) return false;
             const initial = currentOverviewView();
-            if (dom.playerChartOverview.hidden || !initial) return false;
+            if (dom.playerChartOverviewViewport.hidden || !initial) return false;
+            if (!beginTimelineWindowGesture(e.pointerId)) return false;
             gestureMinSpan = computeEffectiveMinViewSpan(
                 initial.durationSec,
                 initial.view.viewEndPct - initial.view.viewStartPct,
             );
             e.preventDefault();
             e.stopPropagation();
-            overviewGesturePointerId = e.pointerId;
+            startClientX = e.clientX;
+            isResizing = false;
             overviewResizeMinSpanPct = gestureMinSpan;
             handle.classList.add("is-dragging");
             return true;
         },
-        onMove: (e) => resizeTo(e.clientX, gestureMinSpan),
-        onEnd: () => {
+        onMove: (e) => {
+            if (!isResizing && Math.abs(e.clientX - startClientX) < OVERVIEW_HANDLE_DRAG_THRESHOLD_PX) return;
+            isResizing = true;
+            resizeTo(e.clientX, gestureMinSpan);
+        },
+        onEnd: (e, reason) => {
             handle.classList.remove("is-dragging");
-            overviewGesturePointerId = null;
             overviewResizeMinSpanPct = null;
+            if (!isResizing && reason === "up") {
+                const sec = overviewSecAtClientX(e.clientX);
+                if (sec !== null) callbacks.onSeekTripTime(sec);
+            }
             // Announce the current span as the next gesture's floor.
             syncChartOverview();
-            // Conditional export actions may change the trim-bar height; keep
-            // them deferred until the timeline can no longer move under a drag.
-            callbacks.onSelectionChange?.();
+            finishTimelineWindowGesture();
         },
     });
 
@@ -427,58 +553,23 @@ function attachOverviewHandleEvents(handle: HTMLDivElement, edge: "start" | "end
     });
 }
 
-/** Attaches track centering, viewport pan, and edge-resize handlers. */
+/** Attaches the edge-resize handlers. Seeking and panning on the track belong
+ *  to player-scrubber.ts, which owns seeking from this row. */
 function attachOverviewEvents(): void {
-    const overview = dom.playerChartOverview;
-    suppressEdgeSwipeNav(overview);
     attachOverviewHandleEvents(dom.playerChartOverviewStart, "start");
     attachOverviewHandleEvents(dom.playerChartOverviewEnd, "end");
-
-    // Pointerdown already applies track centering; swallow its synthetic click
+    // Gestures on this row run on pointerdown; swallow their synthetic click
     // before the chart-wide seek handler sees it.
     dom.playerChartZoomRow.addEventListener("click", (e) => e.stopPropagation());
-    let moveViewportTo: (clientX: number) => void = () => {};
-    attachPointerDrag(overview, {
-        onStart: (e) => {
-            if (overviewGesturePointerId !== null) return false;
-            if (overview.hidden || !(e.target instanceof Element)) return false;
-            if (e.target.closest(".range-overview-handle")) return false;
-            const current = currentOverviewView();
-            const pointerRatio = overviewRatioAt(e.clientX);
-            if (!current || pointerRatio === null) return false;
-            e.preventDefault();
-            const span = current.view.viewEndPct - current.view.viewStartPct;
-            const startsInsideViewport = Boolean(e.target.closest("#player-chart-overview-viewport"));
-            const grabOffset = startsInsideViewport ? pointerRatio - current.view.viewStartPct : span / 2;
-            moveViewportTo = (clientX) => {
-                const ratio = overviewRatioAt(clientX);
-                if (ratio === null) return;
-                const newStart = Math.max(0, Math.min(ratio - grabOffset, 1 - span));
-                applyNavigatorView({ viewStartPct: newStart, viewEndPct: newStart + span }, current.durationSec);
-            };
-            overviewGesturePointerId = e.pointerId;
-            overview.classList.add("is-panning");
-            moveViewportTo(e.clientX);
-            return true;
-        },
-        onMove: (e) => moveViewportTo(e.clientX),
-        onEnd: () => {
-            overview.classList.remove("is-panning");
-            overviewGesturePointerId = null;
-            // Reveal export actions after panning, never under the pointer.
-            callbacks.onSelectionChange?.();
-        },
-    });
 }
 
 /** Re-anchors every window-dependent timeline overlay after the visible x-window
- *  changes: rulers, overview viewport, inferred strip, and the px-positioned
- *  playhead/progress thumb/range tabs (via onViewChanged). Shared by the
- *  zoom/reset/resize paths so a new overlay is re-anchored in one place. */
+ *  changes: rulers, overview viewport, and the px-positioned playhead/progress
+ *  thumb/range tabs (via onViewChanged). Shared by the zoom/reset/resize paths
+ *  so a new overlay is re-anchored in one place. */
 function syncTimelineAfterViewChange(): void {
     syncChartRulers();
     syncChartOverview();
-    redrawInferredStrip();
     callbacks.onViewChanged?.();
 }
 
@@ -652,7 +743,8 @@ export function zoomTimelineStep(direction: 1 | -1): void {
  *  #player-chart-canvas), Chart.js gets no event - the canvas was just
  *  display:none, its bbox is real now, but Chart has not recomputed. Result:
  *  content drawn at the old dimensions looks squashed. Subscribe to view-menu
- *  state changes and poke chart.resize. */
+ *  state changes and poke chart.resize. The events layer toggles without a
+ *  size change, so the chart lays out again explicitly too. */
 function initChartViewMenuSync(): void {
     subscribeViewPanels(() => {
         // Double rAF: first waits for layout reflow after the :has() CSS
@@ -660,8 +752,11 @@ function initChartViewMenuSync(): void {
         // before the next draw.
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                if (state.chart) state.chart.resize();
-                redrawInferredStrip();
+                if (!state.chart) return;
+                state.chart.resize();
+                // A full update: the events layer changes the plot's gutters
+                // and bottom room, not only what is painted.
+                state.chart.update("none");
             });
         });
     });
@@ -674,6 +769,10 @@ function initChartViewMenuSync(): void {
  * Chart.js plugin/callback types are very generic; we type our callbacks minimally
  * (Chart, CanvasRenderingContext2D) rather than fighting the full generic chain.
  */
+// Plot edges at the last layout, to spot relayouts that move them.
+let lastPlotLeft = Number.NaN;
+let lastPlotRight = Number.NaN;
+
 export function initChart(cb: ChartCallbacks): void {
     if (state.chart) return;
     callbacks = cb;
@@ -683,10 +782,22 @@ export function initChart(cb: ChartCallbacks): void {
     // Plugin draws file-boundary tick marks + event-marker dots on top of
     // the datasets. Player playhead and hover cursor are NOT drawn here -
     // they live as DOM overlays on .player-chart (single visual elements
-    // spanning chart canvas + ruler + strip), see setPlayerCursorRelSec /
+    // spanning ruler + chart canvas), see setPlayerCursorRelSec /
     // setHoverCursorRelSec below.
     const cursorPlugin = {
         id: "playerCursor",
+        afterLayout(chart: Chart): void {
+            // Everything aligned to the plot reads its edges through
+            // getTimelineView. A relayout that moves them (the driving lanes'
+            // labels, an axis appearing with new data) must re-anchor those
+            // overlays, whichever path triggered it. Deferred: this runs inside
+            // Chart.js's update.
+            const { left, right } = chart.chartArea;
+            if (left === lastPlotLeft && right === lastPlotRight) return;
+            lastPlotLeft = left;
+            lastPlotRight = right;
+            queueMicrotask(syncTimelineAfterViewChange);
+        },
         beforeDraw(chart: Chart): void {
             // Recording-mode bands are the bottom-most data layer: drawing them
             // in beforeDraw (before grid, curves, pause blocks, markers) lets a
@@ -736,6 +847,9 @@ export function initChart(cb: ChartCallbacks): void {
                     c.restore();
                 }
             }
+
+            // Inferred event lanes along the plot edges, outside the curves.
+            drawInferredLanes(chart);
 
             // Event markers - circles at the top of chartArea, above the data curves.
             // Drawn last so they are not covered by file-boundary ticks
@@ -818,7 +932,9 @@ export function initChart(cb: ChartCallbacks): void {
                     // display:false labels duplicated and the Chart.js "+0:00…+1:30:00"
                     // row consumed vertical space.
                     ticks: { display: false },
-                    grid: { color: `${tc.chartGrid}55` },
+                    // No tick marks under the plot: without labels they only
+                    // reserved an empty band below the zero line.
+                    grid: { color: `${tc.chartGrid}55`, drawTicks: false },
                 },
                 ySpeed: {
                     type: "linear",
@@ -828,7 +944,7 @@ export function initChart(cb: ChartCallbacks): void {
                     grid: { color: `${tc.chartGrid}33` },
                     // UX-16: vertical title hidden - unit label lives as .chart-axis-label--speed overlay in HTML.
                     title: { display: false },
-                    afterFit: enforceEdgeGutterAxisWidth,
+                    afterFit: fitTimelineYAxis,
                 },
                 yAccel: {
                     type: "linear",
@@ -838,7 +954,7 @@ export function initChart(cb: ChartCallbacks): void {
                     grid: { display: false },
                     // UX-16: see ySpeed.title above.
                     title: { display: false },
-                    afterFit: enforceEdgeGutterAxisWidth,
+                    afterFit: fitTimelineYAxis,
                 },
             },
             plugins: {
@@ -857,9 +973,9 @@ export function initChart(cb: ChartCallbacks): void {
             // plot-rectangle, excluding the X-axis labels band at the bottom and
             // the Y-axis padding on the left/right). Because of that, a click on
             // any "non-working" zone of the chart - the time ticks below, the
-            // corner axis-label overlays, the 1px between chart and event-strip,
-            // the strip-wrap padding where axis labels project - did not lead to
-            // a seek, even though the chart grid/numbers are visually there. The
+            // corner axis-label overlays, the driving lanes under the plot - did
+            // not lead to a seek, even though the chart grid/numbers are
+            // visually there. The
             // single handler below on the .player-chart wrap itself covers ALL
             // those zones via the bubble.
         },
@@ -871,31 +987,6 @@ export function initChart(cb: ChartCallbacks): void {
     // View-menu visibility sync: showing/hiding the chart canvas via the
     // "View" menu requires a resize, otherwise content stays squashed.
     initChartViewMenuSync();
-
-    // Inferred event strip (Variant B). Bound to the chart's x-scale via
-    // factory closure - redraws on chart events (zoom/pan/resize/theme).
-    // The host canvas lives in a wrap div with axis-label overlays; here
-    // we hand the strip module the inner canvas + wrap (for DOM overlays
-    // like playhead, scrub-line, overlap diamonds, click flash) + onSeek.
-    if (dom.chartInferredStrip && dom.chartInferredStripWrap) {
-        inferredStripHandle = initInferredStrip({
-            canvas: dom.chartInferredStrip,
-            wrap: dom.chartInferredStripWrap,
-            chart: state.chart,
-            getTrip: activeTrip,
-            onSeek: callbacks.onSeekTripTime,
-            // Flash overlay spans chart + ruler + strip (not just strip) so
-            // the pulse reads as a click on the column, not "something
-            // happened at the bottom".
-            onFlash: flashPlayerChartAtRelSec,
-        });
-        // Strip canvas reads colors from themeColors() cache that gets
-        // invalidated by applyTheme/prefers-color-scheme. The strip itself
-        // does not redraw automatically on cache invalidation, only on
-        // chart events (zoom/pan/resize). Subscribe to push a manual redraw
-        // on theme switch so cached colors land on the canvas immediately.
-        subscribeThemeChange(() => redrawInferredStrip());
-    }
 
     // Hover indicator: vertical gray line following the cursor + no-gps tooltip
     // (when datasets are empty and Chart.js internal tooltip is disabled).
@@ -966,8 +1057,8 @@ export function initChart(cb: ChartCallbacks): void {
     // opened the tooltip (and decoded a thumbnail) that no mouseleave ever
     // closed, covering the chart the user had just tapped to seek. Pointer
     // events precede their compatibility mouse events, so the last pointer
-    // type seen on the row classifies each mousemove, the strip's forwarded
-    // ones included.
+    // type seen on the row classifies each mousemove, the playhead grip's
+    // forwarded ones included.
     let lastChartPointerType = "mouse";
     const notePointerType = (e: PointerEvent): void => {
         lastChartPointerType = e.pointerType;
@@ -990,7 +1081,10 @@ export function initChart(cb: ChartCallbacks): void {
             requestAnimationFrame(processChartHover);
         }
     });
-    dom.chartCanvas.addEventListener("mouseleave", () => {
+    dom.chartCanvas.addEventListener("mouseleave", (e) => {
+        // The playhead grip lies over the canvas; crossing it keeps the hover
+        // alive through the moves it forwards below.
+        if (e.relatedTarget === dom.playerChartPlayheadGrip) return;
         pendingChartMouseEvent = null;
         lastProcessedPx = -1;
         lastTooltipKey = null;
@@ -1007,44 +1101,33 @@ export function initChart(cb: ChartCallbacks): void {
         clearTooltipThumb();
     });
 
-    // Unified hover zone: mousemove over the inferred-strip canvas should also
-    // drive the chart tooltip (single popover for chart + strip per design
-    // 02-scrub-thumb.md). Forward synthetic mousemove with the same clientX/Y
-    // so the existing handler computes hover X via chart.scales.x.getValueForPixel
-    // without duplicating logic. mouseleave from the strip triggers the same
-    // cleanup ONLY when the cursor truly leaves the chart canvas too -
-    // event.relatedTarget tells us where it went.
-    const stripCanvas = dom.chartInferredStrip;
-    if (stripCanvas) {
-        // A hidden canvas has no hover geometry to forward to.
-        const chartCanvasInteractive = (): boolean => !dom.chartCanvas.hidden;
-        stripCanvas.addEventListener("mousemove", (ev) => {
-            if (!chartCanvasInteractive()) return;
-            dom.chartCanvas.dispatchEvent(
-                new MouseEvent("mousemove", { clientX: ev.clientX, clientY: ev.clientY, bubbles: false }),
-            );
-        });
-        stripCanvas.addEventListener("mouseleave", (ev) => {
-            if (!chartCanvasInteractive()) return;
-            // If moving from strip back into chart - chart already has its own
-            // mousemove keeping the tooltip alive. Only dispatch leave when going
-            // somewhere else.
-            if (ev.relatedTarget !== dom.chartCanvas) {
-                dom.chartCanvas.dispatchEvent(new MouseEvent("mouseleave"));
-            }
-        });
-    }
+    // The playhead grip covers a narrow column of the canvas. Forward its
+    // mousemove with the same clientX/Y so hovering the current moment shows
+    // the tooltip like any other spot, and run the canvas cleanup only when the
+    // pointer leaves for somewhere other than the canvas.
+    const grip = dom.playerChartPlayheadGrip;
+    grip.addEventListener("mousemove", (ev) => {
+        // A grip drag shows its own frame preview (player-scrubber.ts).
+        if (dom.chartCanvas.hidden || grip.classList.contains("is-dragging")) return;
+        dom.chartCanvas.dispatchEvent(
+            new MouseEvent("mousemove", { clientX: ev.clientX, clientY: ev.clientY, bubbles: false }),
+        );
+    });
+    grip.addEventListener("mouseleave", (ev) => {
+        if (dom.chartCanvas.hidden || ev.relatedTarget === dom.chartCanvas) return;
+        dom.chartCanvas.dispatchEvent(new MouseEvent("mouseleave"));
+    });
 
     // The single seek-click for the whole .player-chart row. Covers zones with
-    // no native click handler: the range-ruler on top, the canvas X/Y-axis
-    // labels (which Chart.js draws OUTSIDE chartArea, so options.onClick stays
-    // silent there), the 1px border between canvas and event-strip, the
-    // strip-wrap padding on the left/right where the chart axis labels project.
+    // no native click handler: the range-ruler, the canvas X/Y-axis labels
+    // (which Chart.js draws OUTSIDE chartArea, so options.onClick stays silent
+    // there) and the event lanes along the plot edges.
     // The click event bubbles up to this node from all descendants:
-    //  - chart canvas: lands here directly (options.onClick removed).
-    //  - strip canvas: its own onClick does the snap-to-event-start and stops
-    //    propagation, so there is no second seek here.
-    //  - navigator drag: also stops its own click below.
+    //  - chart canvas: lands here directly (options.onClick removed). A click
+    //    on an event lane snaps to the event's start, as the old event strip
+    //    did; anywhere else seeks to the exact spot.
+    //  - whole-trip row and playhead grip: seek on their own pointer gestures
+    //    and stop their clicks.
     //  - event-marker capture-click: already calls stopImmediatePropagation
     //    (see the canvas click handler in initEventPopupListeners), which keeps
     //    this handler from firing on top of the marker.
@@ -1063,6 +1146,14 @@ export function initChart(cb: ChartCallbacks): void {
             // click seek again lands a fraction of a second away from the first
             // target, and on the MSE pipeline every seek restarts the feed.
             if (e.target instanceof Node && dom.miniProgress?.contains(e.target)) return;
+            if (e.target === dom.chartCanvas) {
+                const segment = inferredSegmentAtCanvasPoint(e.clientX, e.clientY);
+                if (segment) {
+                    callbacks.onSeekTripTime(segment.startRelSec);
+                    flashPlayerChartAtRelSec(segment.startRelSec);
+                    return;
+                }
+            }
             const sec = chartSecAtClientX(e.clientX);
             if (sec !== null && Number.isFinite(sec)) callbacks.onSeekTripTime(sec);
         });
@@ -1136,7 +1227,7 @@ export function initChart(cb: ChartCallbacks): void {
 
     // Wheel: vertical → zoom around cursor, horizontal → pan view.
     // Attached to the whole #player-chart wrap (not just the canvas) so the
-    // gesture works anywhere the timeline is drawn - chart, ruler, event-strip,
+    // gesture works anywhere the timeline is drawn - chart, ruler, whole-trip row,
     // and the padding gutters - matching the single seek-click handler's hit
     // area. Wheel events from those descendants bubble up here. The x-scale
     // pixel math still anchors to the canvas rect (xScale.left/right are in
@@ -1234,9 +1325,9 @@ function chartSecAtClientX(clientX: number): number | null {
 // two-finger pinch. We track touch contacts on the whole .player-chart and
 // promote to a pinch on the second finger, anchoring the content under the
 // gesture-start centroid to the moving centroid (zoom + pan in one motion -
-// same model as the video pinch). The navigator (pan) and mini-progress (seek)
-// keep their own single-finger drag, so a finger there is NOT counted toward a
-// pinch and we never fight their pointer capture.
+// same model as the video pinch). The whole-trip row (seek, pan, resize) and
+// the playhead grip keep their own single-finger drag, so a finger there is NOT
+// counted toward a pinch and we never fight their pointer capture.
 interface ChartPinchState {
     startDist: number;
     startView: { viewStartPct: number; viewEndPct: number };
@@ -1267,11 +1358,12 @@ function initChartTouchZoom(): void {
     if (!host) return;
     attachPinchGesture(host, {
         accepts: (event) => {
-            // Navigator, scrubber and range tabs own their single-finger drags;
-            // stealing capture from one would interrupt the selected range.
+            // The whole-trip row, the playhead grip and range tabs own their
+            // single-finger drags; stealing capture from one would interrupt
+            // the selected range.
             return (
                 !(event.target instanceof Element) ||
-                !event.target.closest(".chart-zoom-row, #player-mini-progress, .timeline-range__tab")
+                !event.target.closest(".chart-zoom-row, .player-chart-playhead-grip, .timeline-range__tab")
             );
         },
         onStart: (geometry) => {
@@ -1325,7 +1417,7 @@ function initChartTouchZoom(): void {
 // Audacity-style: press on the timeline background, drag horizontally, release -
 // the selected span becomes the visible window (the same applyChartXRange path
 // as wheel/pinch, so chartZoomed/export-selection semantics are identical).
-// Mouse-only: touch keeps pinch, and the navigator / mini-progress / export
+// Mouse-only: touch keeps pinch, and the whole-trip row / playhead grip / export
 // pull-tabs own their pointers and never start a selection. A press that stays
 // under the threshold remains a plain seek-click.
 
@@ -1348,11 +1440,11 @@ function initChartDragSelectZoom(): void {
     let isSelecting = false;
     let selectRectEl: HTMLDivElement | null = null;
 
-    // The zoom row and mini-progress own their drags; export pull-tabs and
-    // buttons keep their native behavior.
+    // The whole-trip row and the playhead grip own their drags; export
+    // pull-tabs and buttons keep their native behavior.
     const eligible = (target: EventTarget | null): boolean => {
         if (!(target instanceof Element)) return true;
-        return !target.closest(".chart-zoom-row, #player-mini-progress, .timeline-range__tab, button");
+        return !target.closest(".chart-zoom-row, .player-chart-playhead-grip, .timeline-range__tab, button");
     };
 
     // Selection endpoints must resolve even when the mouse travels past the
@@ -1719,29 +1811,73 @@ function applyEventSelection(ev: TripEvent, spanSec: number): void {
     callbacks.onSeekTripTime(from);
 }
 
-// --- Inferred event strip ---
+// --- Driving lanes ---
 //
-// Variant B (52px bipolar longitudinal + turn + stop) lives in a separate
-// module (src/ui/inferred-strip-canvas.ts). We hold a handle returned from
-// initInferredStrip and call redraw() on chart events that change the visible
-// x-range (zoom/pan/resize/theme). The strip is bound to the active trip via
-// the getTrip closure registered at init time.
+// Continuous acceleration/braking and turn lanes under the plot, painted by
+// the cursor plugin (src/ui/inferred-event-layer.ts). The View menu's events
+// item switches them; the chart repaints on its notifications.
 
-/** Single instance bound to the host canvas. Initialized in initChart after
- *  the Chart.js instance and dom.chartInferredStrip are ready. */
-let inferredStripHandle: InferredStripHandle | null = null;
+/** Per-trip cache of the dynamics series: it projects every record onto the
+ *  footage axis, which is not worth redoing on each redraw. Keyed by the trip
+ *  and checked against the records and timeline it was built from, which a
+ *  deferred GPS pass replaces. */
+const drivingDynamicsCache = new WeakMap<
+    Trip,
+    { records: Trip["records"]; timeline: Trip["timeline"]; spans: DrivingDynamicsSpan[] }
+>();
 
-/** Toggles the strip wrap visibility and triggers a redraw. Called from
- *  rebuildChartFromTrip when a trip becomes active, from refreshThemeColors
- *  on theme switch, and from the chart zoom/pan/resize hooks. */
-function redrawInferredStrip(): void {
-    if (!inferredStripHandle) return;
-    // Wrap visibility is driven by the "View" menu (localStorage panels.strip),
-    // not by trip presence. Strip stays visible even with no trip / no signals
-    // so layout does not shift trip-to-trip - canvas paints an empty state
-    // (i18n "no recognized events" + dashed baseline) instead. Per design
-    // 01-strip.md: "don't hide strip, layout shifts are bad".
-    inferredStripHandle.redraw();
+function drivingDynamics(trip: Trip): DrivingDynamicsSpan[] {
+    const cached = drivingDynamicsCache.get(trip);
+    if (cached && cached.records === trip.records && cached.timeline === trip.timeline) return cached.spans;
+    const spans = detectDrivingDynamics(trip.records, (unixSeconds) => wallToContentSec(trip.timeline, unixSeconds));
+    drivingDynamicsCache.set(trip, { records: trip.records, timeline: trip.timeline, spans });
+    return spans;
+}
+
+/** The lanes are on and the active trip has GPS speed to draw them from. */
+function drivingLanesShown(): boolean {
+    const trip = activeTrip();
+    return Boolean(trip && isPanelShown("strip") && drivingDynamics(trip).length > 0);
+}
+
+function drivingLaneLabels(): InferredLaneLabels {
+    return {
+        font: inferredLaneLabelFont(ChartClass?.defaults.font.family ?? "sans-serif"),
+        longitudinal: t("chart.lane.longitudinal"),
+        turn: t("chart.lane.turn"),
+    };
+}
+
+/** Plot geometry for the lanes, or null when they are off or the chart has
+ *  no laid-out plot yet. */
+function inferredLaneGeometry(chart: Chart): InferredLaneGeometry | null {
+    if (!drivingLanesShown()) return null;
+    const xScale = chart.scales.x;
+    const area = chart.chartArea;
+    if (!xScale || !area || area.right <= area.left) return null;
+    return {
+        left: area.left,
+        right: area.right,
+        top: area.top,
+        bottom: area.bottom,
+        xForSec: (sec) => xScale.getPixelForValue(sec),
+    };
+}
+
+function drawInferredLanes(chart: Chart): void {
+    const trip = activeTrip();
+    const geometry = inferredLaneGeometry(chart);
+    if (!trip || !geometry) return;
+    drawDrivingDynamicsLanes(chart.ctx, drivingDynamics(trip), geometry, themeColors(), drivingLaneLabels());
+}
+
+/** The inferred event under a click on the chart canvas, if it hit a lane. */
+function inferredSegmentAtCanvasPoint(clientX: number, clientY: number): ReturnType<typeof inferredSegmentAtLane> {
+    const trip = activeTrip();
+    const geometry = state.chart ? inferredLaneGeometry(state.chart) : null;
+    if (!trip || !geometry) return null;
+    const rect = dom.chartCanvas.getBoundingClientRect();
+    return inferredSegmentAtLane(trip.inferredSegments, geometry, clientX - rect.left, clientY - rect.top);
 }
 
 /** Maps trip-relative seconds to a CSS pixel offset inside the .player-chart
@@ -1755,23 +1891,26 @@ function relSecToPlayerChartCssX(relSec: number, view: TimelineView | null = get
     return frac * dom.playerChartEl.clientWidth;
 }
 
-/** Updates the playhead overlay - one DOM element spanning chart
- *  canvas + ruler + strip. Called from player.ts on timeupdate. Cheap:
- *  CSS left only, no canvas redraw. */
+/** Updates the playhead overlay - one DOM element spanning ruler and chart -
+ *  and its drag grip. Called from player.ts on timeupdate. Cheap: CSS left
+ *  only, no canvas redraw. */
 const PLAYHEAD_VIEW_EDGE_EPSILON_SEC = 0.001;
 
 export function setPlayerCursorRelSec(relSec: number | null, view: TimelineView | null = getTimelineView()): void {
     const el = dom.playerChartPlayhead;
     if (!el) return;
+    const grip = dom.playerChartPlayheadGrip;
     if (relSec == null) {
         dom.playerChartEl.classList.remove("is-playhead-outside-view");
         el.hidden = true;
+        grip.hidden = true;
         return;
     }
     const frac = view ? timelineSecToFracInView(relSec, view) : null;
     if (frac == null) {
         dom.playerChartEl.classList.remove("is-playhead-outside-view");
         el.hidden = true;
+        grip.hidden = true;
         return;
     }
     const isOutsideView = Boolean(
@@ -1783,6 +1922,11 @@ export function setPlayerCursorRelSec(relSec: number | null, view: TimelineView 
     // A percentage follows resizing without reading layout after text updates.
     el.style.left = `calc(${frac * 100}% - 1px)`;
     el.hidden = false;
+    // The grip stays put while its own drag is running: the drag seeks by
+    // keyframes, and a playhead lagging behind the pointer must not pull the
+    // grab target out from under it.
+    if (!grip.classList.contains("is-dragging")) grip.style.left = `${frac * 100}%`;
+    grip.hidden = false;
 }
 
 /**
@@ -1806,25 +1950,74 @@ const TIMELINE_EDGE_GUTTER_TOUCH_PX = 28;
 const TIMELINE_EDGE_GUTTER_MOUSE_PX = 12;
 /** Cap so the synthetic gutter never eats a meaningful share of a tiny host. */
 const MAX_SYNTHETIC_GUTTER_FRAC = 0.1;
+/** Space between a zoom control and the whole-trip track. */
+const ZOOM_CONTROL_GAP_PX = 4;
+/** Gap between the zoom out and zoom in buttons (chart.css). */
+const ZOOM_CONTROL_SPACING_PX = 2;
+
+/**
+ * Gutter (CSS px) the whole-trip row needs beside its track for the zoom
+ * controls: full view on the left, zoom out and in on the right. The plot's
+ * gutters grow to it so the track spans exactly the plot and, at full view,
+ * its thumb sits on the playhead. Target size mirrors --chart-zoom-target-size.
+ */
+function zoomControlsGutterPx(side: "left" | "right"): number {
+    const targetPx = isCoarsePointer() ? 36 : 24;
+    const controlsPx = side === "left" ? targetPx : targetPx * 2 + ZOOM_CONTROL_SPACING_PX;
+    return controlsPx + ZOOM_CONTROL_GAP_PX;
+}
+
+/** Edge-safe gutter floor of one side, before the zoom controls. */
+function edgeGutterPx(): number {
+    return isCoarsePointer() ? TIMELINE_EDGE_GUTTER_TOUCH_PX : TIMELINE_EDGE_GUTTER_MOUSE_PX;
+}
 
 /**
  * afterFit for both Y axes: widen the axis to the pointer-appropriate edge
- * gutter (gesture-safe on touch, clip-safe on mouse). Going through the axis
- * width (not CSS padding or a frac override) keeps xScale.left/right the
- * single geometry truth, so the ruler, strip, playhead and range tabs all
- * follow via getTimelineView with no extra sync. Runs (and reserves width)
- * even for a display:false scale - that is what keeps the right gutter alive
- * when the accel axis is hidden.
+ * gutter (gesture-safe on touch, clip-safe on mouse) and to the zoom controls
+ * on that side of the whole-trip row. Going through the axis width (not CSS
+ * padding or a frac override) keeps xScale.left/right the single geometry
+ * truth, so the ruler, whole-trip row, playhead and range tabs all follow via
+ * getTimelineView with no extra sync. Runs (and reserves width) even for a
+ * display:false scale - that is what keeps the right gutter alive when the
+ * accel axis is hidden.
  */
-function enforceEdgeGutterAxisWidth(axis: { width: number }): void {
-    const gutterPx = isCoarsePointer() ? TIMELINE_EDGE_GUTTER_TOUCH_PX : TIMELINE_EDGE_GUTTER_MOUSE_PX;
-    axis.width = Math.max(axis.width, gutterPx);
+function enforceEdgeGutterAxisWidth(axis: { width: number; position: string; ctx: CanvasRenderingContext2D }): void {
+    const side = axis.position === "right" ? "right" : "left";
+    // The left gutter also carries the driving lanes' labels.
+    const laneLabelPx =
+        side === "left" && drivingLanesShown() ? inferredLaneLabelWidthPx(axis.ctx, drivingLaneLabels()) : 0;
+    axis.width = Math.max(axis.width, edgeGutterPx(), zoomControlsGutterPx(side), laneLabelPx);
+}
+
+/**
+ * Room (CSS px) kept above and below the plot for the top and bottom Y tick
+ * labels, which are centred on the plot edges. Chart.js reserves half the
+ * label's line box plus the tick padding, about 10 px a side; the digits only
+ * reach about half their font size past the edge. In a panel this short those
+ * extra pixels are a large share of the plot. With the driving lanes on, the
+ * bottom room is theirs; they start far enough below the zero line for its
+ * label to stay clear of theirs.
+ */
+const Y_LABEL_ROOM_PX = 6;
+
+/** afterFit for both Y axes: the edge gutter width and the vertical room. */
+function fitTimelineYAxis(axis: {
+    width: number;
+    position: string;
+    ctx: CanvasRenderingContext2D;
+    paddingTop: number;
+    paddingBottom: number;
+}): void {
+    enforceEdgeGutterAxisWidth(axis);
+    axis.paddingTop = Math.min(axis.paddingTop, Y_LABEL_ROOM_PX);
+    axis.paddingBottom = drivingLanesShown() ? INFERRED_LANE_RESERVE_PX : Math.min(axis.paddingBottom, Y_LABEL_ROOM_PX);
 }
 
 /**
  * The current timeline window + horizontal gutter, the single source of truth
- * shared by every timeline row (chart, strip, ruler, the always-on progress
- * bar) and the range overlay so they all map trip-seconds to x consistently.
+ * shared by every window-mapped timeline row (chart, ruler, playhead) and
+ * the range overlay so they all map trip-seconds to x consistently.
  *
  * - startSec/endSec: the visible window (chart zoom state, from scales.x). When
  *   not zoomed this is the whole trip. Survives the chart being hidden (it is
@@ -1869,9 +2062,15 @@ export function getTimelineView(): TimelineView | null {
     // display:none canvas.
     const hostW = dom.playerChartEl?.clientWidth ?? 0;
     if (hostW <= 0) return { startSec, endSec, leftFrac: 0, rightFrac: 0 };
-    const gutterPx = isCoarsePointer() ? TIMELINE_EDGE_GUTTER_TOUCH_PX : TIMELINE_EDGE_GUTTER_MOUSE_PX;
-    const gutterFrac = Math.min(gutterPx / hostW, MAX_SYNTHETIC_GUTTER_FRAC);
-    return { startSec, endSec, leftFrac: gutterFrac, rightFrac: gutterFrac };
+    // The zoom controls need their room whatever the host width; only the
+    // edge-safety part is capped.
+    const edgeFrac = Math.min(edgeGutterPx() / hostW, MAX_SYNTHETIC_GUTTER_FRAC);
+    return {
+        startSec,
+        endSec,
+        leftFrac: Math.max(edgeFrac, zoomControlsGutterPx("left") / hostW),
+        rightFrac: Math.max(edgeFrac, zoomControlsGutterPx("right") / hostW),
+    };
 }
 
 /** Maps trip-relative seconds to a fraction [0,1] of the timeline host width
@@ -1898,7 +2097,7 @@ export function timelineFracToSec(frac: number): number | null {
 
 /** Plays a single radial-pulse flash at the given trip-relative seconds.
  *  The element is inserted inside .player-chart so the pulse spans chart
- *  canvas + ruler + strip as one column (same idea as the playhead). One
+ *  ruler + chart canvas as one column (same idea as the playhead). One
  *  600ms keyframe, removed on animationend - no infinite loops. */
 export function flashPlayerChartAtRelSec(relSec: number): void {
     const wrap = dom.playerChartEl;
@@ -1915,7 +2114,7 @@ export function flashPlayerChartAtRelSec(relSec: number): void {
 }
 
 /** Updates the hover scrub overlay. Called from chart mousemove (and
- *  forwarded from strip mousemove via synthetic events). Pass null to hide
+ *  forwarded from the playhead grip via synthetic events). Pass null to hide
  *  (e.g. on mouseleave). */
 export function setHoverCursorRelSec(relSec: number | null): void {
     const el = dom.playerChartHoverCursor;
@@ -2022,7 +2221,6 @@ export function rebuildChartFromTrip(trip: Trip): void {
 
     syncChartRulers();
     syncChartOverview();
-    redrawInferredStrip();
 
     // Lifecycle: cursor/rulers reflect the new trip.
     emitLifecycle("chart-rendered", { speedPoints: speedData.length, accelPoints: accelData.length });
@@ -2314,7 +2512,7 @@ function renderHasTrackTooltip(e: MouseEvent, trip: Trip, x: number): void {
     const rec = trip.records[recIdx];
     if (!rec) return;
 
-    // Unified scrub-thumb: when over an inferred-strip active range, surface
+    // Unified scrub-thumb: when over an inferred-event range, surface
     // the kind chips + intensity in the same popover (no parallel tooltip).
     const inferred = inferredSegmentsAtRelSec(trip, x);
     const inferredKey = inferred.length ? inferred.map((s) => `${s.kind}:${s.startRelSec.toFixed(1)}`).join("|") : "";

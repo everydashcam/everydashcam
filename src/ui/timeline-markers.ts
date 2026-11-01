@@ -1,7 +1,9 @@
 // Timeline marker pins: UTC-anchored annotations rendered as flags over the
 // shared timeline host (#player-chart), positioned by the same geometry as
-// the playhead (timelineSecToFrac). Refreshed by the chart's overlay-sync
-// hook (trip change / zoom / pan / resize) and explicitly after edits.
+// the playhead (timelineSecToFrac), plus inert notches on the whole-trip row
+// so markers outside the zoom window stay findable. Refreshed by the chart's
+// overlay-sync hook (trip change / zoom / pan / resize) and explicitly after
+// edits.
 //
 // Interactions: the player-bar button drops a marker at the playhead and
 // opens the editor; a pin click seeks; contextmenu (long-press on Android)
@@ -19,9 +21,11 @@ import { getTripCurrentTime, seekTripTime } from "./player.js";
 import { activeTrip } from "./state.js";
 
 let layer: HTMLElement | null = null;
+let overviewLayer: HTMLElement | null = null;
 
 export function initTimelineMarkers(): void {
     layer = document.getElementById("player-chart-markers");
+    overviewLayer = document.getElementById("player-chart-overview-markers");
     document.getElementById("player-add-marker")?.addEventListener("click", () => {
         const trip = activeTrip();
         if (!trip) return;
@@ -51,6 +55,23 @@ export function initTimelineMarkers(): void {
 // per pointermove during an overview drag - identical content must not churn
 // the DOM (and must not kill :hover on a pin mid-interaction).
 let renderedSignature = "";
+let renderedOverviewSignature = "";
+
+/** Notches on the whole-trip row: every marker, at its place in the trip. */
+function refreshOverviewMarkers(fracs: readonly number[]): void {
+    if (!overviewLayer) return;
+    const signature = fracs.map((frac) => frac.toFixed(4)).join(",");
+    if (signature === renderedOverviewSignature) return;
+    renderedOverviewSignature = signature;
+    overviewLayer.replaceChildren(
+        ...fracs.map((frac) => {
+            const notch = document.createElement("span");
+            notch.className = "range-overview-marker";
+            notch.style.left = `${(frac * 100).toFixed(3)}%`;
+            return notch;
+        }),
+    );
+}
 
 /** Rebuilds the pins for the active trip and the current zoom window. Cheap
  *  (a handful of DOM nodes); out-of-window markers are skipped, not clamped -
@@ -61,6 +82,12 @@ export function refreshTimelineMarkers(): void {
     // Ahead of the layer guard and the signature short-circuit below: the bar
     // button tracks the trip's whole marker set, not the zoom window's slice.
     syncMarkerListButton(markers.length);
+    const durationSec = trip?.timeline.contentDurationSec ?? 0;
+    refreshOverviewMarkers(
+        trip && durationSec > 0
+            ? markers.map((marker) => wallToContentSec(trip.timeline, marker.utc / 1000) / durationSec)
+            : [],
+    );
     if (!layer) return;
     const view = trip ? getTimelineView() : null;
     const visible: Array<{ id: string; text: string; contentSec: number; frac: number }> = [];

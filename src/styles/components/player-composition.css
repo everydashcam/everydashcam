@@ -503,18 +503,24 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
 
 /* === Timeline range overlay (export-mode) ===
  * Lives inside #player-chart and spans only its viewport-mapped rows. The
- * whole-trip navigator below uses a different coordinate basis, so selection
- * masks and tabs stop above it instead of covering or intercepting its controls.
+ * whole-trip row above uses a different coordinate basis, so selection masks
+ * and tabs start below it instead of covering or intercepting its controls.
  */
 .timeline-range {
     position: absolute;
-    inset: 0 0 var(--chart-zoom-row-h);
+    inset: var(--chart-zoom-row-h) 0 0;
     pointer-events: none;
     z-index: 6;
 }
 
 .timeline-range[hidden] {
     display: none;
+}
+
+/* Trim-tab grip height. Declared on .player-wrap so viewer.css can reserve
+   room for it when the chart canvas is hidden and only the ruler is left. */
+.player-wrap {
+    --range-tab-grip-h: 14px;
 }
 
 .timeline-range__mask {
@@ -527,9 +533,9 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
 
 .timeline-range__tab {
     position: absolute;
-    /* The scrubber owns the top row for seek. Range editing begins immediately
-       below it, where the grip and analytics trim surface live. */
-    top: var(--scrubber-h, 0px);
+    /* The whole-trip row above the layer owns seeking; range editing spans
+       the ruler and the chart. */
+    top: 0;
     bottom: 0;
     width: 16px;
     padding: 0;
@@ -581,7 +587,7 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
     );
     transform: translateX(-50%);
     width: var(--range-tab-grip-w);
-    height: 14px;
+    height: var(--range-tab-grip-h);
     border-radius: var(--dc-radius-sm);
     background: var(--range-tab-color);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
@@ -682,12 +688,14 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
    grows into a knob that clears the fingertip - the 10x14 desktop pill is
    invisible under a thumb mid-drag. */
 @media (pointer: coarse), (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+    .player-wrap {
+        --range-tab-grip-h: 22px;
+    }
     .timeline-range__tab {
         width: 36px;
     }
     .timeline-range__tab::after {
         --range-tab-grip-w: 16px;
-        height: 22px;
         border-radius: var(--dc-radius-md);
     }
     /* Off-screen chevron grows with the touch grip (the higher-specificity

@@ -270,18 +270,18 @@
 
 /* --- Timeline marker pins ------------------------------------------------ */
 
-/* Overlay layer over the viewport-mapped timeline rows (chart + ruler + strip),
-   same coordinate space as the playhead. The whole-trip zoom row is excluded. */
+/* Overlay layer over the viewport-mapped timeline rows (ruler + chart), same
+   coordinate space as the playhead. The whole-trip row on top is excluded. */
 .timeline-markers {
     position: absolute;
-    inset: 0 0 var(--chart-zoom-row-h);
+    inset: var(--chart-zoom-row-h) 0 0;
     pointer-events: none;
     z-index: 3;
 }
 
 /* One pin: an inert full-height wrapper draws the hairline; only the flag
    head is a button. A full-height interactive column would sit over the
-   seek scrubber above and steal its drags. */
+   chart and steal its drag-select and playhead drags. */
 .timeline-marker {
     position: absolute;
     top: 0;
@@ -304,11 +304,9 @@
 
 .timeline-marker-hit {
     position: absolute;
-    /* Start below the scrubber row (top of the stack): the flag head is a
-       click target and must not sit on the seek surface, where it would
-       steal the grab at exactly the marker's moment. --scrubber-h is
-       inherited from .player-chart (chart.css). */
-    top: var(--scrubber-h, 0px);
+    /* In the ruler row, at the top of the layer: the whole-trip row above is
+       outside the layer, so the flag never sits on its seek surface. */
+    top: 0;
     left: 50%;
     transform: translateX(-50%);
     width: 14px;

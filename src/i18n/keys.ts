@@ -700,14 +700,13 @@ export type I18nKey =
     | "chart.unit.accel"
 
     // Inferred event strip (under chart)
-    | "chart.inferredStrip.empty"
     | "chart.inferredStrip.kind.stop"
     | "chart.inferredStrip.kind.brake"
     | "chart.inferredStrip.kind.turn"
     | "chart.inferredStrip.kind.accel"
-    | "chart.inferredStrip.axis.acc"
-    | "chart.inferredStrip.axis.brk"
     | "chart.inferredStrip.estimated"
+    | "chart.lane.longitudinal"
+    | "chart.lane.turn"
 
     // Trip event chip in the sidebar (UX-08)
     | "trip.events.chip.title"

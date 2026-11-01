@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 
-import { detectInferredSegments, type InferredSegmentKind } from "./inferred-events.js";
+import { detectDrivingDynamics, detectInferredSegments, type InferredSegmentKind } from "./inferred-events.js";
 import type { GpsRecord } from "./parsers/types.js";
 
 /** Builds a GpsRecord with sensible defaults. Tests override only the fields they care about. */
@@ -295,5 +295,101 @@ describe("detectInferredSegments", () => {
         for (let i = 1; i < segs.length; i++) {
             expect(segs[i]!.startRelSec).toBeGreaterThanOrEqual(segs[i - 1]!.startRelSec);
         }
+    });
+});
+
+describe("detectDrivingDynamics", () => {
+    const relative = (unixSeconds: number): number => unixSeconds - 100;
+
+    it("reports signed acceleration and turn rate on the caller's axis", () => {
+        const speedingUp = [
+            rec({ unixSeconds: 100, speedMs: 10, bearingDeg: 350 }),
+            rec({ unixSeconds: 101, speedMs: 12, bearingDeg: 10 }),
+            rec({ unixSeconds: 102, speedMs: 14, bearingDeg: 30 }),
+        ];
+        const spans = detectDrivingDynamics(speedingUp, relative);
+        expect(spans.map((span) => [span.startSec, span.endSec])).toEqual([
+            [0, 1],
+            [1, 2],
+        ]);
+        for (const span of spans) {
+            expect(span.accelMs2).toBeCloseTo(2, 5);
+            expect(span.turnRateDegPerSec, "the turn crosses north by the short arc").toBeCloseTo(20, 5);
+        }
+        const slowingDown = [rec({ unixSeconds: 100, speedMs: 12 }), rec({ unixSeconds: 101, speedMs: 9 })];
+        expect(detectDrivingDynamics(slowingDown, relative)[0]!.accelMs2, "slowing down is negative").toBe(-3);
+    });
+
+    it("averages a one-second flicker with its neighbours", () => {
+        const speeds = [20, 20, 20, 21, 20, 20, 20];
+        const records = speeds.map((speedMs, i) => rec({ unixSeconds: 100 + i, speedMs }));
+        const spans = detectDrivingDynamics(records, relative);
+        const peak = Math.max(...spans.map((span) => Math.abs(span.accelMs2)));
+        expect(peak, "the 1 m/s^2 step is spread over the window").toBeLessThan(0.5);
+        expect(peak).toBeGreaterThan(0);
+    });
+
+    it("measures high-rate tracks over spans of about a second", () => {
+        const records: GpsRecord[] = [];
+        for (let i = 0; i <= 20; i++) records.push(rec({ unixSeconds: 100 + i * 0.1, speedMs: 10 + i * 0.1 }));
+        const spans = detectDrivingDynamics(records, relative);
+        expect(spans).toHaveLength(2);
+        for (const span of spans) {
+            expect(span.endSec - span.startSec, "span length").toBeCloseTo(1, 5);
+            expect(span.accelMs2).toBeCloseTo(1, 5);
+        }
+    });
+
+    it("leaves holes at missing fixes and long pauses", () => {
+        const records = [
+            rec({ unixSeconds: 100, speedMs: 10 }),
+            rec({ unixSeconds: 101, speedMs: 11 }),
+            rec({ unixSeconds: 102, speedMs: 0, active: false }),
+            rec({ unixSeconds: 103, speedMs: 11 }),
+            rec({ unixSeconds: 104, speedMs: 12 }),
+            rec({ unixSeconds: 120, speedMs: 20 }),
+            rec({ unixSeconds: 121, speedMs: 21 }),
+        ];
+        const spans = detectDrivingDynamics(records, relative);
+        expect(spans.map((span) => [span.startSec, span.endSec])).toEqual([
+            [0, 1],
+            [3, 4],
+            [20, 21],
+        ]);
+    });
+
+    it("averages on the recording clock, not on a time-lapse axis", () => {
+        // A 3 s brake at -3 m/s^2 inside a steady drive, played back at 30x.
+        const speeds = [...Array<number>(30).fill(20), 17, 14, 11, ...Array<number>(30).fill(11)];
+        const records = speeds.map((speedMs, i) => rec({ unixSeconds: 100 + i, speedMs }));
+        const timeLapse = (unixSeconds: number): number => (unixSeconds - 100) / 30;
+        const spans = detectDrivingDynamics(records, timeLapse);
+        const hardest = Math.min(...spans.map((span) => span.accelMs2));
+        expect(hardest, "the brake keeps its strength").toBeLessThan(-2);
+        expect(spans[1]!.endSec - spans[1]!.startSec, "spans still land on the footage axis").toBeCloseTo(1 / 30, 5);
+    });
+
+    it("does not average across a pause the footage axis drops", () => {
+        // A brake runs into the end of one clip and a speed-up starts the next
+        // one 100 s later; the footage axis joins the two clips at 5 s.
+        const before = [20, 20, 20, 20, 17, 14].map((speedMs, i) => rec({ unixSeconds: 100 + i, speedMs }));
+        const after = [14, 17, 20, 20, 20, 20].map((speedMs, i) => rec({ unixSeconds: 205 + i, speedMs }));
+        const footage = (unixSeconds: number): number => {
+            if (unixSeconds < 105) return unixSeconds - 100;
+            return unixSeconds < 205 ? 5 : unixSeconds - 200;
+        };
+        const spans = detectDrivingDynamics([...before, ...after], footage);
+        const brakeEnd = spans.find((span) => span.endSec === 5)!;
+        const speedUpStart = spans.find((span) => span.startSec === 5)!;
+        expect(brakeEnd.accelMs2, "the speed-up after the pause does not soften the brake").toBeCloseTo(-3, 5);
+        expect(speedUpStart.accelMs2, "the brake before the pause does not soften the speed-up").toBeCloseTo(3, 5);
+    });
+
+    it("reads no turning below the speed where GPS bearing is meaningful", () => {
+        const records = [
+            rec({ unixSeconds: 100, speedMs: 1, bearingDeg: 0 }),
+            rec({ unixSeconds: 101, speedMs: 1, bearingDeg: 120 }),
+        ];
+        expect(detectDrivingDynamics(records, relative)[0]!.turnRateDegPerSec).toBe(0);
     });
 });

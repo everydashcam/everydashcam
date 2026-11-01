@@ -1,7 +1,10 @@
-// Mini-progress scrubber (top row of the timeline stack): fill, thumb,
-// hover-tooltip with a frame preview, drag-to-seek, keyboard arrows. Also owns
+// Seeking from the timeline: the whole-trip row on top of the stack (thumb,
+// hover-tooltip with a frame preview, drag-to-seek, keyboard arrows, and the
+// pan gesture on its zoom-window frame) and the playhead grip, which drags the
+// current moment at the zoom window's precision. Also owns
 // updatePlayerProgressUi (the per-timeupdate UI sync) because it writes to the
-// same DOM nodes.
+// same DOM nodes. Zoom-window state and the frame's edge handles belong to
+// chart.ts.
 //
 // Depends on the playback core only through two callables passed at init:
 // getTripCurrentTime() and seekTripTime(sec). Keeps the cycle one-directional
@@ -11,11 +14,17 @@
 import { getDateLocale, t } from "../i18n/index.js";
 import { contentToFrame, frameMediaOffset, pickFrameChannel } from "../trips.js";
 import {
+    beginTimelineWindowGesture,
+    finishTimelineWindowGesture,
     getTimelineView,
+    getTimelineZoomWindow,
+    isOverOverviewThumb,
+    overviewSecAtClientX,
+    panTimelineWindowTo,
+    revealSecInTimelineWindow,
     setPlayerCursorRelSec,
     timelineFracToSec,
     timelineSecToFracInView,
-    type TimelineView,
 } from "./chart.js";
 import { dom } from "./dom.js";
 import { formatTime } from "./format.js";
@@ -54,14 +63,12 @@ export function updatePlayerProgressUi(): void {
         return;
     }
     const cur = getTripCurrentTimeFn();
-    const view = getTimelineView();
     const currentTime = formatTime(cur);
     if (dom.playerBar.current.textContent !== currentTime) dom.playerBar.current.textContent = currentTime;
-    // Single playhead DOM overlay spans chart canvas + ruler + strip; one
-    // visual element, no risk of misalignment between chart-drawn line and
-    // strip DOM line.
-    setPlayerCursorRelSec(cur, view);
-    updateMiniProgress(cur, view, currentTime);
+    // Single playhead DOM overlay spans ruler + chart; one visual element, no
+    // risk of misalignment between a chart-drawn line and a DOM line.
+    setPlayerCursorRelSec(cur, getTimelineView());
+    updateMiniProgress(cur, activeTrip()?.timeline.contentDurationSec ?? null, currentTime);
 }
 
 let shownProgressTime: string | null = null;
@@ -69,24 +76,17 @@ let shownProgressTotal: string | null = null;
 let shownProgressLocale: string | null = null;
 
 /**
- * Updates the seek thumb position. null resets to 0. The bar maps the current
- * timeline window (chart zoom) onto its own width, inset by the timeline gutter
- * (chart plot area, or the synthetic edge gutter when the chart is hidden - see
- * getTimelineView) so the thumb lines up with the playhead and ruler above it.
- * Cheap - one style write, no computed-style read.
- *
- * The horizontal progress fill was dropped: it duplicated the vertical playhead
- * (the single position indicator) and the two drifted on each timeupdate. The
- * thumb sits exactly on the playhead via the shared timelineSecToFrac mapping.
+ * Updates the seek thumb position on the whole-trip row: the row maps the
+ * whole trip at every zoom level, so the thumb never leaves it. null resets to
+ * 0. Cheap - one style write, no computed-style read.
  */
 function updateMiniProgress(
     curSec: number | null,
-    view: TimelineView | null = getTimelineView(),
+    durationSec: number | null = activeTrip()?.timeline.contentDurationSec ?? null,
     currentTime: string | null = null,
 ): void {
     if (!dom.miniProgress) return;
-    const curFrac = curSec === null || !view ? null : timelineSecToFracInView(curSec, view);
-    if (!view || curFrac === null) {
+    if (curSec === null || durationSec === null || durationSec <= 0) {
         dom.miniProgressThumb.style.left = "0";
         dom.miniProgress.setAttribute("aria-valuenow", "0");
         dom.miniProgress.removeAttribute("aria-valuetext");
@@ -95,35 +95,37 @@ function updateMiniProgress(
         shownProgressLocale = null;
         return;
     }
-    const content = 1 - view.leftFrac - view.rightFrac;
+    const curFrac = Math.max(0, Math.min(1, curSec / durationSec));
     dom.miniProgressThumb.style.left = `${curFrac * 100}%`;
-    const posPct = content > 0 ? Math.round(((curFrac - view.leftFrac) / content) * 100) : 0;
-    dom.miniProgress.setAttribute("aria-valuenow", String(posPct));
+    dom.miniProgress.setAttribute("aria-valuenow", String(Math.round(curFrac * 100)));
     // The bare percentage is meaningless to a screen reader; announce a human
     // time instead ("4:03 of 12:40"). Its second-resolution text changes less
     // often than the subsecond playhead and needs no formatting between ticks.
-    const trip = activeTrip();
-    if (trip && curSec !== null) {
-        const cur = currentTime ?? formatTime(curSec);
-        const total = formatTime(trip.timeline.contentDurationSec);
-        const locale = getDateLocale();
-        if (cur === shownProgressTime && total === shownProgressTotal && locale === shownProgressLocale) return;
-        shownProgressTime = cur;
-        shownProgressTotal = total;
-        shownProgressLocale = locale;
-        dom.miniProgress.setAttribute(
-            "aria-valuetext",
-            t("player.progress.position", {
-                cur,
-                total,
-            }),
-        );
-    }
+    const cur = currentTime ?? formatTime(curSec);
+    const total = formatTime(durationSec);
+    const locale = getDateLocale();
+    if (cur === shownProgressTime && total === shownProgressTotal && locale === shownProgressLocale) return;
+    shownProgressTime = cur;
+    shownProgressTotal = total;
+    shownProgressLocale = locale;
+    dom.miniProgress.setAttribute(
+        "aria-valuetext",
+        t("player.progress.position", {
+            cur,
+            total,
+        }),
+    );
 }
 
+/** Movement (CSS px) that turns a press into a drag. Below it the press is a
+ *  click: a press on the zoom-window frame seeks instead of panning, and a
+ *  press on the playhead grip seeks to its spot. */
+const DRAG_THRESHOLD_PX = 3;
+
 /**
- * Wires click/drag-to-seek + keyboard arrows on the mini-progress scrubber.
- * Listeners are registered once - they no-op when state.active is null.
+ * Wires seeking from the whole-trip row (click/drag, frame pan, keyboard
+ * arrows on its track) and from the playhead grip. Listeners are registered
+ * once - they no-op when state.active is null.
  *
  * `deps` carries the playback callables; saved into module-level slots so
  * updatePlayerProgressUi (called from outside the closure) can reach
@@ -138,20 +140,14 @@ export function initPlayerScrubber(deps: {
 
     const bar = dom.miniProgress;
     if (!bar) return;
+    // The track's whole row: the thumb, the zoom-window frame and its handles
+    // sit over the track, so pointer gestures are read on the row itself.
+    const row = dom.playerChartOverview;
     const tooltip = dom.miniProgressTooltip;
     // Re-parent the tooltip to <body> so .player-chart's overflow:hidden cannot
-    // clip it when the timeline stack is compact (chart/strip hidden). It is
+    // clip it when the timeline stack is compact (chart hidden). It is
     // position:fixed; showTooltipAt sets its viewport coords.
     if (tooltip) document.body.appendChild(tooltip);
-
-    /** Trip-relative seconds for a given clientX via the shared mapping, so a
-     *  click on the (possibly zoomed) bar seeks inside the visible window.
-     *  Null when no trip is active. */
-    function relSecAtClientX(clientX: number): number | null {
-        const rect = bar.getBoundingClientRect();
-        if (rect.width <= 0) return null;
-        return timelineFracToSec((clientX - rect.left) / rect.width);
-    }
 
     // Frame preview in the tooltip canvas. Idle-debounced 180ms so a fast
     // scrub does not spawn N synchronous decoders. Race-token guards against
@@ -240,11 +236,11 @@ export function initPlayerScrubber(deps: {
         }
     }
 
-    /** Tooltip position + label. clientX clamped to bar; horizontal position
-     *  clamped so it doesn't fly off the edge on a short bar. */
-    function showTooltipAt(clientX: number): void {
+    /** Tooltip position + label for the moment `sec` (by default the one under
+     *  clientX on the whole-trip row). The horizontal position is clamped so it
+     *  doesn't fly off the edge on a short bar. */
+    function showTooltipAt(clientX: number, sec: number | null = overviewSecAtClientX(clientX)): void {
         if (!tooltip) return;
-        const sec = relSecAtClientX(clientX);
         if (sec === null) {
             tooltip.hidden = true;
             return;
@@ -252,8 +248,8 @@ export function initPlayerScrubber(deps: {
         if (dom.miniProgressTime) dom.miniProgressTime.textContent = formatTime(sec);
         tooltip.hidden = false;
         // Fixed-positioned in viewport coords (the tooltip lives on <body>).
-        // Center on the cursor, clamp to the viewport, sit just above the bar.
-        const barRect = bar.getBoundingClientRect();
+        // Center on the cursor, clamp to the viewport, sit just above the row.
+        const barRect = row.getBoundingClientRect();
         const ttHalf = tooltip.offsetWidth / 2;
         const clampedX = Math.max(ttHalf + 4, Math.min(window.innerWidth - ttHalf - 4, clientX));
         tooltip.style.left = `${clampedX}px`;
@@ -272,52 +268,196 @@ export function initPlayerScrubber(deps: {
         lastThumbSec = -1;
     }
 
-    let dragging = false;
+    // Gestures on the row, by where the press lands:
+    //  - on the thumb: drag to seek; a zoom window follows so the moment stays
+    //    in view;
+    //  - inside the zoom-window frame (zoomed only): drag to pan the window,
+    //    release without moving to seek there;
+    //  - anywhere else, including the whole row at full view: seek there and
+    //    keep dragging to scrub; outside the frame the window jumps to it.
+    // The frame's edge handles are chart.ts's (resize, tap = seek); they leave
+    // a press on the thumb to this handler.
+    type RowGesture = "scrub" | "pan";
+    let gesture: RowGesture | null = null;
+    let gestureStartX = 0;
+    let gestureMoved = false;
+    let panGrabOffsetSec = 0;
     // Drag moves seek to key frames, so a long-GOP 4K clip does not decode up
     // to every intermediate frame; the release seeks exactly to the last spot.
     let lastDragSec: number | null = null;
+
+    /** Seeks to `sec` from the whole-trip row. A zoom window is panned first so
+     *  the moment is in view - the pan also ends a clip preview's playback
+     *  bounds, which would otherwise clamp the seek back into the old window. */
+    function seekFromRow(sec: number, placement: "nearest" | "center", precision?: SeekPrecision): void {
+        revealSecInTimelineWindow(sec, placement);
+        seekTripTimeFn(sec, precision);
+    }
+
     // The bar spans the full row width, so a scrub started at the screen edge
     // is also an iOS swipe-back candidate. Seek runs on pointerdown (below),
     // not on click, so cancelling the edge touchstart loses nothing.
-    suppressEdgeSwipeNav(bar);
-    attachPointerDrag(bar, {
+    suppressEdgeSwipeNav(row);
+    attachPointerDrag(row, {
         onStart: (e) => {
             if (!state.active) return false;
-            dragging = true;
-            bar.classList.add("is-dragging");
-            const sec = relSecAtClientX(e.clientX);
-            if (sec !== null) seekTripTimeFn(sec);
+            const sec = overviewSecAtClientX(e.clientX);
+            const zoom = getTimelineZoomWindow();
+            if (sec === null || !zoom) return false;
+            if (!beginTimelineWindowGesture(e.pointerId)) return false;
+            gestureStartX = e.clientX;
+            gestureMoved = false;
             lastDragSec = null;
+            if (isOverOverviewThumb(e.clientX)) {
+                // Grabbing the thumb does not jump it to the pointer.
+                gesture = "scrub";
+            } else if (!zoom.isFullView && sec >= zoom.startSec && sec <= zoom.endSec) {
+                gesture = "pan";
+                panGrabOffsetSec = sec - zoom.startSec;
+                row.classList.add("is-panning");
+                return true;
+            } else {
+                gesture = "scrub";
+                seekFromRow(sec, "center");
+            }
+            row.classList.add("is-dragging");
             showTooltipAt(e.clientX);
             return true;
         },
         onMove: (e) => {
-            showTooltipAt(e.clientX);
-            const sec = relSecAtClientX(e.clientX);
+            if (!gestureMoved && Math.abs(e.clientX - gestureStartX) < DRAG_THRESHOLD_PX) return;
+            gestureMoved = true;
+            const sec = overviewSecAtClientX(e.clientX);
             if (sec === null) return;
+            if (gesture === "pan") {
+                panTimelineWindowTo(sec - panGrabOffsetSec);
+                return;
+            }
+            showTooltipAt(e.clientX, sec);
             lastDragSec = sec;
-            seekTripTimeFn(sec, "keyframe");
+            seekFromRow(sec, "nearest", "keyframe");
         },
         onEnd: (e, reason) => {
-            dragging = false;
-            bar.classList.remove("is-dragging");
-            if (lastDragSec !== null) seekTripTimeFn(lastDragSec);
+            const wasPan = gesture === "pan";
+            gesture = null;
+            row.classList.remove("is-dragging", "is-panning");
+            if (wasPan) {
+                // A click inside the frame is a seek, not a pan.
+                const sec = overviewSecAtClientX(e.clientX);
+                if (!gestureMoved && reason === "up" && sec !== null) seekTripTimeFn(sec);
+            } else if (lastDragSec !== null) {
+                seekTripTimeFn(lastDragSec);
+            }
             lastDragSec = null;
+            finishTimelineWindowGesture();
             // Mouse keeps its hover preview after a normal release.
-            if (e.pointerType !== "mouse" || reason !== "up") hideTooltip();
+            if (e.pointerType !== "mouse" || reason !== "up" || wasPan) hideTooltip();
         },
     });
-    bar.addEventListener("pointermove", (e) => {
-        if (!dragging) showTooltipAt(e.clientX);
+
+    /** Pointer affordance for what a press would do at clientX. */
+    function syncRowCursor(clientX: number): void {
+        const sec = overviewSecAtClientX(clientX);
+        const zoom = getTimelineZoomWindow();
+        const overThumb = isOverOverviewThumb(clientX);
+        const overFrame =
+            !overThumb &&
+            sec !== null &&
+            zoom !== null &&
+            !zoom.isFullView &&
+            sec >= zoom.startSec &&
+            sec <= zoom.endSec;
+        row.classList.toggle("is-over-thumb", overThumb);
+        row.classList.toggle("is-over-frame", overFrame);
+    }
+
+    row.addEventListener("pointermove", (e) => {
+        if (gesture) return;
+        syncRowCursor(e.clientX);
+        // Hovering the frame previews where a click would seek; a pan hides it.
+        showTooltipAt(e.clientX);
     });
-    bar.addEventListener("pointerenter", (e) => {
+    row.addEventListener("pointerenter", (e) => {
         // Touch events give pointerdown without enter, but on mouse enter the
         // tooltip should pre-appear.
         if (e.pointerType === "mouse") showTooltipAt(e.clientX);
     });
-    bar.addEventListener("pointerleave", () => {
-        if (!dragging) hideTooltip();
+    row.addEventListener("pointerleave", () => {
+        row.classList.remove("is-over-thumb", "is-over-frame");
+        if (!gesture) hideTooltip();
     });
+
+    // The playhead grip: drag the current moment across the ruler and chart at
+    // the zoom window's precision. The whole-trip row cannot give that - its
+    // thumb moves over the whole trip.
+    const grip = dom.playerChartPlayheadGrip;
+    let gripStartX = 0;
+    let gripMoved = false;
+    let gripLastSec: number | null = null;
+    /** Trip-seconds under clientX on the zoom window, clamped into it. */
+    function windowSecAtClientX(clientX: number): number | null {
+        const rect = dom.playerChartEl.getBoundingClientRect();
+        if (rect.width <= 0) return null;
+        return timelineFracToSec((clientX - rect.left) / rect.width);
+    }
+    /** A click on the grip is a click on the chart under it. The playhead often
+     *  rests on an event marker - a jump to an event lands there - and the grip
+     *  must not hide it: replaying the click on the element beneath lets the
+     *  marker open its popup and an event lane snap to its event, as anywhere
+     *  else on the chart. */
+    function clickChartUnderGrip(clientX: number, clientY: number): void {
+        const under = document.elementsFromPoint(clientX, clientY).find((el) => el !== grip);
+        if (under && dom.playerChartEl.contains(under)) {
+            under.dispatchEvent(
+                new MouseEvent("click", { bubbles: true, cancelable: true, view: window, clientX, clientY }),
+            );
+            return;
+        }
+        const sec = windowSecAtClientX(clientX);
+        if (sec !== null) seekTripTimeFn(sec);
+    }
+    suppressEdgeSwipeNav(grip);
+    attachPointerDrag(grip, {
+        onStart: (e) => {
+            if (!state.active) return false;
+            e.preventDefault();
+            gripStartX = e.clientX;
+            gripMoved = false;
+            gripLastSec = null;
+            grip.classList.add("is-dragging");
+            // The chart's hover tooltip would trail the drag next to the frame
+            // preview; close it for the duration.
+            dom.chartCanvas.dispatchEvent(new MouseEvent("mouseleave"));
+            return true;
+        },
+        onMove: (e) => {
+            if (!gripMoved && Math.abs(e.clientX - gripStartX) < DRAG_THRESHOLD_PX) return;
+            gripMoved = true;
+            const sec = windowSecAtClientX(e.clientX);
+            const view = getTimelineView();
+            if (sec === null || !view) return;
+            gripLastSec = sec;
+            grip.style.left = `${timelineSecToFracInView(sec, view) * 100}%`;
+            showTooltipAt(e.clientX, sec);
+            seekTripTimeFn(sec, "keyframe");
+        },
+        onEnd: (e, reason) => {
+            grip.classList.remove("is-dragging");
+            hideTooltip();
+            if (gripMoved && gripLastSec !== null) {
+                seekTripTimeFn(gripLastSec);
+            } else if (reason === "up") {
+                clickChartUnderGrip(e.clientX, e.clientY);
+            }
+            gripLastSec = null;
+            updatePlayerProgressUi();
+        },
+    });
+    // The gesture above already seeked or replayed the click on the chart; the
+    // native click must not reach the chart a second time (on the MSE pipeline
+    // every seek restarts the feed).
+    grip.addEventListener("click", (e) => e.stopPropagation());
+
     // Keyboard accessibility. Arrows seek by the user's configured step (Shift =
     // long step), PageUp/PageDown = long step, Home/End jump to trip ends - the
     // same step model as the global hotkeys, so focus state no longer silently

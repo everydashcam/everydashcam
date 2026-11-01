@@ -194,7 +194,7 @@ const TRACK_ANCHORS = [
 
 // Cruise around 90 km/h with small, non-periodic-looking corrections. The hero
 // trip then has one deliberate story beat: a hard stop for the deer followed by
-// a measured acceleration. This drives the chart, telemetry, event strip and
+// a measured acceleration. This drives the chart, telemetry, driving lanes and
 // distance along the route together instead of painting repeated sine waves.
 const CRUISE_SPEED_MS = 25;
 

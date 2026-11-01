@@ -121,17 +121,14 @@ test.describe("no-GPS export gate", () => {
         await expect(page.locator("#player-map-overlay")).toBeVisible();
     });
 
-    test("timeline navigator stays at the bottom below the playhead", async ({ page }) => {
+    test("timeline navigator stays on top above the playhead", async ({ page }) => {
         const chart = await boxOf(page, "#player-chart");
         const navigatorRow = await boxOf(page, "#player-chart-zoom-row");
         const playhead = await boxOf(page, "#player-chart-playhead");
 
-        expect(
-            Math.abs(navigatorRow.y + navigatorRow.height - (chart.y + chart.height)),
-            "navigator row stays anchored to the timeline bottom",
-        ).toBeLessThanOrEqual(1);
-        expect(playhead.y + playhead.height, "the current-time line stops above the navigator row").toBeLessThanOrEqual(
-            navigatorRow.y + 1,
+        expect(navigatorRow.y - chart.y, "navigator row stays at the timeline top").toBeLessThanOrEqual(2);
+        expect(playhead.y, "the current-time line starts below the navigator row").toBeGreaterThanOrEqual(
+            navigatorRow.y + navigatorRow.height - 1,
         );
     });
 

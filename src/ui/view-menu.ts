@@ -4,7 +4,9 @@
 // on/off preference remains persisted in localStorage["dc.viewer.panels"].
 //
 // Toggling a panel sets the `hidden` attribute on its host element; layout
-// reflows via existing CSS grid/flex rules (no JS layout math here).
+// reflows via existing CSS grid/flex rules (no JS layout math here). A panel
+// drawn inside another one (the events layer inside the chart) has no element
+// of its own: its owner reads isPanelShown and redraws on notifications.
 //
 
 import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
@@ -23,6 +25,11 @@ export type MapViewMode = "off" | "mini" | "large";
 export type ViewPanels = Record<Panel, boolean>;
 
 const DEFAULT_PANELS: ViewPanels = { chart: true, strip: true, map: true, readout: true };
+
+/** Panels drawn inside another panel. The events layer ("strip", the stored
+ *  name of the old event strip) is painted on the chart canvas, so it cannot be
+ *  shown, or toggled, while the chart is hidden. */
+const HOST_PANEL: Partial<Record<Panel, Panel>> = { strip: "chart" };
 
 /** In-memory mirror of the persisted state. */
 let currentPanels: ViewPanels = { ...DEFAULT_PANELS };
@@ -118,6 +125,18 @@ export interface ViewMenuOptions {
  *  choice. */
 const availability: Record<Panel, boolean> = { chart: true, strip: true, map: true, readout: true };
 
+/** Whether the user can toggle the panel now: its data is available and the
+ *  panel it is drawn in, if any, is shown. */
+function isPanelUsable(panel: Panel): boolean {
+    const host = HOST_PANEL[panel];
+    return availability[panel] && (host === undefined || isPanelShown(host));
+}
+
+/** Final visibility: the user's preference while the panel is usable. */
+export function isPanelShown(panel: Panel): boolean {
+    return currentPanels[panel] && isPanelUsable(panel);
+}
+
 /** Module-level options ref set by initViewMenu. setPanelAvailable needs it
  *  to re-apply visibility on availability change (no need to wait for the
  *  next user action). null before init - setPanelAvailable still updates
@@ -128,7 +147,7 @@ let currentOpts: ViewMenuOptions | null = null;
 /** Sets a panel's visibility from outside the menu (e.g. mini-map close-X
  *  click) and syncs the checkbox + persisted state. No-op if unavailable. */
 export function setPanelVisible(panel: Panel, visible: boolean): void {
-    if (!availability[panel]) return;
+    if (!isPanelUsable(panel)) return;
     if (panel === "map") {
         setMapViewModePreference(visible ? (preferredMapMode === "large" ? "large" : "mini") : "off");
         return;
@@ -166,9 +185,17 @@ function notifyListeners(): void {
 export function setPanelAvailable(panel: Panel, available: boolean): void {
     if (availability[panel] === available) return;
     availability[panel] = available;
-    const row = document.querySelector<HTMLElement>(`[data-panel="${panel}"]`);
-    if (row) {
-        if (available) {
+    syncPanelRowsUsability();
+    if (currentOpts) applyPanels(currentOpts);
+}
+
+/** Dims the rows of panels the user cannot toggle right now. */
+function syncPanelRowsUsability(): void {
+    for (const panel of PANELS) {
+        const row = document.querySelector<HTMLElement>(`[data-panel="${panel}"]`);
+        if (!row) continue;
+        const usable = isPanelUsable(panel);
+        if (usable) {
             row.removeAttribute("aria-disabled");
             row.removeAttribute("data-disabled");
         } else {
@@ -177,11 +204,10 @@ export function setPanelAvailable(panel: Panel, available: boolean): void {
         }
         if (panel === "map") {
             row.querySelectorAll<HTMLButtonElement>("[data-map-mode]").forEach((button) => {
-                button.disabled = !available;
+                button.disabled = !usable;
             });
         }
     }
-    if (currentOpts) applyPanels(currentOpts);
 }
 
 /**
@@ -221,7 +247,7 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
     // setPanelVisible too; the explicit guard here is for early exit before
     // computing the new value (no DOM lookup, no microtask churn).
     function toggle(panel: Panel): void {
-        if (!availability[panel]) return;
+        if (!isPanelUsable(panel)) return;
         if (panel === "map" && mapModeRequestHandler) {
             mapModeRequestHandler(currentMapMode === "off" ? "mini" : "off");
             return;
@@ -312,8 +338,10 @@ function applyPanels(opts: ViewMenuOptions): void {
     // trip -> mini-map node hidden even if user previously toggled it on).
     for (const panel of PANELS) {
         const el = opts.panels[panel];
-        if (el) el.hidden = !(currentPanels[panel] && availability[panel]);
+        if (el) el.hidden = !isPanelShown(panel);
     }
+    // Hiding the chart also disables the panels drawn inside it.
+    syncPanelRowsUsability();
     // Sync checkboxes in the popover (aria-checked + visual tick via CSS).
     opts.popover.querySelectorAll<HTMLButtonElement>(".view-menu-row").forEach((row) => {
         const panel = row.dataset.panel as Panel | undefined;
