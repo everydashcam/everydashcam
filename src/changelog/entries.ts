@@ -28,6 +28,38 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-01.5",
+        category: "support",
+        text: {
+            en: "Added support for GKU 600 Pro.",
+            ru: "Добавлена поддержка GKU 600 Pro.",
+            de: "Unterstützung für GKU 600 Pro hinzugefügt.",
+            es: "Se ha añadido compatibilidad con GKU 600 Pro.",
+            fr: "Ajout de la prise en charge de GKU 600 Pro.",
+            pl: "Dodano obsługę GKU 600 Pro.",
+            pt: "Adicionado suporte para GKU 600 Pro.",
+            zh: "新增对 GKU 600 Pro 的支持。",
+            ja: "GKU 600 Proに対応しました。",
+            ko: "GKU 600 Pro 지원이 추가됐어요.",
+        },
+    },
+    {
+        id: "2026-11-01.4",
+        category: "support",
+        text: {
+            en: "Added GPS support for another 70mai A800 log format.",
+            ru: "Добавлена поддержка GPS ещё одного формата логов 70mai A800.",
+            de: "GPS-Unterstützung für ein weiteres Logformat der 70mai A800 hinzugefügt.",
+            es: "Añadida compatibilidad con el GPS de otro formato de registro de 70mai A800.",
+            fr: "Ajout de la prise en charge du GPS d’un autre format de journal de la 70mai A800.",
+            pl: "Dodano obsługę GPS kolejnego formatu logów 70mai A800.",
+            pt: "Adicionado suporte a GPS para outro formato de registro da 70mai A800.",
+            zh: "新增对 70mai A800 另一种日志格式的 GPS 支持。",
+            ja: "70mai A800 の別形式のログの GPS に対応しました。",
+            ko: "70mai A800의 다른 로그 형식 GPS 지원을 추가했어요.",
+        },
+    },
+    {
         id: "2026-11-01.3",
         category: "improvement",
         text: {

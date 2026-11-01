@@ -9,6 +9,8 @@ release tag. Localized texts ship inside the app (the "What's new" panel).
 
 ## 2026-11-01
 
+- **New camera support:** Added support for GKU 600 Pro.
+- **New camera support:** Added GPS support for another 70mai A800 log format.
 - **Improved:** Updated the trip list and speed and event chart interface.
 - **Improved:** Following moving objects and automatic plate and face hiding are faster.
 - **Improved:** Time-lapse exports are faster.
