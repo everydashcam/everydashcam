@@ -48,6 +48,7 @@
     --dc-yellow: #f5c518; /* warn, mtime fallback */
     --dc-green: #1fa463; /* ok, start-marker */
     --dc-blue: #1aa7ec; /* info, low-speed end of gradient */
+    --dc-violet: #8b5cf6; /* event-recording spans on the timeline */
 
     /* ----- SPEED-GRADIENT (track polyline colored by speed) ----- */
     --dc-track-1: #1aa7ec; /* slow */

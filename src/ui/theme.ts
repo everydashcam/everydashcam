@@ -132,11 +132,10 @@ interface ThemeColors {
     inferredTurn: string;
     inferredAccel: string;
     // Recording-mode timeline bands (chart.ts): low-alpha full-height tints
-    // behind the plot marking non-normal footage. event = red/danger,
-    // parking = cool blue, manual = neutral grey. Alpha is baked in at ~10% so
-    // the speed curve, gridlines, hover cursor and event markers stay readable
-    // on top. Composed from the same --dc-* tokens as the rest, so both palettes
-    // flip automatically on theme change (no new CSS tokens needed).
+    // behind the plot marking non-normal footage. event = violet, parking =
+    // cool blue, manual = neutral grey. Alpha is baked in at ~10% so the speed
+    // curve, gridlines, hover cursor and event markers stay readable on top.
+    // Composed from --dc-* tokens, read again on every theme change.
     bandEvent: string;
     bandParking: string;
     bandManual: string;
@@ -184,9 +183,11 @@ export function themeColors(): ThemeColors {
         inferredTurn: getCssVar("--ev-turn"),
         inferredAccel: getCssVar("--ev-accel"),
         // ~10% alpha (0x1a = 26/255): a full-height wash that reads as a tint,
-        // not a fill. Reuses the danger red / info blue / dim-fg grey so the
-        // bands sit in the existing palette and follow the theme flip.
-        bandEvent: withAlpha(getCssVar("--dc-red"), "1a"),
+        // not a fill. Event recordings take violet, the one hue the timeline
+        // leaves free: red is braking in the driving lanes, orange the |G|
+        // curve and the selection tint. Parking reuses the info blue, manual
+        // the dim-fg grey.
+        bandEvent: withAlpha(getCssVar("--dc-violet"), "1a"),
         bandParking: withAlpha(getCssVar("--dc-blue"), "1a"),
         bandManual: withAlpha(getCssVar("--fg-dim"), "1a"),
     };
