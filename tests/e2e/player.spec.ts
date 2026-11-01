@@ -1207,6 +1207,24 @@ test.describe("player", () => {
         await toggle.click();
         await expect(sidebar).toBeVisible();
         await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+        // Returning from the drawer layout restores Mute after the toggle,
+        // keeping the trip-list control at the edge of the player bar.
+        await page.setViewportSize(MOBILE);
+        await expect(toggle).toBeHidden();
+        await page.setViewportSize(DESKTOP);
+        await expect(toggle).toBeVisible();
+        await expect
+            .poll(async () => {
+                const toggleBox = await boxOf(page, "#sidebar-toggle");
+                const playerBarBox = await boxOf(page, "#player-bar");
+                return Math.abs(toggleBox.x - playerBarBox.x);
+            })
+            .toBeLessThan(1);
+        await toggle.click();
+        await expect(sidebar).toBeHidden();
+        await toggle.click();
+        await expect(sidebar).toBeVisible();
     });
 
     test("map divider drag resizes the expanded map pane", async ({ page }) => {

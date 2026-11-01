@@ -80,7 +80,7 @@ export function initPlayerBarOverflow() {
         if (mobileLayout.matches) {
             bar.querySelector(".player-spacer")?.after(muteWrap, loop);
         } else {
-            info.prepend(muteWrap);
+            dom.sidebarToggle.after(muteWrap);
             info.append(loop);
         }
     };

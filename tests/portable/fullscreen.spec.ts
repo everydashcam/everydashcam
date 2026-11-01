@@ -38,6 +38,7 @@ test("file playback keeps its context and remembers panels below the video after
     const player = page.locator("#player-wrap");
     await page.locator("#player-fullscreen").click();
     await expect(player).toHaveClass(/player-expanded/);
+    await expect(page.locator("#sidebar-toggle")).toBeHidden();
     await expect(player).not.toHaveClass(/player-panels-below/);
     await page.locator("#player-view-menu").click();
     const option = page.locator("[data-fullscreen-panels-below]");
@@ -55,6 +56,7 @@ test("file playback keeps its context and remembers panels below the video after
     expect(await page.evaluate(() => window.__everydashcam.state.composition)).toEqual(composition);
     await page.keyboard.press("Escape");
     await expect(player).not.toHaveClass(/player-expanded|player-panels-below/);
+    await expect(page.locator("#sidebar-toggle")).toBeVisible();
     await expect(page.locator("#player-fullscreen")).toBeFocused();
     expect(await masterVideoTime(page)).toBeCloseTo(time, 2);
     await page.locator("#player-fullscreen").click();

@@ -1565,13 +1565,15 @@
 /* The trip-list toggle in the player bar is desktop-only: the mobile layouts
    open the list as a drawer from the burger. Export mode slides the sidebar
    away on its own (export-panel.css) and ignores the collapsed class, so the
-   toggle could not bring the list back and hides for the duration. */
+   toggle could not bring the list back and hides for the duration. Fullscreen
+   also leaves the sidebar outside the visible player subtree. */
 @media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
     .player-btn.sidebar-toggle {
         display: none;
     }
 }
-body.export-mode .sidebar-toggle {
+body.export-mode .sidebar-toggle,
+.player-expanded .sidebar-toggle {
     display: none;
 }
 

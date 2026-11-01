@@ -27,6 +27,27 @@ for (const mode of ["native", "fallback"] as const) {
         await pausePlayback(page);
         await verifyExpandedNotifications(page, mode === "native");
     });
+
+    test(`the trip-list toggle stays hidden in ${mode} fullscreen`, async ({ page }) => {
+        if (mode === "fallback") await disableNativeFullscreen(page);
+        await presetLocalStorage(page);
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+        await pausePlayback(page);
+        const toggle = page.locator("#sidebar-toggle");
+        await toggle.click();
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        await activateFullscreenEntry(page);
+        await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
+        await expect(toggle).toBeHidden();
+        await page.locator("#player-fullscreen-exit").click();
+        await expect(page.locator("#player-wrap")).not.toHaveClass(/player-expanded/);
+        await expect(toggle).toBeVisible();
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        await toggle.click();
+        await expect(page.locator("#sidebar")).toBeVisible();
+    });
 }
 
 async function startLoopingPlayback(page: Page): Promise<void> {
