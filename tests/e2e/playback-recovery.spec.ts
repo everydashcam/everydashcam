@@ -165,6 +165,40 @@ for (const locale of ["en", "ru"]) {
     });
 }
 
+test("restores the collapsed trip list when playback fails so another trip can be opened", async ({ page }) => {
+    await presetLocalStorage(page);
+    await installMseFailure(page);
+    await gotoApp(page, "en");
+    await loadTrip(page, join(fixtureDirectory, "single"));
+    await expect
+        .poll(() => page.locator("#player").evaluate((v: HTMLVideoElement) => v.readyState))
+        .toBeGreaterThanOrEqual(2);
+    await pausePlayback(page);
+    await page.locator("#folder-input").setInputFiles(SAMPLE_NOGPS);
+    await expect(page.locator("li.trip:not(.unindexed-note)")).toHaveCount(2);
+    await page.locator("#sidebar-toggle").click();
+    await expect(page.locator("#sidebar")).toBeHidden();
+    await page.evaluate(() => {
+        window.playbackRecoveryFault.remaining = 1;
+        window.playbackRecoveryFault.emitFailure();
+    });
+    await expect(page.locator(".viewer")).toHaveClass(/playback-failed/);
+    await expect(page.locator("#sidebar")).toBeVisible();
+    const nativeTrip = await page.evaluate(() =>
+        window.__everydashcam.state.trips.findIndex((trip) =>
+            trip.frames.some((frame) => frame.channels.front?.file.name.endsWith(".mp4")),
+        ),
+    );
+    expect(nativeTrip).toBeGreaterThanOrEqual(0);
+    await page.locator(`li.trip[data-trip-index="${nativeTrip}"] .trip-header`).click();
+    await expect(page.locator(".viewer")).not.toHaveClass(/playback-failed|codec-unsupported/);
+    await expect(page.locator("#sidebar")).toBeHidden();
+    await expect(page.locator("#sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
+    await page.locator("#sidebar-toggle").click();
+    await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(page.locator("#sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
+});
+
 test("retries a failed backward seek at its requested position instead of the old media time", async ({ page }) => {
     await presetLocalStorage(page);
     await installMseFailure(page);

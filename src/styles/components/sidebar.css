@@ -1545,9 +1545,11 @@
    mechanics as the export-mode slide-away (export-panel.css). Scoped to the
    complementary desktop media so it never touches the mobile drawer, which
    reuses the same .sidebar element with position:fixed.
+   Keep the list available while a placeholder hides the player and its toggle.
+   The user's collapsed choice resumes when playback becomes available again.
    ========================================================================= */
 @media (min-width: 768px) and (min-height: 501px) {
-    body.sidebar-collapsed main.layout {
+    body.sidebar-collapsed:has(.viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed)) main.layout {
         grid-template-columns: 0 0 minmax(0, 1fr);
     }
     /* visibility, NOT display:none: the viewer has no explicit grid-column
@@ -1557,8 +1559,8 @@
        focus and the a11y subtree; export-mode solves the same problem with
        transform+opacity. This media excludes the drawer layouts, so the
        fixed-position drawer styles never coexist with the collapse. */
-    body.sidebar-collapsed .sidebar,
-    body.sidebar-collapsed .sidebar-resize {
+    body.sidebar-collapsed:has(.viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed)) .sidebar,
+    body.sidebar-collapsed:has(.viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed)) .sidebar-resize {
         visibility: hidden;
     }
 }
@@ -1592,11 +1594,20 @@ body.export-mode .sidebar-toggle,
    no-WebGL notice pane reuses .map-expanded and must not cost the user the
    trip list. */
 @media (min-width: 768px) and (max-width: 1088px) and (min-height: 501px) {
-    body:not(.map-unavailable):has(.player-wrap.map-expanded) main.layout {
+    body:not(.map-unavailable):has(
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        main.layout {
         grid-template-columns: 0 0 minmax(0, 1fr);
     }
-    body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar,
-    body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar-resize {
+    body:not(.map-unavailable):has(
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        .sidebar,
+    body:not(.map-unavailable):has(
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        .sidebar-resize {
         visibility: hidden;
     }
     body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar-toggle {
