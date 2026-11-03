@@ -84,9 +84,6 @@ async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModul
     const hit = cached.get(key);
     if (hit) return hit;
     const pending = (async () => {
-        // Capability failures cannot be repaired by restarting WASM threads.
-        // Reject before loading ORT so they cannot poison its native runtime.
-        if (runtime === "webgpu") await requireDetectionWebGpu();
         const module = (
             runtime === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")
         ) as OrtModule;
@@ -117,6 +114,16 @@ export async function createOrtSession(
 ) {
     let ort: OrtModule | undefined;
     try {
+        // The asyncify bundle can also run CPU sessions. Check the requested
+        // provider before loading ORT, including when its module is cached;
+        // missing GPU capability cannot be repaired by restarting threads.
+        if (
+            options.executionProviders?.some(
+                (provider) => (typeof provider === "string" ? provider : provider.name) === "webgpu",
+            )
+        ) {
+            await requireDetectionWebGpu();
+        }
         ort = await loadOrt(runtime, assets);
         const model = Object.values(TRACKER_ASSETS.models).find(
             (asset) =>

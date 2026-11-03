@@ -5,32 +5,41 @@ import { createOrtSession, runOrtSession, SINGLE_THREAD_TRACKER_WORKER_NAME } fr
 
 afterEach(() => vi.unstubAllGlobals());
 
-it("rejects incompatible WebGPU before loading assets without trying a thread fallback", async () => {
-    vi.stubGlobal("crossOriginIsolated", true);
-    vi.stubGlobal("navigator", { hardwareConcurrency: 8, gpu: { requestAdapter: async () => ({}) } });
-    const fetch = vi.fn();
-    vi.stubGlobal("fetch", fetch);
-    await expect(
-        createOrtSession("webgpu", TRACKER_ASSETS.ort.webgpu, TRACKER_ASSETS.models.face.url, {
-            executionProviders: ["webgpu"],
-        }),
-    ).rejects.toMatchObject({ name: "WebGpuUnavailableError" });
-    expect(fetch).not.toHaveBeenCalled();
-});
+it.each(["webgpu", { name: "webgpu" }] as const)(
+    "rejects incompatible WebGPU provider %j before loading assets without trying a thread fallback",
+    async (provider) => {
+        vi.stubGlobal("crossOriginIsolated", true);
+        vi.stubGlobal("navigator", { hardwareConcurrency: 8, gpu: { requestAdapter: async () => ({}) } });
+        const fetch = vi.fn();
+        vi.stubGlobal("fetch", fetch);
+        await expect(
+            createOrtSession("webgpu", TRACKER_ASSETS.ort.webgpu, TRACKER_ASSETS.models.face.url, {
+                executionProviders: [provider],
+            }),
+        ).rejects.toMatchObject({ name: "WebGpuUnavailableError" });
+        expect(fetch).not.toHaveBeenCalled();
+    },
+);
 
-it("does not treat an initialization AbortError as user cancellation", async () => {
-    const cause = new DOMException("initialization aborted", "AbortError");
-    vi.stubGlobal("fetch", async () => {
-        throw cause;
-    });
-    await expect(
-        createOrtSession("wasm", TRACKER_ASSETS.ort.wasm, TRACKER_ASSETS.models.tracker.url, {}),
-    ).rejects.toMatchObject({
-        name: "OrtInitializationError",
-        message: cause.message,
-        cause,
-    });
-});
+it.each(["wasm", "webgpu"] as const)(
+    "runs CPU sessions without WebGPU in the %s bundle and preserves initialization errors",
+    async (runtime) => {
+        const cause = new DOMException("initialization aborted", "AbortError");
+        vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => null } });
+        vi.stubGlobal("fetch", async () => {
+            throw cause;
+        });
+        await expect(
+            createOrtSession(runtime, TRACKER_ASSETS.ort[runtime], TRACKER_ASSETS.models.tracker.url, {
+                executionProviders: ["wasm"],
+            }),
+        ).rejects.toMatchObject({
+            name: "OrtInitializationError",
+            message: cause.message,
+            cause,
+        });
+    },
+);
 
 it.each([
     new WebAssembly.RuntimeError("unreachable"),
