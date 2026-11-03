@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-03.1",
+        category: "fix",
+        text: {
+            en: "Bug fixes and reliability improvements.",
+            ru: "Исправление ошибок и повышение надёжности.",
+            de: "Fehlerbehebungen und Verbesserungen der Zuverlässigkeit.",
+            es: "Corrección de errores y mejoras de fiabilidad.",
+            fr: "Corrections de bugs et améliorations de la fiabilité.",
+            pl: "Poprawki błędów i zwiększenie niezawodności.",
+            pt: "Correções de erros e melhorias de confiabilidade.",
+            zh: "修复错误并提高可靠性。",
+            ja: "不具合の修正と信頼性の向上。",
+            ko: "버그 수정 및 안정성 개선.",
+        },
+    },
+    {
         id: "2026-11-01.5",
         category: "support",
         text: {
