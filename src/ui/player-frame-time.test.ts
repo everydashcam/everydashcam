@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTripTimeline, type Trip, type TripFrame, type VideoCandidate } from "../trips.js";
+import { createBlurRegion, regionRectAt } from "../blur-regions.js";
+import { sliceTripChannelForRange } from "../export-range.js";
+import { buildTripTimeline, groupTrips, type Trip, type TripFrame, type VideoCandidate } from "../trips.js";
 
 const ui = vi.hoisted(() => ({ video: null as HTMLVideoElement | null, trip: null as Trip | null }));
 vi.mock("./dom.js", () => ({
     channelPlayers: {
         get front() {
+            return ui.video;
+        },
+        get rear() {
             return ui.video;
         },
     },
@@ -118,6 +123,51 @@ function makeVideo() {
 
 describe("player frame observations", () => {
     beforeEach(() => _resetForTests());
+
+    it.each([-6, 6])("keeps paired privacy seeds on their displayed pixels with %s seconds of clock skew", (skew) => {
+        const front = makeTrip(new File(["front"], "front.mp4")).frames[0]!.channels.front!;
+        const rear = makeTrip(new File(["rear"], "rear.mp4")).frames[0]!.channels.front!;
+        Object.assign(front, { channel: "front", durationSec: 45 });
+        Object.assign(rear, { channel: "rear", durationSec: 46, startUtc: 1000 + skew });
+        ui.trip = groupTrips([front, rear])[0]!;
+        const source = makeVideo();
+        ui.video = source.video;
+        videoAttachedFile.set(source.video, rear.file);
+        source.target.src = "blob:rear";
+        source.target.readyState = 2;
+        initPlayerFrameTimes();
+        source.present(10);
+
+        const seed = channelPresentedFrame("rear", true)!.contentSec;
+        expect(seed).toBe(10);
+        const follow = sliceTripChannelForRange(ui.trip, "rear", seed, seed + 5)[0]!;
+        expect(follow.startInFile, "Follow decodes the pixels that were marked").toBe(10);
+        const region = createBlurRegion("rear", "fill", seed, seed + 5, seed, {
+            xPct: 0.2,
+            yPct: 0.2,
+            wPct: 0.1,
+            hPct: 0.1,
+        });
+        expect(regionRectAt(region, follow.tripStart + 10), "export covers the marked source frame").not.toBeNull();
+
+        source.present(45.5);
+        expect(channelPresentedFrame("rear", true)?.contentSec, "the rear-only tail stays editable").toBe(45.5);
+    });
+
+    it("reads refined drift on an ordinary file before regrouping", () => {
+        const source = makeVideo();
+        ui.video = source.video;
+        const file = new File(["video"], "generic.mp4");
+        ui.trip = makeTrip(file);
+        videoAttachedFile.set(source.video, file);
+        source.target.src = "blob:generic";
+        source.target.readyState = 2;
+        initPlayerFrameTimes();
+        source.present(1);
+        expect(channelPresentedFrame("front", true)?.contentSec).toBe(1);
+        ui.trip.frames[0]!.channels.front!.driftLeadSec = 2;
+        expect(channelPresentedFrame("front", true)?.contentSec).toBe(3);
+    });
 
     it("retains a paused first PTS before metadata and decoded readiness arrive", () => {
         const source = makeVideo();

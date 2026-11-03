@@ -104,6 +104,47 @@ describe("blur region regroup", () => {
         expect(activeBlurRegions()[0]).toBe(region);
     });
 
+    it("keeps zones when paired GPS clocks change without moving footage", () => {
+        const front = candidate("front.mp4", 1000);
+        const rear = candidate("rear.mp4", 1006);
+        front.durationSec = 45;
+        rear.durationSec = 46;
+        rear.channel = "rear";
+        const old = groupTrips([front, rear])[0]!;
+        activate(old);
+        const region = addRegion();
+        rear.startUtc = 994;
+        const next = groupTrips([front, rear])[0]!;
+        activate(next);
+
+        carryBlurRegions([old], [next]);
+
+        expect(activeBlurRegions()[0]).toBe(region);
+    });
+
+    it("drops zones when interval ownership changes within the same files", () => {
+        const front = candidate("front.mp4", 1000);
+        const rear = candidate("rear.mp4", 1000);
+        front.durationSec = 20;
+        rear.durationSec = 60;
+        rear.channel = "rear";
+        const old = groupTrips([front, rear])[0]!;
+        activate(old);
+        addRegion();
+        const next: Trip = {
+            ...old,
+            frames: old.frames.map((frame) => ({
+                ...frame,
+                mediaOffsetSec: { ...frame.mediaOffsetSec, rear: (frame.mediaOffsetSec?.rear ?? 0) + 1 },
+            })),
+        };
+        activate(next);
+
+        carryBlurRegions([old], [next]);
+
+        expect(activeBlurRegions()).toEqual([]);
+    });
+
     it("drops zones when the same files change camera assignments", () => {
         const file = candidate("front.mp4", 1000);
         const old = groupTrips([file])[0]!;

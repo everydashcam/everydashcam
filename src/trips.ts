@@ -229,20 +229,23 @@ export function needsRecordingMetadata(candidate: VideoCandidate): boolean {
  * have exactly one channel ("front") per frame.
  *
  * Contract:
- *   - `startUtc` = canonical channel startUtc (front > rear > interior > side > any).
+ *   - Before interval normalization, `startUtc` = canonical channel startUtc
+ *     (front > rear > interior > side > any).
  *     This is the **real** wall-clock time of the canonical channel's first frame,
  *     not snapped. Multi-channel grouping into one frame uses a snap key inside
  *     groupTrips, but frame.startUtc itself stays real-time. Other channels'
  *     startUtc may differ by 0.x sec due to different startSource.
- *   - `durationSec` = max(channel.startUtc + channel.durationSec) - frame.startUtc.
+ *   - Before interval normalization, `durationSec` =
+ *     max(channel.startUtc + channel.durationSec) - frame.startUtc.
  *     Frame spans as long as any channel is recording; end = end of the longest
  *     channel, duration measured from canonical startUtc.
  *   - 'front' is NOT required. If the front file is lost/corrupt, the frame may
  *     contain only rear and/or interior. Active channel is selected by priority
  *     front -> rear -> interior with fallback to any present channel.
- *   - Unequal channel cuts use nonoverlapping playback intervals. Their
+ *   - Realtime channel timing differences use playback intervals. Their
  *     mediaOffsetSec maps interval-local time to each original file; candidates
  *     can belong to several intervals without changing their source timing.
+ *     Sequential pairs retain all footage even when their wall clocks overlap.
  */
 export interface TripFrame {
     startUtc: number;
@@ -1063,19 +1066,30 @@ function hasNormalChannelOverlap(frame: TripFrame, latest: ReadonlyMap<Channel, 
     });
 }
 
-/** Unequal realtime cuts share one wall-time axis while files retain ownership
- *  of their bytes, GPS and media clocks. Aligned, drifting, time-lapse and
- *  protected-copy frames keep their existing playback contract. */
+/** Realtime channels share playable intervals while files retain ownership of
+ *  their bytes and GPS. Paired channels play from the same media origin despite
+ *  clock-anchor jitter; independent cuts retain their measured wall offsets. */
 function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     let furthestEnd = Number.NEGATIVE_INFINITY;
     let hasOverlappingCuts = false;
+    let hasPairedTimingSkew = false;
     for (const frame of frames) {
         if (furthestEnd - frame.startUtc > OVERLAP_SPLIT_TOLERANCE_SEC) hasOverlappingCuts = true;
         furthestEnd = Math.max(furthestEnd, frame.startUtc + frame.wallDurationSec);
         const ends = Object.values(frame.channels).map((candidate) => candidate.startUtc + candidate.durationSec);
         if (Math.max(...ends) - Math.min(...ends) > OVERLAP_SPLIT_TOLERANCE_SEC) hasOverlappingCuts = true;
+        const canonical = frameCanonicalCandidate(frame);
+        if (
+            canonical &&
+            Object.values(frame.channels).some(
+                (candidate) =>
+                    Math.abs(candidate.startUtc - canonical.startUtc) > 1e-6 ||
+                    Math.abs(candidate.durationSec - canonical.durationSec) > 1e-6,
+            )
+        )
+            hasPairedTimingSkew = true;
     }
-    if (!hasOverlappingCuts) return frames;
+    if (!hasOverlappingCuts && !hasPairedTimingSkew) return frames;
     const candidates = uniqueFrameCandidates(frames);
     if (
         candidates.some(
@@ -1091,6 +1105,11 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
         )
     )
         return frames;
+
+    // Small overlaps between sequential pairs are clock noise, not evidence
+    // that their footage is duplicated. Split each pair independently so the
+    // next pair cannot hide the preceding files' playable tails.
+    if (!hasOverlappingCuts) return frames.flatMap(splitPairedFrameIntervals);
 
     const durationsByChannel = new Map<Channel, { min: number; max: number }>();
     for (const candidate of candidates) {
@@ -1180,6 +1199,35 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     }
     // A fully hidden duplicate still needs its own playback surface.
     return used.size === candidates.length ? intervals : frames;
+}
+
+/** Paired channels share media time zero; each file end changes which channels
+ *  remain playable without shifting the next pair on the footage axis. */
+function splitPairedFrameIntervals(frame: TripFrame): TripFrame[] {
+    const channels = frameChannels(frame);
+    if (channels.length < 2) return [frame];
+    const ends = [...new Set(channels.map((channel) => frame.channels[channel]!.durationSec))].sort((a, b) => a - b);
+    const intervals: TripFrame[] = [];
+    let offsetSec = 0;
+    for (const endSec of ends) {
+        const durationSec = endSec - offsetSec;
+        const interval: TripFrame = {
+            startUtc: frame.startUtc + offsetSec,
+            durationSec,
+            wallDurationSec: durationSec,
+            channels: {},
+            mediaOffsetSec: {},
+        };
+        for (const channel of channels) {
+            const candidate = frame.channels[channel]!;
+            if (candidate.durationSec <= offsetSec) continue;
+            interval.channels[channel] = candidate;
+            interval.mediaOffsetSec![channel] = offsetSec;
+        }
+        intervals.push(interval);
+        offsetSec = endSec;
+    }
+    return intervals;
 }
 
 /**
@@ -1580,11 +1628,13 @@ function matchesUnsyncedGpsCopy(
 /** Identical unsynced streams (e.g. Novatek TS) may be anchored a filename tick
  * apart. Align only a proven copy to the canonical channel in this frame.
  * Missing GPS on that channel supplies no evidence, even if another frame had
- * a copy. Interval frames retain their explicit per-file placement. */
+ * a copy. Interval offsets distinguish a shared media origin from genuinely
+ * independent file placement. */
 function frameGpsSource(frame: TripFrame, candidate: VideoCandidate): TripGpsSource {
     const records = usableCandidateRecords(candidate);
     const wallDurationSec = candidate.wallDurationSec ?? candidate.durationSec;
-    const shiftSec = frame.mediaOffsetSec ? 0 : frame.startUtc - candidate.startUtc;
+    const shiftSec =
+        frame.startUtc - frameMediaOffset(frame, candidate.channel ?? DEFAULT_CHANNEL) - candidate.startUtc;
     const canonical = frameCanonicalCandidate(frame);
     const reference = canonical ? usableCandidateRecords(canonical) : [];
     if (!Number.isFinite(shiftSec) || shiftSec === 0 || !matchesUnsyncedGpsCopy(records, reference, shiftSec)) {

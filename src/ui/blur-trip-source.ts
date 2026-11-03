@@ -1,4 +1,4 @@
-import { candidateContentStart } from "../export-range.js";
+import { sliceTripChannelForRange } from "../export-range.js";
 import type { Channel } from "../parsers/types.js";
 import { tripCandidatesByChannel, tripChannels, type Trip } from "../trips.js";
 
@@ -7,6 +7,8 @@ interface BlurSourceFile {
     channel: Channel;
     contentStart: number;
     durationSec: number;
+    startInFile: number;
+    endInFile: number;
     rotation: number;
 }
 
@@ -20,15 +22,20 @@ export interface BlurTripSource {
 export function captureBlurTripSource(trip: Trip): BlurTripSource {
     return {
         contentDurationSec: trip.timeline.contentDurationSec,
-        files: tripChannels(trip).flatMap((channel) =>
-            tripCandidatesByChannel(trip, channel).map((candidate) => ({
-                file: candidate.file,
+        files: tripChannels(trip).flatMap((channel) => {
+            const candidates = new Map(
+                tripCandidatesByChannel(trip, channel).map((candidate) => [candidate.file, candidate]),
+            );
+            return sliceTripChannelForRange(trip, channel, -Infinity, Infinity).map((segment) => ({
+                file: segment.file,
                 channel,
-                contentStart: candidateContentStart(trip.timeline, candidate),
-                durationSec: candidate.durationSec,
-                rotation: candidate.rotation,
-            })),
-        ),
+                contentStart: segment.tripStart,
+                durationSec: segment.fileDurationSec,
+                startInFile: segment.startInFile,
+                endInFile: segment.endInFile,
+                rotation: candidates.get(segment.file)!.rotation,
+            }));
+        }),
     };
 }
 
@@ -46,6 +53,8 @@ export function matchesBlurTripSource(source: BlurTripSource, trip: Trip): boole
                 file.channel === other.channel &&
                 file.contentStart === other.contentStart &&
                 file.durationSec === other.durationSec &&
+                file.startInFile === other.startInFile &&
+                file.endInFile === other.endInFile &&
                 file.rotation === other.rotation
             );
         })

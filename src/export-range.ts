@@ -50,6 +50,26 @@ export interface AudioTrackFormat {
     numberOfChannels: number;
 }
 
+/** Maps displayed pixels through the same file slices as export and tracking.
+ * A reused file can have several placements after overlaps or pauses collapse.
+ * Outside a slice, extrapolate from the nearest one: clamping would silently
+ * assign a held boundary frame to different source pixels. */
+export function fileMediaToContentSec(segments: readonly FileSegment[], mediaTime: number): number | null {
+    let closest: FileSegment | undefined;
+    let distance = Number.POSITIVE_INFINITY;
+    for (const segment of segments) {
+        if (mediaTime >= segment.startInFile && mediaTime < segment.endInFile) {
+            return segment.tripStart + mediaTime;
+        }
+        const delta = Math.max(segment.startInFile - mediaTime, mediaTime - segment.endInFile, 0);
+        if (delta < distance) {
+            closest = segment;
+            distance = delta;
+        }
+    }
+    return closest ? closest.tripStart + mediaTime : null;
+}
+
 /** Canonical footage-axis anchor shared by decode and displayed-frame clocks. */
 export function candidateContentStart(
     timeline: TripTimeline,

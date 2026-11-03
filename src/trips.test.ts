@@ -810,6 +810,95 @@ describe("groupTrips: fingerprint partition + overlap-split", () => {
 });
 
 describe("groupTrips: independent channel cuts", () => {
+    it.each([-6, 0, 6])("keeps paired media tails playable with a %s second sibling clock skew", (skewSec) => {
+        const front = makeCandidate({ name: "front.mp4", startUtc: 1000, durationSec: 45, channel: "front" });
+        const rear = makeCandidate({ name: "rear.mp4", startUtc: 1000 + skewSec, durationSec: 46, channel: "rear" });
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.frames.map((frame) => [frame.startUtc, frame.durationSec])).toEqual([
+            [1000, 45],
+            [1045, 1],
+        ]);
+        expect(trip.frames[0]!.mediaOffsetSec).toEqual({ front: 0, rear: 0 });
+        expect(trip.frames[1]!.channels).toEqual({ rear });
+        expect(frameMediaOffset(trip.frames[1]!, "rear")).toBe(45);
+        expect(pickFrameChannel(trip.frames[1]!, "front")?.channel).toBe("rear");
+        expect(trip.timeline.contentDurationSec).toBe(46);
+        expect(trip.durationSec).toBe(46);
+        expect(rear.startUtc).toBe(1000 + skewSec);
+        expect(tripAllCandidates(trip)).toEqual([front, rear]);
+        for (const frame of trip.frames) finalizeFrameTiming(frame);
+        expect(groupTrips([rear, front])[0]!.frames).toEqual(trip.frames);
+    });
+
+    it("does not turn a paired GPS clock offset into extra footage", () => {
+        const front = makeCandidate({ name: "front.mp4", startUtc: 1000, durationSec: 45, channel: "front" });
+        const rear = makeCandidate({ name: "rear.mp4", startUtc: 1006, durationSec: 45, channel: "rear" });
+        const trip = groupTrips([front, rear])[0]!;
+        expect(trip.frames).toHaveLength(1);
+        expect(trip.frames[0]!.mediaOffsetSec).toEqual({ front: 0, rear: 0 });
+        expect(trip.timeline.contentDurationSec).toBe(45);
+    });
+
+    it("preserves complete sequential pairs when their clocks overlap slightly", () => {
+        const front = makeCandidate({ name: "front.mp4", startUtc: 1000, channel: "front" });
+        const rear = makeCandidate({ name: "rear.mp4", startUtc: 999.9, channel: "rear" });
+        const nextFront = makeCandidate({ name: "front-next.mp4", startUtc: 1055, channel: "front" });
+        const nextRear = makeCandidate({ name: "rear-next.mp4", startUtc: 1055, channel: "rear" });
+        const trip = groupTrips([front, rear, nextFront, nextRear])[0]!;
+        expect(trip.frames.map((frame) => [frame.startUtc, frame.durationSec])).toEqual([
+            [1000, 60],
+            [1055, 60],
+        ]);
+        expect(trip.frames.map((frame) => frame.channels)).toEqual([
+            { front, rear },
+            { front: nextFront, rear: nextRear },
+        ]);
+        expect(trip.frames.map((frame) => frame.mediaOffsetSec)).toEqual([
+            { front: 0, rear: 0 },
+            { front: 0, rear: 0 },
+        ]);
+        expect(trip.timeline.contentDurationSec).toBe(120);
+    });
+
+    it.each([-5, 0, 5])("preserves each paired tail with a %s second clock gap between pairs", (gapSec) => {
+        const front = makeCandidate({ name: "front.mp4", startUtc: 1000, durationSec: 45, channel: "front" });
+        const rear = makeCandidate({ name: "rear.mp4", startUtc: 1006, durationSec: 46, channel: "rear" });
+        const nextStart = 1045 + gapSec;
+        const nextFront = makeCandidate({
+            name: "front-next.mp4",
+            startUtc: nextStart,
+            durationSec: 45,
+            channel: "front",
+        });
+        const nextRear = makeCandidate({
+            name: "rear-next.mp4",
+            startUtc: nextStart + 6,
+            durationSec: 46,
+            channel: "rear",
+        });
+        const candidates = [front, rear, nextFront, nextRear];
+        const trip = groupTrips(candidates)[0]!;
+        expect(trip.frames.map((frame) => [frame.startUtc, frame.durationSec])).toEqual([
+            [1000, 45],
+            [1045, 1],
+            [nextStart, 45],
+            [nextStart + 45, 1],
+        ]);
+        expect(trip.frames.map((frame) => frame.channels)).toEqual([
+            { front, rear },
+            { rear },
+            { front: nextFront, rear: nextRear },
+            { rear: nextRear },
+        ]);
+        expect(trip.frames.map((frame) => frameMediaOffset(frame, "rear"))).toEqual([0, 45, 0, 45]);
+        expect(trip.timeline.contentDurationSec).toBe(92);
+        expect(contentToFrame(trip.timeline, 45.5)).toEqual({ index: 1, offsetInFrame: 0.5 });
+        expect(contentToFrame(trip.timeline, 46)).toEqual({ index: 2, offsetInFrame: 0 });
+        expect(contentToFrame(trip.timeline, 91.5)).toEqual({ index: 3, offsetInFrame: 0.5 });
+        expect(tripAllCandidates(trip)).toEqual(candidates);
+        expect(groupTrips(candidates.slice().reverse())[0]!.frames).toEqual(trip.frames);
+    });
+
     it("aligns independently started channels when unequal file lengths establish different cuts", () => {
         const front = makeCandidate({ name: "front.mp4", startUtc: 1020, durationSec: 24, channel: "front" });
         const rear = makeCandidate({ name: "rear.mp4", startUtc: 1000, durationSec: 92, channel: "rear" });

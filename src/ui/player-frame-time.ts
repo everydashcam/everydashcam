@@ -3,9 +3,14 @@
 // intentionally separate: it may report a pending seek or another camera.
 
 import { createSubscribers } from "../subscribers.js";
-import { candidateContentStart } from "../export-range.js";
+import {
+    candidateContentStart,
+    fileMediaToContentSec,
+    sliceTripChannelForRange,
+    type FileSegment,
+} from "../export-range.js";
 import type { Channel } from "../parsers/types.js";
-import { tripCandidatesByChannel, type Trip, type VideoCandidate } from "../trips.js";
+import { tripCandidatesByChannel, type Trip, type TripTimeline, type VideoCandidate } from "../trips.js";
 import { isEditableContentTime, presentedMediaTime, type PresentedFrame } from "../video-frame-time.js";
 import { channelPlayers, forEachVideoSlot } from "./dom.js";
 import { videoAttachedFile } from "./player-video-src.js";
@@ -13,7 +18,12 @@ import { activeTrip } from "./state.js";
 
 let frames = new WeakMap<HTMLVideoElement, PlayerFrameObservation>();
 let pendingFrames = new WeakSet<HTMLVideoElement>();
-let candidates = new WeakMap<Trip, Map<Channel, Map<File, VideoCandidate>>>();
+interface ChannelTimeSources {
+    candidates: Map<File, VideoCandidate>;
+    placements: Map<File, FileSegment[]> | null;
+}
+
+let sources = new WeakMap<TripTimeline, Map<Channel, ChannelTimeSources>>();
 const listeners = createSubscribers("player-frames");
 
 export interface PlayerFrameObservation extends Readonly<PresentedFrame> {
@@ -73,21 +83,38 @@ export function channelPresentedFrame(
         requireSettled,
     );
     if (time === null) return null;
-    let byChannel = candidates.get(trip);
+    // A regroup or timing refresh replaces the timeline. Cache the exported
+    // placements on that identity so each presented frame only scans its file.
+    let byChannel = sources.get(trip.timeline);
     if (!byChannel) {
         byChannel = new Map();
-        candidates.set(trip, byChannel);
+        sources.set(trip.timeline, byChannel);
     }
-    let byFile = byChannel.get(channel);
-    if (!byFile) {
+    let source = byChannel.get(channel);
+    if (!source) {
         // Frame slots own the resolved channel. A generic MP4 can have null
         // channel metadata while being assigned to the front slot.
-        byFile = new Map(tripCandidatesByChannel(trip, channel).map((candidate) => [candidate.file, candidate]));
-        byChannel.set(channel, byFile);
+        source = {
+            candidates: new Map(tripCandidatesByChannel(trip, channel).map((candidate) => [candidate.file, candidate])),
+            placements: trip.frames.some((frame) => frame.mediaOffsetSec) ? new Map() : null,
+        };
+        if (source.placements) {
+            for (const segment of sliceTripChannelForRange(trip, channel, -Infinity, Infinity)) {
+                const segments = source.placements.get(segment.file) ?? [];
+                segments.push(segment);
+                source.placements.set(segment.file, segments);
+            }
+        }
+        byChannel.set(channel, source);
     }
-    const candidate = byFile.get(file);
+    const candidate = source.candidates.get(file);
     if (!candidate) return null;
-    const contentSec = candidateContentStart(trip.timeline, candidate) + time;
+    // Ordinary/drift-corrected candidates can be refined before their regroup.
+    // Explicit intervals retain their fixed placement until the timeline changes.
+    const contentSec = source.placements
+        ? fileMediaToContentSec(source.placements.get(file) ?? [], time)
+        : candidateContentStart(trip.timeline, candidate) + time;
+    if (contentSec === null) return null;
     if (requireSettled && !isEditableContentTime(contentSec, trip.timeline.contentDurationSec)) return null;
     return { trip, video, file, contentSec };
 }
@@ -178,6 +205,6 @@ export function initPlayerFrameTimes(): void {
 export function _resetForTests(): void {
     frames = new WeakMap();
     pendingFrames = new WeakSet();
-    candidates = new WeakMap();
+    sources = new WeakMap();
     listeners.clear();
 }

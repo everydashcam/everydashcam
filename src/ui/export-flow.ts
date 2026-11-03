@@ -28,13 +28,7 @@ import type { VideoCodec } from "mediabunny";
 import type { ExportClipResult } from "../export.js";
 import { resolveOutputFps } from "../transcode/frame-rate.js";
 import { reencodeBitrateForQuality } from "../export-bitrate.js";
-import {
-    buildClipGpx,
-    candidatesInRange,
-    rangeSourceBitrateBps,
-    rangeSourceFps,
-    sliceTripChannelForRange,
-} from "../export-range.js";
+import { buildClipGpx, rangeSourceBitrateBps, rangeSourceFps, sliceTripChannelForRange } from "../export-range.js";
 import { recordsHaveGps } from "../parser.js";
 import { t, getCurrentLang, getDateLocale, type Lang } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
@@ -262,8 +256,9 @@ function undecodableSource(trip: Trip): { codec: VideoCodec | null } | null {
     const startSec = range ? range.startTripSec : 0;
     const endSec = range ? range.endTripSec : trip.timeline.contentDurationSec;
     for (const channel of state.composition.channelOrder) {
-        const overlapping = candidatesInRange(tripCandidatesByChannel(trip, channel), trip.timeline, startSec, endSec);
-        for (const { candidate } of overlapping) {
+        const files = new Set(sliceTripChannelForRange(trip, channel, startSec, endSec).map((segment) => segment.file));
+        for (const candidate of tripCandidatesByChannel(trip, channel)) {
+            if (!files.has(candidate.file)) continue;
             if (!candidate.canPlay) return { codec: candidate.codec };
         }
     }

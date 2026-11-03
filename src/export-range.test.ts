@@ -4,6 +4,7 @@ import {
     buildClipGpx,
     candidatesInRange,
     clipRecordsForRange,
+    fileMediaToContentSec,
     type FileSegment,
     rangeSourceBitrateBps,
     rangeSourceFps,
@@ -306,6 +307,37 @@ describe("sliceCandidatesForRange", () => {
         expect(outside.reduce((total, segment) => total + segment.endInFile - segment.startInFile, 0)).toBe(30);
     });
 
+    it("exports paired media positions without adding the sibling GPS clock skew", () => {
+        const front = makeCandidate({ name: "front.mp4", startUtc: 1000, durationSec: 45 });
+        front.channel = "front";
+        const rear = makeCandidate({ name: "rear.mp4", startUtc: 1006, durationSec: 46 });
+        const trip = groupTrips([front, rear])[0]!;
+        const slices = sliceTripChannelForRange(trip, "rear", 40, 46);
+        expect(slices).toHaveLength(1);
+        expect(slices[0]).toMatchObject({ file: rear.file, startInFile: 40, endInFile: 46, tripStart: 0 });
+        expect(sliceTripChannelForRange(trip, "front", 45, 46)).toEqual([]);
+    });
+
+    it("retains complete paired files when successive filename clocks overlap", () => {
+        const front = makeCandidate({ name: "front.mp4", startUtc: 1000, durationSec: 60 });
+        const nextFront = makeCandidate({ name: "next-front.mp4", startUtc: 1055, durationSec: 60 });
+        front.channel = nextFront.channel = "front";
+        const rear = makeCandidate({ name: "rear.mp4", startUtc: 1006, durationSec: 59 });
+        const nextRear = makeCandidate({ name: "next-rear.mp4", startUtc: 1061, durationSec: 59 });
+        const trip = groupTrips([front, rear, nextFront, nextRear])[0]!;
+        const slices = sliceTripChannelForRange(trip, "front", 0, 120);
+        expect(slices.map(({ startInFile, endInFile, tripStart }) => ({ startInFile, endInFile, tripStart }))).toEqual([
+            { startInFile: 0, endInFile: 60, tripStart: 0 },
+            { startInFile: 0, endInFile: 60, tripStart: 60 },
+        ]);
+        expect(
+            fileMediaToContentSec(
+                slices.filter((slice) => slice.file === nextFront.file),
+                10,
+            ),
+        ).toBe(70);
+    });
+
     it("exports overlapping files in the same order as interval playback", () => {
         const front = makeCandidate({ name: "front.mp4", startUtc: 1000, durationSec: 92 });
         front.channel = "front";
@@ -337,5 +369,17 @@ describe("sliceCandidatesForRange", () => {
         expect(segs).toHaveLength(1);
         expect(segs[0]!.startInFile).toBeCloseTo(9, 6);
         expect(segs[0]!.endInFile, "last rear content second aligns with the stop instant").toBeCloseTo(19, 6);
+    });
+});
+
+describe("fileMediaToContentSec", () => {
+    it("uses each retained interval when removed footage changes a file's content origin", () => {
+        const first = segWithSize({ mb: 1, fileSec: 60, from: 0, to: 20 });
+        const later = { ...first, startInFile: 30, endInFile: 60, tripStart: -10 };
+        expect(fileMediaToContentSec([first, later], 10)).toBe(10);
+        expect(fileMediaToContentSec([first, later], 40)).toBe(30);
+        expect(fileMediaToContentSec([first, later], 60)).toBe(50);
+        expect(fileMediaToContentSec([first, later], -1)).toBe(-1);
+        expect(fileMediaToContentSec([], 10)).toBeNull();
     });
 });
