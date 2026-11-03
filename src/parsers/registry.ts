@@ -21,6 +21,7 @@ import { throwIfCancelled } from "../abort-signals.js";
 import { extendArray } from "../array-extend.js";
 import { createLogger } from "../log.js";
 import { forwardFillBearingsIfAllZero } from "../parser.js";
+import { isSourceReadError } from "../source-read-error.js";
 import { vendorFileKey } from "../vendor-file-key.js";
 import { VIDEO_CLONE_GROUPERS, videoCloneAffinityKey } from "./primitives/clone-groups.js";
 // The light, main-thread-safe classification helpers live in registry-light.ts
@@ -175,12 +176,27 @@ export async function classifyFiles(
 
 // === Video-embedded GPS dispatch ===
 
+/** One failed embedded-GPS index, marker or parse step of a video file. */
+export interface EmbeddedGpsError {
+    file: string;
+    extractor: string;
+    message: string;
+    /** The browser could not read the file itself (card removed, file changed,
+     *  per-read browser limits), so the failure says nothing about the parser. */
+    isSourceRead?: boolean;
+}
+
+function embeddedGpsError(file: string, extractor: string, err: unknown): EmbeddedGpsError {
+    const message = err instanceof Error ? err.message : String(err);
+    return { file, extractor, message, isSourceRead: isSourceReadError(err) };
+}
+
 export interface DispatchedEmbeddedGpsResult {
     /** Primitive ids that produced records. */
     appliedExtractors: string[];
     records: GpsRecord[];
     skipped: SkippedLine[];
-    errors: Array<{ file: string; extractor: string; message: string }>;
+    errors: EmbeddedGpsError[];
     /** Matched parsers failed without a successful parse from this file or its
      * clone group. Empty parses, deferred work and format rejection are excluded. */
     failedFileKeys: Set<string>;
@@ -436,7 +452,7 @@ export async function dispatchParseVideoEmbeddedGps(
     const videos = classified.filter((c) => c.role === "video");
     const allRecords: GpsRecord[] = [];
     const allSkipped: SkippedLine[] = [];
-    const errors: Array<{ file: string; extractor: string; message: string }> = [];
+    const errors: EmbeddedGpsError[] = [];
     const failedFileKeys = new Set<string>();
     const used = new Set<string>();
     const winningExtractorByFileKey = new Map<string, string>();
@@ -503,12 +519,12 @@ export async function dispatchParseVideoEmbeddedGps(
                 matched = await extractor.marker(vf, index);
             } catch (err) {
                 if (err instanceof Error && err.name === "AbortError") throw err;
-                const message = err instanceof Error ? err.message : String(err);
-                errors.push({ file: vf.file.name, extractor: extractor.id, message });
+                const failure = embeddedGpsError(vf.file.name, extractor.id, err);
+                errors.push(failure);
                 log.debug("extractor marker threw", {
                     extractor: extractor.id,
                     file: vf.file.name,
-                    err: message,
+                    err: failure.message,
                 });
             }
             if (!matched) continue;
@@ -536,18 +552,18 @@ export async function dispatchParseVideoEmbeddedGps(
                     accelSamples: parsed.accelSamples,
                 };
             } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
                 // AbortError propagates - the outer worker loop checks
                 // signal.aborted between work items, but a per-extractor
                 // signal-honoring parse can also raise it directly.
                 if (err instanceof Error && err.name === "AbortError") throw err;
                 if (!(err instanceof WrongFormatError)) {
                     evidence.failedKeys.add(vendorFileKey(vf));
-                    errors.push({ file: vf.file.name, extractor: extractor.id, message });
+                    const failure = embeddedGpsError(vf.file.name, extractor.id, err);
+                    errors.push(failure);
                     log.warn("video extractor parse failed", {
                         extractor: extractor.id,
                         file: vf.file.name,
-                        err: message,
+                        err: failure.message,
                     });
                 }
             }
@@ -568,9 +584,9 @@ export async function dispatchParseVideoEmbeddedGps(
             index = await buildMp4Index(vf.file, { prebuiltMoov, probeBytes: 0 });
         } catch (err) {
             if (err instanceof Error && err.name === "AbortError") throw err;
-            const message = err instanceof Error ? err.message : String(err);
-            errors.push({ file: vf.file.name, extractor: "mp4-index", message });
-            log.warn("mp4 index build failed", { file: vf.file.name, err: message });
+            const failure = embeddedGpsError(vf.file.name, "mp4-index", err);
+            errors.push(failure);
+            log.warn("mp4 index build failed", { file: vf.file.name, err: failure.message });
             return null;
         }
 

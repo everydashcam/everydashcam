@@ -260,7 +260,7 @@ interface ProgressiveIngestRun {
     metadataFailed: number;
     repairedHvcc: number;
     repairedPhantom: number;
-    embeddedErrors: Array<{ file: string; extractor?: string; message: string }>;
+    embeddedErrors: Array<{ file: string; extractor?: string; message: string; isSourceRead?: boolean }>;
     scheduling: IngestSchedulingPolicy | null;
     controller: AbortController;
     isComplete: boolean;
