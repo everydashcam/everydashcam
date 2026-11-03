@@ -18,6 +18,7 @@ import {
     shot,
     test,
     pausePlayback,
+    waitForMetadata,
 } from "./_fixtures.js";
 
 test.describe.configure({ mode: "parallel" });
@@ -725,6 +726,7 @@ test.describe("export", () => {
     });
 
     test("event popup's save-clip action opens export mode on the event window", async ({ page }) => {
+        await waitForMetadata(page);
         // No public fixture produces a detected brake event (the samples are
         // seconds long, steady speed), so inject a synthetic TripEvent through
         // the __everydashcam debug handle - the popup hit-test reads trip.events
