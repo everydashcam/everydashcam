@@ -8,6 +8,7 @@ import {
     PCM_AUDIO_CODECS,
     type AudioCodec,
     type AudioSampleSource,
+    type EncodedPacket,
     type Input,
     type InputAudioTrack,
 } from "mediabunny";
@@ -81,6 +82,74 @@ export function getPcmLayout(codec: AudioCodec, decoderConfig: AudioDecoderConfi
         bytesPerFrame: (bitsPerSample / 8) * decoderConfig.numberOfChannels,
         sampleRate: decoderConfig.sampleRate,
     };
+}
+
+/** Frames of one PCM packet due for copying; see nextPcmPiece. */
+export interface PcmPiece {
+    /** First frame of the piece within the packet. */
+    fromFrame: number;
+    /** Frame after the piece's last one. */
+    toFrame: number;
+    /** Source time of the piece's first frame. */
+    startSec: number;
+    /** Whether the piece reaches the packet's end, consuming the packet. */
+    isTail: boolean;
+}
+
+/**
+ * The next frames of a PCM packet to copy before `untilSec`, continuing after
+ * `copiedFrames`, or null when nothing is due yet. A PCM packet is a whole
+ * container chunk, possibly the whole track; copied whole, it would leave the
+ * muxer holding every video packet until the next audio packet. During the
+ * video walk a head shorter than MIN_PARTIAL_AUDIO_FEED_SEC waits for a later
+ * limit. At the segment end every frame before the limit is due, so the copied
+ * audio ends with the video instead of running to the chunk's end.
+ */
+export function nextPcmPiece(
+    packet: { timestamp: number; byteLength: number },
+    layout: PcmLayout,
+    copiedFrames: number,
+    untilSec: number,
+    isSegmentEnd: boolean,
+): PcmPiece | null {
+    const frameCount = Math.floor(packet.byteLength / layout.bytesPerFrame);
+    let toFrame = frameCount;
+    const untilFrame = Math.ceil((untilSec - packet.timestamp) * layout.sampleRate - 1e-6);
+    if (untilFrame < frameCount) {
+        if (untilFrame <= copiedFrames) return null;
+        if (!isSegmentEnd && (untilFrame - copiedFrames) / layout.sampleRate < MIN_PARTIAL_AUDIO_FEED_SEC) return null;
+        toFrame = untilFrame;
+    }
+    return {
+        fromFrame: copiedFrames,
+        toFrame,
+        startSec: packet.timestamp + copiedFrames / layout.sampleRate,
+        isTail: toFrame >= frameCount,
+    };
+}
+
+/**
+ * A clone of `packet` carrying `piece` at `timestamp`. Its duration counts the
+ * piece's frames: Matroska may omit a PCM block's duration, and the MP4 muxer
+ * derives it the same way. A tail keeps the packet's trailing bytes, so a
+ * packet copied in one piece stays byte-identical.
+ */
+export function clonePcmPiece(
+    packet: EncodedPacket,
+    layout: PcmLayout,
+    piece: PcmPiece,
+    timestamp: number,
+): EncodedPacket {
+    const duration = (piece.toFrame - piece.fromFrame) / layout.sampleRate;
+    if (piece.fromFrame === 0 && piece.isTail) return packet.clone({ timestamp, duration });
+    return packet.clone({
+        data: packet.data.subarray(
+            piece.fromFrame * layout.bytesPerFrame,
+            piece.isTail ? packet.byteLength : piece.toFrame * layout.bytesPerFrame,
+        ),
+        timestamp,
+        duration,
+    });
 }
 
 /**

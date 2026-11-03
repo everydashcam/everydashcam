@@ -54,9 +54,10 @@ import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./transcode/adpcm-aud
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./transcode/capabilities.js";
 import {
     type AudioRangeCursor,
+    clonePcmPiece,
     getPcmLayout,
     getPrimaryAudioTrackWithPackets,
-    MIN_PARTIAL_AUDIO_FEED_SEC,
+    nextPcmPiece,
     resolveReadableAudioPlan,
     type ReadableAudioPlan,
 } from "./transcode/audio-export-support.js";
@@ -564,64 +565,37 @@ export async function exportClip({
                 // share the same shift, and the first audio packet may cross zero:
                 // the edit list hides its negative portion.
                 //
-                // A PCM packet is a whole container chunk, possibly the whole track.
-                // Copied whole, it leaves the muxer holding every video packet until
-                // the next audio packet. The walk therefore copies a long enough head
-                // up to `untilSec` and keeps the rest; the segment end copies the rest
-                // whole, so the copied audio matches whole-packet copies.
+                // PCM packets are copied in pieces (see nextPcmPiece): a long one
+                // is fed as the walk advances, and the segment end cuts the last
+                // one where the video ends.
                 const copyAudioBefore = async (untilSec: number, isSegmentEnd: boolean): Promise<void> => {
                     while (apkt && audioSink && audioSource && apkt.timestamp < untilSec) {
                         throwIfCancelled(signal);
-                        const frameCount = pcmLayout ? Math.floor(apkt.byteLength / pcmLayout.bytesPerFrame) : 0;
-                        let endFrame = frameCount;
-                        if (pcmLayout && !isSegmentEnd) {
-                            const untilFrame = Math.ceil((untilSec - apkt.timestamp) * pcmLayout.sampleRate - 1e-6);
-                            if (untilFrame < frameCount) {
-                                const headSec = (untilFrame - apktCopiedFrames) / pcmLayout.sampleRate;
-                                if (headSec < MIN_PARTIAL_AUDIO_FEED_SEC) return;
-                                endFrame = untilFrame;
-                            }
-                        }
-                        const isWhole = apktCopiedFrames === 0 && endFrame === frameCount;
-                        const isTail = endFrame === frameCount;
-                        const pieceStart = pcmLayout
-                            ? apkt.timestamp + apktCopiedFrames / pcmLayout.sampleRate
-                            : apkt.timestamp;
-                        const timestamp = pieceStart - videoStartShift + videoAccumSec;
-                        // Matroska may omit a PCM block's duration. Derive it from
-                        // the copied frames, as the MP4 muxer does, so splitting
-                        // works with a zero or approximate container duration.
-                        const duration = pcmLayout
-                            ? (endFrame - apktCopiedFrames) / pcmLayout.sampleRate
-                            : apkt.duration;
+                        const piece = pcmLayout
+                            ? nextPcmPiece(apkt, pcmLayout, apktCopiedFrames, untilSec, isSegmentEnd)
+                            : null;
+                        if (pcmLayout && !piece) return;
+                        const timestamp = (piece?.startSec ?? apkt.timestamp) - videoStartShift + videoAccumSec;
                         if (timestamp >= audioLastEndSec - 1e-6) {
-                            const piece =
-                                isWhole || !pcmLayout
-                                    ? apkt.clone({ timestamp, duration })
-                                    : apkt.clone({
-                                          data: apkt.data.subarray(
-                                              apktCopiedFrames * pcmLayout.bytesPerFrame,
-                                              isTail ? apkt.byteLength : endFrame * pcmLayout.bytesPerFrame,
-                                          ),
-                                          timestamp,
-                                          duration,
-                                      });
+                            const copied =
+                                pcmLayout && piece
+                                    ? clonePcmPiece(apkt, pcmLayout, piece, timestamp)
+                                    : apkt.clone({ timestamp });
                             const meta = audioDecoderConfigPushed
                                 ? undefined
                                 : { decoderConfig: audioDecoderConfig ?? undefined };
-                            await audioSource.add(piece, meta);
+                            await audioSource.add(copied, meta);
                             audioDecoderConfigPushed = true;
                             // At original packet boundaries retain the container's
                             // clock: Matroska rounds PCM timestamps to milliseconds,
                             // so a true PCM end can appear to overlap the next packet.
-                            audioLastEndSec =
-                                pcmLayout && isTail
-                                    ? apkt.timestamp + apkt.duration - videoStartShift + videoAccumSec
-                                    : timestamp + piece.duration;
+                            audioLastEndSec = piece?.isTail
+                                ? apkt.timestamp + apkt.duration - videoStartShift + videoAccumSec
+                                : timestamp + copied.duration;
                             audioCount++;
                         }
-                        if (!isTail) {
-                            apktCopiedFrames = endFrame;
+                        if (piece && !piece.isTail) {
+                            apktCopiedFrames = piece.toFrame;
                             return;
                         }
                         apktCopiedFrames = 0;

@@ -507,6 +507,33 @@ describe("stream-copy export", () => {
         },
     );
 
+    it("ends a one-chunk PCM track with the video when the clip ends inside the chunk", async () => {
+        const file = await withPcmAudio(fixture(H264_FIXTURE), { format: "mov", sampleRate: 8000 });
+        const source = open(file);
+        let output: Input | undefined;
+        try {
+            const sourceAudio = (await source.getPrimaryAudioTrack())!;
+            const sourcePackets = await packets(sourceAudio);
+            expect(sourcePackets, "the source audio is one packet").toHaveLength(1);
+            const sourceDuration = await sourceAudio.computeDuration();
+            const saved = await save([file], { end: sourceDuration / 2 });
+            output = open(saved.file);
+            const videoEnd = await (await output.getPrimaryVideoTrack())!.computeDuration();
+            expect(videoEnd, "the clip ends inside the chunk").toBeLessThan(sourceDuration - 0.5);
+            const outputAudio = (await output.getPrimaryAudioTrack())!;
+            expect(await outputAudio.computeDuration(), "the audio ends with the video").toBeCloseTo(videoEnd, 3);
+            const copied = Buffer.concat((await packets(outputAudio)).map((packet) => packet.data));
+            expect(copied.byteLength).toBeLessThan(sourcePackets[0]!.byteLength);
+            expect(
+                copied.equals(sourcePackets[0]!.data.subarray(0, copied.byteLength)),
+                "the copy is a lossless prefix",
+            ).toBe(true);
+        } finally {
+            source.dispose();
+            output?.dispose();
+        }
+    });
+
     it("keeps video when MOV audio cannot be represented in an MP4 track", async () => {
         const file = await remuxFixture(fixture(H264_FIXTURE), true);
         const source = open(file);
