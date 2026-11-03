@@ -402,6 +402,7 @@ test("explains a recording when the browser skips its video track and plays only
     await expect(page.locator(".viewer")).toHaveClass(/codec-unsupported/);
     await expect(page.locator(".viewer")).not.toHaveClass(/playback-failed/);
     await expect(page.locator("#codec-unsupported-title")).toHaveText("This browser can't play this video");
+    await expect(page.locator("#playback-failed-retry"), "a codec rejection offers no retry").toBeHidden();
     expect(
         await page.evaluate(
             () =>

@@ -33,6 +33,11 @@
         border-color var(--dc-dur-fast) var(--dc-ease),
         transform var(--dc-dur-fast) var(--dc-ease);
 }
+/* The display above beats the browser's own [hidden] rule, so a button the
+   code hides with the attribute would stay visible and clickable. */
+.dc-btn[hidden] {
+    display: none;
+}
 .dc-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
