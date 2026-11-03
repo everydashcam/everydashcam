@@ -20,6 +20,7 @@ export const cancelTrackPassesExceptTrip: typeof Track.cancelTrackPassesExceptTr
 export const trackPassOf: typeof Track.trackPassOf = () => null;
 export const toggleTrackPass: typeof Track.toggleTrackPass = unavailable;
 export const detectAvailable: typeof Detect.detectAvailable = () => false;
+export const canObtainDetectRegions: typeof Detect.canObtainDetectRegions = () => false;
 export const detectEnabled: typeof Detect.detectEnabled = () => false;
 export const detectQuality: typeof Detect.detectQuality = () => DETECTION_QUALITY_DEFAULT;
 export const detectThreshold: typeof Detect.detectThreshold = (kind) => DETECTION_POLICIES[kind].seedScoreMin;
