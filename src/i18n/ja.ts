@@ -928,6 +928,7 @@ export const jaDict = {
     "export.notify.gpmfFailed": "クリップを保存しましたが、GPS データを追加できませんでした",
     "export.notify.mapDropped": "クリップを保存しましたが、地図を追加できませんでした",
     "export.notify.damagedEnd": "クリップを保存しましたが、録画の壊れた末尾は含められませんでした",
+    "export.notify.audioUnsupported": "クリップを保存しましたが、この録画の音声には対応していないため、音は入っていません",
     "export.notify.audioFormatMixed": "クリップを保存しましたが、録画の音声がそろっていなかったため、音は入っていません",
     "export.notify.audioEncodeUnsupported": "音声なしでクリップを保存しました — 音声を残すには、パソコン版 Chrome で書き出してください",
     "export.notify.audioFallbackOpus": "クリップを保存しましたが、音声が一部のアプリで再生できないことがあります。どこでも再生できる音声にするには、パソコンの Chrome で書き出してください",

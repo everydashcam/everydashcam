@@ -917,6 +917,7 @@ export const enDict = {
     "export.notify.gpmfFailed": "Clip saved, but the GPS data couldn't be added to it",
     "export.notify.mapDropped": "Clip saved, but the map couldn't be added",
     "export.notify.damagedEnd": "Clip saved, but the recording's damaged end couldn't be included",
+    "export.notify.audioUnsupported": "Clip saved without sound — this recording’s audio isn’t supported",
     "export.notify.audioFormatMixed": "Clip saved without sound — the recordings’ audio couldn’t be combined",
     "export.notify.audioEncodeUnsupported": "Clip saved without sound — to keep the sound, export it in desktop Chrome",
     "export.notify.audioFallbackOpus": "Clip saved, but its sound may not play in some apps — for sound that plays everywhere, export in desktop Chrome",

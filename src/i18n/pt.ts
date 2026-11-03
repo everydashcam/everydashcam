@@ -916,6 +916,7 @@ export const ptDict = {
     "export.notify.gpmfFailed": "Clipe salvo, mas não foi possível adicionar os dados de GPS a ele",
     "export.notify.mapDropped": "Clipe salvo, mas não foi possível adicionar o mapa",
     "export.notify.damagedEnd": "Clipe salvo, mas não foi possível incluir o final danificado da gravação",
+    "export.notify.audioUnsupported": "Clipe salvo sem som — o áudio desta gravação não é compatível",
     "export.notify.audioFormatMixed": "Clipe salvo sem som — não foi possível combinar o áudio das gravações",
     "export.notify.audioEncodeUnsupported": "Clipe salvo sem som — para manter o áudio, exporte no Chrome pelo computador",
     "export.notify.audioFallbackOpus": "Clipe salvo, mas o som dele pode não tocar em alguns apps — para um som que toca em qualquer lugar, exporte no Chrome do computador",

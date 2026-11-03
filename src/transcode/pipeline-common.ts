@@ -12,7 +12,7 @@ import {
     EncodedAudioPacketSource,
     type EncodedPacket,
     EncodedPacketSink,
-    type Input,
+    Input,
     Mp4OutputFormat,
     Output,
     StreamTarget,
@@ -29,6 +29,9 @@ import { getInputTimeOrigin } from "../media-time.js";
 import type { AudioTrackFormat } from "../export-range.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./capabilities.js";
+import { resolveReadableAudioPlan } from "./audio-export-support.js";
+import { createRetryingBlobSource } from "../retrying-blob-source.js";
+import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 import { drawMapOverlay } from "./map-overlay.js";
 import type {
     CapturedMoovBytes,
@@ -52,10 +55,8 @@ export function achievedKbps(sizeBytes: number, durationSec: number): number {
     return Math.round((sizeBytes * 8) / durationSec / 1000);
 }
 
-// Source codecs we stream-copy straight into the output MP4 (no encoder, no
-// quality loss). Both are universally MP4-muxable and decode everywhere, and
-// they cover all real *readable* dashcam audio - the only other case, IMA-ADPCM,
-// is codec===null (mediabunny cannot read it) and goes through the encode path.
+// Prefer copies for common source codecs; the actual packet/configuration must
+// still pass the muxer probe (e.g. AAC Main is readable but not copyable).
 const PASSTHROUGH_AUDIO_CODECS: readonly AudioCodec[] = ["aac", "mp3"];
 
 /**
@@ -68,9 +69,7 @@ const PASSTHROUGH_AUDIO_CODECS: readonly AudioCodec[] = ["aac", "mp3"];
  *  - "encode": the source must be decoded and re-encoded - IMA-ADPCM (we decode
  *    it ourselves; adpcmReader non-null), or a readable-but-not-passthrough codec
  *    (rare). `codec` is the chosen encode codec (aac, or opus fallback).
- *  - "skip": no audio track is added. noEncoder=true means audio was wanted but
- *    no encoder exists (drop + notify); noEncoder=false is a benign skip (an
- *    unreadable codec that is not our ADPCM).
+ *  - "skip": no audio track is added; the reason determines the warning.
  */
 export type AudioPlan =
     | { mode: "passthrough"; codec: AudioCodec; source: EncodedAudioPacketSource }
@@ -81,7 +80,7 @@ export type AudioPlan =
           silenceFormat: SilenceFormat;
           adpcmReader: AdpcmAudioReader | null;
       }
-    | { mode: "skip"; noEncoder: boolean };
+    | { mode: "skip"; reason: "unsupported" | "no-encoder" };
 
 /** An AudioPlan that actually produces an output track (passthrough or encode) -
  *  i.e. AudioPlan minus the "skip" case. The pipelines store this after handling
@@ -99,38 +98,25 @@ export type ActiveAudioPlan = Exclude<AudioPlan, { mode: "skip" }>;
  * is dropped upstream anyway, but the gate keeps this correct if that ever
  * changes. `firstHasDecoderConfig` (from probeAudioUniformity) reports whether the
  * first audio-bearing track actually carries a decoder config; a readable codec
- * without one cannot be stream-copied (the muxer throws on the first packet), so
- * passthrough drops it benignly. Caller still owns addAudioTrack() and the segment
- * feed loop.
+ * without one cannot be stream-copied. Readable tracks are checked against the
+ * muxer, then a real decoded sample before choosing re-encoding. Caller still
+ * owns addAudioTrack() and the segment feed loop.
  */
 export async function resolveAudioPlan(
     probeFormat: AudioTrackFormat,
     firstFile: File,
     allowPassthrough: boolean,
     firstHasDecoderConfig: boolean,
+    opts: { input?: Input; signal?: AbortSignal } = {},
 ): Promise<AudioPlan> {
-    // Stream-copy when the source is already an MP4-muxable codec at 1x: no
-    // encoder needed, no generation loss. The common dashcam case (AAC source).
-    if (allowPassthrough && probeFormat.codec && PASSTHROUGH_AUDIO_CODECS.includes(probeFormat.codec)) {
-        // Same guard exportClip applies (export.ts): a readable codec tag with no
-        // decoder config (damaged esds on a power-cut/corrupt file) cannot mux a
-        // valid track - the muxer throws on the first packet's absent config. Drop
-        // audio benignly (skip, not noEncoder) instead of crashing the export after
-        // the user already committed the save dialog.
-        if (!firstHasDecoderConfig) return { mode: "skip", noEncoder: false };
-        return {
-            mode: "passthrough",
-            codec: probeFormat.codec,
-            source: new EncodedAudioPacketSource(probeFormat.codec),
-        };
-    }
+    throwIfCancelled(opts.signal);
     // IMA-ADPCM (Mio/Navman): mediabunny reports no codec. Decode it ourselves,
     // then re-encode - so this path needs an audio encoder.
     if (probeFormat.codec === null) {
         const adpcmReader = await openAdpcmAudioAuto(firstFile);
-        if (!adpcmReader) return { mode: "skip", noEncoder: false }; // unreadable, not our ADPCM
+        if (!adpcmReader) return { mode: "skip", reason: "unsupported" };
         const codec = await resolveEncodeAudioCodec();
-        if (!codec) return { mode: "skip", noEncoder: true };
+        if (!codec) return { mode: "skip", reason: "no-encoder" };
         return {
             mode: "encode",
             codec,
@@ -139,17 +125,22 @@ export async function resolveAudioPlan(
             adpcmReader,
         };
     }
-    // Readable but not a passthrough codec (or passthrough disabled by speed):
-    // decode + re-encode.
-    const codec = await resolveEncodeAudioCodec();
-    if (!codec) return { mode: "skip", noEncoder: true };
-    return {
-        mode: "encode",
-        codec,
-        source: createEncodeAudioSource(codec),
-        silenceFormat: { sampleRate: probeFormat.sampleRate, numberOfChannels: probeFormat.numberOfChannels },
-        adpcmReader: null,
-    };
+    if (!firstHasDecoderConfig) return { mode: "skip", reason: "unsupported" };
+    const input =
+        opts.input ??
+        new Input({ source: createRetryingBlobSource(firstFile, opts.signal), formats: VIDEO_INPUT_FORMATS });
+    try {
+        const track = await input.getPrimaryAudioTrack();
+        if (!track) return { mode: "skip", reason: "unsupported" };
+        const plan = await resolveReadableAudioPlan(
+            track,
+            allowPassthrough && PASSTHROUGH_AUDIO_CODECS.includes(probeFormat.codec),
+            opts.signal,
+        );
+        return plan.mode === "encode" ? { ...plan, adpcmReader: null } : plan;
+    } finally {
+        if (!opts.input) input.dispose();
+    }
 }
 
 export interface AudioPlanSetup {
@@ -159,6 +150,8 @@ export interface AudioPlanSetup {
     audioDroppedHeterogeneous: boolean;
     /** Audio requested but no encoder and not stream-copyable - dropped, surfaced. */
     audioDroppedNoEncoder: boolean;
+    /** Audio could neither be copied nor decoded by the available decoder. */
+    audioDroppedUnsupported: boolean;
 }
 
 /**
@@ -178,11 +171,13 @@ export async function applyAudioPlan(
     probe: { uniform: boolean; format: AudioTrackFormat | null; firstHasDecoderConfig: boolean },
     firstFile: File,
     allowPassthrough: boolean,
+    opts: { input?: Input; signal?: AbortSignal } = {},
 ): Promise<AudioPlanSetup> {
     const setup: AudioPlanSetup = {
         audioPlan: null,
         audioDroppedHeterogeneous: false,
         audioDroppedNoEncoder: false,
+        audioDroppedUnsupported: false,
     };
     if (!probe.uniform) {
         setup.audioDroppedHeterogeneous = true;
@@ -193,13 +188,14 @@ export async function applyAudioPlan(
         log.info("audio requested but no audio track in any source segment, skipping");
         return setup;
     }
-    const plan = await resolveAudioPlan(probe.format, firstFile, allowPassthrough, probe.firstHasDecoderConfig);
+    const plan = await resolveAudioPlan(probe.format, firstFile, allowPassthrough, probe.firstHasDecoderConfig, opts);
     if (plan.mode === "skip") {
-        if (plan.noEncoder) {
+        if (plan.reason === "no-encoder") {
             setup.audioDroppedNoEncoder = true;
             log.warn("no audio encoder available, exporting without audio");
         } else {
-            log.info("audio codec unreadable and not ADPCM, skipping audio");
+            setup.audioDroppedUnsupported = true;
+            log.warn("audio cannot be copied or decoded, exporting without audio");
         }
         return setup;
     }

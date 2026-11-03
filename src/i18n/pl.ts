@@ -916,6 +916,7 @@ export const plDict = {
     "export.notify.gpmfFailed": "Fragment zapisany, ale nie udało się dodać do niego danych GPS",
     "export.notify.mapDropped": "Fragment zapisany, ale nie udało się dodać mapy",
     "export.notify.damagedEnd": "Fragment zapisany, ale nie udało się dołączyć uszkodzonego końca nagrania",
+    "export.notify.audioUnsupported": "Fragment zapisany bez dźwięku — dźwięk w tym nagraniu nie jest obsługiwany",
     "export.notify.audioFormatMixed": "Fragment zapisany bez dźwięku — nie udało się połączyć ścieżek dźwiękowych nagrań",
     "export.notify.audioEncodeUnsupported": "Fragment zapisany bez dźwięku — aby go zachować, wyeksportuj fragment w Chrome na komputerze",
     "export.notify.audioFallbackOpus": "Fragment zapisany, ale jego dźwięk może nie odtwarzać się w niektórych aplikacjach — aby dźwięk działał wszędzie, wyeksportuj w Chrome na komputerze",

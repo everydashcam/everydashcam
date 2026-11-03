@@ -914,6 +914,7 @@ export const deDict = {
     "export.notify.gpmfFailed": "Clip gespeichert, aber die GPS-Daten konnten nicht hinzugefügt werden",
     "export.notify.mapDropped": "Clip gespeichert, aber die Karte konnte nicht hinzugefügt werden",
     "export.notify.damagedEnd": "Clip gespeichert, aber das beschädigte Ende der Aufnahme konnte nicht übernommen werden",
+    "export.notify.audioUnsupported": "Clip ohne Ton gespeichert — der Ton dieser Aufnahme wird nicht unterstützt",
     "export.notify.audioFormatMixed": "Clip ohne Ton gespeichert — die Tonspuren der Aufnahmen ließen sich nicht kombinieren",
     "export.notify.audioEncodeUnsupported": "Clip ohne Ton gespeichert — um den Ton zu behalten, exportiere ihn in Chrome auf einem Computer",
     "export.notify.audioFallbackOpus": "Clip gespeichert, aber sein Ton lässt sich in manchen Apps vielleicht nicht abspielen — für überall abspielbaren Ton exportiere in Desktop-Chrome",

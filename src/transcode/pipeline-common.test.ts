@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type AudioSample, type AudioSampleSource } from "mediabunny";
 
@@ -246,78 +247,70 @@ describe("discardOutputQuietly", () => {
     });
 });
 
-// resolveAudioPlan decides how the re-encode export handles audio. The decode/
-// encode/copy execution is exercised end-to-end in tests/e2e/export-run.spec.ts;
-// here we lock the decision logic, which is plain branching over the source codec.
-// node-vitest has no AudioEncoder, so resolveEncodeAudioCodec returns null - which
-// lets us assert the "no encoder -> drop" branch deterministically too.
 describe("resolveAudioPlan", () => {
-    // Passthrough returns before touching the file (no ADPCM probe), so a dummy
-    // File is enough for those cases.
-    const dummyFile = new File([new Uint8Array(0)], "x.mp4");
+    const file = (path: string) => new File([readFileSync(new URL(path, import.meta.url))], path.split("/").at(-1)!);
+    const aacFile = () => file("../../tests/testdata/70mai-multichannel/Normal/Front/NO20260101-120000-000001F.MP4");
+    const mainFile = () => file("../../tests/testdata/audio-export/__fixtures__/aac-main/20260101_120000.TS");
+    const pcmFile = () => file("../../tests/testdata/audio-export/__fixtures__/pcm-u8/20260101_120000.mov");
 
-    it("stream-copies an AAC source at 1x with a decoder config (passthrough - no encoder needed)", async () => {
+    it("copies AAC packets without a decoder or encoder", async () => {
         const plan = await resolveAudioPlan(
             { codec: "aac", sampleRate: 48_000, numberOfChannels: 2 },
-            dummyFile,
-            true,
-            true,
-        );
-        expect(plan.mode).toBe("passthrough");
-        if (plan.mode === "passthrough") expect(plan.codec).toBe("aac");
-    });
-
-    it("stream-copies an MP3 source at 1x (passthrough)", async () => {
-        const plan = await resolveAudioPlan(
-            { codec: "mp3", sampleRate: 44_100, numberOfChannels: 2 },
-            dummyFile,
+            aacFile(),
             true,
             true,
         );
         expect(plan.mode).toBe("passthrough");
     });
 
-    it("drops audio benignly when a passthrough codec has no decoder config (damaged esds)", async () => {
-        // firstHasDecoderConfig=false: a readable AAC/MP3 tag whose decoder config
-        // is absent (power-cut/corrupt esds) cannot be muxed - the muxer throws on
-        // the first packet's missing config. The plan must skip BENIGNLY
-        // (noEncoder:false), mirroring exportClip's guard, not commit a track that
-        // crashes mid-export. Regression gate for the null-decoder-config fix.
+    it("drops AAC Main before creating an output track when decoding is unavailable", async () => {
         const plan = await resolveAudioPlan(
             { codec: "aac", sampleRate: 48_000, numberOfChannels: 2 },
-            dummyFile,
+            mainFile(),
+            true,
+            true,
+        );
+        expect(plan).toEqual({ mode: "skip", reason: "unsupported" });
+    });
+
+    it("drops audio with a missing decoder configuration before reading packets", async () => {
+        const plan = await resolveAudioPlan(
+            { codec: "aac", sampleRate: 48_000, numberOfChannels: 2 },
+            aacFile(),
             true,
             false,
         );
-        expect(plan).toEqual({ mode: "skip", noEncoder: false });
+        expect(plan).toEqual({ mode: "skip", reason: "unsupported" });
     });
 
-    it("takes the encode path when passthrough is disabled, dropping audio with no encoder", async () => {
-        // Precondition: node-vitest genuinely has no AudioEncoder, so
-        // resolveEncodeAudioCodec returns null and the encode path falls to drop.
-        // Asserted so the test fails LOUD (not a silent green) if node ever gains it.
+    it("checks decoding when packet copying is disabled", async () => {
+        expect(typeof (globalThis as { AudioDecoder?: unknown }).AudioDecoder).toBe("undefined");
+        const plan = await resolveAudioPlan(
+            { codec: "aac", sampleRate: 48_000, numberOfChannels: 2 },
+            aacFile(),
+            false,
+            true,
+        );
+        expect(plan).toEqual({ mode: "skip", reason: "unsupported" });
+    });
+
+    it("reports a missing encoder after successfully decoding PCM", async () => {
         expect(typeof (globalThis as { AudioEncoder?: unknown }).AudioEncoder).toBe("undefined");
-        // allowPassthrough=false (e.g. a sped-up export) forces re-encode.
         const plan = await resolveAudioPlan(
-            { codec: "aac", sampleRate: 48_000, numberOfChannels: 2 },
-            dummyFile,
-            false,
+            { codec: "pcm-u8", sampleRate: 8000, numberOfChannels: 1 },
+            pcmFile(),
+            true,
             true,
         );
-        expect(plan).toEqual({ mode: "skip", noEncoder: true });
+        expect(plan).toEqual({ mode: "skip", reason: "no-encoder" });
     });
 
-    it("re-encodes a non-passthrough readable codec, dropping audio with no encoder", async () => {
-        // FLAC is readable but not in PASSTHROUGH_AUDIO_CODECS -> encode path (the
-        // decoder-config guard is passthrough-only, so the 4th arg is irrelevant
-        // here). node has no AudioEncoder -> resolveEncodeAudioCodec null -> drop.
-        const plan = await resolveAudioPlan(
-            { codec: "flac", sampleRate: 48_000, numberOfChannels: 2 },
-            dummyFile,
-            true,
-            true,
-        );
-        expect(plan).toEqual({ mode: "skip", noEncoder: true });
+    it("propagates cancellation before probing audio", async () => {
+        await expect(
+            resolveAudioPlan({ codec: "aac", sampleRate: 48_000, numberOfChannels: 2 }, mainFile(), true, true, {
+                signal: AbortSignal.abort(),
+            }),
+        ).rejects.toMatchObject({ name: "AbortError" });
     });
 });
 

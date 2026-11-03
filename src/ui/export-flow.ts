@@ -725,6 +725,7 @@ function notifyExportDegradations(opts: {
     decodeTruncated?: boolean;
     audioDroppedHeterogeneous?: boolean;
     audioDroppedNoEncoder?: boolean;
+    audioDroppedUnsupported?: boolean;
     audioReencodedToOpus?: boolean;
 }): void {
     if (opts.gpmfRequested && !opts.gpmfInjected) {
@@ -741,6 +742,9 @@ function notifyExportDegradations(opts: {
     }
     if (opts.audioDroppedNoEncoder) {
         notify({ severity: "warn", messageKey: "export.notify.audioEncodeUnsupported" });
+    }
+    if (opts.audioDroppedUnsupported) {
+        notify({ severity: "warn", messageKey: "export.notify.audioUnsupported" });
     }
     if (opts.audioReencodedToOpus) {
         notify({ severity: "warn", messageKey: "export.notify.audioFallbackOpus" });
@@ -1108,6 +1112,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
             decodeTruncated?: boolean;
             audioDroppedHeterogeneous?: boolean;
             audioDroppedNoEncoder?: boolean;
+            audioDroppedUnsupported?: boolean;
             audioReencodedToOpus?: boolean;
         },
     ): Promise<void> => {
@@ -1141,6 +1146,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
             decodeTruncated: opts.decodeTruncated,
             audioDroppedHeterogeneous: opts.audioDroppedHeterogeneous,
             audioDroppedNoEncoder: opts.audioDroppedNoEncoder,
+            audioDroppedUnsupported: opts.audioDroppedUnsupported,
             audioReencodedToOpus: opts.audioReencodedToOpus,
         });
         hooks.onDone({
@@ -1300,10 +1306,14 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                 }
             }
             // Stream-copy can never carry a map overlay (canStreamCopy requires
-            // no overlays), so only the GPMF outcome is relevant here.
+            // no overlays); audio and GPMF degradations still need their notices.
             await finishExport(mp4Handle, {
                 gpmfInjected: clipResult?.gpmfInjected ?? false,
                 audioDroppedHeterogeneous: clipResult?.audioDroppedHeterogeneous,
+                audioDroppedUnsupported: clipResult?.audioDroppedUnsupported,
+                audioDroppedNoEncoder: clipResult?.audioDroppedNoEncoder,
+                audioReencodedToOpus: clipResult?.audioReencodedToOpus,
+                decodeTruncated: clipResult?.decodeTruncated,
             });
         } else {
             // Re-encode path (split-screen or single-channel re-encode). The two
@@ -1426,6 +1436,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                 decodeTruncated: transcodeResult.decodeTruncated,
                 audioDroppedHeterogeneous: transcodeResult.audioDroppedHeterogeneous,
                 audioDroppedNoEncoder: transcodeResult.audioDroppedNoEncoder,
+                audioDroppedUnsupported: transcodeResult.audioDroppedUnsupported,
                 audioReencodedToOpus: transcodeResult.audioReencodedToOpus,
             });
         }

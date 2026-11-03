@@ -192,6 +192,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
     // True when audio was requested but no encoder exists and the source could not
     // be stream-copied (ADPCM / exotic codec on a no-encoder browser). Drop+notify.
     let audioDroppedNoEncoder = false;
+    let audioDroppedUnsupported = false;
     // Open the first segment's Input once and reuse it for BOTH the audio probe
     // and the loop's first iteration (segIdx 0). On a single-file recording that
     // file is the whole trip, so reading its (large) moov twice dominated the
@@ -260,10 +261,14 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
         if (audioProbe) {
             const probe = await audioProbe;
             firstAudioFile = probe.firstFile ?? firstAudioFile;
-            const audio = await applyAudioPlan(out, probe, firstAudioFile, speedFactor === 1);
+            const audio = await applyAudioPlan(out, probe, firstAudioFile, speedFactor === 1, {
+                signal,
+                input: firstAudioFile === mainSegments[0]!.file ? firstInput : undefined,
+            });
             audioPlan = audio.audioPlan;
             audioDroppedHeterogeneous = audio.audioDroppedHeterogeneous;
             audioDroppedNoEncoder = audio.audioDroppedNoEncoder;
+            audioDroppedUnsupported = audio.audioDroppedUnsupported;
         }
 
         // Blur helper is created only when letterbox fill is "blur". Pre-allocated
@@ -805,6 +810,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             decodeTruncated,
             audioDroppedHeterogeneous,
             audioDroppedNoEncoder,
+            audioDroppedUnsupported,
             audioMode: audioPlan?.mode ?? "none",
             audioReencodedToOpus,
         });
@@ -817,6 +823,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
             decodeTruncated,
             audioDroppedHeterogeneous,
             audioDroppedNoEncoder,
+            audioDroppedUnsupported,
             audioReencodedToOpus,
             capturedMoov: outputSession.capturedMoov,
         };

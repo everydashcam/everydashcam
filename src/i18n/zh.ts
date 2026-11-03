@@ -914,6 +914,7 @@ export const zhDict = {
     "export.notify.gpmfFailed": "已保存片段，但无法向其中添加 GPS 数据",
     "export.notify.mapDropped": "已保存片段，但未能加入地图",
     "export.notify.damagedEnd": "已保存片段，但无法包含录像中损坏的末尾部分",
+    "export.notify.audioUnsupported": "片段已保存，但不支持这段录像的音频，因此没有声音",
     "export.notify.audioFormatMixed": "片段已保存，但各段录像的音频格式不兼容，因此没有声音",
     "export.notify.audioEncodeUnsupported": "片段已保存，但没有声音 — 如需保留声音，请在电脑端 Chrome 中导出",
     "export.notify.audioFallbackOpus": "已保存片段，但它的声音在某些应用中可能无法播放。如需在任何设备上都能播放的声音，请在桌面版 Chrome 中导出",

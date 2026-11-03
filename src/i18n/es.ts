@@ -916,6 +916,7 @@ export const esDict = {
     "export.notify.gpmfFailed": "Clip guardado, pero no se pudieron añadir los datos GPS",
     "export.notify.mapDropped": "Clip guardado, pero no se pudo añadir el mapa",
     "export.notify.damagedEnd": "Clip guardado, pero no se pudo incluir el final dañado de la grabación",
+    "export.notify.audioUnsupported": "Clip guardado sin sonido — el audio de esta grabación no es compatible",
     "export.notify.audioFormatMixed": "Clip guardado sin sonido — no se pudo combinar el audio de las grabaciones",
     "export.notify.audioEncodeUnsupported": "Clip guardado sin sonido — para conservarlo, expórtalo en Chrome desde un ordenador",
     "export.notify.audioFallbackOpus": "Clip guardado, pero puede que su sonido no se reproduzca en algunas apps — para un sonido que suene en todas partes, expórtalo en Chrome de escritorio",

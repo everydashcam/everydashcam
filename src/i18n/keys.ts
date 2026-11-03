@@ -1170,6 +1170,7 @@ export type I18nKey =
     | "export.notify.gpmfFailed"
     | "export.notify.mapDropped"
     | "export.notify.damagedEnd"
+    | "export.notify.audioUnsupported"
     | "export.notify.audioFormatMixed"
     | "export.notify.audioEncodeUnsupported"
     | "export.notify.audioFallbackOpus"

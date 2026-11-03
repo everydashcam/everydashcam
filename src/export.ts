@@ -52,6 +52,7 @@ import { VIDEO_INPUT_FORMATS } from "./video-formats.js";
 import { DEGENERATE_VIDEO_PACKET_MAX_BYTES } from "./transcode/normalize-degenerate-video.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./transcode/adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./transcode/capabilities.js";
+import { resolveReadableAudioPlan, type ReadableAudioPlan } from "./transcode/audio-export-support.js";
 import { createLogger } from "./log.js";
 import { createRetryingBlobSource } from "./retrying-blob-source.js";
 import { getInputTimeOrigin } from "./media-time.js";
@@ -91,6 +92,10 @@ export interface ExportClipResult {
     // carry mixed audio formats (a single output audio track cannot span them).
     // The caller surfaces a notice; the clip itself saved fine, just silent.
     audioDroppedHeterogeneous: boolean;
+    audioDroppedUnsupported: boolean;
+    audioDroppedNoEncoder: boolean;
+    audioReencodedToOpus: boolean;
+    decodeTruncated: boolean;
 }
 
 interface ExportClipArgs {
@@ -332,6 +337,11 @@ export async function exportClip({
         let audioSource: EncodedAudioPacketSource | null = null;
         let audioCodec: AudioCodec | null = null;
         let audioDroppedHeterogeneous = false;
+        let audioDroppedUnsupported = false;
+        let audioDroppedNoEncoder = false;
+        let audioReencodedToOpus = false;
+        let decodeTruncated = false;
+        let reencodedAudio: Extract<ReadableAudioPlan, { mode: "encode" }> | null = null;
         // IMA-ADPCM path: mediabunny cannot read this codec, so we decode it to
         // PCM-s16 ourselves and feed an AudioSampleSource instead of stream-copying.
         let adpcmSource: AudioSampleSource | null = null;
@@ -357,23 +367,29 @@ export async function exportClip({
                 const firstAudioTrack = audioDroppedHeterogeneous ? null : await audioInput.getPrimaryAudioTrack();
                 if (firstAudioTrack) {
                     audioCodec = await firstAudioTrack.getCodec();
-                    // Same preflight as video, but a null audio decoder config is a
-                    // benign "export without audio" rather than a hard failure: decide
-                    // the audio track up front so a missing config never reaches the
-                    // muxer on the first audio packet (which would throw mid-export).
-                    const firstAudioDecoderConfig = audioCodec ? await firstAudioTrack.getDecoderConfig() : null;
-                    audioDecoderConfig = firstAudioDecoderConfig;
-                    if (audioCodec && !output.format.getSupportedAudioCodecs().includes(audioCodec)) {
-                        log.warn("audio codec cannot be stored in mp4, exporting without audio", { codec: audioCodec });
-                        audioCodec = null;
-                    } else if (audioCodec && firstAudioDecoderConfig) {
-                        audioSource = new EncodedAudioPacketSource(audioCodec);
-                        output.addAudioTrack(audioSource);
-                    } else if (audioCodec) {
-                        log.warn("audio track present but no decoder config, exporting without audio", {
-                            file: segments[0]!.file.name,
-                        });
-                        audioCodec = null;
+                    if (audioCodec) {
+                        const plan = await resolveReadableAudioPlan(firstAudioTrack, true, signal);
+                        if (plan.mode === "passthrough") {
+                            audioSource = plan.source;
+                            audioDecoderConfig = plan.decoderConfig;
+                            output.addAudioTrack(audioSource);
+                        } else if (plan.mode === "encode") {
+                            reencodedAudio = plan;
+                            audioReencodedToOpus = plan.codec === "opus";
+                            output.addAudioTrack(plan.source);
+                            log.info("audio cannot be copied, transcoding", {
+                                inputCodec: audioCodec,
+                                outputCodec: plan.codec,
+                            });
+                        } else {
+                            audioDroppedUnsupported = plan.reason === "unsupported";
+                            audioDroppedNoEncoder = plan.reason === "no-encoder";
+                            log.warn("audio unavailable for export, keeping video", {
+                                codec: audioCodec,
+                                reason: plan.reason,
+                            });
+                            audioCodec = null;
+                        }
                     } else {
                         // getCodec() returned null: mediabunny does not recognise the
                         // codec. The known case is Mio/Navman IMA ADPCM in a QuickTime
@@ -399,6 +415,7 @@ export async function exportClip({
                             // accepted as parity with feedSegmentAudioAdpcm, not a per-path
                             // special case. pcm-s16 only when there is no encoder at all.
                             const encodeCodec = await resolveEncodeAudioCodec();
+                            audioReencodedToOpus = encodeCodec === "opus";
                             adpcmSource = encodeCodec
                                 ? createEncodeAudioSource(encodeCodec)
                                 : new AudioSampleSource({ codec: "pcm-s16" });
@@ -409,6 +426,7 @@ export async function exportClip({
                                 sampleRate: reader.sampleRate,
                             });
                         } else {
+                            audioDroppedUnsupported = true;
                             log.warn("unsupported audio codec, exporting without audio", {
                                 file: segments[0]!.file.name,
                             });
@@ -593,6 +611,25 @@ export async function exportClip({
                     if (reader) {
                         await reader.feedRange(adpcmSource, videoStartShift, segmentEnd, videoAccumSec, signal);
                     }
+                } else if (reencodedAudio) {
+                    // Keep the optional decode/encode machinery off the ordinary
+                    // packet-copy path. Video stays byte-identical; both tracks use
+                    // the same source origin and output offset, including preroll.
+                    const { feedSegmentAudio } = await import("./transcode/pipeline-common.js");
+                    await feedSegmentAudio({
+                        audioSource: reencodedAudio.source,
+                        input,
+                        startInFile: videoStartShift - origin,
+                        endInFile: segmentEnd - origin,
+                        fileDurationSec: seg.fileDurationSec,
+                        segBaseOutSec: videoAccumSec,
+                        silenceFormat: reencodedAudio.silenceFormat,
+                        signal: signal ?? new AbortController().signal,
+                        fileName: seg.file.name,
+                        onTruncated: () => {
+                            decodeTruncated = true;
+                        },
+                    });
                 } else {
                     // The audio tail past the last video frame (up to the segment end).
                     await copyAudioBefore(segmentEnd);
@@ -709,6 +746,10 @@ export async function exportClip({
             basename: clipBasename(trip, startTripSec, endTripSec),
             gpmfInjected,
             audioDroppedHeterogeneous,
+            audioDroppedUnsupported,
+            audioDroppedNoEncoder,
+            audioReencodedToOpus,
+            decodeTruncated,
         };
     } catch (err) {
         // Output.cancel closes StreamTarget, which would commit an unfinished

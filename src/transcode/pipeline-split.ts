@@ -292,6 +292,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         // True when audio was requested but no encoder exists and the source could not
         // be stream-copied (ADPCM / exotic codec on a no-encoder browser). Drop+notify.
         let audioDroppedNoEncoder = false;
+        let audioDroppedUnsupported = false;
         if (output.withAudio) {
             // Heterogeneous master audio (e.g. an original clip spliced with a
             // re-export) cannot share one track - drop audio rather than crash the
@@ -310,10 +311,11 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                 { signal },
             );
             firstAudioFile = probe.firstFile ?? firstAudioFile;
-            const audio = await applyAudioPlan(out, probe, firstAudioFile, speedFactor === 1);
+            const audio = await applyAudioPlan(out, probe, firstAudioFile, speedFactor === 1, { signal });
             audioPlan = audio.audioPlan;
             audioDroppedHeterogeneous = audio.audioDroppedHeterogeneous;
             audioDroppedNoEncoder = audio.audioDroppedNoEncoder;
+            audioDroppedUnsupported = audio.audioDroppedUnsupported;
         }
 
         // Blur helper is created only when the background fill is "blur". Passed to
@@ -919,6 +921,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             decodeTruncated,
             audioDroppedHeterogeneous,
             audioDroppedNoEncoder,
+            audioDroppedUnsupported,
             audioMode: audioPlan?.mode ?? "none",
             audioReencodedToOpus,
         });
@@ -931,6 +934,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             decodeTruncated,
             audioDroppedHeterogeneous,
             audioDroppedNoEncoder,
+            audioDroppedUnsupported,
             audioReencodedToOpus,
             capturedMoov: outputSession.capturedMoov,
         };

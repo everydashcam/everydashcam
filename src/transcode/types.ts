@@ -237,6 +237,8 @@ export interface TranscodeResult {
      *  surfaces a "no sound" notice. Absent/false when audio saved (copied or
      *  encoded). See resolveAudioPlan / resolveEncodeAudioCodec. */
     audioDroppedNoEncoder?: boolean;
+    /** Audio could neither be copied to MP4 nor decoded for re-encoding. */
+    audioDroppedUnsupported?: boolean;
     /** True when the re-encode path had to fall back to Opus because the browser
      *  cannot encode AAC. Audio IS present, but Opus-in-MP4 is less compatible
      *  (no QuickTime / Apple native / older Windows) - the caller surfaces a soft

@@ -926,6 +926,7 @@ export const koDict = {
     "export.notify.gpmfFailed": "클립은 저장했지만 GPS 정보를 함께 넣지 못했어요",
     "export.notify.mapDropped": "클립은 저장했지만 지도를 넣지 못했어요",
     "export.notify.damagedEnd": "클립은 저장했지만 녹화의 손상된 끝부분은 넣지 못했어요",
+    "export.notify.audioUnsupported": "클립은 저장했지만 이 녹화의 오디오를 지원하지 않아 소리가 빠졌어요",
     "export.notify.audioFormatMixed": "클립은 저장했지만 녹화의 오디오 형식이 서로 맞지 않아 소리가 빠졌어요",
     "export.notify.audioEncodeUnsupported": "클립은 소리 없이 저장됐어요 — 소리를 유지하려면 컴퓨터의 Chrome에서 내보내세요",
     "export.notify.audioFallbackOpus": "클립은 저장했지만 일부 앱에서는 소리가 재생되지 않을 수 있어요. 어디서나 재생되는 소리를 원하면 데스크톱 Chrome에서 내보내세요",

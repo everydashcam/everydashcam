@@ -345,6 +345,30 @@ describe("stream-copy export", () => {
         }
     });
 
+    it("keeps every video packet when AAC Main cannot be copied or decoded", async () => {
+        const file = fixture("../tests/testdata/audio-export/__fixtures__/aac-main/20260101_120000.TS");
+        const source = open(file);
+        const saved = await save([file]);
+        const output = open(saved.file);
+        const reference = open(await remuxFixture(file));
+        try {
+            expect((await (await source.getPrimaryAudioTrack())!.getDecoderConfig())?.codec).toBe("mp4a.40.1");
+            expect(saved.result.audioDroppedUnsupported).toBe(true);
+            expect(saved.result.audioDroppedNoEncoder).toBe(false);
+            expect(await output.getPrimaryAudioTrack()).toBeNull();
+            const expected = await packets((await reference.getPrimaryVideoTrack())!);
+            const actual = await packets((await output.getPrimaryVideoTrack())!);
+            expect(actual.map((packet) => packet.data)).toEqual(expected.map((packet) => packet.data));
+            expect(await (await output.getPrimaryVideoTrack())!.computeDuration()).toBeCloseTo(
+                (await (await source.getPrimaryVideoTrack())!.computeDuration()) - (await getInputTimeOrigin(source)),
+            );
+        } finally {
+            source.dispose();
+            output.dispose();
+            reference.dispose();
+        }
+    });
+
     it("keeps video when MOV audio cannot be represented in an MP4 track", async () => {
         const file = await remuxFixture(fixture(H264_FIXTURE), true);
         const source = open(file);

@@ -916,6 +916,7 @@ export const frDict = {
     "export.notify.gpmfFailed": "Extrait enregistré, mais les données GPS n'ont pas pu y être ajoutées",
     "export.notify.mapDropped": "Extrait enregistré, mais la carte n'a pas pu être ajoutée",
     "export.notify.damagedEnd": "Extrait enregistré, mais la fin endommagée de l'enregistrement n'a pas pu être incluse",
+    "export.notify.audioUnsupported": "Extrait enregistré sans son — l’audio de cet enregistrement n’est pas pris en charge",
     "export.notify.audioFormatMixed": "Extrait enregistré sans son — les pistes audio des enregistrements n’ont pas pu être combinées",
     "export.notify.audioEncodeUnsupported": "Extrait enregistré sans son — pour le conserver, exporte depuis Chrome sur ordinateur",
     "export.notify.audioFallbackOpus": "Extrait enregistré, mais l’audio risque de ne pas se lire dans certaines applis — pour une meilleure compatibilité, exporte depuis Chrome sur ordinateur",
