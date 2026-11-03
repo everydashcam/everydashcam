@@ -29,7 +29,7 @@ async function openBlurProgress(page: Page): Promise<void> {
             // speed or GPU availability part of this DOM contract. The real local
             // asset bytes still pass the same integrity gate as production.
             Object.defineProperty(navigator, "gpu", {
-                value: { requestAdapter: async () => ({}) },
+                value: { requestAdapter: async () => ({ info: {} }) },
                 configurable: true,
             });
             for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");

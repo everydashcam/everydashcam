@@ -29,7 +29,7 @@ for (const locale of ["en", "ru"] as const)
                 page,
                 (urls: string[]) => {
                     Object.defineProperty(navigator, "gpu", {
-                        value: { requestAdapter: async () => ({}) },
+                        value: { requestAdapter: async () => ({ info: {} }) },
                         configurable: true,
                     });
                     for (const url of urls) localStorage.setItem(`everydashcam:blurAssetDownloaded:${url}`, "1");

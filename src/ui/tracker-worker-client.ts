@@ -84,6 +84,7 @@ export async function requestTrackerWorker<
             isAssetFailure ||
             (error instanceof Error &&
                 (error.name === "OrtInitializationError" ||
+                    error.name === "WebGpuUnavailableError" ||
                     error.name === "OrtThreadStartError" ||
                     error.name === "OrtInferenceError")) ||
             timeout?.name === "TimeoutError"

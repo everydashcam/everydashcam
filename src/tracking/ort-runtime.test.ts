@@ -5,6 +5,19 @@ import { createOrtSession, runOrtSession, SINGLE_THREAD_TRACKER_WORKER_NAME } fr
 
 afterEach(() => vi.unstubAllGlobals());
 
+it("rejects incompatible WebGPU before loading assets without trying a thread fallback", async () => {
+    vi.stubGlobal("crossOriginIsolated", true);
+    vi.stubGlobal("navigator", { hardwareConcurrency: 8, gpu: { requestAdapter: async () => ({}) } });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+        createOrtSession("webgpu", TRACKER_ASSETS.ort.webgpu, TRACKER_ASSETS.models.face.url, {
+            executionProviders: ["webgpu"],
+        }),
+    ).rejects.toMatchObject({ name: "WebGpuUnavailableError" });
+    expect(fetch).not.toHaveBeenCalled();
+});
+
 it("does not treat an initialization AbortError as user cancellation", async () => {
     const cause = new DOMException("initialization aborted", "AbortError");
     vi.stubGlobal("fetch", async () => {

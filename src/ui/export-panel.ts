@@ -1303,9 +1303,9 @@ function renderBlurGroup(): HTMLElement {
         wrap.appendChild(facesRow);
         wrap.appendChild(renderDetectQualityControl());
         wrap.appendChild(renderDetectThresholdSettings());
-        // Detection is WebGPU-only (see blur-detect.ts) - when the adapter is
-        // absent both checkboxes are disabled and this note says why. Availability
-        // resolves from an async probe, so syncDetectGroup owns both states.
+        // Detection is WebGPU-only (see blur-detect.ts). An incompatible adapter
+        // disables new selections and this note says why. Availability resolves
+        // from an async probe, so syncDetectGroup owns both states.
         const gpuNote = document.createElement("div");
         gpuNote.className = "export-panel__note";
         gpuNote.textContent = t("export.blur.detect.needsGpu");
@@ -1827,11 +1827,11 @@ function syncDetectGroup(): void {
     }
     if (blurDetectPlatesCbEl) {
         blurDetectPlatesCbEl.checked = detectEnabled("plate");
-        blurDetectPlatesCbEl.disabled = !detectAvailable();
+        blurDetectPlatesCbEl.disabled = !detectAvailable() && !blurDetectPlatesCbEl.checked;
     }
     if (blurDetectFacesCbEl) {
         blurDetectFacesCbEl.checked = detectEnabled("face");
-        blurDetectFacesCbEl.disabled = !detectAvailable();
+        blurDetectFacesCbEl.disabled = !detectAvailable() && !blurDetectFacesCbEl.checked;
     }
     if (blurDetectQualityEl) {
         const quality = detectQuality();

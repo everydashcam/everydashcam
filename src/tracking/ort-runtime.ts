@@ -15,6 +15,7 @@
 import { type OrtAssets, ortAssetKey } from "./ort-assets.js";
 import { loadAssetParts } from "./asset-loader.js";
 import { TRACKER_ASSETS } from "./asset-manifest.js";
+import { requireDetectionWebGpu } from "./webgpu-support.js";
 
 export type OrtRuntime = "webgpu" | "wasm";
 
@@ -78,6 +79,9 @@ async function loadOrt(runtime: OrtRuntime, assets: OrtAssets): Promise<OrtModul
     const hit = cached.get(key);
     if (hit) return hit;
     const pending = (async () => {
+        // Capability failures cannot be repaired by restarting WASM threads.
+        // Reject before loading ORT so they cannot poison its native runtime.
+        if (runtime === "webgpu") await requireDetectionWebGpu();
         const module = (
             runtime === "webgpu" ? await import("onnxruntime-web/webgpu") : await import("onnxruntime-web/wasm")
         ) as OrtModule;
@@ -129,7 +133,8 @@ export async function createOrtSession(
     } catch (cause) {
         // Initialization has no user AbortSignal. An AbortError here can leave
         // the native module unusable, just like any other initialization failure.
-        if (cause instanceof Error && cause.name.startsWith("Asset")) throw cause;
+        if (cause instanceof Error && (cause.name.startsWith("Asset") || cause.name === "WebGpuUnavailableError"))
+            throw cause;
         const error = new Error(cause instanceof Error ? cause.message : String(cause), { cause });
         // The first session starts the runtime. With a thread pool, its failure
         // may be a thread that never started, which one thread avoids; the page

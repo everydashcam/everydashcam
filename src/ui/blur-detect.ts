@@ -26,6 +26,7 @@ import { unionIntervals } from "../tracking/interval-set.js";
 import type { DetectionAnalysis } from "../tracking/detection-analysis.js";
 import { DETECTION_QUALITY_DEFAULT, type DetectionQuality } from "../tracking/detection-sampling.js";
 import { DETECTION_POLICIES, detectionPolicy, type DetectionThresholds } from "../tracking/detector-policy.js";
+import { requireDetectionWebGpu, webGpuUnavailableError } from "../tracking/webgpu-support.js";
 import { createLogger } from "../log.js";
 import { captureSentryException, captureSentryMessage } from "../sentry.js";
 import { tripAllCandidates } from "../trips.js";
@@ -262,9 +263,8 @@ subscribeExportState(() => {
     scheduleEnsureDetectPass();
 });
 
-// Probe for a WebGPU adapter once at startup: detection (both kinds) is
-// WebGPU-only - an adapter here means the worker almost certainly has one too
-// (a create failing there anyway fails the pass loudly - see tracker-worker).
+// Probe for an ORT-compatible WebGPU adapter once at startup. The worker checks
+// again in its own realm before loading the runtime.
 // The probe resolves in milliseconds - long before any consent interaction -
 // but re-render just in case one raced. Until it settles, detectAvailable()
 // stays optimistic: rendering the checkboxes disabled for the probe's few ms
@@ -272,13 +272,11 @@ subscribeExportState(() => {
 // baselines).
 let probeConcludedNoGpu = false;
 void (async () => {
-    let adapter: object | null = null;
     try {
-        adapter = typeof navigator !== "undefined" && navigator.gpu ? await navigator.gpu.requestAdapter() : null;
+        await requireDetectionWebGpu();
     } catch {
-        // No WebGPU - treated the same as a null adapter below.
+        probeConcludedNoGpu = true;
     }
-    if (!adapter) probeConcludedNoGpu = true;
     notifyDetectChanged();
 })();
 
@@ -322,8 +320,8 @@ export function detectAssetGroups(kinds: readonly DetectKind[]): BlurAssetGroupI
 }
 
 /** Detector scans require WebGPU; ViTTrack uses its separate WASM runtime.
- *  Once the probe concludes there is no adapter, the panel disables both
- *  checkboxes with an explanation. */
+ *  Without a compatible adapter, the panel disables new selections with an
+ *  explanation. Existing selections remain checked until the user clears them. */
 export function detectAvailable(): boolean {
     return !probeConcludedNoGpu;
 }
@@ -544,6 +542,7 @@ function ensureDetectPassFor(
     }
     const result = tripState(trip).result;
     if (result && result.key === params.key) return; // fresh
+    if (!detectAvailable()) return;
     startRun(trip, params, opts?.protectForExport === true);
 }
 
@@ -562,6 +561,8 @@ export async function ensureDetectRegionsForExport(
     const { trip, params, style } = request;
     signal.throwIfAborted();
     if (!matchesBlurTripSource(request.source, trip)) throw new Error("detect source changed after export started");
+    const st = tripState(trip);
+    if (!detectAvailable() && st.result?.key !== params.key) throw webGpuUnavailableError();
     // Consent leftover: the box is checked but the download strip was ignored
     // (never answered) and Save got clicked. Silently exporting WITHOUT the
     // promised blur is the one failure this feature must never have, so Save
@@ -574,7 +575,6 @@ export async function ensureDetectRegionsForExport(
         if (!ok) throw new Error("detect model download failed");
     }
     if (!matchesBlurTripSource(request.source, trip)) throw new Error("detect source changed after export started");
-    const st = tripState(trip);
     for (;;) {
         throwIfCancelled(signal);
         if (st.result && st.result.key === params.key) {
@@ -589,6 +589,7 @@ export async function ensureDetectRegionsForExport(
         ensureDetectPassFor(trip, params, { protectForExport: true });
         const run = running;
         if (!run || run.trip !== trip || run.key !== params.key) {
+            if (!detectAvailable()) throw webGpuUnavailableError();
             // Never turn an enabled privacy promise into an unredacted export.
             // A conflicting protected pass should be impossible because export
             // flows are serialized, but failing loudly is still safer than [].
@@ -935,6 +936,10 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
             } else {
                 lastFailedRun = { trip: run.trip, key: params.key };
                 run.failure = err;
+                const gpuUnavailable = err instanceof Error && err.name === "WebGpuUnavailableError";
+                // Preserve the selected privacy options; only the user may
+                // turn them off. The panel still lets checked boxes be cleared.
+                if (gpuUnavailable) probeConcludedNoGpu = true;
                 log.warn("detect pass failed", { key: params.key, err: String(err) });
                 // Save-time detection is already awaited and captured by the
                 // export flow. A live preview pass has no other error boundary.
@@ -943,10 +948,11 @@ function startRun(trip: Trip, params: PassParams, exportProtected = false): void
                 }
                 notify({
                     severity: "warn",
-                    messageKey:
-                        err instanceof Error && err.name === "AssetUnavailableError"
-                            ? "export.blur.tracker.update"
-                            : "export.blur.detect.failed",
+                    messageKey: gpuUnavailable
+                        ? "export.blur.detect.needsGpu"
+                        : err instanceof Error && err.name === "AssetUnavailableError"
+                          ? "export.blur.tracker.update"
+                          : "export.blur.detect.failed",
                 });
             }
             return false;
@@ -970,6 +976,7 @@ export function _resetForTests(): void {
     if (ensureTimer !== undefined) window.clearTimeout(ensureTimer);
     ensureTimer = undefined;
     stateByTrip = new WeakMap();
+    probeConcludedNoGpu = false;
     lastFailedRun = null;
     listeners.clear();
 }

@@ -17,7 +17,7 @@ const assetFiles = computeTrackerAssets("serve").files;
 const assetResponse = (url: string) => new Response(new Uint8Array(assetFiles.get(url)!));
 
 const ui = vi.hoisted(() => {
-    vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => ({}) } });
+    vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => ({ info: {} }) } });
     return {
         trip: null as Trip | null,
         range: { startTripSec: 0, endTripSec: 3 },
@@ -57,6 +57,7 @@ import {
     _resetForTests as resetDetection,
     captureDetectExportRequest,
     detectEnabled,
+    detectAvailable,
     detectCounts,
     detectFindings,
     detectUncertainFindings,
@@ -200,7 +201,7 @@ beforeEach(() => {
         return endpoints.mainEndpoint;
     });
     vi.stubGlobal("window", globalThis);
-    vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => ({}) } });
+    vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => ({ info: {} }) } });
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
     vi.stubGlobal("caches", { match: async () => undefined });
     vi.stubGlobal("fetch", async (url: string) => assetResponse(url));
@@ -214,6 +215,33 @@ afterEach(() => {
 });
 
 describe("blur pass lifecycle", () => {
+    it("keeps selected blur after worker WebGPU rejection and blocks export without a retry", async () => {
+        await downloadBlurAssets(["detect-plate"]);
+        setDetectEnabled("plate", true);
+        const request = captureDetectExportRequest()!;
+        const detection = ensureDetectRegionsForExport(request, new AbortController().signal, () => {}).catch(
+            (error: unknown) => error,
+        );
+        await flushMicrotasks();
+        expect(requests).toHaveLength(1);
+        requests[0]!.reject(Object.assign(new Error("webgpu unavailable"), { name: "WebGpuUnavailableError" }));
+        expect(await detection).toMatchObject({ name: "WebGpuUnavailableError" });
+        expect(endpoints.terminated()).toBe(true);
+        expect(detectAvailable()).toBe(false);
+        expect(detectEnabled("plate")).toBe(true);
+        expect(ui.notifications).toEqual(["export.blur.detect.needsGpu"]);
+
+        await expect(
+            ensureDetectRegionsForExport(request, new AbortController().signal, () => {}),
+        ).rejects.toMatchObject({ name: "WebGpuUnavailableError" });
+        ensureDetectPass();
+        expect(requests).toHaveLength(1);
+        setDetectEnabled("face", true);
+        expect(detectEnabled("face")).toBe(false);
+        setDetectEnabled("plate", false);
+        expect(captureDetectExportRequest()).toBeNull();
+    });
+
     it("keeps unrelated Follow requests running after a decoding error", async () => {
         const first = toggleTrackPass(ui.trip!, makeRegion());
         const secondRegion = { ...makeRegion(), id: "region-2" };

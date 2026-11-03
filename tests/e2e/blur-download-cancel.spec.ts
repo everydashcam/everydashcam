@@ -25,7 +25,7 @@ async function openDetection(page: Page, { delayedCache = false, gatedRuntimeUrl
             // The download gate runs before inference and must work without a
             // physical GPU. A worker starting during this test is a failure.
             Object.defineProperty(navigator, "gpu", {
-                value: { requestAdapter: async () => ({}) },
+                value: { requestAdapter: async () => ({ info: {} }) },
                 configurable: true,
             });
             if (delayedCache) {
