@@ -31,7 +31,7 @@ feature, and informational gaps are handled at the point of use.
 | Native video and container parsing | Do not require WebCodecs; codec availability still depends on the browser, OS and GPU. |
 | Edited export and previews | Require the relevant decode/encode and canvas capabilities. Original-quality stream-copy export does not require WebCodecs. |
 | H.264 encoding | Probe a real encode in [transcode capabilities](../src/transcode/capabilities.ts); API presence and `isConfigSupported()` alone are insufficient. |
-| HEVC playback | Uses platform decoders, with container remux when needed. There is no WASM software-decoder fallback. Shared browser advice lives in [empty-state.ts](../src/ui/empty-state.ts). |
+| HEVC playback | Uses platform decoders, with container remux when needed. There is no WASM software-decoder fallback. Ingest keeps HEVC playable because WebCodecs probes can reject codecs that the native path decodes. When the platform cannot decode the video of a recording with audio, Chromium plays only the audio without an error. The player [detects the missing video track](../src/ui/native-video-track.ts) and treats the codec as unsupported. Shared browser advice lives in [empty-state.ts](../src/ui/empty-state.ts). |
 | Saving exports | [Export flow](../src/ui/export-flow.ts) uses a native file picker when available, otherwise an [in-memory download](../src/ui/in-memory-file.ts). Service workers are not required. |
 | Offline reopening | Uses the hosted [service worker](../src/sw.ts); its absence does not disable local playback or export. |
 | Secure context | Some editing, file-access and offline features require HTTPS or localhost. See [local-network hosting](self-hosting.md#https-and-local-networks). |

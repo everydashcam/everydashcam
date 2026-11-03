@@ -386,3 +386,71 @@ test("moves on to the next clip when the decoder fails in the current clip's tai
         "a tail failure is not a codec rejection",
     ).toBe(true);
 });
+
+test("explains a recording when the browser skips its video track and plays only audio", async ({ page }) => {
+    await presetLocalStorage(page);
+    // Chromium without a platform decoder for the codec (HEVC on Windows
+    // without a hardware decoder) drops the video stream, keeps the audio and
+    // raises no MediaError. The element then reports no picture size.
+    await page.addInitScript(() => {
+        for (const property of ["videoWidth", "videoHeight"]) {
+            Object.defineProperty(HTMLVideoElement.prototype, property, { configurable: true, get: () => 0 });
+        }
+    });
+    await gotoApp(page, "en");
+    await loadTrip(page, join(fixtureDirectory, "multiple"));
+    await expect(page.locator(".viewer")).toHaveClass(/codec-unsupported/);
+    await expect(page.locator(".viewer")).not.toHaveClass(/playback-failed/);
+    await expect(page.locator("#codec-unsupported-title")).toHaveText("This browser can't play this video");
+    expect(
+        await page.evaluate(
+            () =>
+                window.__everydashcam.state.trips[window.__everydashcam.state.active!.trip]!.frames[0]!.channels.front!
+                    .canPlay,
+        ),
+        "a skipped video track is a codec rejection, not a retryable fault",
+    ).toBe(false);
+    await expect.poll(() => page.locator("#player").evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+    await shot(page, "codec-unsupported-skipped-video-track");
+});
+
+test("keeps the healthy camera in place when another camera turns out to have no video track", async ({ page }) => {
+    await presetLocalStorage(page);
+    await gotoApp(page, "en");
+    await loadTrip(page, join(fixtureDirectory, "multiple"));
+    await expect
+        .poll(() => page.locator("#player-rear").evaluate((v: HTMLVideoElement) => v.readyState))
+        .toBeGreaterThanOrEqual(2);
+    await expect
+        .poll(() => page.locator("#player").evaluate((v: HTMLVideoElement) => v.currentTime))
+        .toBeGreaterThan(1);
+    const healthy = await page
+        .locator("#player")
+        .evaluate((v: HTMLVideoElement) => ({ source: v.src, time: v.currentTime }));
+    // The rear camera reloads mid-clip as a recording whose video track the
+    // browser skips, the same moment a seek or a drift boundary attaches it.
+    await page.locator("#player-rear").evaluate((rear: HTMLVideoElement) => {
+        for (const property of ["videoWidth", "videoHeight"]) {
+            Object.defineProperty(rear, property, { configurable: true, get: () => 0 });
+        }
+        rear.load();
+    });
+    await expect(page.locator('.video-tile[data-channel="rear"]')).toHaveClass(/tile-unplayable/);
+    await expect(page.locator(".viewer")).not.toHaveClass(/codec-unsupported|playback-failed/);
+    const master = await page
+        .locator("#player")
+        .evaluate((v: HTMLVideoElement) => ({ source: v.src, time: v.currentTime }));
+    expect(master.source).toBe(healthy.source);
+    expect(master.time, "the front camera does not rewind to the clip start").toBeGreaterThanOrEqual(healthy.time);
+    await expect
+        .poll(() => page.locator("#player").evaluate((v: HTMLVideoElement) => v.currentTime))
+        .toBeGreaterThan(healthy.time + 0.3);
+    expect(
+        await page.evaluate(
+            () =>
+                window.__everydashcam.state.trips[window.__everydashcam.state.active!.trip]!.frames[0]!.channels.rear!
+                    .canPlay,
+        ),
+        "the rear camera is marked as a codec rejection",
+    ).toBe(false);
+});

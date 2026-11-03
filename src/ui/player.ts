@@ -107,6 +107,7 @@ import {
 } from "./player-zoom.js";
 import { initPlayerMetrics, refreshMetricsFromActiveFrame, resyncMetricsForTrip } from "./player-metrics.js";
 import { isPreloadReadyForPromotion } from "./player-preload.js";
+import { hasDroppedVideoTrack } from "./native-video-track.js";
 import { isClipTailFailure } from "./playback-tail.js";
 import { isCoarsePointer } from "./media-queries.js";
 import { syncExportButton } from "./player-export-button.js";
@@ -564,7 +565,9 @@ function detachIfErrored(v: HTMLVideoElement, file: File): void {
 function promoteSlavePreload(ch: Channel, cand: VideoCandidate, positionSec: number): boolean {
     const preload = preloadPlayer(ch);
     if (videoAttachedFile.get(preload) !== cand.file) return false;
-    if (!isPreloadReadyForPromotion(preload.readyState) || preload.error) return false;
+    // A slot without a video track must go through a normal attach, whose
+    // loadedmetadata check marks the recording unplayable.
+    if (!isPreloadReadyForPromotion(preload.readyState) || preload.error || hasDroppedVideoTrack(preload)) return false;
     const previous = channelPlayers[ch];
     routeChannelAudio(preload, ch);
     preload.playbackRate = state.preferredPlaybackRate;
@@ -611,8 +614,9 @@ function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
     const newActive = preloadPlayer(masterCh);
     if (videoAttachedFile.get(newActive) !== cand.file) return false;
     if (!isPreloadReadyForPromotion(newActive.readyState)) return false;
-    // Decoder error - don't promote (fall back to playFrame, which handles the codec-overlay).
-    if (newActive.error) return false;
+    // Decoder error or a skipped video track - don't promote (fall back to
+    // playFrame, whose attach reaches the codec overlay).
+    if (newActive.error || hasDroppedVideoTrack(newActive)) return false;
 
     // No need to pause ex-active (it is on 'ended', playback has already stopped).
     // If paused explicitly, its timeupdate could fire one last time after the swap.
@@ -1015,15 +1019,22 @@ async function disposeChannelBackend(ch: Channel): Promise<void> {
  * Marks a candidate unplayable at runtime and re-renders so the codec-unsupported
  * overlay replaces a black/frozen frame: syncFrameToGrid hides its tiles, playFrame
  * shows the overlay on the active channel and keeps other channels playing. Shared
- * by the MSE backend-error path and the native <video> decode-error path.
+ * by the MSE backend-error path and the native <video> decode-error and
+ * skipped-video-track paths. The re-render keeps the master's position: a slave
+ * that drops out after a seek or mid-clip must not rewind the healthy cameras.
  * Caller logs the reason - this only effects the state change + re-render.
  */
 function markCandidateUnplayable(cand: VideoCandidate, ch: Channel): void {
     if (!cand.canPlay) return; // already marked - no re-render needed
+    // Read before the re-render. playbackRetryPosition also covers a master
+    // that is still loading a cross-file seek target and sits at 0.
+    const masterFileOffsetSec = playbackRetryPosition(activePlayer()).offsetSec;
     cand.canPlay = false;
     disposeChannelBackend(ch);
-    if (!state.active) return;
-    playFrame(state.active.trip, state.active.frame, 0, isPlaybackIntended);
+    const af = activeFrame();
+    if (!af || !state.active) return;
+    const offsetInFrame = Math.max(0, masterFileOffsetSec - frameMediaOffset(af.frame, effectiveMasterChannel()));
+    playFrame(state.active.trip, state.active.frame, offsetInFrame, isPlaybackIntended);
 }
 
 interface PlaybackRetryPosition {
@@ -2799,6 +2810,34 @@ export function initPlayer(): void {
         // and the clip would never start.
         resumePlaybackIfSeekLanded();
     });
+
+    // The browser skipped a video track it cannot decode and plays only the
+    // audio. No MediaError follows, so the error listener above never sees
+    // it. Register this after the master loadedmetadata handler, so the
+    // codec overlay's playFrame cleanup runs last, including the preload
+    // slot that handler has just warmed. MSE backends reject unsupported
+    // codecs before attach.
+    forEachVideoSlot((v, ch) =>
+        v.addEventListener("loadedmetadata", () => {
+            if (!isActiveSlot(v) || state.channelBackends[ch]) return;
+            const cand = attachedCandidate(v, ch);
+            if (!cand?.codec || !hasDroppedVideoTrack(v)) return;
+            log.warn("native playback skipped the video track", {
+                file: cand.file.name,
+                channel: ch,
+                codec: cand.codec,
+                codecString: cand.videoCodecString,
+            });
+            if (handleRuntimeDecodeFailure(cand, ch, false, "native-video-track-skipped")) {
+                captureSentryMessage("video track not decodable", {
+                    level: "warning",
+                    fingerprint: ["video_track_skipped", cand.codec],
+                    tags: { feature: "playback", backend: "native", codec: cand.codec },
+                    extra: { codecString: cand.videoCodecString },
+                });
+            }
+        }),
+    );
 
     onActivePlayerEvent("ended", finishActiveClip);
     initPlayerControls();
