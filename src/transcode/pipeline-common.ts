@@ -246,10 +246,13 @@ export interface SegmentAudioOptions {
  * output timeline (samples land at segBaseOutSec + their offset from
  * startInFile). The source's `transform` resamples each native sample to 48k/2.
  * A segment with no audio, including an audio track without packets, is filled
- * with silence instead, to keep A/V in sync - without it a later segment's
- * audio would shift earlier in the output. A WebCodecs decode error on a
- * damaged tail ends this segment's audio gracefully (onTruncated) rather than
- * aborting the whole export, matching the video loops' tolerant drive.
+ * with explicit silence. mediabunny's audio sources pad a gap only when the
+ * next sample arrives, as one buffer spanning the whole gap, and never pad the
+ * track end; chunked silence keeps memory bounded, lets the muxer keep draining
+ * the video, and ends a trailing audio-less segment with its video. A WebCodecs
+ * decode error on a damaged tail ends this segment's audio gracefully
+ * (onTruncated) rather than aborting the whole export, matching the video
+ * loops' tolerant drive.
  *
  * silenceFormat is a SHARED MUTABLE holder (see SilenceFormat). On the first real
  * decoded sample this updates it to the sample's actual format, so silence for
@@ -426,7 +429,7 @@ function frameAt(sample: AudioSample, timestamp: number): number {
  * emitSilence chunks before `finish`, which adds the exact remainder, so the
  * segment gets the same frame count as one emitSilence call over its range.
  */
-function openSilenceCursor(
+export function openSilenceCursor(
     audioSource: AudioSampleSource,
     startInFile: number,
     segBaseOutSec: number,

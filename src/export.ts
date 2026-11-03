@@ -634,8 +634,23 @@ export async function exportClip({
                 // keep that whole segment's video in memory.
                 if (adpcmSource && adpcmReader) {
                     const reader = seg.file === adpcmFile ? adpcmReader : await openAdpcmAudioAuto(seg.file);
-                    decodedAudio =
-                        reader?.openRange(adpcmSource, videoStartShift - origin, videoAccumSec, signal) ?? null;
+                    if (reader) {
+                        decodedAudio = reader.openRange(adpcmSource, videoStartShift - origin, videoAccumSec, signal);
+                    } else {
+                        // A file without ADPCM audio gets explicit silence at the
+                        // first reader's format. mediabunny pads a gap only when the
+                        // next sample arrives, as one buffer for the whole gap after
+                        // the muxer has held this segment's video, and never pads the
+                        // track end; chunked silence streams alongside the video.
+                        const { openSilenceCursor } = await import("./transcode/pipeline-common.js");
+                        decodedAudio = openSilenceCursor(
+                            adpcmSource,
+                            videoStartShift - origin,
+                            videoAccumSec,
+                            { sampleRate: adpcmReader.sampleRate, numberOfChannels: adpcmReader.channels },
+                            signal ?? new AbortController().signal,
+                        );
+                    }
                 } else if (reencodedAudio) {
                     // Keep the optional decode/encode machinery off the ordinary
                     // packet-copy path. Video stays byte-identical; both tracks use
