@@ -29,6 +29,12 @@ import {
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
 import { withRepairedPhantomAudio } from "../repair/test-helpers.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
+import {
+    type CapturedAudioSample,
+    captureAudioSamples,
+    concatCapturedPcm,
+    expectContiguousSamples,
+} from "./test-helpers.js";
 
 describe("emitSilence", () => {
     it("keeps retained samples silent and tiles the partial final chunk", async () => {
@@ -337,36 +343,7 @@ describe("openSegmentAudioCursor", () => {
     const SEGMENT_END = 1.8;
     const OUTPUT_START = 5;
 
-    interface CapturedSample {
-        timestamp: number;
-        duration: number;
-        data: Float32Array;
-    }
-
-    /** Records each added sample's timing and PCM; the cursor closes the sample afterwards. */
-    function captureSource(): { source: AudioSampleSource; samples: CapturedSample[] } {
-        const samples: CapturedSample[] = [];
-        const source = {
-            async add(sample: AudioSample) {
-                const data = new Float32Array(sample.allocationSize({ format: "f32", planeIndex: 0 }) / 4);
-                sample.copyTo(data, { format: "f32", planeIndex: 0 });
-                samples.push({ timestamp: sample.timestamp, duration: sample.duration, data });
-            },
-        } as unknown as AudioSampleSource;
-        return { source, samples };
-    }
-
-    function concatPcm(samples: CapturedSample[]): Float32Array {
-        const pcm = new Float32Array(samples.reduce((sum, sample) => sum + sample.data.length, 0));
-        let offset = 0;
-        for (const sample of samples) {
-            pcm.set(sample.data, offset);
-            offset += sample.data.length;
-        }
-        return pcm;
-    }
-
-    function fedEnd(samples: CapturedSample[]): number {
+    function fedEnd(samples: CapturedAudioSample[]): number {
         const last = samples.at(-1);
         return last ? last.timestamp + last.duration : OUTPUT_START;
     }
@@ -386,7 +363,7 @@ describe("openSegmentAudioCursor", () => {
                     throw new Error("fixture audio must decode completely");
                 },
             };
-            const whole = captureSource();
+            const whole = captureAudioSamples("f32");
             await feedSegmentAudio({
                 ...options,
                 audioSource: whole.source,
@@ -394,7 +371,7 @@ describe("openSegmentAudioCursor", () => {
                 silenceFormat: { sampleRate: 8000, numberOfChannels: 1 },
             });
 
-            const stepped = captureSource();
+            const stepped = captureAudioSamples("f32");
             const steppedEnds: number[] = [];
             const cursor = await openSegmentAudioCursor({
                 ...options,
@@ -416,13 +393,8 @@ describe("openSegmentAudioCursor", () => {
         }
     }
 
-    function expectContiguous(samples: CapturedSample[]): void {
-        let end = OUTPUT_START;
-        for (const [index, sample] of samples.entries()) {
-            expect(sample.timestamp, `sample ${index} starts where the previous ended`).toBeCloseTo(end, 6);
-            end = sample.timestamp + sample.duration;
-        }
-        expect(end, "the segment ends at its output duration").toBeCloseTo(
+    function expectContiguous(samples: CapturedAudioSample[]): void {
+        expect(expectContiguousSamples(samples, OUTPUT_START), "the segment ends at its output duration").toBeCloseTo(
             OUTPUT_START + SEGMENT_END - SEGMENT_START,
             3,
         );
@@ -459,7 +431,7 @@ describe("openSegmentAudioCursor", () => {
         const limits = [0.7, 0.5, 1.3];
         const { whole, stepped, steppedEnds } = await feedWholeAndStepped(await chunkedPcmMov(), limits);
 
-        expect(concatPcm(stepped)).toEqual(concatPcm(whole));
+        expect(concatCapturedPcm(stepped, "f32")).toEqual(concatCapturedPcm(whole, "f32"));
         expectContiguous(whole);
         expectContiguous(stepped);
         expect(steppedEnds[0], "the first limit already feeds audio").toBeGreaterThan(OUTPUT_START);
@@ -481,7 +453,7 @@ describe("openSegmentAudioCursor", () => {
         const { whole, stepped, steppedEnds } = await feedWholeAndStepped(pcmFile(), limits);
 
         expect(whole, "the fixture decodes to one sample").toHaveLength(1);
-        expect(concatPcm(stepped)).toEqual(concatPcm(whole));
+        expect(concatCapturedPcm(stepped, "f32")).toEqual(concatCapturedPcm(whole, "f32"));
         expectContiguous(stepped);
         expect(steppedEnds[0], "the head is fed up to the first limit").toBeCloseTo(OUTPUT_START + 0.45, 9);
         expect(steppedEnds[1], "a step shorter than the minimum waits").toBeCloseTo(OUTPUT_START + 0.45, 9);

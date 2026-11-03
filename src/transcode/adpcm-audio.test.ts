@@ -2,6 +2,7 @@ import { AudioSample, type AudioSampleSource } from "mediabunny";
 import { describe, expect, it, vi } from "vitest";
 import { decodeImaAdpcmBlocks } from "./ima-adpcm.js";
 import { openAdpcmAudio } from "./adpcm-audio.js";
+import { captureAudioSamples, concatCapturedPcm } from "./test-helpers.js";
 import { AUDIO_TARGET_SAMPLE_RATE } from "./types.js";
 
 describe("ADPCM encode resample target", () => {
@@ -134,32 +135,6 @@ function makeBlocks(count: number, blockLen: number): Uint8Array[] {
     return blocks;
 }
 
-/** A capturing AudioSampleSource stub: records timestamp + interleaved s16 of each add. */
-function captureSource(): { source: AudioSampleSource; samples: { ts: number; frames: number; data: Int16Array }[] } {
-    const samples: { ts: number; frames: number; data: Int16Array }[] = [];
-    const source = {
-        async add(sample: AudioSample) {
-            const out = new Int16Array(sample.allocationSize({ format: "s16", planeIndex: 0 }) / 2);
-            sample.copyTo(out, { format: "s16", planeIndex: 0 });
-            samples.push({ ts: sample.timestamp, frames: sample.numberOfFrames, data: out });
-        },
-    } as unknown as AudioSampleSource;
-    return { source, samples };
-}
-
-/** Concatenates the captured samples' interleaved s16 into one buffer. */
-function concat(samples: { data: Int16Array }[]): Int16Array {
-    let total = 0;
-    for (const s of samples) total += s.data.length;
-    const out = new Int16Array(total);
-    let o = 0;
-    for (const s of samples) {
-        out.set(s.data, o);
-        o += s.data.length;
-    }
-    return out;
-}
-
 const CHANNELS = 2;
 const SR = 1000; // tiny so 5000 frames = 5 s, exercising multi-batch emit
 const BLOCK_LEN = 32; // 8-byte header (2ch) + 3 word-pairs -> 25 frames/block
@@ -187,19 +162,19 @@ describe("openAdpcmAudio", () => {
     it("feedToEnd(0) emits the whole track, bit-exact vs a direct decode, ts at file time", async () => {
         const blocks = makeBlocks(N_BLOCKS, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
-        const { source, samples } = captureSource();
+        const { source, samples } = captureAudioSamples("s16");
         let firstEmits = 0;
         await reader.feedToEnd(source, 0, 0, undefined, () => firstEmits++);
 
         expect(firstEmits).toBe(1); // onFirstEmit fires exactly once
-        const got = concat(samples);
+        const got = concatCapturedPcm(samples, "s16");
         const want = decodeImaAdpcmBlocks(blocks, CHANNELS);
         expect(got).toEqual(want);
         // First sample anchored at 0; timestamps monotonic at cumulative frame / SR.
-        expect(samples[0]!.ts).toBe(0);
+        expect(samples[0]!.timestamp).toBe(0);
         let frameCum = 0;
         for (const s of samples) {
-            expect(s.ts).toBeCloseTo(frameCum / SR, 9);
+            expect(s.timestamp).toBeCloseTo(frameCum / SR, 9);
             frameCum += s.frames;
         }
         expect(frameCum).toBe(N_BLOCKS * FRAMES_PER_BLOCK);
@@ -208,30 +183,30 @@ describe("openAdpcmAudio", () => {
     it("feedToEnd(startSec) anchors timestamps at absolute file time plus the PTS shift", async () => {
         const blocks = makeBlocks(N_BLOCKS, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
-        const { source, samples } = captureSource();
+        const { source, samples } = captureAudioSamples("s16");
         const startSec = 2.0;
         const offset = 0.5;
         await reader.feedToEnd(source, startSec, offset);
 
         const startFrame = Math.floor(startSec * SR);
         // First emitted frame is `startFrame`; its ts = startFrame/SR + offset.
-        expect(samples[0]!.ts).toBeCloseTo(startFrame / SR + offset, 9);
+        expect(samples[0]!.timestamp).toBeCloseTo(startFrame / SR + offset, 9);
         const want = decodeImaAdpcmBlocks(blocks, CHANNELS).subarray(startFrame * CHANNELS);
-        expect(concat(samples)).toEqual(want);
+        expect(concatCapturedPcm(samples, "s16")).toEqual(want);
     });
 
     it("feedRange clips to [start,end) and anchors the first frame at outStartSec", async () => {
         const blocks = makeBlocks(N_BLOCKS, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
-        const { source, samples } = captureSource();
+        const { source, samples } = captureAudioSamples("s16");
         const dur = await reader.feedRange(source, 1.0, 2.0, 100);
 
         const startFrame = 1000;
         const endFrame = 2000;
         expect(dur).toBeCloseTo((endFrame - startFrame) / SR, 9);
-        expect(samples[0]!.ts).toBe(100);
+        expect(samples[0]!.timestamp).toBe(100);
         const want = decodeImaAdpcmBlocks(blocks, CHANNELS).subarray(startFrame * CHANNELS, endFrame * CHANNELS);
-        expect(concat(samples)).toEqual(want);
+        expect(concatCapturedPcm(samples, "s16")).toEqual(want);
         let total = 0;
         for (const s of samples) total += s.frames;
         expect(total).toBe(endFrame - startFrame);
@@ -243,15 +218,15 @@ describe("openAdpcmAudio", () => {
         // clipEnd < blockEnd. Frames 1010..1990 both sit inside blocks 40 / 79.
         const blocks = makeBlocks(N_BLOCKS, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
-        const { source, samples } = captureSource();
+        const { source, samples } = captureAudioSamples("s16");
         const dur = await reader.feedRange(source, 1.01, 1.99, 50);
 
         const startFrame = 1010; // floor(1.01*1000), mid block 40 [1000,1025)
         const endFrame = 1990; // ceil(1.99*1000), mid block 79 [1975,2000)
         expect(dur).toBeCloseTo((endFrame - startFrame) / SR, 9);
-        expect(samples[0]!.ts).toBe(50);
+        expect(samples[0]!.timestamp).toBe(50);
         const want = decodeImaAdpcmBlocks(blocks, CHANNELS).subarray(startFrame * CHANNELS, endFrame * CHANNELS);
-        expect(concat(samples)).toEqual(want);
+        expect(concatCapturedPcm(samples, "s16")).toEqual(want);
         let total = 0;
         for (const s of samples) total += s.frames;
         expect(total).toBe(endFrame - startFrame);
@@ -282,7 +257,7 @@ describe("openAdpcmAudio", () => {
             } as unknown as AudioSampleSource;
             await reader.feedRange(source, 1.01, 4.67, 0);
             const expected = decodeImaAdpcmBlocks(blocks, CHANNELS).subarray(1010 * CHANNELS, 4670 * CHANNELS);
-            expect(concat(captured)).toEqual(expected);
+            expect(concatCapturedPcm(captured, "s16")).toEqual(expected);
         } finally {
             vi.unstubAllGlobals();
         }
@@ -291,7 +266,7 @@ describe("openAdpcmAudio", () => {
     it("openRange fed in steps emits feedRange's PCM and timestamps without passing a limit", async () => {
         const blocks = makeBlocks(N_BLOCKS, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
-        const { source, samples } = captureSource();
+        const { source, samples } = captureAudioSamples("s16");
         const cursor = reader.openRange(source, 1.01, 50);
 
         await cursor.feedBefore(1.5);
@@ -305,12 +280,12 @@ describe("openAdpcmAudio", () => {
         await cursor.finish(4.67);
         await cursor.close();
 
-        expect(concat(samples)).toEqual(
+        expect(concatCapturedPcm(samples, "s16")).toEqual(
             decodeImaAdpcmBlocks(blocks, CHANNELS).subarray(1010 * CHANNELS, 4670 * CHANNELS),
         );
         let frames = 0;
         for (const sample of samples) {
-            expect(sample.ts).toBeCloseTo(50 + frames / SR, 9);
+            expect(sample.timestamp).toBeCloseTo(50 + frames / SR, 9);
             frames += sample.frames;
         }
         expect(frames).toBe(4670 - 1010);
@@ -319,7 +294,7 @@ describe("openAdpcmAudio", () => {
     it("feedRange on an empty range emits nothing", async () => {
         const blocks = makeBlocks(10, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
-        const { source, samples } = captureSource();
+        const { source, samples } = captureAudioSamples("s16");
         const dur = await reader.feedRange(source, 5, 5, 0);
         expect(dur).toBe(0);
         expect(samples.length).toBe(0);
