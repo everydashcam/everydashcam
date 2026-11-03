@@ -68,6 +68,8 @@ export function trackerWorkerClient(): TypedWorkerClient<TrackerWorkerContract> 
 
 /** Initialization, inference and stalled passes can leave ORT unusable.
  * Decode/preprocessing errors outside ORT leave unrelated queued work usable.
+ * WebGPU capability checks fail before ORT loads, so queued WASM Follow work
+ * can also keep using this worker after detection is rejected.
  * A thread pool that failed to start is retried once on a single-threaded
  * worker: slower, but it needs no extra threads. */
 export async function requestTrackerWorker<
@@ -84,7 +86,6 @@ export async function requestTrackerWorker<
             isAssetFailure ||
             (error instanceof Error &&
                 (error.name === "OrtInitializationError" ||
-                    error.name === "WebGpuUnavailableError" ||
                     error.name === "OrtThreadStartError" ||
                     error.name === "OrtInferenceError")) ||
             timeout?.name === "TimeoutError"

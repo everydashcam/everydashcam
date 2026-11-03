@@ -917,6 +917,7 @@ export const jaDict = {
     "export.progress.etaUnknown": "推定中…",
     "export.progress.bytes": "書き込み {bytes}",
     "export.error.generic": "問題が発生し、書き出しが中断されました。もう一度お試しください。",
+    "export.error.autoBlurUnavailable": "このブラウザではナンバープレートと顔を自動検出できません。最新版の Chrome または Edge を試すか、自動検出をオフにして、保存する前にぼかし領域を手動で追加してください。",
     "export.error.incompatibleVideo": "録画ごとに動画の設定が異なります。クリップを個別に保存するか、書き出し画質を下げてください。",
     "export.error.cannotEncodeResolution": "この端末ではこの解像度で動画を保存できません。解像度を下げて、もう一度お試しください。",
     "export.error.sourceNotPlayable": "このブラウザではこの動画を再生できないため、ここでは編集を加えて保存できません。",

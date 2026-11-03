@@ -915,6 +915,7 @@ export const koDict = {
     "export.progress.etaUnknown": "추정 중…",
     "export.progress.bytes": "기록됨 {bytes}",
     "export.error.generic": "문제가 생겨 내보내기가 중단됐어요. 다시 시도해 주세요.",
+    "export.error.autoBlurUnavailable": "이 브라우저에서는 번호판과 얼굴을 자동으로 찾을 수 없어요. 최신 Chrome이나 Edge를 써 보거나, 자동 찾기를 끄고 저장하기 전에 흐림 영역을 직접 추가해 주세요.",
     "export.error.incompatibleVideo": "녹화마다 영상 설정이 달라요. 클립을 따로 저장하거나 내보내기 화질을 낮춰 주세요.",
     "export.error.cannotEncodeResolution": "이 기기에서는 이 해상도로 영상을 저장할 수 없어요. 더 낮은 해상도를 골라 다시 시도해 주세요.",
     "export.error.sourceNotPlayable": "이 브라우저는 이 영상을 재생할 수 없어서 여기서는 편집한 상태로 저장할 수 없어요.",

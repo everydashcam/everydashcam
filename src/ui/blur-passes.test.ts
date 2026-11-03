@@ -2,6 +2,7 @@ import { computeTrackerAssets } from "../../vite-plugins/tracker-assets.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type BlurRegion, regionRectAt } from "../blur-regions.js";
 import type { Channel } from "../parsers/types.js";
+import { createSerialQueue } from "../serial-queue.js";
 import { groupTrips, tripAllCandidates, type Trip, type VideoCandidate } from "../trips.js";
 import { flushMicrotasks, makePairedEndpoints } from "../workers/_protocol/test-helpers.js";
 import { createWorkerServer, type WorkerServer } from "../workers/_protocol/worker-server.js";
@@ -9,6 +10,7 @@ import {
     DETECT_REQUEST,
     TRACK_NOTIFY_PROGRESS,
     TRACK_NOTIFY_STARTED,
+    TRACK_REQUEST,
     type DetectRequestData,
     type DetectResult,
 } from "../workers/tracker-protocol.js";
@@ -177,11 +179,13 @@ interface PendingPass {
 }
 let requests: PendingPass[];
 let server: WorkerServer;
-function startWorker(): void {
+function startWorker(shouldSerialize = false): void {
     endpoints = makePairedEndpoints();
+    const serialize = createSerialQueue();
     server = createWorkerServer(endpoints.workerEndpoint, {
         onRequest(type, data) {
-            return new Promise((resolve, reject) => requests.push({ type, data, resolve, reject }));
+            const request = () => new Promise((resolve, reject) => requests.push({ type, data, resolve, reject }));
+            return shouldSerialize ? serialize(request) : request();
         },
     });
 }
@@ -215,7 +219,10 @@ afterEach(() => {
 });
 
 describe("blur pass lifecycle", () => {
-    it("keeps selected blur after worker WebGPU rejection and blocks export without a retry", async () => {
+    it("preserves queued Follow and selected blur after WebGPU rejection without retrying detection", async () => {
+        // Mirror the real worker's queue: Follow waits behind detection, so a
+        // capability failure must leave the shared WASM worker usable.
+        startWorker(true);
         await downloadBlurAssets(["detect-plate"]);
         setDetectEnabled("plate", true);
         const request = captureDetectExportRequest()!;
@@ -224,9 +231,20 @@ describe("blur pass lifecycle", () => {
         );
         await flushMicrotasks();
         expect(requests).toHaveLength(1);
+        expect(requests[0]!.type).toBe(DETECT_REQUEST);
+        const region = makeRegion();
+        const follow = toggleTrackPass(ui.trip!, region);
+        await flushMicrotasks();
+        expect(requests, "Follow waits for detection's queue turn to finish").toHaveLength(1);
         requests[0]!.reject(Object.assign(new Error("webgpu unavailable"), { name: "WebGpuUnavailableError" }));
         expect(await detection).toMatchObject({ name: "WebGpuUnavailableError" });
-        expect(endpoints.terminated()).toBe(true);
+        await flushMicrotasks();
+        expect(endpoints.terminated()).toBe(false);
+        expect(requests).toHaveLength(2);
+        expect(requests[1]!.type).toBe(TRACK_REQUEST);
+        expect(trackPassOf(region.id)).not.toBeNull();
+        requests[1]!.resolve({ keyframes: [], trackedUntilSec: 4, endReason: "completed" });
+        expect(await follow).toBe("completed");
         expect(detectAvailable()).toBe(false);
         expect(detectEnabled("plate")).toBe(true);
         expect(ui.notifications).toEqual(["export.blur.detect.needsGpu"]);
@@ -235,7 +253,7 @@ describe("blur pass lifecycle", () => {
             ensureDetectRegionsForExport(request, new AbortController().signal, () => {}),
         ).rejects.toMatchObject({ name: "WebGpuUnavailableError" });
         ensureDetectPass();
-        expect(requests).toHaveLength(1);
+        expect(requests).toHaveLength(2);
         setDetectEnabled("face", true);
         expect(detectEnabled("face")).toBe(false);
         setDetectEnabled("plate", false);

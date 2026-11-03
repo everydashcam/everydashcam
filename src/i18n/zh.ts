@@ -903,6 +903,7 @@ export const zhDict = {
     "export.progress.etaUnknown": "估算中...",
     "export.progress.bytes": "已写入 {bytes}",
     "export.error.generic": "出现问题，导出已停止。请重试。",
+    "export.error.autoBlurUnavailable": "此浏览器无法自动查找车牌和人脸。请试试最新版 Chrome 或 Edge，或关闭自动查找，并在保存前手动添加模糊区域。",
     "export.error.incompatibleVideo": "这些录像的视频设置不同。请分别保存片段，或降低导出画质。",
     "export.error.cannotEncodeResolution": "此设备无法以该分辨率保存视频。请降低分辨率后重试。",
     "export.error.sourceNotPlayable": "此浏览器无法播放这段视频，因此也无法在这里编辑后保存。",

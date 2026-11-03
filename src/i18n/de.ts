@@ -903,6 +903,7 @@ export const deDict = {
     "export.progress.etaUnknown": "wird geschätzt...",
     "export.progress.bytes": "geschrieben {bytes}",
     "export.error.generic": "Etwas ist schiefgelaufen und der Export wurde gestoppt — versuche es noch einmal.",
+    "export.error.autoBlurUnavailable": "Die automatische Kennzeichen- und Gesichtssuche ist in diesem Browser nicht verfügbar. Probier die neueste Version von Chrome oder Edge, oder schalte die automatische Suche aus und füge vor dem Speichern Unschärfezonen von Hand hinzu.",
     "export.error.incompatibleVideo": "Diese Aufnahmen haben unterschiedliche Videoeinstellungen. Speichere die Clips einzeln oder wähle eine niedrigere Exportqualität.",
     "export.error.cannotEncodeResolution": "Dieses Gerät kann kein Video in dieser Auflösung speichern. Wähle eine niedrigere Auflösung und versuche es erneut.",
     "export.error.sourceNotPlayable": "Dieser Browser kann dieses Video nicht abspielen, deshalb lässt es sich hier nicht mit Änderungen speichern.",

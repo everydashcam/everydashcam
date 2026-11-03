@@ -905,6 +905,7 @@ export const ptDict = {
     "export.progress.etaUnknown": "estimando...",
     "export.progress.bytes": "gravado {bytes}",
     "export.error.generic": "Algo deu errado e a exportação foi interrompida. Tente novamente.",
+    "export.error.autoBlurUnavailable": "A busca automática de placas e rostos não está disponível neste navegador. Tente a versão mais recente do Chrome ou Edge, ou desative a busca automática e adicione zonas de desfoque manualmente antes de salvar.",
     "export.error.incompatibleVideo": "Estas gravações usam configurações de vídeo diferentes. Salve os clipes separadamente ou escolha uma qualidade de exportação mais baixa.",
     "export.error.cannotEncodeResolution": "Este dispositivo não consegue salvar vídeo nesta resolução. Escolha uma resolução menor e tente novamente.",
     "export.error.sourceNotPlayable": "Este navegador não consegue reproduzir este vídeo, então aqui não dá para salvá-lo com alterações.",

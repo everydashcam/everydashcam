@@ -906,6 +906,7 @@ export const enDict = {
     "export.progress.etaUnknown": "estimating...",
     "export.progress.bytes": "wrote {bytes}",
     "export.error.generic": "Something went wrong and the export stopped — try again.",
+    "export.error.autoBlurUnavailable": "Automatic plate and face finding isn't available in this browser. Try the latest Chrome or Edge, or turn off automatic finding and add blur areas by hand before saving.",
     "export.error.incompatibleVideo": "These recordings use different video settings. Save the clips separately or choose a lower export quality.",
     "export.error.cannotEncodeResolution": "This device can't save video at this resolution. Pick a lower resolution and try again.",
     "export.error.sourceNotPlayable": "This browser can't play this video, so it can't be saved with changes here.",

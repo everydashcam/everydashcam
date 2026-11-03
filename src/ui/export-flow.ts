@@ -1470,19 +1470,21 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         const failure =
             err instanceof Error && err.name === "OutputDamagedError" && err.cause !== undefined ? err.cause : err;
         const errorKey: I18nKey =
-            failure instanceof Error && failure.name === "IncompatibleVideoConfigError"
-                ? "export.error.incompatibleVideo"
-                : isQuotaExceededError(failure)
-                  ? "export.error.diskFull"
-                  : isAllocationFailure(failure)
-                    ? __PORTABLE__
-                        ? "portable.export.tooLargeForMemory"
-                        : "export.error.tooLargeForMemory"
-                    : isDestinationLostError(failure)
-                      ? "export.error.destinationLost"
-                      : !isSinkFailure(failure) && isSourceReadError(failure)
-                        ? "export.error.sourceReadFailed"
-                        : "export.error.generic";
+            failure instanceof Error && failure.name === "WebGpuUnavailableError"
+                ? "export.error.autoBlurUnavailable"
+                : failure instanceof Error && failure.name === "IncompatibleVideoConfigError"
+                  ? "export.error.incompatibleVideo"
+                  : isQuotaExceededError(failure)
+                    ? "export.error.diskFull"
+                    : isAllocationFailure(failure)
+                      ? __PORTABLE__
+                          ? "portable.export.tooLargeForMemory"
+                          : "export.error.tooLargeForMemory"
+                      : isDestinationLostError(failure)
+                        ? "export.error.destinationLost"
+                        : !isSinkFailure(failure) && isSourceReadError(failure)
+                          ? "export.error.sourceReadFailed"
+                          : "export.error.generic";
         hooks.onError(errorKey);
         // mediabunny's internal read-orchestrator assert during stream-copy (see
         // isMediabunnyReadAssert): an upstream-side failure class we want to COUNT
