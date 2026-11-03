@@ -547,6 +547,16 @@ function ensureDetectPassFor(
 }
 
 /**
+ * Whether ensureDetectRegionsForExport can deliver the request's regions:
+ * detection runs in this browser, or a settled pass already holds them.
+ * Synchronous, so Save can refuse before a destination is picked or an output
+ * buffer is allocated.
+ */
+export function canObtainDetectRegions(request: BlurDetectExportRequest): boolean {
+    return detectAvailable() || tripState(request.trip).result?.key === request.params.key;
+}
+
+/**
  * Export-time guarantee: resolves with the auto regions for the captured
  * Save-time params, running (or awaiting) that pass as needed. `onFraction` reports pass progress
  * 0..1 for the export progress bar. Aborting `signal` cancels the pass and
@@ -561,8 +571,8 @@ export async function ensureDetectRegionsForExport(
     const { trip, params, style } = request;
     signal.throwIfAborted();
     if (!matchesBlurTripSource(request.source, trip)) throw new Error("detect source changed after export started");
+    if (!canObtainDetectRegions(request)) throw webGpuUnavailableError();
     const st = tripState(trip);
-    if (!detectAvailable() && st.result?.key !== params.key) throw webGpuUnavailableError();
     // Consent leftover: the box is checked but the download strip was ignored
     // (never answered) and Save got clicked. Silently exporting WITHOUT the
     // promised blur is the one failure this feature must never have, so Save

@@ -72,6 +72,7 @@ import { exportPanelState, OVERLAY_STATE_ACCESSORS, type Quality } from "./expor
 import { activeBlurRegions } from "./blur-regions-state.js";
 import {
     anyDetectEnabled,
+    canObtainDetectRegions,
     captureDetectExportRequest,
     detectPassState,
     detectRegions,
@@ -891,6 +892,15 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     const expectedBytes = estimateExport()?.bytes ?? 0;
     const manualBlurRegions = cloneBlurRegions(activeBlurRegions());
     const detectRequest = captureDetectExportRequest();
+    // A checked detection box that cannot run fails the export rather than
+    // silently dropping the blur. Refuse before the save picker and the output
+    // buffer: the pass is awaited only after them, but whether it can run is
+    // known now.
+    if (detectRequest && !canObtainDetectRegions(detectRequest)) {
+        log.warn("export refused: automatic blur unavailable in this browser");
+        hooks.onError("export.error.autoBlurUnavailable");
+        return;
+    }
     const initiallyStreamCopy = canStreamCopy();
     const streamCopyWithoutDetectedRegions =
         quality === "original" &&

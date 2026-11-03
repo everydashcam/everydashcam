@@ -57,6 +57,7 @@ vi.mock("./notifications.js", () => ({
 
 import {
     _resetForTests as resetDetection,
+    canObtainDetectRegions,
     captureDetectExportRequest,
     detectEnabled,
     detectAvailable,
@@ -246,6 +247,7 @@ describe("blur pass lifecycle", () => {
         requests[1]!.resolve({ keyframes: [], trackedUntilSec: 4, endReason: "completed" });
         expect(await follow).toBe("completed");
         expect(detectAvailable()).toBe(false);
+        expect(canObtainDetectRegions(request), "Save can refuse before any destination is picked").toBe(false);
         expect(detectEnabled("plate")).toBe(true);
         expect(ui.notifications).toEqual(["export.blur.detect.needsGpu"]);
 

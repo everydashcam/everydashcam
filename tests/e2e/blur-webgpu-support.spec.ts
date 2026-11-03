@@ -48,9 +48,6 @@ for (const locale of ["en", "ru"] as const) {
 }
 
 test.describe("export after worker WebGPU rejection", () => {
-    // The expected export failure is logged with its original cause.
-    test.use({ tolerateConsole: [/^\[export-flow\] export failed WebGpuUnavailableError:/] });
-
     const copy = {
         en: {
             download: "Download & scan",
