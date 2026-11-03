@@ -803,6 +803,95 @@ describe("loadSamples: adaptive strategy", () => {
     });
 });
 
+// Serves real bytes, counts concurrent slice reads and can reject them the
+// way Chromium rejects a lost Blob read, while stream() keeps working.
+class ReadTrackingFile {
+    public name = "tracked.mp4";
+    public lastModified = 0;
+    public type = "video/mp4";
+    public rangeReads = 0;
+    public streamReads = 0;
+    public maxRangeReadsInFlight = 0;
+    private rangeReadsInFlight = 0;
+    constructor(
+        private bytes: Uint8Array,
+        private rangeReadError: Error | null = null,
+    ) {}
+    get size(): number {
+        return this.bytes.length;
+    }
+    slice(start: number, end?: number): Blob {
+        const part = this.bytes.slice(start, end);
+        const arrayBuffer = async (): Promise<ArrayBuffer> => {
+            this.rangeReads++;
+            this.rangeReadsInFlight++;
+            this.maxRangeReadsInFlight = Math.max(this.maxRangeReadsInFlight, this.rangeReadsInFlight);
+            try {
+                await new Promise((resolveRead) => setTimeout(resolveRead, 0));
+                if (this.rangeReadError) throw this.rangeReadError;
+                return part.buffer;
+            } finally {
+                this.rangeReadsInFlight--;
+            }
+        };
+        const stream = (): ReadableStream<Uint8Array> => {
+            this.streamReads++;
+            return new Blob([part]).stream();
+        };
+        return { size: part.length, arrayBuffer, stream } as unknown as Blob;
+    }
+}
+
+describe("loadSamples: read failures and concurrency", () => {
+    // 200 sparse samples: nothing coalesces, so the random path issues one
+    // read per sample, as on an interleaved subtitle track.
+    const SAMPLE_SIZE = 16;
+    const STRIDE = 1000;
+    const bytes = Uint8Array.from({ length: 200 * STRIDE }, (_, index) => (index * 31 + (index >> 8)) & 0xff);
+    const samples: SampleEntry[] = Array.from({ length: 200 }, (_, index) => ({
+        offset: index * STRIDE,
+        size: SAMPLE_SIZE,
+        index: index + 1,
+    }));
+    const expectSourceBytes = (buffers: ArrayBuffer[]): void => {
+        expect(buffers).toHaveLength(samples.length);
+        for (let index = 0; index < samples.length; index++) {
+            const sample = samples[index]!;
+            const expected = bytes.subarray(sample.offset, sample.offset + sample.size);
+            expect(Buffer.from(buffers[index]!).equals(expected), `sample ${index} matches its source bytes`).toBe(
+                true,
+            );
+        }
+    };
+
+    it("keeps a bounded number of random reads in flight", async () => {
+        const file = new ReadTrackingFile(bytes);
+        const buffers = await loadSamples(file as unknown as File, samples);
+        expectSourceBytes(buffers);
+        expect(file.rangeReads, "one read per sparse sample").toBe(samples.length);
+        expect(file.maxRangeReadsInFlight, "reads overlap").toBeGreaterThan(1);
+        expect(file.maxRangeReadsInFlight, "reads stay under the pool size").toBeLessThanOrEqual(16);
+        expect(file.streamReads).toBe(0);
+    });
+
+    it("reads the samples as one stream when random reads fail like a lost Blob read", async () => {
+        const file = new ReadTrackingFile(
+            bytes,
+            new DOMException("The requested file could not be read", "NotReadableError"),
+        );
+        const buffers = await loadSamples(file as unknown as File, samples);
+        expectSourceBytes(buffers);
+        expect(file.streamReads).toBe(1);
+        expect(file.rangeReads, "no new reads start after the first failure").toBeLessThanOrEqual(16);
+    });
+
+    it("rejects without a stream retry when a random read fails for a reason other than the source", async () => {
+        const file = new ReadTrackingFile(bytes, new RangeError("synthetic failure"));
+        await expect(loadSamples(file as unknown as File, samples)).rejects.toThrow("synthetic failure");
+        expect(file.streamReads).toBe(0);
+    });
+});
+
 describe("hevcCodecStringFromHvcc", () => {
     // Builds a minimal 23-byte HEVCDecoderConfigurationRecord. Only the bytes
     // the codec-string parse reads are meaningful; the rest pad to the fixed

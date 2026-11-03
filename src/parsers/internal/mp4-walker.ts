@@ -26,6 +26,7 @@ import type { VideoCodec } from "mediabunny";
 import { readMp4BoxHeader } from "./mp4-box-header.js";
 
 import { createLogger } from "../../log.js";
+import { isSourceReadError } from "../../source-read-error.js";
 
 const loadSamplesLog = createLogger("load-samples");
 
@@ -1035,9 +1036,43 @@ async function loadRange(file: File, offset: number, length: number): Promise<Ar
 }
 
 /**
+ * Upper bound on slice reads one loadSamples call keeps in flight. Chromium
+ * gives every pending Blob read its own data pipe and file open, which are
+ * file descriptors on Linux. A 30 Hz text track read in one fan-out (~1800
+ * reads per minute of video) holds thousands of them at once, and such reads
+ * have been rejected with NotReadableError on Linux. Chromium serves these
+ * reads nearly serially anyway: a pool of 16 measured the same wall time as an
+ * unbounded Promise.all.
+ */
+const MAX_CONCURRENT_RANGE_READS = 16;
+
+/** Reads [start, end) ranges with bounded concurrency, results in input order.
+ *  Stops issuing reads after the first failure and rejects with that error. */
+async function loadRanges(file: File, ranges: ReadonlyArray<{ start: number; end: number }>): Promise<ArrayBuffer[]> {
+    const buffers = new Array<ArrayBuffer>(ranges.length);
+    let nextIndex = 0;
+    let hasFailed = false;
+    const readLane = async (): Promise<void> => {
+        while (!hasFailed && nextIndex < ranges.length) {
+            const index = nextIndex++;
+            const range = ranges[index]!;
+            try {
+                buffers[index] = await loadRange(file, range.start, range.end - range.start);
+            } catch (err) {
+                hasFailed = true;
+                throw err;
+            }
+        }
+    };
+    const laneCount = Math.min(MAX_CONCURRENT_RANGE_READS, ranges.length);
+    await Promise.all(Array.from({ length: laneCount }, readLane));
+    return buffers;
+}
+
+/**
  * Loads all track samples (or a subset). Adaptive: picks between
  *
- *  - random+coalesce (Promise.all over slice() calls, plus adjacency
+ *  - random+coalesce (a bounded pool of slice() reads, plus adjacency
  *    coalescing): wins on backends with low per-call cost (desktop NVMe
  *    ~0.1 ms/call). For 3600 samples that's ~60 ms total.
  *
@@ -1047,7 +1082,9 @@ async function loadRange(file: File, offset: number, length: number): Promise<Ar
  *    "read the whole range" in bytes but eliminates per-call overhead.
  *
  * Strategy is picked by `pickLoadStrategy(samples, sliceCost)` and logged
- * for every dispatch so production reports tell us which path ran.
+ * for every dispatch so production reports tell us which path ran. A source
+ * read failure on the random path is retried once as a stream; any other
+ * error, and a failure of the stream itself, rejects.
  *
  * sliceCost = measured ms per file.slice().arrayBuffer() call, captured by
  * buildMp4Index during the top-level box walk. Pass `index.sliceCost` when
@@ -1063,7 +1100,21 @@ export async function loadSamples(file: File, samples: SampleEntry[], sliceCost 
     if (strategy === "stream") {
         return await loadSamplesStreamed(file, samples);
     }
-    return await loadSamplesRandom(file, samples);
+    try {
+        return await loadSamplesRandom(file, samples);
+    } catch (err) {
+        if (!isSourceReadError(err)) throw err;
+        // Small reads can fail on a file that one sequential stream still
+        // reads, because the browser spends resources per pending read. A file
+        // that changed or vanished fails the stream too, so that case costs
+        // only one more failed read, and a readable file keeps its GPS.
+        loadSamplesLog.warn("random read failed, retrying as one stream", {
+            file: file.name,
+            samples: samples.length,
+            err: String(err),
+        });
+        return await loadSamplesStreamed(file, samples);
+    }
 }
 
 type LoadStrategy = "random" | "stream";
@@ -1199,7 +1250,7 @@ async function loadSamplesRandom(file: File, samples: SampleEntry[]): Promise<Ar
     }
     groups.push({ start: runStart, end: runEnd, sampleIdxStart: runIdxStart, sampleIdxEnd: samples.length });
 
-    const groupBuffers = await Promise.all(groups.map((g) => loadRange(file, g.start, g.end - g.start)));
+    const groupBuffers = await loadRanges(file, groups);
 
     const out = new Array<ArrayBuffer>(samples.length);
     for (let gi = 0; gi < groups.length; gi++) {
