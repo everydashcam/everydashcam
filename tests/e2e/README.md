@@ -75,3 +75,6 @@ testing transitions and layout stability.
 A test that passes only after a retry still fails the run. Keep `failOnFlakyTests`
 enabled in [the e2e config](../playwright.e2e.config.ts); use retry traces to
 diagnose failures.
+
+CI retains each shard's blob report and builds a merged HTML report when browser
+tests fail. The single retry collects a trace without turning flaky tests green.

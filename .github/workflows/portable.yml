@@ -1,0 +1,88 @@
+# Build once per caller; every shard tests the same bytes later published.
+name: Portable
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      allow-development:
+        default: false
+        type: boolean
+      project:
+        description: Use '*' in CI to include build and development-server tests
+        default: artifact
+        type: string
+    secrets:
+      yandex-key:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build and validate portable HTML
+        env:
+          PORTABLE_VERSION: ${{ inputs.version }}
+          PORTABLE_ALLOW_DEV: ${{ inputs.allow-development && '1' || '0' }}
+          PORTABLE_YANDEX_TILES_API_KEY: ${{ secrets.yandex-key }}
+        run: |
+          npm run build:portable -- --version "$PORTABLE_VERSION"
+          node scripts/validate-portable-artifacts.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: portable-html
+          path: dist-portable/
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: portable-html
+          path: dist-portable
+      - name: Verify downloaded portable HTML
+        env:
+          PORTABLE_ALLOW_DEV: ${{ inputs.allow-development && '1' || '0' }}
+        run: node scripts/validate-portable-artifacts.mjs
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps --no-shell chromium
+      - name: Test portable HTML from disk
+        env:
+          PORTABLE_PROJECT: ${{ inputs.project }}
+        run: npx playwright test --config=tests/playwright.portable.config.ts --project="$PORTABLE_PROJECT" --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Upload portable failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: portable-test-results-${{ matrix.shard }}
+          path: tests/test-results/portable/
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true

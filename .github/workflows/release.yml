@@ -17,7 +17,7 @@
 # .env.example) - same env-less build ci.yml gates on every push, except for
 # META_CSP=1: the artifact targets header-less hosts such as `npx serve`,
 # so the CSP ships as a <meta> tag (vite-plugins/csp-hash.ts);
-# the unit tests in this job run under the same flag and assert that flavor.
+# artifact tests run under the same flag and assert that flavor.
 # The e2e suite already gated this code on its way into main.
 
 name: Release
@@ -55,11 +55,26 @@ jobs:
         run: node scripts/check-release-state.mjs
 
   portable:
-    needs: [release-state]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    needs: release-state
     permissions:
       contents: read
+    uses: ./.github/workflows/portable.yml
+    with:
+      version: ${{ github.event_name == 'push' && github.ref_name || format('dev-{0}', github.sha) }}
+      allow-development: ${{ github.event_name == 'workflow_dispatch' }}
+      project: ${{ github.event_name == 'workflow_dispatch' && '*' || 'artifact' }}
+    secrets:
+      yandex-key: ${{ secrets.VITE_YANDEX_TILES_API_KEY }}
+
+  # Build independently of portable; only packaging needs both artifacts.
+  self-host:
+    needs: release-state
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      META_CSP: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,33 +84,24 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Build the public portable files once
-        env:
-          PORTABLE_YANDEX_TILES_API_KEY: ${{ secrets.VITE_YANDEX_TILES_API_KEY }}
-        run: |
-          version="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            version="dev-$(git rev-parse --short HEAD)"
-          fi
-          npm run build:portable -- --version "${version}"
-          PORTABLE_ALLOW_DEV=1 node scripts/validate-portable-artifacts.mjs
-      - run: npx playwright install --with-deps --no-shell chromium
-      - name: Test the final HTML from disk
-        run: npx playwright test --config=tests/playwright.portable.config.ts
-      - name: Upload portable failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: portable-test-results
-          path: tests/test-results/portable/
-          retention-days: 7
-          if-no-files-found: ignore
+      - name: Build self-host distribution without hosted configuration
+        run: npm run build
+      # Source tests already passed on the exact tagged commit. Verify the new
+      # META_CSP artifact; manual dry-runs have no CI prerequisite, so run all tests.
+      - name: Test the self-host artifact
+        if: github.event_name == 'push'
+        run: npm run test:artifact
+      - name: Test source and artifact for a manual dry-run
+        if: github.event_name == 'workflow_dispatch'
+        run: npm test
       - uses: actions/upload-artifact@v7
         with:
-          name: portable-html
-          path: dist-portable/
+          name: self-host-dist
+          path: dist/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: error
+          overwrite: true
 
   # Book-keeping: move the `release` branch pointer to the tagged commit, so
   # the repo records what production runs (the actual deploy is the `deploy`
@@ -287,13 +293,9 @@ jobs:
           node scripts/indexnow-ping.mjs
 
   release:
-    needs: [release-state, portable]
+    needs: [release-state, portable, self-host]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # CSP as a <meta> tag for header-less hosts - see the header comment.
-      # Job-level so the build injects it and the unit tests assert it.
-      META_CSP: "1"
     permissions:
       contents: write
       # Build-provenance attestation (attest step below).
@@ -312,9 +314,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-
-      - run: npm ci
 
       # Re-running only failed jobs does not re-run a successful upstream guard.
       - name: Recheck release state before publication
@@ -341,16 +340,15 @@ jobs:
         run: |
           node scripts/generate-release-notes.mjs --previous-tag "$PREVIOUS_TAG" --out RELEASE_NOTES.md
 
-      - name: Build (no env - analytics/crash-reporting compiled out)
-        run: npm run build
-
-      # Build first: src/csp-hash.integration.test.ts asserts against dist/
-      # artifacts (same ordering rationale as ci.yml).
-      - name: Unit tests (vitest)
-        run: npm test
+      - uses: actions/download-artifact@v8
+        with:
+          name: self-host-dist
+          path: dist
 
       - name: Pack dist
         id: pack
+        env:
+          PORTABLE_ALLOW_DEV: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
@@ -374,7 +372,7 @@ jobs:
           cp LICENSE "${STAGE}/"
           zip -qr9 "${ZIP}" "${STAGE}"
           tar -czf "${TGZ}" "${STAGE}"
-          PORTABLE_ALLOW_DEV=1 node scripts/stage-portable-release.mjs
+          node scripts/stage-portable-release.mjs
           mapfile -t portable_assets < portable-assets.txt
           sha256sum "${ZIP}" "${TGZ}" "${portable_assets[@]}" portable-manifest.json > SHA256SUMS
           {

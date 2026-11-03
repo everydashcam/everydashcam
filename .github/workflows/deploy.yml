@@ -30,10 +30,12 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  configuration:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
     steps:
       # Gate first, before checkout, so a fork's skip costs seconds.
       - name: Check Cloudflare secrets
@@ -49,49 +51,40 @@ jobs:
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
 
+  portable:
+    needs: configuration
+    if: needs.configuration.outputs.deploy == 'true'
+    uses: ./.github/workflows/portable.yml
+    with:
+      version: dev-${{ github.sha }}
+      allow-development: true
+    secrets:
+      yandex-key: ${{ secrets.VITE_YANDEX_TILES_API_KEY_STAGING }}
+
+  deploy:
+    needs: portable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
       - uses: actions/checkout@v7
-        if: steps.gate.outputs.deploy == 'true'
         with:
           # Full history: sitemap <lastmod> derives from git mtime
           # (vite-plugins/git-mtime.ts); a shallow clone would drop it.
           fetch-depth: 0
 
       - uses: actions/setup-node@v7
-        if: steps.gate.outputs.deploy == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
-        if: steps.gate.outputs.deploy == 'true'
 
-      - name: Build the staging portable files
-        if: steps.gate.outputs.deploy == 'true'
-        env:
-          PORTABLE_YANDEX_TILES_API_KEY: ${{ secrets.VITE_YANDEX_TILES_API_KEY_STAGING }}
-        run: |
-          npm run build:portable -- --version "dev-${GITHUB_SHA}"
-          PORTABLE_ALLOW_DEV=1 node scripts/validate-portable-artifacts.mjs
-
-      - name: Install Playwright browser
-        if: steps.gate.outputs.deploy == 'true'
-        run: npx playwright install --with-deps --no-shell chromium
-
-      - name: Test the final portable HTML from disk
-        if: steps.gate.outputs.deploy == 'true'
-        run: npx playwright test --config=tests/playwright.portable.config.ts
-
-      - name: Upload portable failure diagnostics
-        if: failure() && steps.gate.outputs.deploy == 'true'
-        uses: actions/upload-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
-          name: portable-test-results
-          path: tests/test-results/portable/
-          retention-days: 7
-          if-no-files-found: ignore
+          name: portable-html
+          path: dist-portable
 
       - name: Build (staging env)
-        if: steps.gate.outputs.deploy == 'true'
         env:
           PORTABLE_MANIFEST: ${{ github.workspace }}/dist-portable/manifest.json
           PORTABLE_ALLOW_DEV: "1"
@@ -111,7 +104,6 @@ jobs:
       # the plugin's writeBundle hook waiting until the whole deploy timed out.
       # Source maps improve diagnostics but must never block a site deploy.
       - name: Upload source maps to Sentry
-        if: steps.gate.outputs.deploy == 'true'
         continue-on-error: true
         timeout-minutes: 2
         env:
@@ -127,11 +119,9 @@ jobs:
           npx --no-install sentry-cli sourcemaps upload --release="${release}" dist
 
       - name: Retain the previous deployment's immutable assets
-        if: steps.gate.outputs.deploy == 'true'
         run: node --experimental-strip-types scripts/retain-deployment-assets.mts dist https://beta.everydashcam.app
 
       - name: Save the final hosted dist for recovery
-        if: steps.gate.outputs.deploy == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: hosted-dist-beta-${{ github.sha }}-${{ github.run_attempt }}
@@ -141,7 +131,6 @@ jobs:
           if-no-files-found: error
 
       - name: Deploy to Cloudflare Pages (branch alias main)
-        if: steps.gate.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -153,7 +142,6 @@ jobs:
             --commit-dirty=false
 
       - name: Verify published portable files and metadata
-        if: steps.gate.outputs.deploy == 'true'
         env:
           PORTABLE_ALLOW_DEV: "1"
           PORTABLE_SMOKE_ORIGIN: https://beta.everydashcam.app

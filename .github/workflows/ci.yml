@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -71,6 +73,8 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -115,6 +119,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -151,7 +157,7 @@ jobs:
           if-no-files-found: ignore
 
   reports:
-    if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
+    if: ${{ !cancelled() && (needs.e2e.result == 'failure' || needs.detectors.result == 'failure') }}
     needs: [e2e, detectors]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -191,7 +197,7 @@ jobs:
   # Keep one stable check name, including when an upstream job fails or skips.
   test:
     if: ${{ !cancelled() }}
-    needs: [checks, e2e, detectors, portable, staging-build, deployment-profile, regional-seo, reports]
+    needs: [checks, e2e, detectors, portable, build-profiles]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -206,45 +212,21 @@ jobs:
           fi
 
   portable:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Build and validate portable HTML
-        run: |
-          npm run build:portable -- --version "dev-${GITHUB_SHA}"
-          PORTABLE_ALLOW_DEV=1 node scripts/validate-portable-artifacts.mjs
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps --no-shell chromium
-      - name: Test portable HTML from disk
-        run: npx playwright test --config=tests/playwright.portable.config.ts
-      - name: Upload portable failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: portable-test-results
-          path: tests/test-results/portable/
-          retention-days: 7
-          if-no-files-found: ignore
+    uses: ./.github/workflows/portable.yml
+    with:
+      version: dev-${{ github.sha }}
+      allow-development: true
+      project: '*'
 
-  # Exercise the hosted chunk graph without credentials or Sentry uploads.
-  # The plain build tree-shakes reporting code and omits debug-ID injection.
-  staging-build:
+  # Keep distinct build configurations, but share their checkout and npm install.
+  # Each build replaces dist/ before the checks for that profile.
+  build-profiles:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      VITE_NO_INDEX: "1"
-      VITE_SENTRY_DSN: "https://public@example.invalid/1"
-      SENTRY_AUTH_TOKEN: "synthetic-ci-token"
-      SENTRY_ORG: "synthetic-ci"
-      SENTRY_PROJECT: "synthetic-ci"
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -252,49 +234,24 @@ jobs:
       - run: npm ci
       - name: Verify source-map upload tooling
         run: node_modules/.bin/sentry-cli sourcemaps upload --help
+      # Exercise instrumentation and debug-ID injection without uploading maps.
       - name: Build with hosted instrumentation
+        env:
+          VITE_NO_INDEX: "1"
+          VITE_SENTRY_DSN: "https://public@example.invalid/1"
+          SENTRY_AUTH_TOKEN: "synthetic-ci-token"
+          SENTRY_ORG: "synthetic-ci"
+          SENTRY_PROJECT: "synthetic-ci"
         run: npm run build
-
-  # The public build contract is origin-agnostic. A synthetic profile catches
-  # accidental dependencies on private host or locale values without exposing
-  # the real deployment configuration to this repository or PR logs.
-  deployment-profile:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      DEPLOYMENT_PROFILE: mirror
-      SEO_MIRROR_CONFIG: '{"origin":"https://mirror.example.test","localeSegments":["de"],"rootLocaleSegment":"de"}'
-      META_CSP: "1"
-      DISABLE_CLOUDFLARE_ANALYTICS: "1"
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - run: npm ci
-      - name: Build synthetic mirror profile
-        run: npm run build
-      - name: Test synthetic mirror artifact
-        run: npm run test:deployment-profile
-
-  # Each regional URL needs a real self-canonical counterpart. Checking just the
-  # mirror canary above cannot prove reciprocal links across production hosts.
-  regional-seo:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - name: Build and test synthetic mirror profile
+        env:
+          DEPLOYMENT_PROFILE: mirror
+          SEO_MIRROR_CONFIG: '{"origin":"https://mirror.example.test","localeSegments":["de"],"rootLocaleSegment":"de"}'
+          META_CSP: "1"
+          DISABLE_CLOUDFLARE_ANALYTICS: "1"
+        run: |
+          npm run build
+          npm run test:deployment-profile
+      # The standalone mirror cannot prove reciprocal links across both hosts.
       - name: Build and validate synthetic regional production pair
         run: npm run test:seo-regional

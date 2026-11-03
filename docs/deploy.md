@@ -41,6 +41,17 @@ commit to it or force-push it. Production requires successful CI on the tagged
 commit; staging is independent of CI. Preflight rules live in
 [check-release-state.mjs](../scripts/check-release-state.mjs).
 
+The shared [portable workflow](../.github/workflows/portable.yml) builds once
+and tests the same files across shards. Publication waits for every shard.
+CI also runs portable build-tooling and development-server cases; publication
+runs the `artifact` project against the final HTML. Local `test:portable` still
+runs both projects by default.
+
+Release prepares the self-host build alongside portable. Tagged releases reuse
+the successful source checks and run `test:artifact` against the fresh self-host
+build; manual dry-runs retain the full source suite. Packaging consumes those
+tested artifacts before attestation, image publication and Release publication.
+
 Before uploading, workflows run
 [retain-deployment-assets.mts](../scripts/retain-deployment-assets.mts) against
 the live origin. This keeps the previous release's immutable assets available

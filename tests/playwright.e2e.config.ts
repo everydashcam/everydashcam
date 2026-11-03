@@ -44,7 +44,8 @@ export default defineConfig({
     fullyParallel: false,
     forbidOnly: isCI,
     failOnFlakyTests: true,
-    retries: isCI ? 2 : 0,
+    // One retry captures a trace; failOnFlakyTests still rejects a recovered test.
+    retries: isCI ? 1 : 0,
     timeout: 60 * 1000,
     expect: { timeout: 10 * 1000 },
     use: {
@@ -107,8 +108,8 @@ export default defineConfig({
               ]
             : []),
     ],
-    // github: inline PR annotations for failures. html: post-mortem artifact
-    // (uploaded if: always(), so a retry-then-pass flake keeps its trace).
+    // Standalone runs produce HTML; sharded CI overrides this with blob reports
+    // and merges them on failure, including retry-only passes rejected as flaky.
     reporter: isCI
         ? [["list"], ["github"], ["html", { open: "never", outputFolder: resolve(ARTIFACT_ROOT, "playwright-report") }]]
         : [["list"]],
