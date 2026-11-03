@@ -391,6 +391,29 @@ describe("errors-only reporting", () => {
         },
     );
 
+    it("drops masked Safari extension errors while preserving application exceptions with the same message", async () => {
+        initSentry();
+        await vi.dynamicImportSettled();
+        const client = getClient();
+        expect(client).toBeDefined();
+        const message = "No Listener: tabs:outgoing.message.ready";
+        const extensionError = new Error(message);
+        extensionError.stack = "g@webkit-masked-url://hidden/:132:38491";
+        client?.captureException(extensionError);
+        expect(await client?.flush(1000)).toBe(true);
+        expect(requests).toHaveLength(0);
+
+        const applicationError = new Error(message);
+        // An extension caller must not hide an exception thrown by our code.
+        applicationError.stack =
+            "decode@https://everydashcam.app/assets/player.js:42:7\ninvoke@webkit-masked-url://hidden/:132:38491";
+        client?.captureException(applicationError);
+        expect(await client?.flush(1000)).toBe(true);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.body).toContain(message);
+        expect(requests[0]?.body).toContain("https://everydashcam.app/assets/player.js");
+    });
+
     it("drops manual and automatic cancellation reports but preserves real exceptions", async () => {
         initSentry();
         captureSentryException(new DOMException("cancelled pending", "AbortError"));

@@ -128,7 +128,15 @@ export function initSentryClient(opts: SentryClientOptions): SentryClient {
             /^Could not compile (fragment|vertex) shader: (null)?$/,
             /^Program failed to link: (null)?$/,
         ],
-        denyUrls: [/chrome-extension:\/\//, /moz-extension:\/\//, /safari-extension:\/\//, /^extensions\//],
+        denyUrls: [
+            /chrome-extension:\/\//,
+            /moz-extension:\/\//,
+            /safari-extension:\/\//,
+            /^extensions\//,
+            // Safari masks extension script URLs. Filter before PII scrubbing
+            // rewrites the source location (https://webkit.org/b/246010).
+            /^webkit-masked-url:/,
+        ],
         beforeSend: (event) => (requests.signal.aborted ? null : opts.beforeSend(event)),
         beforeBreadcrumb: opts.beforeBreadcrumb,
     });
