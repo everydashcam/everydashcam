@@ -376,7 +376,8 @@ export const jaDict = {
     "codecUnsupported.title": "このブラウザではこの動画を再生できません",
     "codecUnsupported.hint": "Chrome、Edge、Safari ならたいていこの形式を再生できます。同じフォルダーをそちらで開いてみてください。",
     "codecUnsupported.hint.windows": "Chrome、または Microsoft Store の {link} アドオンを入れた Microsoft Edge で、同じフォルダーを開いてみてください。",
-    "codecUnsupported.hint.windowsChrome": "Microsoft Store の {link} アドオンを入れた Microsoft Edge で、同じフォルダーを開いてみてください。",
+    "codecUnsupported.hint.windowsChrome":
+        "同じフォルダーを Microsoft Edge で開いてみてください。Chrome で再生できない動画も、Edge なら再生できることがよくあります。それでも黒い画面のままなら、Microsoft Store から {link} アドオンをインストールして、ページを再読み込みしてください。chrome://settings/system で「使用可能な場合はグラフィック アクセラレーションを使用する」をオンにし、グラフィック ドライバーを更新して Chrome を再起動すると、Chrome でも再生できることがあります。",
     "codecUnsupported.hint.windowsEdge": "Microsoft Store から {link} アドオンをインストールして、このページを再読み込みしてください。または Chrome で同じフォルダーを開いてみてください — たいていアドオンなしで再生できます。",
     "codecUnsupported.stillWorks": "地図、速度グラフ、無編集でのクリップ書き出しは引き続き使えます。",
     "playbackFailed.title": "この動画を再生できませんでした",

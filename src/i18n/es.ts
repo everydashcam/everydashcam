@@ -366,7 +366,8 @@ export const esDict = {
     "codecUnsupported.title": "Este navegador no puede reproducir este vídeo",
     "codecUnsupported.hint": "Chrome, Edge o Safari suelen reproducir este formato — abre allí la misma carpeta.",
     "codecUnsupported.hint.windows": "Prueba a abrir la misma carpeta en Chrome o en Microsoft Edge con el complemento {link} de Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Prueba a abrir la misma carpeta en Microsoft Edge con el complemento {link} de Microsoft Store.",
+    "codecUnsupported.hint.windowsChrome":
+        'Abre la misma carpeta en Microsoft Edge — suele reproducir estos vídeos cuando Chrome no puede. ¿Sigue en negro? Instala el complemento {link} de Microsoft Store y recarga la página. A veces Chrome los reproduce si activas "Usar la aceleración de gráficos cuando esté disponible" en chrome://settings/system, actualizas el controlador gráfico y reinicias Chrome.',
     "codecUnsupported.hint.windowsEdge": "Instala el complemento {link} desde Microsoft Store y recarga la página. O abre la misma carpeta en Chrome — suele reproducir estos vídeos sin complementos.",
     "codecUnsupported.stillWorks": "El mapa, el gráfico de velocidad y la exportación de clips sin cambios siguen funcionando.",
     "playbackFailed.title": "No se pudo reproducir este vídeo",

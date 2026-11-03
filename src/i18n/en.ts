@@ -367,7 +367,8 @@ export const enDict = {
     "codecUnsupported.title": "This browser can't play this video",
     "codecUnsupported.hint": "Chrome, Edge or Safari can usually play this format — open the same folder there.",
     "codecUnsupported.hint.windows": "Try opening the same folder in Chrome, or in Microsoft Edge with the {link} add-on from the Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Try opening the same folder in Microsoft Edge with the {link} add-on from the Microsoft Store.",
+    "codecUnsupported.hint.windowsChrome":
+        'Open the same folder in Microsoft Edge — it often plays these videos when Chrome can\'t. Still black? Install the {link} add-on from the Microsoft Store and reload the page. Sometimes Chrome plays them after you turn on "Use graphics acceleration when available" in chrome://settings/system, update the graphics driver and restart it.',
     "codecUnsupported.hint.windowsEdge": "Install the {link} add-on from the Microsoft Store, then reload this page. Or open the same folder in Chrome — it usually plays these videos without add-ons.",
     "codecUnsupported.stillWorks": "The map, speed chart and export without edits still work.",
     "playbackFailed.title": "Couldn't play this video",

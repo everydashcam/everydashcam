@@ -366,7 +366,8 @@ export const ptDict = {
     "codecUnsupported.title": "Este navegador não consegue reproduzir este vídeo",
     "codecUnsupported.hint": "O Chrome, o Edge ou o Safari normalmente conseguem reproduzir este formato — abra lá a mesma pasta.",
     "codecUnsupported.hint.windows": "Tente abrir a mesma pasta no Chrome ou no Microsoft Edge com a extensão {link} da Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Tente abrir a mesma pasta no Microsoft Edge com a extensão {link} da Microsoft Store.",
+    "codecUnsupported.hint.windowsChrome":
+        'Abra a mesma pasta no Microsoft Edge — ele costuma reproduzir esses vídeos quando o Chrome não consegue. Continua preto? Instale a extensão {link} da Microsoft Store e recarregue a página. Às vezes o Chrome também os reproduz se você ativar "Usar aceleração de hardware quando disponível" em chrome://settings/system, atualizar o driver de vídeo e reiniciar o Chrome.',
     "codecUnsupported.hint.windowsEdge": "Instale a extensão {link} da Microsoft Store e recarregue a página. Ou abra a mesma pasta no Chrome — ele normalmente reproduz estes vídeos sem extensões.",
     "codecUnsupported.stillWorks": "O mapa, o gráfico de velocidade e a exportação de clipes sem alterações continuam funcionando.",
     "playbackFailed.title": "Não foi possível reproduzir este vídeo",

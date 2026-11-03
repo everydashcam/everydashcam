@@ -375,7 +375,8 @@ export const koDict = {
     "codecUnsupported.title": "이 브라우저는 이 영상을 재생할 수 없어요",
     "codecUnsupported.hint": "Chrome, Edge, Safari에서는 보통 이 형식을 재생할 수 있어요 — 같은 폴더를 거기서 열어 보세요.",
     "codecUnsupported.hint.windows": "Chrome에서 같은 폴더를 열어 보세요. 또는 Microsoft Store의 {link} 추가 기능을 설치한 Microsoft Edge에서 열어 보세요.",
-    "codecUnsupported.hint.windowsChrome": "Microsoft Store의 {link} 추가 기능을 설치한 Microsoft Edge에서 같은 폴더를 열어 보세요.",
+    "codecUnsupported.hint.windowsChrome":
+        'Microsoft Edge에서 같은 폴더를 열어 보세요. Chrome에서 재생되지 않는 영상도 Edge에서는 재생되는 경우가 많아요. 그래도 화면이 검다면 Microsoft Store에서 {link} 추가 기능을 설치하고 페이지를 새로 고쳐 보세요. chrome://settings/system에서 "가능한 경우 그래픽 가속 사용"을 켜고 그래픽 드라이버를 업데이트한 다음 Chrome을 다시 시작하면 Chrome에서도 재생되는 경우가 있어요.',
     "codecUnsupported.hint.windowsEdge": "Microsoft Store에서 {link} 추가 기능을 설치한 뒤 페이지를 새로고침해 주세요. 또는 Chrome에서 같은 폴더를 열어 보세요 — 보통 추가 기능 없이도 재생돼요.",
     "codecUnsupported.stillWorks": "지도, 속도 그래프, 변경 없는 클립 내보내기는 계속 사용할 수 있어요.",
     "playbackFailed.title": "이 동영상을 재생하지 못했어요",

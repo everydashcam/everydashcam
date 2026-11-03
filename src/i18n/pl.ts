@@ -366,7 +366,8 @@ export const plDict = {
     "codecUnsupported.title": "Ta przeglądarka nie może odtworzyć tego wideo",
     "codecUnsupported.hint": "Chrome, Edge lub Safari zwykle odtwarzają ten format — otwórz tam ten sam folder.",
     "codecUnsupported.hint.windows": "Spróbuj otworzyć ten sam folder w Chrome albo w Microsoft Edge z dodatkiem {link} ze sklepu Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Spróbuj otworzyć ten sam folder w Microsoft Edge z dodatkiem {link} ze sklepu Microsoft Store.",
+    "codecUnsupported.hint.windowsChrome":
+        'Otwórz ten sam folder w Microsoft Edge — często odtwarza takie wideo, gdy Chrome sobie nie radzi. Nadal czarny ekran? Zainstaluj dodatek {link} ze sklepu Microsoft Store i odśwież stronę. Czasem Chrome też je odtworzy, jeśli włączysz "Używaj akceleracji sprzętowej, gdy jest dostępna" w chrome://settings/system, zaktualizujesz sterownik karty graficznej i uruchomisz Chrome ponownie.',
     "codecUnsupported.hint.windowsEdge": "Zainstaluj dodatek {link} ze sklepu Microsoft Store i odśwież stronę. Albo otwórz ten sam folder w Chrome — zwykle odtwarza takie wideo bez dodatków.",
     "codecUnsupported.stillWorks": "Mapa, wykres prędkości i eksport klipów bez zmian nadal działają.",
     "playbackFailed.title": "Nie udało się odtworzyć tego filmu",

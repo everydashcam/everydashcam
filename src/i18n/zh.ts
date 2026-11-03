@@ -365,7 +365,7 @@ export const zhDict = {
     "codecUnsupported.title": "此浏览器无法播放这段视频",
     "codecUnsupported.hint": "Chrome、Edge 或 Safari 通常能播放这种格式 — 在那里打开同一个文件夹即可。",
     "codecUnsupported.hint.windows": "请尝试在 Chrome 中打开同一个文件夹，或使用安装了 Microsoft Store {link} 扩展的 Microsoft Edge。",
-    "codecUnsupported.hint.windowsChrome": "请尝试在 Microsoft Edge 中打开同一个文件夹，并从 Microsoft Store 安装 {link} 扩展。",
+    "codecUnsupported.hint.windowsChrome": "请在 Microsoft Edge 中打开同一个文件夹 — Chrome 无法播放的视频，Edge 往往可以播放。仍然黑屏？请从 Microsoft Store 安装 {link} 扩展，然后刷新页面。有时在 chrome://settings/system 中开启「使用图形加速功能（如果可用）」、更新显卡驱动并重启 Chrome 后，Chrome 也能播放。",
     "codecUnsupported.hint.windowsEdge": "从 Microsoft Store 安装 {link} 扩展，然后刷新此页面。或者在 Chrome 中打开同一个文件夹 — 它通常无需扩展即可播放这类视频。",
     "codecUnsupported.stillWorks": "地图、速度图表和不作修改的剪辑导出仍然可用。",
     "playbackFailed.title": "无法播放此视频",

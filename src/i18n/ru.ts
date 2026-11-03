@@ -371,7 +371,8 @@ export const ruDict = {
     "codecUnsupported.title": "Браузер не может воспроизвести это видео",
     "codecUnsupported.hint": "Chrome, Edge или Safari обычно справляются с этим форматом — открой в одном из них ту же папку.",
     "codecUnsupported.hint.windows": "Попробуй открыть ту же папку в Chrome или в Microsoft Edge с дополнением {link} из Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Попробуй открыть ту же папку в Microsoft Edge с дополнением {link} из Microsoft Store.",
+    "codecUnsupported.hint.windowsChrome":
+        'Открой ту же папку в Microsoft Edge — он часто воспроизводит такие видео, когда Chrome не может. Всё равно чёрный экран? Установи дополнение {link} из Microsoft Store и перезагрузи страницу. Chrome иногда справляется, если включить "Использовать аппаратное ускорение (если доступно)" в chrome://settings/system, обновить драйвер видеокарты и перезапустить браузер.',
     "codecUnsupported.hint.windowsEdge": "Установи дополнение {link} из Microsoft Store и перезагрузи страницу. Или открой эту же папку в Chrome — он обычно играет такие видео без дополнений.",
     "codecUnsupported.stillWorks": "Карта, график скорости и экспорт клипов без изменений работают.",
     "playbackFailed.title": "Не удалось воспроизвести видео",

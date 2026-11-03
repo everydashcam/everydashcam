@@ -364,7 +364,8 @@ export const deDict = {
     "codecUnsupported.title": "Dieser Browser kann dieses Video nicht abspielen",
     "codecUnsupported.hint": "Chrome, Edge oder Safari können dieses Format meist abspielen — öffne dort denselben Ordner.",
     "codecUnsupported.hint.windows": "Öffne denselben Ordner in Chrome oder in Microsoft Edge mit der Erweiterung {link} aus dem Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Versuche, denselben Ordner in Microsoft Edge mit der Erweiterung {link} aus dem Microsoft Store zu öffnen.",
+    "codecUnsupported.hint.windowsChrome":
+        'Öffne denselben Ordner in Microsoft Edge — dort laufen solche Videos oft, wenn Chrome es nicht schafft. Immer noch schwarz? Installiere die Erweiterung {link} aus dem Microsoft Store und lade die Seite neu. Manchmal klappt es auch in Chrome, wenn du in chrome://settings/system "Hardwarebeschleunigung verwenden, falls verfügbar" aktivierst, den Grafiktreiber aktualisierst und Chrome neu startest.',
     "codecUnsupported.hint.windowsEdge": "Installiere die Erweiterung {link} aus dem Microsoft Store und lade die Seite neu. Oder öffne denselben Ordner in Chrome — dort laufen solche Videos meistens ohne Zusätze.",
     "codecUnsupported.stillWorks": "Karte, Geschwindigkeitsdiagramm und der Export unveränderter Clips funktionieren weiterhin.",
     "playbackFailed.title": "Das Video konnte nicht abgespielt werden",

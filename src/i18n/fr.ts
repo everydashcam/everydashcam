@@ -366,7 +366,8 @@ export const frDict = {
     "codecUnsupported.title": "Ce navigateur ne peut pas lire cette vidéo",
     "codecUnsupported.hint": "Chrome, Edge ou Safari lisent en général ce format — ouvre le même dossier dans l'un d'eux.",
     "codecUnsupported.hint.windows": "Essaie d’ouvrir le même dossier dans Chrome ou dans Microsoft Edge avec le module {link} du Microsoft Store.",
-    "codecUnsupported.hint.windowsChrome": "Essaie d’ouvrir le même dossier dans Microsoft Edge avec le module {link} du Microsoft Store.",
+    "codecUnsupported.hint.windowsChrome":
+        'Ouvre le même dossier dans Microsoft Edge — il lit souvent ces vidéos quand Chrome n’y arrive pas. Toujours noir ? Installe le module {link} du Microsoft Store et recharge la page. Parfois, Chrome les lit si tu actives "Utiliser l\'accélération graphique si elle est disponible" dans chrome://settings/system, mets à jour le pilote graphique et redémarres Chrome.',
     "codecUnsupported.hint.windowsEdge": "Installe le module {link} depuis le Microsoft Store, puis recharge la page. Ou ouvre le même dossier dans Chrome — il lit en général ces vidéos sans module.",
     "codecUnsupported.stillWorks": "La carte, le graphique de vitesse et l'export de clips sans modification fonctionnent toujours.",
     "playbackFailed.title": "Impossible de lire cette vidéo",
