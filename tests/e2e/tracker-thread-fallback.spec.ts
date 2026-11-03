@@ -66,6 +66,11 @@ const test = base.extend<{ threadStartup: ThreadStartup; ortRuntime: OrtRuntime 
                 const filename = resolve(dist, `.${relative}`);
                 if (!filename.startsWith(`${dist}${sep}`)) throw new Error("path outside dist");
                 let body: Buffer | string = readFileSync(filename);
+                if (/\/assets\/tracker-worker-[^/]+\.js$/.test(pathname)) {
+                    // A three-core CI runner otherwise selects one thread and
+                    // never exercises the real pool or its startup failures.
+                    body = `Object.defineProperty(navigator, "hardwareConcurrency", { value: 4 });\n${body.toString()}`;
+                }
                 if (runtimeChunk.test(pathname)) {
                     if (threadStartup === "blocked") response.removeHeader("cross-origin-embedder-policy");
                     if (threadStartup === "hung") {
@@ -111,10 +116,6 @@ async function openIsolatedApp(page: Page): Promise<void> {
     await page.setViewportSize(DESKTOP);
     await gotoApp(page, "en");
     expect(await page.evaluate(() => self.crossOriginIsolated), "the page can use threads").toBe(true);
-    expect(
-        await page.evaluate(() => navigator.hardwareConcurrency),
-        "the runner can start an ORT thread pool",
-    ).toBeGreaterThan(3);
 }
 
 async function readFallbackLogs(page: Page) {
