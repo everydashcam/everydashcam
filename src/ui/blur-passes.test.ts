@@ -90,7 +90,7 @@ import {
     toggleTrackPass,
     trackPassOf,
 } from "./blur-track.js";
-import { trackerWorkerClient } from "./tracker-worker-client.js";
+import { _resetForTests as resetTrackerWorker } from "./tracker-worker-client.js";
 
 function makeTrip(): Trip {
     const file = new File(["video"], "front.mp4");
@@ -173,6 +173,7 @@ function regroupTrip(): void {
 
 let endpoints: ReturnType<typeof makePairedEndpoints>;
 interface PendingPass {
+    worker: ReturnType<typeof makePairedEndpoints>;
     type: string;
     data: unknown;
     resolve(result: unknown): void;
@@ -180,18 +181,26 @@ interface PendingPass {
 }
 let requests: PendingPass[];
 let server: WorkerServer;
-function startWorker(shouldSerialize = false): void {
+let serializeWorkers: boolean;
+let workerNames: Array<string | undefined>;
+function startWorker(): void {
     endpoints = makePairedEndpoints();
+    const worker = endpoints;
+    const shouldSerialize = serializeWorkers;
     const serialize = createSerialQueue();
     server = createWorkerServer(endpoints.workerEndpoint, {
-        onRequest(type, data) {
-            const request = () => new Promise((resolve, reject) => requests.push({ type, data, resolve, reject }));
+        onRequest(type, data, context) {
+            const request = () => {
+                context.signal.throwIfAborted();
+                return new Promise((resolve, reject) => requests.push({ worker, type, data, resolve, reject }));
+            };
             return shouldSerialize ? serialize(request) : request();
         },
     });
 }
 
 beforeEach(() => {
+    resetTrackerWorker();
     _resetForTests();
     resetDetection();
     resetAssets();
@@ -200,9 +209,11 @@ beforeEach(() => {
     ui.channels = ["front"];
     ui.notifications = [];
     requests = [];
-    startWorker();
-    vi.stubGlobal("Worker", function Worker() {
-        if (endpoints.terminated()) startWorker();
+    serializeWorkers = false;
+    workerNames = [];
+    vi.stubGlobal("Worker", function Worker(_url: string | URL, options?: WorkerOptions) {
+        startWorker();
+        workerNames.push(options?.name);
         return endpoints.mainEndpoint;
     });
     vi.stubGlobal("window", globalThis);
@@ -214,16 +225,124 @@ beforeEach(() => {
 
 afterEach(() => {
     resetDetection();
-    trackerWorkerClient().dispose();
+    resetTrackerWorker();
     vi.useRealTimers();
     vi.unstubAllGlobals();
 });
 
 describe("blur pass lifecycle", () => {
+    it("retries queued Follow and detection passes on one shared single-thread worker", async () => {
+        serializeWorkers = true;
+        await downloadBlurAssets(["detect-plate"]);
+        const first = toggleTrackPass(ui.trip!, makeRegion());
+        const second = toggleTrackPass(ui.trip!, { ...makeRegion(), id: "region-2" });
+        setDetectEnabled("plate", true);
+        const detection = ensureDetectRegionsForExport(
+            captureDetectExportRequest()!,
+            new AbortController().signal,
+            () => {},
+        );
+        await flushMicrotasks();
+        expect(requests, "only the first pass runs before startup fails").toHaveLength(1);
+        const failedWorker = endpoints;
+        requests[0]!.reject(Object.assign(new Error("thread failed to load"), { name: "OrtThreadStartError" }));
+        await flushMicrotasks();
+        const replacement = endpoints;
+        expect(failedWorker.terminated()).toBe(true);
+        expect(replacement).not.toBe(failedWorker);
+        expect(workerNames).toEqual(["tracker-worker", "tracker-worker-single-thread"]);
+
+        const retried = () => requests.filter((request) => request.worker === replacement);
+        expect(retried()).toHaveLength(1);
+        expect(retried()[0]!.data).toMatchObject({ regionId: "region-1" });
+        retried()[0]!.resolve({ keyframes: [], trackedUntilSec: 4, endReason: "completed" });
+        expect(await first).toBe("completed");
+        await flushMicrotasks();
+        expect(retried()).toHaveLength(2);
+        expect(retried()[1]!.data).toMatchObject({ regionId: "region-2" });
+        retried()[1]!.resolve({ keyframes: [], trackedUntilSec: 4, endReason: "completed" });
+        expect(await second).toBe("completed");
+        await flushMicrotasks();
+        expect(retried()).toHaveLength(3);
+        expect(retried()[2]!.type).toBe(DETECT_REQUEST);
+        retried()[2]!.resolve(makeDetectResult());
+        expect(await detection).toHaveLength(1);
+        expect(workerNames, "queued requests reuse the same fallback").toHaveLength(2);
+        expect(replacement.terminated()).toBe(false);
+        expect(detectAvailable()).toBe(true);
+        expect(ui.notifications).toEqual([]);
+    });
+
+    it.each(["before failure", "after retry starts"])(
+        "does not resurrect queued Follow cancelled %s",
+        async (cancelAt) => {
+            serializeWorkers = true;
+            const first = toggleTrackPass(ui.trip!, makeRegion());
+            const cancelledRegion = { ...makeRegion(), id: "region-2" };
+            const before = structuredClone(cancelledRegion);
+            const cancelled = toggleTrackPass(ui.trip!, cancelledRegion);
+            await flushMicrotasks();
+            expect(requests).toHaveLength(1);
+            if (cancelAt === "before failure") {
+                cancelTrackPass(cancelledRegion.id);
+                expect(await cancelled).toBe("cancelled");
+            }
+            requests[0]!.reject(Object.assign(new Error("thread failed to load"), { name: "OrtThreadStartError" }));
+            await flushMicrotasks();
+            if (cancelAt === "after retry starts") {
+                cancelTrackPass(cancelledRegion.id);
+                expect(await cancelled).toBe("cancelled");
+            }
+            const retried = requests.filter((request) => request.worker === endpoints);
+            expect(retried).toHaveLength(1);
+            expect(retried[0]!.data).toMatchObject({ regionId: "region-1" });
+            retried[0]!.resolve({ keyframes: [], trackedUntilSec: 4, endReason: "completed" });
+            expect(await first).toBe("completed");
+            await flushMicrotasks();
+            expect(requests.filter((request) => request.worker === endpoints)).toHaveLength(1);
+            expect(workerNames).toEqual(["tracker-worker", "tracker-worker-single-thread"]);
+            expect(trackPassOf(cancelledRegion.id)).toBeNull();
+            expect(cancelledRegion).toEqual(before);
+            expect(ui.notifications).toEqual([]);
+        },
+    );
+
+    it("stops retrying when the single-thread worker also reports a startup failure", async () => {
+        const region = makeRegion();
+        const before = structuredClone(region);
+        const pending = toggleTrackPass(ui.trip!, region);
+        await flushMicrotasks();
+        requests[0]!.reject(Object.assign(new Error("thread failed to load"), { name: "OrtThreadStartError" }));
+        await flushMicrotasks();
+        expect(requests).toHaveLength(2);
+        requests[1]!.reject(Object.assign(new Error("fallback failed"), { name: "OrtThreadStartError" }));
+        expect(await pending).toBe("failed");
+        await flushMicrotasks();
+        expect(workerNames).toEqual(["tracker-worker", "tracker-worker-single-thread"]);
+        expect(requests).toHaveLength(2);
+        expect(endpoints.terminated()).toBe(true);
+        expect(region).toEqual(before);
+        expect(ui.notifications).toEqual(["export.blur.track.failed"]);
+    });
+
+    it("does not retry an unrelated worker crash as a thread startup failure", async () => {
+        const first = toggleTrackPass(ui.trip!, makeRegion());
+        const second = toggleTrackPass(ui.trip!, { ...makeRegion(), id: "region-2" });
+        await flushMicrotasks();
+        endpoints.fireMainError({ error: new TypeError("unexpected tracker error") });
+        expect(await first).toBe("failed");
+        expect(await second).toBe("failed");
+        await flushMicrotasks();
+        expect(workerNames).toEqual(["tracker-worker"]);
+        expect(requests).toHaveLength(2);
+        expect(endpoints.terminated()).toBe(true);
+        expect(ui.notifications).toEqual(["export.blur.track.failed", "export.blur.track.failed"]);
+    });
+
     it("preserves queued Follow and selected blur after WebGPU rejection without retrying detection", async () => {
         // Mirror the real worker's queue: Follow waits behind detection, so a
         // capability failure must leave the shared WASM worker usable.
-        startWorker(true);
+        serializeWorkers = true;
         await downloadBlurAssets(["detect-plate"]);
         setDetectEnabled("plate", true);
         const request = captureDetectExportRequest()!;

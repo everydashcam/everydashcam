@@ -26,6 +26,12 @@ let client: TypedWorkerClient<TrackerWorkerContract> | null = null;
 let threadsFailed = false;
 const singleThreadClients = new WeakSet<TypedWorkerClient<TrackerWorkerContract>>();
 
+export function _resetForTests(): void {
+    client?.dispose("test reset");
+    client = null;
+    threadsFailed = false;
+}
+
 export type WorkerNotification = WorkerMessage<TrackerWorkerContract["events"]>;
 
 type NotificationListener = (msg: WorkerNotification) => void;

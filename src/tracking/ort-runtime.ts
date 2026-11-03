@@ -16,6 +16,7 @@ import { type OrtAssets, ortAssetKey } from "./ort-assets.js";
 import { loadAssetParts } from "./asset-loader.js";
 import { TRACKER_ASSETS } from "./asset-manifest.js";
 import { requireDetectionWebGpu } from "./webgpu-support.js";
+import { startOrtThreadPool } from "./ort-thread-start.js";
 
 export type OrtRuntime = "webgpu" | "wasm";
 
@@ -45,15 +46,19 @@ const cached = new Map<string, Promise<OrtModule>>();
 /** Modules that created a session, so their runtime and thread pool started. */
 const startedModules = new WeakSet<OrtModule>();
 
+function startsThreadPool(module: OrtModule | undefined): boolean {
+    return module !== undefined && !startedModules.has(module) && (module.env.wasm.numThreads ?? 1) > 1;
+}
+
 /** Name of a tracker worker whose runtimes stay on one thread. The page starts
  * one after a thread pool failed to start (src/ui/tracker-worker-client.ts);
  * the name is the only startup configuration a worker has before ORT loads. */
 export const SINGLE_THREAD_TRACKER_WORKER_NAME = "tracker-worker-single-thread";
 
-/** Budget for starting a thread pool, including compiling the runtime, which
- * takes seconds on a slow phone. A thread whose worker never loads (blocked by
- * headers, a failed download, memory) never reports in, and ORT would otherwise
- * wait for it forever. */
+/** Budget for a pool that silently stalls before its startup handshake,
+ * including compilation, which takes seconds on a slow phone. Reported child
+ * worker errors reject immediately through ort-thread-start.ts; this timeout
+ * bounds the remaining cases where ORT would otherwise wait forever. */
 const THREAD_POOL_START_TIMEOUT_MS = 15_000;
 
 /** WASM threads need SharedArrayBuffer, which only a cross-origin isolated
@@ -118,7 +123,10 @@ export async function createOrtSession(
                 new URL(asset.url, globalThis.location.href).href === new URL(modelUrl, globalThis.location.href).href,
         );
         if (!model) throw new Error("model is absent from the build manifest");
-        const session = await ort.InferenceSession.create(await loadAssetParts([model]), options);
+        const modelBytes = await loadAssetParts([model]);
+        const module = ort;
+        const create = () => module.InferenceSession.create(modelBytes, options);
+        const session = startsThreadPool(ort) ? await startOrtThreadPool(create) : await create();
         startedModules.add(ort);
         // The runtime is initialized and no longer needs its source bytes: the
         // glue hands threads, including ones it starts later, the compiled
@@ -139,8 +147,7 @@ export async function createOrtSession(
         // The first session starts the runtime. With a thread pool, its failure
         // may be a thread that never started, which one thread avoids; the page
         // retries once on a single-threaded worker and surfaces any repeat.
-        const poolFailed = ort !== undefined && !startedModules.has(ort) && (ort.env.wasm.numThreads ?? 1) > 1;
-        error.name = poolFailed ? "OrtThreadStartError" : "OrtInitializationError";
+        error.name = startsThreadPool(ort) ? "OrtThreadStartError" : "OrtInitializationError";
         if (cause instanceof Error && cause.stack) error.stack = cause.stack;
         throw error;
     }
