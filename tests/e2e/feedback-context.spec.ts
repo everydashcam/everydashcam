@@ -1,6 +1,16 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
-import { DESKTOP, MOBILE, expect, gotoApp, loadTrip, presetLocalStorage, shot, test } from "./_fixtures.js";
+import {
+    DESKTOP,
+    MOBILE,
+    SAMPLE_HEVC,
+    expect,
+    gotoApp,
+    loadTrip,
+    presetLocalStorage,
+    shot,
+    test,
+} from "./_fixtures.js";
 import { checkFeedbackStructureReport, writeFeedbackStructureCard } from "./_feedback-structure.js";
 
 async function captureMailto(page: Page): Promise<void> {
@@ -123,6 +133,30 @@ test.describe("contextual feedback", () => {
         const report = readFileSync(await (await downloadPromise).path(), "utf8");
         expect(report).toContain(issue);
         expect(report).toContain(finalFile);
+    });
+
+    test("report records what each browser decode api says about the open recording", async ({ page }) => {
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_HEVC);
+        await openContextFeedback(page, "gps");
+        // The probe settles in the background while the dialog is open.
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    window.__everydashcam.dumpLog().some((entry) => entry.msg === "playback probe settled"),
+                ),
+            )
+            .toBe(true);
+
+        const downloadPromise = page.waitForEvent("download");
+        await page.locator("#feedback-primary").click();
+        const report = readFileSync(await (await downloadPromise).path(), "utf8");
+        expect(report, "files list the codec string and frame size").toMatch(/ · hevc hev1\.[\w.]+ \d+x\d+/);
+        expect(report).toContain("== playback probe ==\nfile: sample-hev1.mp4\ncodec string: hev1.");
+        expect(report).toMatch(/\nvideo element canPlayType: (probably|maybe|no)\n/);
+        expect(report).toMatch(/\nMediaSource\.isTypeSupported: (yes|no)\n/);
+        expect(report).toMatch(/\nWebCodecs isConfigSupported: (supported|unsupported)\n/);
+        expect(report).toMatch(/\nmediaCapabilities\.decodingInfo: (supported, .+|unsupported)\n/);
     });
 
     test("download retains the captured context while email asks for the report and camera details", async ({

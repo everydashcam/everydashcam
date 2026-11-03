@@ -22,7 +22,7 @@
 import { getLogBuffer } from "./log.js";
 import { capabilitySignature, detectCapabilities } from "./capabilities.js";
 import { collectGraphicsDiagnostics, type GraphicsDiagnostics } from "./graphics-diagnostics.js";
-import { tripAllCandidates } from "./trips.js";
+import { tripAllCandidates, type VideoCandidate } from "./trips.js";
 import { isPipLayout, mainChannel, state } from "./ui/state.js";
 import { APP_VERSION } from "./version.js";
 
@@ -31,6 +31,12 @@ interface DiagFileEntry {
     sizeBytes: number;
     durationSec: number | null;
     codec: string | null;
+    /** RFC 6381 string with profile and level, so a camera setting change
+     *  (resolution, frame rate, HDR) shows up between two reports. */
+    codecString: string | null;
+    width: number | null;
+    height: number | null;
+    fps: number | null;
     /** Stable camera key (camera-fingerprint.ts). Replaces the old vendorId. */
     fingerprint: string;
     /** Extractor ids that produced GPS records for this file. Empty if no GPS. */
@@ -146,6 +152,10 @@ export function collectDiagnostics(extras?: { storageQuota?: number; storageUsag
                     sizeBytes: cand.file.size,
                     durationSec: Number.isFinite(cand.durationSec) ? Math.round(cand.durationSec) : null,
                     codec: cand.codec ?? null,
+                    codecString: cand.videoCodecString,
+                    width: cand.width,
+                    height: cand.height,
+                    fps: cand.fps,
                     fingerprint: cand.fingerprint,
                     appliedExtractors: cand.appliedExtractors,
                     classifierMatches: cand.classifierMatches,
@@ -284,7 +294,7 @@ export function serializeDiagnosticsText(p: DiagPayload): string {
         const nameMatch = `time=${cm.time ?? "-"} cam=${cm.channel ?? "-"} mode=${cm.mode ?? "-"} seq=${cm.sequence ?? "-"}`;
         const gps = f.appliedExtractors.length > 0 ? f.appliedExtractors.join("+") : "none";
         push(
-            `${f.name} · ${f.sizeBytes} B · ${dur} · ${f.codec ?? "?"} · fp=${f.fingerprint} · cam=${f.channel ?? "-"} · start=${f.startSource} · play=${f.canPlay} · gps=${gps}${f.hasStaleGps ? " · gps-clock=repeated" : ""}${f.hasUncalibratedClock ? " · clock=uncalibrated" : ""} · name[${nameMatch}]`,
+            `${f.name} · ${f.sizeBytes} B · ${dur} · ${formatVideoTrack(f)} · fp=${f.fingerprint} · cam=${f.channel ?? "-"} · start=${f.startSource} · play=${f.canPlay} · gps=${gps}${f.hasStaleGps ? " · gps-clock=repeated" : ""}${f.hasUncalibratedClock ? " · clock=uncalibrated" : ""} · name[${nameMatch}]`,
         );
     }
     push();
@@ -301,6 +311,110 @@ export function serializeDiagnosticsText(p: DiagPayload): string {
     for (const e of p.logTail) push(formatLogLine(e));
 
     return out.join("\n");
+}
+
+/** Codec, codec string, size and frame rate, e.g. "hevc hev1.2.4.L153 3840x2160@30". */
+export function formatVideoTrack(f: Pick<DiagFileEntry, "codec" | "codecString" | "width" | "height" | "fps">): string {
+    let text = f.codec ?? "?";
+    if (f.codecString) text += ` ${f.codecString}`;
+    if (f.width && f.height) text += ` ${f.width}x${f.height}`;
+    if (f.fps) text += `@${Number(f.fps.toFixed(2))}`;
+    return text;
+}
+
+/** What the browser says about decoding the open recording at report time. */
+export interface PlaybackProbe {
+    file: string;
+    codecString: string;
+    canPlayType: string;
+    mediaSource: string;
+    webCodecs: string;
+    mediaCapabilities: string;
+}
+
+// A probe that never settles must not hold the report back.
+const PROBE_TIMEOUT_MS = 3000;
+
+/** Resolves to the probe's text, or a reason when the API is missing, throws or stalls. */
+async function settleProbe(run: () => Promise<string>): Promise<string> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), PROBE_TIMEOUT_MS);
+    });
+    try {
+        return await Promise.race([run(), timeout]);
+    } catch (err) {
+        return `error: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Asks every browser decode API about the open recording's exact codec. Two
+ * reports from the same user then show whether the browser itself changed its
+ * answer, which no state snapshot reveals. The codec string keeps the file's
+ * sample entry (hvc1 vs hev1), as the native player sees it. Returns null when
+ * the recording has no full codec string (AVC MP4, undetermined codec).
+ */
+export async function probePlayback(cand: VideoCandidate): Promise<PlaybackProbe | null> {
+    const full = cand.videoCodecString;
+    if (!full) return null;
+    const dot = full.indexOf(".");
+    const codecString = cand.codecParam && dot > 0 ? `${cand.codecParam}${full.slice(dot)}` : full;
+    const contentType = `video/mp4; codecs="${codecString}"`;
+
+    let canPlayType = "unavailable";
+    if (typeof document !== "undefined") {
+        const verdict = document.createElement("video").canPlayType(contentType);
+        canPlayType = verdict === "" ? "no" : verdict;
+    }
+    let mediaSource = "unavailable";
+    if (typeof MediaSource !== "undefined" && typeof MediaSource.isTypeSupported === "function") {
+        mediaSource = MediaSource.isTypeSupported(contentType) ? "yes" : "no";
+    }
+
+    const width = cand.width ?? 0;
+    const height = cand.height ?? 0;
+    const webCodecs = await settleProbe(async () => {
+        if (typeof VideoDecoder === "undefined") return "unavailable";
+        const config: VideoDecoderConfig =
+            width && height ? { codec: codecString, codedWidth: width, codedHeight: height } : { codec: codecString };
+        const result = await VideoDecoder.isConfigSupported(config);
+        return result.supported ? "supported" : "unsupported";
+    });
+    const mediaCapabilities = await settleProbe(async () => {
+        if (typeof navigator === "undefined" || !navigator.mediaCapabilities) return "unavailable";
+        if (!width || !height) return "skipped: no frame size";
+        const bitrate = cand.durationSec > 0 ? Math.round((cand.file.size * 8) / cand.durationSec) : 10_000_000;
+        const info = await navigator.mediaCapabilities.decodingInfo({
+            type: "file",
+            video: { contentType, width, height, bitrate, framerate: cand.fps ?? 30 },
+        });
+        if (!info.supported) return "unsupported";
+        return [
+            "supported",
+            info.smooth ? "smooth" : "not smooth",
+            info.powerEfficient ? "power efficient" : "not power efficient",
+        ].join(", ");
+    });
+    return { file: cand.file.name, codecString, canPlayType, mediaSource, webCodecs, mediaCapabilities };
+}
+
+/** Renders a probe as a report section. "pending" marks a report saved before the probe settled. */
+export function serializePlaybackProbe(probe: PlaybackProbe | "pending"): string {
+    const lines = ["== playback probe =="];
+    if (probe === "pending") {
+        lines.push("still running when the report was saved");
+        return lines.join("\n");
+    }
+    lines.push(`file: ${probe.file}`);
+    lines.push(`codec string: ${probe.codecString}`);
+    lines.push(`video element canPlayType: ${probe.canPlayType}`);
+    lines.push(`MediaSource.isTypeSupported: ${probe.mediaSource}`);
+    lines.push(`WebCodecs isConfigSupported: ${probe.webCodecs}`);
+    lines.push(`mediaCapabilities.decodingInfo: ${probe.mediaCapabilities}`);
+    return lines.join("\n");
 }
 
 /** UTC timestamp slug `YYYY-MM-DD-HHMM` for downloadable artifact filenames

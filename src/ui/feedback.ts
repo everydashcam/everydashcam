@@ -2,7 +2,13 @@
 // report and email hand-off. Recognition help opens directly at the report and
 // allows email immediately, so preparing sample recordings cannot block contact.
 
-import { collectDiagnostics, serializeDiagnosticsText, utcTimestampSlug } from "../diagnostics.js";
+import {
+    collectDiagnostics,
+    probePlayback,
+    serializeDiagnosticsText,
+    serializePlaybackProbe,
+    utcTimestampSlug,
+} from "../diagnostics.js";
 import { downloadBlob } from "../download.js";
 import { getDateLocale, t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
@@ -36,6 +42,8 @@ interface FeedbackSnapshot {
     structure: string | null;
     diagnostics: string;
     recognitionIssue: string | null;
+    /** Decode probe for the open recording; filled in when the async probe settles. */
+    playbackProbe: string | null;
 }
 
 // Playback and background ingest can keep moving while the dialog is open.
@@ -116,6 +124,7 @@ function buildReportText(): string {
     const parts = [REPORT_HEADER];
     if (snapshot.recognitionIssue) parts.push(`== recognition issue ==\n${snapshot.recognitionIssue}`);
     if (snapshot.context) parts.push(snapshot.context);
+    if (snapshot.playbackProbe) parts.push(snapshot.playbackProbe);
     parts.push(snapshot.diagnostics);
     if (snapshot.structure) parts.push(snapshot.structure);
     return parts.join("\n\n");
@@ -132,7 +141,9 @@ function captureFeedbackSnapshot(recognitionIssue?: string): FeedbackSnapshot {
         structure: null,
         diagnostics: "",
         recognitionIssue: recognitionIssue || null,
+        playbackProbe: null,
     };
+    startPlaybackProbe(snapshot);
     try {
         snapshot.environment = envSummary();
         snapshot.context = currentContextSummary();
@@ -145,6 +156,24 @@ function captureFeedbackSnapshot(recognitionIssue?: string): FeedbackSnapshot {
         snapshot.diagnostics = `${snapshot.environment}\n\nDiagnostic snapshot failed: ${error}`;
     }
     return snapshot;
+}
+
+/** Probes the open recording in the background; the user reads the dialog
+ *  long before saving, so the result normally lands in the same report. */
+function startPlaybackProbe(snapshot: FeedbackSnapshot): void {
+    const cand = activeCandidate();
+    if (!cand?.videoCodecString) return;
+    snapshot.playbackProbe = serializePlaybackProbe("pending");
+    probePlayback(cand)
+        .then((probe) => {
+            snapshot.playbackProbe = probe ? serializePlaybackProbe(probe) : null;
+            log.debug("playback probe settled", { ...probe });
+        })
+        .catch((err: unknown) => {
+            const error = err instanceof Error ? err.message : String(err);
+            log.warn("playback probe failed", { error });
+            snapshot.playbackProbe = `== playback probe ==\nfailed: ${error}`;
+        });
 }
 
 function openFeedbackModal(opts: { preset?: string; recognitionIssue?: string } = {}): void {
