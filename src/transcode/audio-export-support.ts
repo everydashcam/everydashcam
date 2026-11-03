@@ -5,8 +5,10 @@ import {
     EncodedPacketSink,
     Mp4OutputFormat,
     Output,
+    PCM_AUDIO_CODECS,
     type AudioCodec,
     type AudioSampleSource,
+    type Input,
     type InputAudioTrack,
 } from "mediabunny";
 import { throwIfCancelled } from "../abort-signals.js";
@@ -30,6 +32,72 @@ export type ReadableAudioPlan =
           silenceFormat: { sampleRate: number; numberOfChannels: number };
       }
     | { mode: "skip"; reason: "unsupported" | "no-encoder" };
+
+/**
+ * Audio of one source segment fed progressively alongside a stream-copied
+ * video walk. The muxer holds every packet of one track until the other track
+ * reaches its timestamp, so feeding a whole segment's video before its audio
+ * queues that video in memory. Times use the clock of the function that opened
+ * the cursor.
+ *
+ * `feedBefore` feeds only audio that `finish` would also feed for any end at or
+ * above `untilSec`, so callers keep every `untilSec` at or below the later
+ * `finish` end. It may stop short by up to one decoded sample or read batch;
+ * repeated or decreasing values are no-ops. `finish` feeds the rest up to
+ * `endSec` and releases the reader. `close` releases it without feeding more;
+ * it is idempotent and also safe after `finish`.
+ */
+export interface AudioRangeCursor {
+    feedBefore(untilSec: number): Promise<void>;
+    finish(endSec: number): Promise<void>;
+    close(): Promise<void>;
+}
+
+/**
+ * Shortest part of a long audio sample or PCM packet that is fed ahead of its
+ * end to keep up with the video walk. Longer than ordinary codec frames, so
+ * those reach the muxer or encoder whole; short enough that little copied video
+ * waits in the muxer for the rest.
+ */
+export const MIN_PARTIAL_AUDIO_FEED_SEC = 0.25;
+
+/** Byte layout of PCM audio, used to split a packet at frame boundaries. */
+export interface PcmLayout {
+    bytesPerFrame: number;
+    sampleRate: number;
+}
+
+/**
+ * The frame layout of a PCM codec, or null for compressed audio, whose packets
+ * cannot be split. mediabunny reads each PCM container chunk as one packet, and
+ * a file may store a whole track as one chunk.
+ */
+export function getPcmLayout(codec: AudioCodec, decoderConfig: AudioDecoderConfig): PcmLayout | null {
+    if (!(PCM_AUDIO_CODECS as readonly string[]).includes(codec)) return null;
+    const bitsPerSample = codec === "ulaw" || codec === "alaw" ? 8 : Number(/^pcm-[suf](\d+)/.exec(codec)?.[1]);
+    if (!Number.isInteger(bitsPerSample) || bitsPerSample % 8 !== 0) return null;
+    if (decoderConfig.numberOfChannels < 1 || decoderConfig.sampleRate <= 0) return null;
+    return {
+        bytesPerFrame: (bitsPerSample / 8) * decoderConfig.numberOfChannels,
+        sampleRate: decoderConfig.sampleRate,
+    };
+}
+
+/**
+ * The input's primary audio track when it has at least one packet, else null.
+ * A track can keep a valid sample entry with an empty sample table: phantom-track
+ * repair (src/repair/phantom-track.ts) empties an audio track whose data was
+ * never written. Such a file has no sound, so it must neither define the
+ * export's audio format nor be decoded as an audio segment. Packet metadata
+ * comes from the sample index, so this does not read media data and works for
+ * codecs mediabunny cannot name (IMA ADPCM).
+ */
+export async function getPrimaryAudioTrackWithPackets(input: Input): Promise<InputAudioTrack | null> {
+    const track = await input.getPrimaryAudioTrack();
+    if (!track) return null;
+    const firstPacket = await new EncodedPacketSink(track).getFirstPacket({ metadataOnly: true });
+    return firstPacket ? track : null;
+}
 
 /**
  * A container's broad codec name does not establish muxer support: mediabunny

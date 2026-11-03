@@ -32,7 +32,19 @@ Browser tests change the export quality to exercise audio decoding and verify
 that the resulting MP4 retains an audible soundtrack while re-encoding video.
 This covers the existing Matroska input support, not a new recording format.
 
-Generate it with:
+`__fixtures__/ima-adpcm/20260101_120000.mkv` is a two-second, audio-only
+Matroska clip: a 440 Hz tone at 32 kHz, mono, IMA ADPCM in `A_MS/ACM`. Unit
+tests use it to check that feeding the Matroska ADPCM reader in steps produces
+the same samples as one range. Its 1024-byte blocks last about 63.8 ms, while
+Matroska stores their timestamps to the millisecond. Generate it with:
+
+```sh
+ffmpeg -f lavfi -i 'sine=frequency=440:sample_rate=32000' -t 2 -ac 1 \
+  -c:a adpcm_ima_wav -map_metadata -1 -fflags +bitexact \
+  tests/testdata/audio-export/__fixtures__/ima-adpcm/20260101_120000.mkv
+```
+
+Generate the Opus clip with:
 
 ```sh
 ffmpeg -f lavfi -i 'testsrc2=size=160x96:rate=10' \

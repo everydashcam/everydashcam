@@ -9,7 +9,8 @@ import { upperBoundBy } from "../sorted-search.js";
 // AudioSampleSource config. Two consumers share this one reader:
 //
 //   - EXPORT (src/export.ts): bounded file-time ranges per output segment,
-//     timestamps on the output accumulator timeline (feedRange). Sink is an
+//     timestamps on the output accumulator timeline (openRange, fed alongside
+//     the copied video; feedRange for a whole range at once). Sink is an
 //     AAC/Opus encode source where the browser can encode, else a lossless
 //     pcm-s16 source.
 //   - PLAYER (workers/per-file-mse-worker.ts): whole-file feed from a seek
@@ -37,6 +38,7 @@ import { upperBoundBy } from "../sorted-search.js";
 
 import { AudioSample, type AudioSampleSource } from "mediabunny";
 import { isMatroskaName } from "../video-format-names.js";
+import type { AudioRangeCursor } from "./audio-export-support.js";
 import { openMatroskaAdpcmAudio } from "./adpcm-audio-matroska.js";
 import {
     type Box,
@@ -80,6 +82,18 @@ export interface AdpcmAudioReader {
         signal?: AbortSignal,
     ): Promise<number>;
     /**
+     * Opens the same file-time range as feedRange without fixing its end, so
+     * the export can feed audio as its video walk advances. Its `finish(end)`
+     * produces the samples feedRange(start, end) would produce in total, with
+     * the same timestamps. `emittedSec` is the duration fed so far.
+     */
+    openRange(
+        source: AudioSampleSource,
+        startInFileSec: number,
+        outStartSec: number,
+        signal?: AbortSignal,
+    ): AdpcmRangeCursor;
+    /**
      * Decodes from `startInFileSec` to the end of the track and feeds the
      * AudioSamples to `source`, timestamping each frame at its ABSOLUTE file
      * time plus `framePtsOffsetSec`. Used by the PLAYER (MSE worker), where the
@@ -101,6 +115,11 @@ export interface AdpcmAudioReader {
          */
         onFirstEmit?: () => void,
     ): Promise<void>;
+}
+
+/** ADPCM export cursor; `emittedSec` backs feedRange's return value. */
+export interface AdpcmRangeCursor extends AudioRangeCursor {
+    readonly emittedSec: number;
 }
 
 /**
@@ -223,22 +242,50 @@ export async function openAdpcmAudio(file: File): Promise<AdpcmAudioReader | nul
         return emitted;
     }
 
+    function openRange(
+        source: AudioSampleSource,
+        startInFileSec: number,
+        outStartSec: number,
+        signal?: AbortSignal,
+    ): AdpcmRangeCursor {
+        const startFrame = clampFrame(Math.floor(startInFileSec * sampleRate), 0, totalFrames);
+        const mapTs = (fileFrame: number): number => outStartSec + (fileFrame - startFrame) / sampleRate;
+        let fedEndFrame = startFrame;
+        const feedTo = async (endFrame: number): Promise<void> => {
+            if (endFrame <= fedEndFrame) return;
+            await streamPcm(source, fedEndFrame, endFrame, mapTs, signal);
+            fedEndFrame = endFrame;
+        };
+        return {
+            get emittedSec() {
+                return (fedEndFrame - startFrame) / sampleRate;
+            },
+            async feedBefore(untilInFileSec) {
+                // Each call reads its blocks as separate slices and re-reads the
+                // block it splits. Feeding about once per second keeps that
+                // overhead small while only about a second of copied video waits
+                // in the muxer. Blocks decode independently, so a split is seamless.
+                const untilFrame = clampFrame(Math.floor(untilInFileSec * sampleRate), 0, totalFrames);
+                if (untilFrame - fedEndFrame >= sampleRate) await feedTo(untilFrame);
+            },
+            async finish(endInFileSec) {
+                await feedTo(clampFrame(Math.ceil(endInFileSec * sampleRate), 0, totalFrames));
+            },
+            // The file-backed reader holds no resource between calls.
+            async close() {},
+        };
+    }
+
     return {
         channels,
         sampleRate,
         totalFrames,
         async feedRange(source, startInFileSec, endInFileSec, outStartSec, signal) {
-            const startFrame = clampFrame(Math.floor(startInFileSec * sampleRate), 0, totalFrames);
-            const endFrame = clampFrame(Math.ceil(endInFileSec * sampleRate), startFrame, totalFrames);
-            const emitted = await streamPcm(
-                source,
-                startFrame,
-                endFrame,
-                (f) => outStartSec + (f - startFrame) / sampleRate,
-                signal,
-            );
-            return emitted / sampleRate;
+            const cursor = openRange(source, startInFileSec, outStartSec, signal);
+            await cursor.finish(endInFileSec);
+            return cursor.emittedSec;
         },
+        openRange,
         async feedToEnd(source, startInFileSec, framePtsOffsetSec, signal, onFirstEmit) {
             const startFrame = clampFrame(Math.floor(startInFileSec * sampleRate), 0, totalFrames);
             await streamPcm(

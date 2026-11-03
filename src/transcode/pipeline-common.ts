@@ -29,7 +29,12 @@ import { getInputTimeOrigin } from "../media-time.js";
 import type { AudioTrackFormat } from "../export-range.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./capabilities.js";
-import { resolveReadableAudioPlan } from "./audio-export-support.js";
+import {
+    type AudioRangeCursor,
+    getPrimaryAudioTrackWithPackets,
+    MIN_PARTIAL_AUDIO_FEED_SEC,
+    resolveReadableAudioPlan,
+} from "./audio-export-support.js";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 import { drawMapOverlay } from "./map-overlay.js";
@@ -223,15 +228,28 @@ export interface SilenceFormat {
     numberOfChannels: number;
 }
 
+/** Options shared by feedSegmentAudio and openSegmentAudioCursor. */
+export interface SegmentAudioOptions {
+    audioSource: AudioSampleSource;
+    input: Input;
+    startInFile: number;
+    fileDurationSec: number;
+    segBaseOutSec: number;
+    silenceFormat: SilenceFormat;
+    signal: AbortSignal;
+    fileName: string;
+    onTruncated: () => void;
+}
+
 /**
  * Feeds one segment's audio to the AAC source, mapping source-file time onto the
  * output timeline (samples land at segBaseOutSec + their offset from
  * startInFile). The source's `transform` resamples each native sample to 48k/2.
- * A segment with no audio track is filled with silence instead, to keep A/V in
- * sync - without it a later segment's audio would shift earlier in the output. A
- * WebCodecs decode error on a damaged tail ends this segment's audio gracefully
- * (onTruncated) rather than aborting the whole export, matching the video loops'
- * tolerant drive.
+ * A segment with no audio, including an audio track without packets, is filled
+ * with silence instead, to keep A/V in sync - without it a later segment's
+ * audio would shift earlier in the output. A WebCodecs decode error on a
+ * damaged tail ends this segment's audio gracefully (onTruncated) rather than
+ * aborting the whole export, matching the video loops' tolerant drive.
  *
  * silenceFormat is a SHARED MUTABLE holder (see SilenceFormat). On the first real
  * decoded sample this updates it to the sample's actual format, so silence for
@@ -243,91 +261,211 @@ export interface SilenceFormat {
  *
  * Caller owns `input` (open + dispose).
  */
-export async function feedSegmentAudio(opts: {
-    audioSource: AudioSampleSource;
-    input: Input;
-    startInFile: number;
-    endInFile: number;
-    fileDurationSec: number;
-    segBaseOutSec: number;
-    silenceFormat: SilenceFormat;
-    signal: AbortSignal;
-    fileName: string;
-    onTruncated: () => void;
-}): Promise<void> {
-    const { audioSource, input, startInFile, endInFile, segBaseOutSec, silenceFormat, signal, fileName, onTruncated } =
-        opts;
-    const audioTrack = await input.getPrimaryAudioTrack();
-    if (!audioTrack) {
-        // Fill this segment's span with silence at the tracked source format so
-        // the muxer sees a continuous audio timeline aligned with the video.
-        await emitSilence(
-            audioSource,
-            segBaseOutSec,
-            endInFile - startInFile,
-            silenceFormat.sampleRate,
-            silenceFormat.numberOfChannels,
-            signal,
-        );
-        return;
+export async function feedSegmentAudio(opts: SegmentAudioOptions & { endInFile: number }): Promise<void> {
+    const cursor = await openSegmentAudioCursor({ ...opts, decodeEndInFile: opts.endInFile });
+    try {
+        await cursor.finish(opts.endInFile);
+    } finally {
+        await cursor.close();
     }
+}
+
+/**
+ * Incremental form of feedSegmentAudio for a stream-copy export, whose segment
+ * end is known only after its video walk. Cursor times are file times, like
+ * startInFile. `decodeEndInFile` bounds decoding when the end is known up front;
+ * without it the decoder reads ahead toward the file end, a few packets past
+ * what the cursor consumes, until `finish` or `close` stops it.
+ *
+ * Caller owns `input` and must `close` the cursor if it does not `finish` it.
+ */
+export async function openSegmentAudioCursor(
+    opts: SegmentAudioOptions & { decodeEndInFile?: number },
+): Promise<AudioRangeCursor> {
+    const { audioSource, input, startInFile, segBaseOutSec, silenceFormat, signal, fileName, onTruncated } = opts;
+    const audioTrack = await getPrimaryAudioTrackWithPackets(input);
+    if (!audioTrack) return openSilenceCursor(audioSource, startInFile, segBaseOutSec, silenceFormat, signal);
+
     const origin = await getInputTimeOrigin(input);
     const rangeStart = startInFile + origin;
-    const rangeEnd = endInFile + origin;
-    const audioSink = new AudioSampleSink(audioTrack);
-    const audioIter = audioSink.samples(rangeStart, rangeEnd)[Symbol.asyncIterator]();
+    const fileEnd = opts.fileDurationSec + origin;
+    const decodeEnd = opts.decodeEndInFile === undefined ? Infinity : opts.decodeEndInFile + origin;
+    const audioIter = new AudioSampleSink(audioTrack).samples(rangeStart, decodeEnd)[Symbol.asyncIterator]();
     const decodeProgress: DecodeProgress = {
         startTimestamp: rangeStart,
-        endTimestamp: rangeEnd,
-        fileEndTimestamp: opts.fileDurationSec + origin,
+        // An unbounded decode is a decode to the file end, the only place where
+        // nextTolerant accepts a damaged tail.
+        endTimestamp: Number.isFinite(decodeEnd) ? decodeEnd : fileEnd,
+        fileEndTimestamp: fileEnd,
         lastSampleEnd: null,
     };
-    try {
-        for (;;) {
-            const pull = await nextTolerant(audioIter, decodeProgress);
-            if (pull.done) {
-                if (pull.truncated) {
-                    onTruncated();
-                    log.warn("audio decode stopped early", { file: fileName, err: pull.error });
+    // The decoded sample that reaches past the last feedBefore limit, with the
+    // frames of it already fed. Its rest waits for a later limit or finish.
+    let pending: PartlyFedSample | null = null;
+    let isExhausted = false;
+    let isClosed = false;
+
+    const pull = async (): Promise<PartlyFedSample | null> => {
+        if (pending) {
+            const current = pending;
+            pending = null;
+            return current;
+        }
+        if (isExhausted) return null;
+        const next = await nextTolerant(audioIter, decodeProgress);
+        if (!next.done) return { sample: next.value, fedFrames: 0 };
+        isExhausted = true;
+        if (next.truncated) {
+            onTruncated();
+            log.warn("audio decode stopped early", { file: fileName, err: next.error });
+        }
+        return null;
+    };
+
+    // Feeds frames [fromFrame, toFrame) of `sample` that start at or after
+    // rangeStart. The caller closes the sample.
+    const feedFrames = async (sample: AudioSample, fromFrame: number, toFrame: number): Promise<void> => {
+        throwIfCancelled(signal);
+        // Track the real decoded format so silence for later gaps matches it
+        // (the container probe can misreport HE-AAC/SBR - see SilenceFormat).
+        if (
+            sample.sampleRate !== silenceFormat.sampleRate ||
+            sample.numberOfChannels !== silenceFormat.numberOfChannels
+        ) {
+            silenceFormat.sampleRate = sample.sampleRate;
+            silenceFormat.numberOfChannels = sample.numberOfChannels;
+        }
+        const firstFrame = Math.max(fromFrame, frameAt(sample, rangeStart));
+        const endFrame = Math.min(toFrame, sample.numberOfFrames);
+        if (endFrame <= firstFrame) return;
+        const trimmed = firstFrame > 0 || endFrame < sample.numberOfFrames ? sample.trim(firstFrame, endFrame) : sample;
+        // The source reads the sample throughout its (awaited) add, so closing
+        // only after it resolves is safe.
+        try {
+            trimmed.setTimestamp(Math.max(0, segBaseOutSec + trimmed.timestamp - rangeStart));
+            await audioSource.add(trimmed);
+        } finally {
+            if (trimmed !== sample) trimmed.close();
+        }
+    };
+
+    const close = async (): Promise<void> => {
+        if (isClosed) return;
+        isClosed = true;
+        pending?.sample.close();
+        pending = null;
+        await audioIter.return?.();
+    };
+
+    return {
+        async feedBefore(untilInFile) {
+            const until = untilInFile + origin;
+            while (!isClosed) {
+                const current = await pull();
+                if (!current) return;
+                const { sample } = current;
+                const untilFrame = frameAt(sample, until);
+                if (untilFrame < sample.numberOfFrames) {
+                    // The limit falls inside this sample. Codec frames are short
+                    // enough to wait whole, but PCM decodes one container chunk
+                    // per sample, and a file may store its whole track as one
+                    // chunk. Feed a long enough head so the video keeps draining.
+                    pending = current;
+                    if ((untilFrame - current.fedFrames) / sample.sampleRate >= MIN_PARTIAL_AUDIO_FEED_SEC) {
+                        await feedFrames(sample, current.fedFrames, untilFrame);
+                        current.fedFrames = untilFrame;
+                    }
+                    return;
                 }
-                break;
-            }
-            const aSample = pull.value;
-            // try/finally: audioSource.add or the abort check can throw before
-            // close(). The source reads the sample throughout its (awaited) add,
-            // so closing only after it resolves is safe.
-            try {
-                throwIfCancelled(signal);
-                // Track the real decoded format so silence for later gaps matches it
-                // (the container probe can misreport HE-AAC/SBR - see SilenceFormat).
-                if (
-                    aSample.sampleRate !== silenceFormat.sampleRate ||
-                    aSample.numberOfChannels !== silenceFormat.numberOfChannels
-                ) {
-                    silenceFormat.sampleRate = aSample.sampleRate;
-                    silenceFormat.numberOfChannels = aSample.numberOfChannels;
-                }
-                const firstFrame = Math.max(0, Math.ceil((rangeStart - aSample.timestamp) * aSample.sampleRate - 1e-6));
-                const endFrame = Math.min(
-                    aSample.numberOfFrames,
-                    Math.ceil((rangeEnd - aSample.timestamp) * aSample.sampleRate - 1e-6),
-                );
-                if (endFrame <= firstFrame) continue;
-                const trimmed =
-                    firstFrame > 0 || endFrame < aSample.numberOfFrames ? aSample.trim(firstFrame, endFrame) : aSample;
                 try {
-                    trimmed.setTimestamp(Math.max(0, segBaseOutSec + trimmed.timestamp - rangeStart));
-                    await audioSource.add(trimmed);
+                    await feedFrames(sample, current.fedFrames, sample.numberOfFrames);
                 } finally {
-                    if (trimmed !== aSample) trimmed.close();
+                    sample.close();
+                }
+            }
+        },
+        async finish(endInFile) {
+            const rangeEnd = endInFile + origin;
+            decodeProgress.endTimestamp = rangeEnd;
+            try {
+                while (!isClosed) {
+                    const current = await pull();
+                    if (!current) break;
+                    try {
+                        if (current.sample.timestamp >= rangeEnd) break;
+                        await feedFrames(current.sample, current.fedFrames, frameAt(current.sample, rangeEnd));
+                    } finally {
+                        current.sample.close();
+                    }
                 }
             } finally {
-                aSample.close();
+                await close();
             }
-        }
-    } finally {
-        await audioIter.return?.();
-    }
+        },
+        close,
+    };
+}
+
+interface PartlyFedSample {
+    sample: AudioSample;
+    fedFrames: number;
+}
+
+/**
+ * Index of the first frame of `sample` that starts at or after `timestamp`,
+ * clamped to the sample. Splitting, trimming and finishing share this rounding
+ * so consecutive pieces of one sample neither overlap nor leave gaps.
+ */
+function frameAt(sample: AudioSample, timestamp: number): number {
+    const frame = Math.ceil((timestamp - sample.timestamp) * sample.sampleRate - 1e-6);
+    return Math.min(sample.numberOfFrames, Math.max(0, frame));
+}
+
+/**
+ * Cursor for a segment without decodable audio. Silence advances in whole
+ * emitSilence chunks before `finish`, which adds the exact remainder, so the
+ * segment gets the same frame count as one emitSilence call over its range.
+ */
+function openSilenceCursor(
+    audioSource: AudioSampleSource,
+    startInFile: number,
+    segBaseOutSec: number,
+    silenceFormat: SilenceFormat,
+    signal: AbortSignal,
+): AudioRangeCursor {
+    // The format cannot change inside this segment: only decoded samples update it.
+    const { sampleRate, numberOfChannels } = silenceFormat;
+    const chunkFrames = silenceChunkFrames(sampleRate);
+    let emittedFrames = 0;
+    const emitTo = async (endFrame: number): Promise<void> => {
+        if (endFrame <= emittedFrames) return;
+        await emitSilenceFrames(
+            audioSource,
+            segBaseOutSec,
+            emittedFrames,
+            endFrame,
+            sampleRate,
+            numberOfChannels,
+            signal,
+        );
+        emittedFrames = endFrame;
+    };
+    let isClosed = false;
+    return {
+        async feedBefore(untilInFile) {
+            if (isClosed || chunkFrames <= 0) return;
+            const untilFrame = Math.floor((untilInFile - startInFile) * sampleRate);
+            await emitTo(emittedFrames + Math.floor((untilFrame - emittedFrames) / chunkFrames) * chunkFrames);
+        },
+        async finish(endInFile) {
+            if (isClosed) return;
+            isClosed = true;
+            await emitTo(Math.floor((endInFile - startInFile) * sampleRate));
+        },
+        async close() {
+            isClosed = true;
+        },
+    };
 }
 
 /**
@@ -623,11 +761,19 @@ export async function discardOutputQuietly(out: Output, writable: FileSystemWrit
     await cancelOutputQuietly(out);
 }
 
+// Silence is emitted in 100 ms samples so encoder backpressure applies and
+// memory stays bounded.
+const SILENCE_CHUNK_SEC = 0.1;
+
+function silenceChunkFrames(sampleRate: number): number {
+    return Math.floor(sampleRate * SILENCE_CHUNK_SEC);
+}
+
 /**
  * Emits silence into audioSource - a sequence of zero-filled AudioSamples of
- * durationSec starting at offsetSec in the output timeline. Split into 100ms
- * chunks so encoder backpressure works and memory stays bounded. Both pipelines
- * call this for a segment whose source has no audio track, to keep A/V in sync.
+ * durationSec starting at offsetSec in the output timeline, in 100 ms chunks.
+ * Both pipelines call this for a segment whose source has no audio track, to
+ * keep A/V in sync.
  */
 export async function emitSilence(
     audioSource: AudioSampleSource,
@@ -637,16 +783,38 @@ export async function emitSilence(
     channels: number,
     signal: AbortSignal,
 ): Promise<void> {
-    const chunkSec = 0.1;
-    const framesPerChunk = Math.floor(sampleRate * chunkSec);
+    await emitSilenceFrames(
+        audioSource,
+        offsetSec,
+        0,
+        Math.floor(durationSec * sampleRate),
+        sampleRate,
+        channels,
+        signal,
+    );
+}
+
+/**
+ * Emits silent frames [fromFrame, toFrame) of a span that starts at offsetSec.
+ * Frame indexes, rather than seconds, let consecutive calls continue one span
+ * without rounding gaps or overlaps.
+ */
+async function emitSilenceFrames(
+    audioSource: AudioSampleSource,
+    offsetSec: number,
+    fromFrame: number,
+    toFrame: number,
+    sampleRate: number,
+    channels: number,
+    signal: AbortSignal,
+): Promise<void> {
+    const framesPerChunk = silenceChunkFrames(sampleRate);
     if (framesPerChunk <= 0) return;
     // Every sample is read-only silence; its backing storage can be shared.
     const data = new Float32Array(framesPerChunk * channels);
-    const totalFrames = Math.floor(durationSec * sampleRate);
-    let elapsedFrames = 0;
-    while (elapsedFrames < totalFrames) {
+    for (let frame = fromFrame; frame < toFrame; frame += framesPerChunk) {
         throwIfCancelled(signal);
-        const thisFrames = Math.min(framesPerChunk, totalFrames - elapsedFrames);
+        const thisFrames = Math.min(framesPerChunk, toFrame - frame);
         const sample = new AudioSample({
             data: thisFrames === framesPerChunk ? data : data.subarray(0, thisFrames * channels),
             // Interleaved f32 (all zeros). sampleRate/channels match the real
@@ -656,14 +824,13 @@ export async function emitSilence(
             format: "f32",
             numberOfChannels: channels,
             sampleRate,
-            timestamp: offsetSec + elapsedFrames / sampleRate,
+            timestamp: offsetSec + frame / sampleRate,
         });
         try {
             await audioSource.add(sample);
         } finally {
             sample.close();
         }
-        elapsedFrames += thisFrames;
     }
 }
 

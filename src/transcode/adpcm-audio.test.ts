@@ -288,6 +288,34 @@ describe("openAdpcmAudio", () => {
         }
     });
 
+    it("openRange fed in steps emits feedRange's PCM and timestamps without passing a limit", async () => {
+        const blocks = makeBlocks(N_BLOCKS, BLOCK_LEN);
+        const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;
+        const { source, samples } = captureSource();
+        const cursor = reader.openRange(source, 1.01, 50);
+
+        await cursor.feedBefore(1.5);
+        expect(cursor.emittedSec, "less than a second ahead waits for a later limit").toBe(0);
+        await cursor.feedBefore(2.2);
+        expect(cursor.emittedSec, "fed exactly up to the limit").toBeCloseTo(1.19, 9);
+        await cursor.feedBefore(2);
+        expect(cursor.emittedSec, "an earlier limit is a no-op").toBeCloseTo(1.19, 9);
+        await cursor.feedBefore(3.9);
+        expect(cursor.emittedSec).toBeCloseTo(2.89, 9);
+        await cursor.finish(4.67);
+        await cursor.close();
+
+        expect(concat(samples)).toEqual(
+            decodeImaAdpcmBlocks(blocks, CHANNELS).subarray(1010 * CHANNELS, 4670 * CHANNELS),
+        );
+        let frames = 0;
+        for (const sample of samples) {
+            expect(sample.ts).toBeCloseTo(50 + frames / SR, 9);
+            frames += sample.frames;
+        }
+        expect(frames).toBe(4670 - 1010);
+    });
+
     it("feedRange on an empty range emits nothing", async () => {
         const blocks = makeBlocks(10, BLOCK_LEN);
         const reader = (await openAdpcmAudio(buildAdpcmMovFile(blocks, CHANNELS, SR)))!;

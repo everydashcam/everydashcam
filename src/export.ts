@@ -52,7 +52,14 @@ import { VIDEO_INPUT_FORMATS } from "./video-formats.js";
 import { DEGENERATE_VIDEO_PACKET_MAX_BYTES } from "./transcode/normalize-degenerate-video.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./transcode/adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./transcode/capabilities.js";
-import { resolveReadableAudioPlan, type ReadableAudioPlan } from "./transcode/audio-export-support.js";
+import {
+    type AudioRangeCursor,
+    getPcmLayout,
+    getPrimaryAudioTrackWithPackets,
+    MIN_PARTIAL_AUDIO_FEED_SEC,
+    resolveReadableAudioPlan,
+    type ReadableAudioPlan,
+} from "./transcode/audio-export-support.js";
 import { createLogger } from "./log.js";
 import { createRetryingBlobSource } from "./retrying-blob-source.js";
 import { getInputTimeOrigin } from "./media-time.js";
@@ -364,7 +371,10 @@ export async function exportClip({
                     ? new Input({ source: createRetryingBlobSource(firstFile, signal), formats: VIDEO_INPUT_FORMATS })
                     : firstInput;
             try {
-                const firstAudioTrack = audioDroppedHeterogeneous ? null : await audioInput.getPrimaryAudioTrack();
+                // Without packets anywhere there is no audio to drop, only none to export.
+                const firstAudioTrack = audioDroppedHeterogeneous
+                    ? null
+                    : await getPrimaryAudioTrackWithPackets(audioInput);
                 if (firstAudioTrack) {
                     audioCodec = await firstAudioTrack.getCodec();
                     if (audioCodec) {
@@ -469,6 +479,9 @@ export async function exportClip({
         // once with the first packet - mediabunny populates the sample entry in moov.
         let videoDecoderConfigPushed = false;
         let audioDecoderConfigPushed = false;
+        // Copied PCM can be split at frame boundaries; see copyAudioBefore.
+        const pcmLayout =
+            audioSource && audioCodec && audioDecoderConfig ? getPcmLayout(audioCodec, audioDecoderConfig) : null;
 
         for (let segIdx = 0; segIdx < segments.length; segIdx++) {
             throwIfCancelled(signal);
@@ -484,6 +497,9 @@ export async function exportClip({
                     : new Input({ source: createRetryingBlobSource(seg.file, signal), formats: VIDEO_INPUT_FORMATS });
             let videoCount = 0;
             let audioCount = 0;
+            // Decoded audio for this segment (re-encoded sources, IMA ADPCM), on
+            // file time. Packet copies use copyAudioBefore below instead.
+            let decodedAudio: AudioRangeCursor | null = null;
 
             try {
                 const v = segIdx === 0 ? firstVideoTrack : await input.getPrimaryVideoTrack();
@@ -540,28 +556,109 @@ export async function exportClip({
                     audioSink && audioSource
                         ? ((await audioSink.getPacket(videoStartShift)) ?? (await audioSink.getFirstPacket()))
                         : null;
+                // Frames of `apkt` already copied while splitting a long PCM packet.
+                let apktCopiedFrames = 0;
                 // Copies audio packets presented before `untilSec` (source time).
                 // Keeps the source A/V offset; dropping a boundary frame avoids
                 // accumulating audio-frame rounding at every file join. Both tracks
                 // share the same shift, and the first audio packet may cross zero:
                 // the edit list hides its negative portion.
-                const copyAudioBefore = async (untilSec: number): Promise<void> => {
+                //
+                // A PCM packet is a whole container chunk, possibly the whole track.
+                // Copied whole, it leaves the muxer holding every video packet until
+                // the next audio packet. The walk therefore copies a long enough head
+                // up to `untilSec` and keeps the rest; the segment end copies the rest
+                // whole, so the copied audio matches whole-packet copies.
+                const copyAudioBefore = async (untilSec: number, isSegmentEnd: boolean): Promise<void> => {
                     while (apkt && audioSink && audioSource && apkt.timestamp < untilSec) {
                         throwIfCancelled(signal);
-                        const timestamp = apkt.timestamp - videoStartShift + videoAccumSec;
+                        const frameCount = pcmLayout ? Math.floor(apkt.byteLength / pcmLayout.bytesPerFrame) : 0;
+                        let endFrame = frameCount;
+                        if (pcmLayout && !isSegmentEnd) {
+                            const untilFrame = Math.ceil((untilSec - apkt.timestamp) * pcmLayout.sampleRate - 1e-6);
+                            if (untilFrame < frameCount) {
+                                const headSec = (untilFrame - apktCopiedFrames) / pcmLayout.sampleRate;
+                                if (headSec < MIN_PARTIAL_AUDIO_FEED_SEC) return;
+                                endFrame = untilFrame;
+                            }
+                        }
+                        const isWhole = apktCopiedFrames === 0 && endFrame === frameCount;
+                        const isTail = endFrame === frameCount;
+                        const pieceStart = pcmLayout
+                            ? apkt.timestamp + apktCopiedFrames / pcmLayout.sampleRate
+                            : apkt.timestamp;
+                        const timestamp = pieceStart - videoStartShift + videoAccumSec;
+                        // Matroska may omit a PCM block's duration. Derive it from
+                        // the copied frames, as the MP4 muxer does, so splitting
+                        // works with a zero or approximate container duration.
+                        const duration = pcmLayout
+                            ? (endFrame - apktCopiedFrames) / pcmLayout.sampleRate
+                            : apkt.duration;
                         if (timestamp >= audioLastEndSec - 1e-6) {
-                            const shifted = apkt.clone({ timestamp });
+                            const piece =
+                                isWhole || !pcmLayout
+                                    ? apkt.clone({ timestamp, duration })
+                                    : apkt.clone({
+                                          data: apkt.data.subarray(
+                                              apktCopiedFrames * pcmLayout.bytesPerFrame,
+                                              isTail ? apkt.byteLength : endFrame * pcmLayout.bytesPerFrame,
+                                          ),
+                                          timestamp,
+                                          duration,
+                                      });
                             const meta = audioDecoderConfigPushed
                                 ? undefined
                                 : { decoderConfig: audioDecoderConfig ?? undefined };
-                            await audioSource.add(shifted, meta);
+                            await audioSource.add(piece, meta);
                             audioDecoderConfigPushed = true;
-                            audioLastEndSec = timestamp + apkt.duration;
+                            // At original packet boundaries retain the container's
+                            // clock: Matroska rounds PCM timestamps to milliseconds,
+                            // so a true PCM end can appear to overlap the next packet.
+                            audioLastEndSec =
+                                pcmLayout && isTail
+                                    ? apkt.timestamp + apkt.duration - videoStartShift + videoAccumSec
+                                    : timestamp + piece.duration;
                             audioCount++;
                         }
+                        if (!isTail) {
+                            apktCopiedFrames = endFrame;
+                            return;
+                        }
+                        apktCopiedFrames = 0;
                         apkt = await audioSink.getNextPacket(apkt);
                     }
                 };
+                // Decoded audio follows the same walk through a cursor. The muxer
+                // interleaves by timestamp and holds every video packet until audio
+                // passes it, so decoding a segment's audio after its video would
+                // keep that whole segment's video in memory.
+                if (adpcmSource && adpcmReader) {
+                    const reader = seg.file === adpcmFile ? adpcmReader : await openAdpcmAudioAuto(seg.file);
+                    decodedAudio =
+                        reader?.openRange(adpcmSource, videoStartShift - origin, videoAccumSec, signal) ?? null;
+                } else if (reencodedAudio) {
+                    // Keep the optional decode/encode machinery off the ordinary
+                    // packet-copy path. Video stays byte-identical; both tracks use
+                    // the same source origin and output offset, including preroll.
+                    const { openSegmentAudioCursor } = await import("./transcode/pipeline-common.js");
+                    decodedAudio = await openSegmentAudioCursor({
+                        audioSource: reencodedAudio.source,
+                        input,
+                        startInFile: videoStartShift - origin,
+                        fileDurationSec: seg.fileDurationSec,
+                        segBaseOutSec: videoAccumSec,
+                        silenceFormat: reencodedAudio.silenceFormat,
+                        signal: signal ?? new AbortController().signal,
+                        fileName: seg.file.name,
+                        onTruncated: () => {
+                            decodeTruncated = true;
+                        },
+                    });
+                }
+                // Feeds audio presented before `untilSec` (source time). Every walked
+                // video timestamp stays below segmentEnd, the cursor's later end.
+                const feedAudioBefore = (untilSec: number): Promise<void> =>
+                    decodedAudio ? decodedAudio.feedBefore(untilSec - origin) : copyAudioBefore(untilSec, false);
 
                 let pkt: EncodedPacket | null = videoStartPacket;
                 while (pkt) {
@@ -585,7 +682,7 @@ export async function exportClip({
                     // getNextPacket below, so the output sync-sample table stays right.
                     // Audio up to this frame's presentation time goes first, so the
                     // read position advances through the file once, in order.
-                    await copyAudioBefore(pkt.timestamp);
+                    await feedAudioBefore(pkt.timestamp);
                     const shifted = pkt.clone({ timestamp: pkt.timestamp - videoStartShift + videoAccumSec });
                     const meta = videoDecoderConfigPushed ? undefined : { decoderConfig: firstVideoDecoderConfig };
                     await videoSource.add(shifted, meta);
@@ -606,34 +703,9 @@ export async function exportClip({
                 const segmentEnd =
                     segIdx + 1 < segments.length ? Math.max(sourceEnd, videoLastEndSec) : videoLastEndSec;
                 const videoSegDur = segmentEnd - videoStartShift;
-                if (adpcmSource && adpcmReader) {
-                    const reader = seg.file === adpcmFile ? adpcmReader : await openAdpcmAudioAuto(seg.file);
-                    if (reader) {
-                        await reader.feedRange(adpcmSource, videoStartShift, segmentEnd, videoAccumSec, signal);
-                    }
-                } else if (reencodedAudio) {
-                    // Keep the optional decode/encode machinery off the ordinary
-                    // packet-copy path. Video stays byte-identical; both tracks use
-                    // the same source origin and output offset, including preroll.
-                    const { feedSegmentAudio } = await import("./transcode/pipeline-common.js");
-                    await feedSegmentAudio({
-                        audioSource: reencodedAudio.source,
-                        input,
-                        startInFile: videoStartShift - origin,
-                        endInFile: segmentEnd - origin,
-                        fileDurationSec: seg.fileDurationSec,
-                        segBaseOutSec: videoAccumSec,
-                        silenceFormat: reencodedAudio.silenceFormat,
-                        signal: signal ?? new AbortController().signal,
-                        fileName: seg.file.name,
-                        onTruncated: () => {
-                            decodeTruncated = true;
-                        },
-                    });
-                } else {
-                    // The audio tail past the last video frame (up to the segment end).
-                    await copyAudioBefore(segmentEnd);
-                }
+                // The audio tail past the last video frame (up to the segment end).
+                if (decodedAudio) await decodedAudio.finish(segmentEnd - origin);
+                else await copyAudioBefore(segmentEnd, true);
 
                 videoAccumSec += videoSegDur;
 
@@ -663,7 +735,12 @@ export async function exportClip({
                 }
                 throw err;
             } finally {
-                if (segIdx > 0) input.dispose();
+                // The decoder reads from this input, so stop it first.
+                try {
+                    await decodedAudio?.close();
+                } finally {
+                    if (segIdx > 0) input.dispose();
+                }
             }
         }
 
@@ -818,7 +895,8 @@ export async function probeAudioUniformity(
             borrowed ??
             new Input({ source: createRetryingBlobSource(file, opts.signal), formats: VIDEO_INPUT_FORMATS });
         try {
-            const track = await input.getPrimaryAudioTrack();
+            // An empty track does not choose the output format or join the comparison.
+            const track = await getPrimaryAudioTrackWithPackets(input);
             if (!track) continue;
             const fmt: AudioTrackFormat = {
                 codec: await track.getCodec(),

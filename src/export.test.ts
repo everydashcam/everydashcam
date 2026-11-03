@@ -6,6 +6,7 @@ import {
     EncodedPacketSink,
     EncodedVideoPacketSource,
     Input,
+    MkvOutputFormat,
     Mp4OutputFormat,
     MovOutputFormat,
     Output,
@@ -23,6 +24,7 @@ import { VIDEO_INPUT_FORMATS } from "./video-formats.js";
 import { buildMp4Index } from "./parsers/internal/mp4-index.js";
 import { findGpmdTrack } from "./parsers/internal/gpmf-extract.js";
 import { findBox, readMediaTimescale, readSampleDurationsInTicks } from "./parsers/internal/mp4-walker.js";
+import { withRepairedPhantomAudio } from "./repair/test-helpers.js";
 
 const H264_FIXTURE = "../tests/testdata/70mai-multichannel/Normal/Front/NO20260101-120000-000001F.MP4";
 
@@ -114,6 +116,59 @@ async function save(files: File[], options: { start?: number; end?: number; with
         signal: new AbortController().signal,
     });
     return { result, file: await handle.getFile() };
+}
+
+interface PcmFixtureOptions {
+    format: "mov" | "mkv";
+    sampleRate: number;
+    packetFrames?: number;
+    omitDuration?: boolean;
+}
+
+/** Copies the fixture's video with a generated 16-bit PCM tone. */
+async function withPcmAudio(file: File, options: PcmFixtureOptions): Promise<File> {
+    const { format, sampleRate } = options;
+    const input = open(file);
+    const target = new BufferTarget();
+    const output = new Output({ target, format: format === "mkv" ? new MkvOutputFormat() : new MovOutputFormat() });
+    try {
+        const track = await input.getPrimaryVideoTrack();
+        if (!track) throw new Error("fixture has no video track");
+        const codec = await track.getCodec();
+        const config = await track.getDecoderConfig();
+        if (!codec || !config) throw new Error("fixture has no video config");
+        const video = new EncodedVideoPacketSource(codec);
+        const audio = new EncodedAudioPacketSource("pcm-s16");
+        output.addVideoTrack(video, { frameRate: 30 });
+        output.addAudioTrack(audio);
+        await output.start();
+        const frameCount = Math.round((await track.computeDuration()) * sampleRate);
+        const tone = new Int16Array(frameCount).map((_, frame) =>
+            Math.round(8000 * Math.sin((2 * Math.PI * 440 * frame) / sampleRate)),
+        );
+        const packetFrames = options.packetFrames ?? frameCount;
+        for (let frame = 0; frame < frameCount; frame += packetFrames) {
+            const frames = Math.min(packetFrames, frameCount - frame);
+            await audio.add(
+                new EncodedPacket(
+                    new Uint8Array(tone.buffer, frame * 2, frames * 2),
+                    "key",
+                    frame / sampleRate,
+                    options.omitDuration ? 0 : frames / sampleRate,
+                ),
+                frame === 0 ? { decoderConfig: { codec: "pcm-s16", sampleRate, numberOfChannels: 1 } } : undefined,
+            );
+        }
+        let first = true;
+        for (const packet of await packets(track)) {
+            await video.add(packet, first ? { decoderConfig: config } : undefined);
+            first = false;
+        }
+        await output.finalize();
+        return new File([target.buffer!], `pcm.${format}`);
+    } finally {
+        input.dispose();
+    }
 }
 
 async function remuxFixture(file: File, withPcm8Audio = false, metadata?: VideoTrackMetadata): Promise<File> {
@@ -345,6 +400,36 @@ describe("stream-copy export", () => {
         }
     });
 
+    it("keeps later audio when the first file's repaired audio track has no packets", async () => {
+        const file = fixture(H264_FIXTURE);
+        const repaired = await withRepairedPhantomAudio(file);
+        const repairedInput = open(repaired);
+        try {
+            const emptyTrack = await repairedInput.getPrimaryAudioTrack();
+            expect(emptyTrack, "repaired file keeps its audio track").not.toBeNull();
+            expect(await emptyTrack!.getDecoderConfig(), "repaired track keeps its configuration").not.toBeNull();
+            expect(await new EncodedPacketSink(emptyTrack!).getFirstPacket(), "repaired track is empty").toBeNull();
+        } finally {
+            repairedInput.dispose();
+        }
+
+        const probe = await probeAudioUniformity([repaired, file]);
+        expect(probe.uniform).toBe(true);
+        expect(probe.firstFile).toBe(file);
+        const saved = await save([repaired, file]);
+        expect(saved.result.audioDroppedUnsupported).toBe(false);
+        expect(saved.result.audioDroppedHeterogeneous).toBe(false);
+        const output = open(saved.file);
+        try {
+            const audio = await output.getPrimaryAudioTrack();
+            expect(audio).not.toBeNull();
+            expect(await audio!.getFirstTimestamp()).toBeCloseTo(2);
+            expect(await audio!.computeDuration()).toBeCloseTo(4);
+        } finally {
+            output.dispose();
+        }
+    });
+
     it("keeps every video packet when AAC Main cannot be copied or decoded", async () => {
         const file = fixture("../tests/testdata/audio-export/__fixtures__/aac-main/20260101_120000.TS");
         const source = open(file);
@@ -368,6 +453,59 @@ describe("stream-copy export", () => {
             reference.dispose();
         }
     });
+
+    it.each([
+        { format: "mov", sampleRate: 8000 },
+        { format: "mkv", sampleRate: 8000, omitDuration: true },
+        { format: "mkv", sampleRate: 48000, packetFrames: 1024 },
+    ] satisfies PcmFixtureOptions[])(
+        "copies $format PCM at $sampleRate Hz alongside the video without losing frames",
+        async (options: PcmFixtureOptions) => {
+            const file = await withPcmAudio(fixture(H264_FIXTURE), options);
+            const source = open(file);
+            let output: Input | undefined;
+            try {
+                const sourceAudio = (await source.getPrimaryAudioTrack())!;
+                const sourcePackets = await packets(sourceAudio);
+                if (!options.packetFrames) expect(sourcePackets, "the source audio is one packet").toHaveLength(1);
+                if (options.omitDuration) {
+                    expect(sourcePackets[0]!.duration, "Matroska leaves the block duration unspecified").toBe(0);
+                }
+                if (options.packetFrames) {
+                    expect(sourcePackets[1]!.timestamp, "Matroska rounds PCM timestamps to milliseconds").toBeLessThan(
+                        options.packetFrames / options.sampleRate,
+                    );
+                }
+                const saved = await save([file]);
+                output = open(saved.file);
+                expect(saved.result.audioDroppedUnsupported).toBe(false);
+                const outputAudio = await output.getPrimaryAudioTrack();
+                expect(outputAudio).not.toBeNull();
+                expect(await outputAudio!.getCodec()).toBe("pcm-s16");
+                const outputPackets = await packets(outputAudio!);
+                // The output reads back one packet per chunk; several chunks mean the
+                // audio was written alongside the video instead of after it.
+                if (!options.packetFrames) {
+                    expect(outputPackets.length, "the copied audio is split into chunks").toBeGreaterThan(1);
+                }
+                const original = Buffer.concat(sourcePackets.map((packet) => packet.data));
+                expect(
+                    Buffer.concat(outputPackets.map((packet) => packet.data)).equals(original),
+                    "the copy is lossless",
+                ).toBe(true);
+                expect(await outputAudio!.getFirstTimestamp()).toBeCloseTo(0);
+                const config = (await sourceAudio.getDecoderConfig())!;
+                const frameCount = original.byteLength / (2 * config.numberOfChannels);
+                expect(await outputAudio!.computeDuration()).toBeCloseTo(frameCount / config.sampleRate);
+                expect((await packets((await output.getPrimaryVideoTrack())!)).map((packet) => packet.data)).toEqual(
+                    (await packets((await source.getPrimaryVideoTrack())!)).map((packet) => packet.data),
+                );
+            } finally {
+                source.dispose();
+                output?.dispose();
+            }
+        },
+    );
 
     it("keeps video when MOV audio cannot be represented in an MP4 track", async () => {
         const file = await remuxFixture(fixture(H264_FIXTURE), true);

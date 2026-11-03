@@ -16,12 +16,12 @@
 // bound the range, and anchor the first emitted frame on the output timeline.
 
 import { throwIfCancelled } from "../abort-signals.js";
-import { EncodedPacketSink, Input, MATROSKA } from "mediabunny";
+import { type EncodedPacket, EncodedPacketSink, Input, MATROSKA } from "mediabunny";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
 import { AudioSample, type AudioSampleSource } from "mediabunny";
 
 import { createLogger } from "../log.js";
-import type { AdpcmAudioReader } from "./adpcm-audio.js";
+import type { AdpcmAudioReader, AdpcmRangeCursor } from "./adpcm-audio.js";
 import { decodeImaAdpcmBlock, imaAdpcmFramesPerBlock } from "./ima-adpcm.js";
 
 const log = createLogger("adpcm-matroska");
@@ -62,43 +62,60 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
     }
 
     /**
-     * Streams the ADPCM blocks overlapping the file-time range to `source`,
-     * decoding each to PCM-s16 and timestamping via `mapTs`. Returns the number
-     * of PCM frames emitted. Opens (and always disposes) its own Input.
+     * Streams the ADPCM blocks from the one covering `startInFileSec` to
+     * `source`, decoding each to PCM-s16 and timestamping via `mapTs`. Each
+     * `feedBefore`/`finish` call emits the blocks presented before its limit, so
+     * consecutive calls tile exactly like one call to the last limit. Opens its
+     * own Input on first use; `finish` and `close` dispose it.
      */
-    async function streamBlocks(
+    function openBlockCursor(
         source: AudioSampleSource,
         startInFileSec: number,
-        endInFileSec: number,
         mapTs: (packetTs: number) => number,
         signal?: AbortSignal,
         onFirstEmit?: () => void,
-    ): Promise<number> {
-        const input = new Input({ source: createRetryingBlobSource(file), formats: [MATROSKA] });
-        try {
-            const at = await input.getPrimaryAudioTrack();
-            if (!at) return 0;
-            const sink = new EncodedPacketSink(at);
-            // Start at the block covering startInFileSec (pts <= start), so no
-            // audio at the head of the range is missed; getPacket returns null
-            // only when start is before the first packet, then take the first.
-            let pkt = (await sink.getPacket(startInFileSec)) ?? (await sink.getFirstPacket());
-            let firstEmitted = false;
-            let emittedFrames = 0;
-            // Output timeline position of the FIRST emitted block, captured from
-            // its mapped packet pts. Every later block is then placed at
-            // anchor + emittedFrames/sampleRate so the decoded PCM tiles SEAMLESSLY.
-            // Do NOT timestamp each block by its own mapped packet pts: Matroska
-            // rounds pts to the TimestampScale grid (1 ms), while a block is
-            // ~31.78 ms (1017 frames @ 32 kHz), so per-block pts leaves a
-            // sub-millisecond gap/overlap at every block boundary - an audible
-            // ~31 Hz buzz once the 32->48 kHz resample + AAC encode run over it.
-            // The ISOBMFF reader (adpcm-audio.ts) tiles by cumulative frames for
-            // the same reason; this mirrors it.
-            let anchorSec: number | null = null;
-            while (pkt) {
+    ): AdpcmRangeCursor {
+        let input: Input | null = null;
+        let sink: EncodedPacketSink | null = null;
+        let pkt: EncodedPacket | null = null;
+        let isOpened = false;
+        let isClosed = false;
+        let emittedFrames = 0;
+        // Output timeline position of the FIRST emitted block, captured from
+        // its mapped packet pts. Every later block is then placed at
+        // anchor + emittedFrames/sampleRate so the decoded PCM tiles SEAMLESSLY.
+        // Do NOT timestamp each block by its own mapped packet pts: Matroska
+        // rounds pts to the TimestampScale grid (1 ms), while a block is
+        // ~31.78 ms (1017 frames @ 32 kHz), so per-block pts leaves a
+        // sub-millisecond gap/overlap at every block boundary - an audible
+        // ~31 Hz buzz once the 32->48 kHz resample + AAC encode run over it.
+        // The ISOBMFF reader (adpcm-audio.ts) tiles by cumulative frames for
+        // the same reason; this mirrors it.
+        let anchorSec: number | null = null;
+
+        const close = async (): Promise<void> => {
+            isClosed = true;
+            pkt = null;
+            input?.dispose();
+            input = null;
+        };
+
+        const feedBefore = async (limitInFileSec: number): Promise<void> => {
+            if (isClosed) return;
+            if (!isOpened) {
+                isOpened = true;
+                input = new Input({ source: createRetryingBlobSource(file), formats: [MATROSKA] });
+                const at = await input.getPrimaryAudioTrack();
+                if (!at) return;
+                sink = new EncodedPacketSink(at);
+                // Start at the block covering startInFileSec (pts <= start), so no
+                // audio at the head of the range is missed; getPacket returns null
+                // only when start is before the first packet, then take the first.
+                pkt = (await sink.getPacket(startInFileSec)) ?? (await sink.getFirstPacket());
+            }
+            while (pkt && sink) {
                 throwIfCancelled(signal);
-                if (pkt.timestamp >= endInFileSec) break;
+                if (pkt.timestamp >= limitInFileSec) break;
                 const block = pkt.data;
                 const framesPerChannel = imaAdpcmFramesPerBlock(block.length, channels);
                 if (framesPerChannel > 0) {
@@ -117,18 +134,47 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
                     } finally {
                         sample.close();
                     }
-                    if (!firstEmitted) {
-                        firstEmitted = true;
-                        onFirstEmit?.();
-                    }
+                    if (emittedFrames === 0) onFirstEmit?.();
                     emittedFrames += framesPerChannel;
                 }
                 pkt = await sink.getNextPacket(pkt);
             }
-            return emittedFrames;
-        } finally {
-            input.dispose();
-        }
+        };
+
+        return {
+            get emittedSec() {
+                return emittedFrames / sampleRate;
+            },
+            feedBefore,
+            async finish(endInFileSec) {
+                try {
+                    await feedBefore(endInFileSec);
+                } finally {
+                    await close();
+                }
+            },
+            close,
+        };
+    }
+
+    /**
+     * Anchors the first emitted block on the output timeline at outStartSec
+     * (the first block has pts <= start, so max(0, ...) clamps to 0); later
+     * blocks tile by cumulative frames, keeping timestamps monotonic
+     * (mediabunny requires non-decreasing PTS).
+     */
+    function openRange(
+        source: AudioSampleSource,
+        startInFileSec: number,
+        outStartSec: number,
+        signal?: AbortSignal,
+    ): AdpcmRangeCursor {
+        return openBlockCursor(
+            source,
+            startInFileSec,
+            (packetTs) => outStartSec + Math.max(0, packetTs - startInFileSec),
+            signal,
+        );
     }
 
     return {
@@ -138,31 +184,22 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
         // it; the ISOBMFF reader exposes it only for its own frame-index math).
         totalFrames: 0,
         async feedRange(source, startInFileSec, endInFileSec, outStartSec, signal) {
-            // Anchor the first emitted block on the output timeline at outStartSec
-            // (the first block has pts <= start, so max(0, ...) clamps to 0);
-            // streamBlocks then tiles later blocks by cumulative frames, keeping
-            // timestamps monotonic (mediabunny requires non-decreasing PTS).
-            const emitted = await streamBlocks(
-                source,
-                startInFileSec,
-                endInFileSec,
-                (packetTs) => outStartSec + Math.max(0, packetTs - startInFileSec),
-                signal,
-            );
-            return emitted / sampleRate;
+            const cursor = openRange(source, startInFileSec, outStartSec, signal);
+            await cursor.finish(endInFileSec);
+            return cursor.emittedSec;
         },
+        openRange,
         async feedToEnd(source, startInFileSec, framePtsOffsetSec, signal, onFirstEmit) {
             // Player path: anchor the first block at its absolute file time + the
             // cycle's PTS shift (matching the video packet timeline the worker
-            // feeds in parallel); streamBlocks tiles the rest by cumulative frames.
-            await streamBlocks(
+            // feeds in parallel); the cursor tiles the rest by cumulative frames.
+            await openBlockCursor(
                 source,
                 startInFileSec,
-                Number.POSITIVE_INFINITY,
                 (packetTs) => packetTs + framePtsOffsetSec,
                 signal,
                 onFirstEmit,
-            );
+            ).finish(Number.POSITIVE_INFINITY);
         },
     };
 }

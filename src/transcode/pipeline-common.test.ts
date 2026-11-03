@@ -1,20 +1,34 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { type AudioSample, type AudioSampleSource } from "mediabunny";
+import {
+    type AudioSample,
+    type AudioSampleSource,
+    BufferTarget,
+    EncodedAudioPacketSource,
+    EncodedPacket,
+    Input,
+    MovOutputFormat,
+    Output,
+} from "mediabunny";
 
 import {
     createMp4StreamOutput,
     consumeMapSnapshot,
     discardOutputQuietly,
     emitSilence,
+    feedSegmentAudio,
     frameNeedsNoComposite,
     finalizeTranscodeOutput,
     joinAllOrThrowFirst,
     nextTolerant,
+    openSegmentAudioCursor,
     type DecodeProgress,
     resolveAudioPlan,
     resolveVideoEncoderAcceleration,
 } from "./pipeline-common.js";
+import { createRetryingBlobSource } from "../retrying-blob-source.js";
+import { withRepairedPhantomAudio } from "../repair/test-helpers.js";
+import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 
 describe("emitSilence", () => {
     it("keeps retained samples silent and tiles the partial final chunk", async () => {
@@ -311,6 +325,180 @@ describe("resolveAudioPlan", () => {
                 signal: AbortSignal.abort(),
             }),
         ).rejects.toMatchObject({ name: "AbortError" });
+    });
+});
+
+describe("openSegmentAudioCursor", () => {
+    const pcmFile = () => {
+        const path = "../../tests/testdata/audio-export/__fixtures__/pcm-u8/20260101_120000.mov";
+        return new File([readFileSync(new URL(path, import.meta.url))], "20260101_120000.mov");
+    };
+    const SEGMENT_START = 0.25;
+    const SEGMENT_END = 1.8;
+    const OUTPUT_START = 5;
+
+    interface CapturedSample {
+        timestamp: number;
+        duration: number;
+        data: Float32Array;
+    }
+
+    /** Records each added sample's timing and PCM; the cursor closes the sample afterwards. */
+    function captureSource(): { source: AudioSampleSource; samples: CapturedSample[] } {
+        const samples: CapturedSample[] = [];
+        const source = {
+            async add(sample: AudioSample) {
+                const data = new Float32Array(sample.allocationSize({ format: "f32", planeIndex: 0 }) / 4);
+                sample.copyTo(data, { format: "f32", planeIndex: 0 });
+                samples.push({ timestamp: sample.timestamp, duration: sample.duration, data });
+            },
+        } as unknown as AudioSampleSource;
+        return { source, samples };
+    }
+
+    function concatPcm(samples: CapturedSample[]): Float32Array {
+        const pcm = new Float32Array(samples.reduce((sum, sample) => sum + sample.data.length, 0));
+        let offset = 0;
+        for (const sample of samples) {
+            pcm.set(sample.data, offset);
+            offset += sample.data.length;
+        }
+        return pcm;
+    }
+
+    function fedEnd(samples: CapturedSample[]): number {
+        const last = samples.at(-1);
+        return last ? last.timestamp + last.duration : OUTPUT_START;
+    }
+
+    /** Feeds one segment both ways and returns what each produced. */
+    async function feedWholeAndStepped(file: File, limits: number[]) {
+        const input = new Input({ source: createRetryingBlobSource(file), formats: VIDEO_INPUT_FORMATS });
+        try {
+            const options = {
+                input,
+                startInFile: SEGMENT_START,
+                fileDurationSec: await input.computeDuration(),
+                segBaseOutSec: OUTPUT_START,
+                signal: new AbortController().signal,
+                fileName: file.name,
+                onTruncated: () => {
+                    throw new Error("fixture audio must decode completely");
+                },
+            };
+            const whole = captureSource();
+            await feedSegmentAudio({
+                ...options,
+                audioSource: whole.source,
+                endInFile: SEGMENT_END,
+                silenceFormat: { sampleRate: 8000, numberOfChannels: 1 },
+            });
+
+            const stepped = captureSource();
+            const steppedEnds: number[] = [];
+            const cursor = await openSegmentAudioCursor({
+                ...options,
+                audioSource: stepped.source,
+                silenceFormat: { sampleRate: 8000, numberOfChannels: 1 },
+            });
+            try {
+                for (const limit of limits) {
+                    await cursor.feedBefore(limit);
+                    steppedEnds.push(fedEnd(stepped.samples));
+                }
+                await cursor.finish(SEGMENT_END);
+            } finally {
+                await cursor.close();
+            }
+            return { whole: whole.samples, stepped: stepped.samples, steppedEnds };
+        } finally {
+            input.dispose();
+        }
+    }
+
+    function expectContiguous(samples: CapturedSample[]): void {
+        let end = OUTPUT_START;
+        for (const [index, sample] of samples.entries()) {
+            expect(sample.timestamp, `sample ${index} starts where the previous ended`).toBeCloseTo(end, 6);
+            end = sample.timestamp + sample.duration;
+        }
+        expect(end, "the segment ends at its output duration").toBeCloseTo(
+            OUTPUT_START + SEGMENT_END - SEGMENT_START,
+            3,
+        );
+    }
+
+    /**
+     * A two-second 8 kHz tone in 100 ms PCM packets. The committed PCM fixture
+     * holds one two-second packet, which decodes to one sample and cannot show
+     * stepwise feeding.
+     */
+    async function chunkedPcmMov(): Promise<File> {
+        const target = new BufferTarget();
+        const output = new Output({ target, format: new MovOutputFormat() });
+        const source = new EncodedAudioPacketSource("pcm-u8");
+        output.addAudioTrack(source);
+        await output.start();
+        for (let packetIndex = 0; packetIndex < 20; packetIndex++) {
+            const data = new Uint8Array(800);
+            for (let i = 0; i < data.length; i++) {
+                data[i] = Math.round(128 + 60 * Math.sin((2 * Math.PI * 440 * (packetIndex * 800 + i)) / 8000));
+            }
+            await source.add(
+                new EncodedPacket(data, "key", packetIndex / 10, 0.1),
+                packetIndex === 0
+                    ? { decoderConfig: { codec: "pcm-u8", sampleRate: 8000, numberOfChannels: 1 } }
+                    : undefined,
+            );
+        }
+        await output.finalize();
+        return new File([target.buffer!], "chunked-pcm.mov");
+    }
+
+    it("feeds decoded audio in steps without passing a limit", async () => {
+        const limits = [0.7, 0.5, 1.3];
+        const { whole, stepped, steppedEnds } = await feedWholeAndStepped(await chunkedPcmMov(), limits);
+
+        expect(concatPcm(stepped)).toEqual(concatPcm(whole));
+        expectContiguous(whole);
+        expectContiguous(stepped);
+        expect(steppedEnds[0], "the first limit already feeds audio").toBeGreaterThan(OUTPUT_START);
+        expect(steppedEnds[2], "a later limit feeds more").toBeGreaterThan(steppedEnds[0]!);
+        const longestSample = Math.max(...whole.map((sample) => sample.duration));
+        for (const [index, limit] of limits.entries()) {
+            const limitOut = OUTPUT_START + Math.max(...limits.slice(0, index + 1)) - SEGMENT_START;
+            expect(steppedEnds[index], `limit ${limit} is not passed`).toBeLessThanOrEqual(limitOut + 1e-9);
+            expect(steppedEnds[index], `limit ${limit} is reached within one sample`).toBeGreaterThan(
+                limitOut - longestSample - 1e-9,
+            );
+        }
+    });
+
+    it("feeds a long decoded sample in parts that follow the limits", async () => {
+        // The committed fixture stores its two seconds of PCM as one chunk,
+        // which decodes to a single sample.
+        const limits = [0.7, 0.8, 1.3];
+        const { whole, stepped, steppedEnds } = await feedWholeAndStepped(pcmFile(), limits);
+
+        expect(whole, "the fixture decodes to one sample").toHaveLength(1);
+        expect(concatPcm(stepped)).toEqual(concatPcm(whole));
+        expectContiguous(stepped);
+        expect(steppedEnds[0], "the head is fed up to the first limit").toBeCloseTo(OUTPUT_START + 0.45, 9);
+        expect(steppedEnds[1], "a step shorter than the minimum waits").toBeCloseTo(OUTPUT_START + 0.45, 9);
+        expect(steppedEnds[2], "the next long enough step is fed").toBeCloseTo(OUTPUT_START + 1.05, 9);
+    });
+
+    it("fills a repaired audio track without packets with silence in steps", async () => {
+        const repaired = await withRepairedPhantomAudio(pcmFile());
+        const { whole, stepped, steppedEnds } = await feedWholeAndStepped(repaired, [0.7, 1.3]);
+
+        expect(stepped).toEqual(whole);
+        expectContiguous(whole);
+        expect(whole.every((sample) => sample.data.every((value) => value === 0))).toBe(true);
+        // Silence advances in whole 100 ms chunks below each limit.
+        expect(steppedEnds).toHaveLength(2);
+        expect(steppedEnds[0]).toBeCloseTo(OUTPUT_START + 0.4, 9);
+        expect(steppedEnds[1]).toBeCloseTo(OUTPUT_START + 1, 9);
     });
 });
 
