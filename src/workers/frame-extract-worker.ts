@@ -80,7 +80,7 @@ async function getOrOpenDecoder(file: File, signal: AbortSignal): Promise<Decode
     let input: Input | null = null;
     try {
         input = new Input({
-            source: await createBlobSource(file, { signal }),
+            source: await createBlobSource(file, { signal, isCached: true }),
             formats: VIDEO_INPUT_FORMATS,
         });
         const track = await input.getPrimaryVideoTrack();

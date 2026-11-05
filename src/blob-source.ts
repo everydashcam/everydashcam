@@ -47,14 +47,17 @@ export function createBackgroundReadErrorHandler(blob: Blob, signal?: AbortSigna
 
 /**
  * The signal aborts building a raw HEVC view and suppresses cancelled-operation
- * diagnostics; the caller still owns Input disposal. firstPictureOnly suits a
- * still frame (see RawHevcViewOptions).
+ * diagnostics; the caller still owns Input disposal. isCached marks a source
+ * that outlives the operation owning the signal (a decoder cache): the signal
+ * then aborts the build only, so later operations keep their diagnostics.
+ * firstPictureOnly suits a still frame (see RawHevcViewOptions).
  */
 export async function createBlobSource(
     blob: Blob,
-    options: { signal?: AbortSignal; firstPictureOnly?: boolean } = {},
+    options: { signal?: AbortSignal; isCached?: boolean; firstPictureOnly?: boolean } = {},
 ): Promise<BlobSource> {
-    return new BlobSource(await demuxView(blob, options), {
-        handleUnhandledError: createBackgroundReadErrorHandler(blob, options.signal),
+    const { isCached, ...viewOptions } = options;
+    return new BlobSource(await demuxView(blob, viewOptions), {
+        handleUnhandledError: createBackgroundReadErrorHandler(blob, isCached ? undefined : options.signal),
     });
 }

@@ -140,3 +140,27 @@ for (const factory of factories) {
         });
     });
 }
+
+describe("cached blob source", () => {
+    it("keeps reporting background failures after the opening operation is cancelled", async () => {
+        const recording = failingRecording(true);
+        const controller = new AbortController();
+        const input = new Input({
+            source: await createBlobSource(recording.file, { signal: controller.signal, isCached: true }),
+            formats: VIDEO_INPUT_FORMATS,
+        });
+        try {
+            expect(await input.getFormat()).toBe(MP4);
+            await recording.prefetchStarted;
+            controller.abort();
+            recording.release();
+            await setImmediate();
+            expect(getLogBuffer()).toEqual([
+                expect.objectContaining({ ns: "media-source", level: "warn", msg: "background source read failed" }),
+            ]);
+        } finally {
+            recording.release();
+            input.dispose();
+        }
+    });
+});
