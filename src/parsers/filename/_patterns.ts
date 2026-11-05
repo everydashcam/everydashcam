@@ -7,6 +7,8 @@
 // A channel-letter slot accepts any single letter. Map known letters in
 // channel.ts; keep mode, quality, and GPS-carrier discriminator codes specific.
 
+import { originalDownloadName } from "./download-copy.js";
+
 // 70mai: NO (normal) / EV (event) / LA / PA (A510 parking timelapse /
 // parking event) prefix + 8-digit date + - + 6-digit time + optional
 // -counter + optional trailing 14-digit wall-clock timestamp (M500 and app
@@ -461,15 +463,16 @@ export const RX_DATETIME_CHANNEL_TS = /^(20\d{6})_(\d{6})(?:_(GAP))?_([A-Z])\.ts
 // Annex-B H.265 without a container - qcamera.ts (low-res road preview,
 // H.264 in MPEG-TS), qlog.zst / rlog.zst (zstd Cap'n Proto logs).
 // Two layouts reach us:
-//   - comma connect download, flat: `<16-hex dongle id>_<route>--<n>--<file>`;
-//     browsers append ` (N)` before the extension to repeated downloads;
+//   - comma connect download, flat: `<16-hex dongle id>_<route>--<n>--<file>`,
+//     read under its original name when a browser renamed a repeated download
+//     (download-copy.ts);
 //   - device or SSH copy: `<route>--<n>/<file>`, the segment folder from
 //     /data/media/0/realdata.
 // Literals rather than composed `new RegExp` calls: a module-level call is
 // kept by tree-shaking in every parser bundle importing this file, which would
 // change their cache revisions for nothing.
 const RX_OPENPILOT_FLAT =
-    /^[0-9a-f]{16}_([0-9a-f]{8}--[0-9a-f]{10})--(\d{1,5})--(fcamera|ecamera|dcamera|qcamera|qlog|rlog)(?: \(\d+\))?\.(hevc|ts|zst)$/i;
+    /^[0-9a-f]{16}_([0-9a-f]{8}--[0-9a-f]{10})--(\d{1,5})--(fcamera|ecamera|dcamera|qcamera|qlog|rlog)\.(hevc|ts|zst)$/i;
 const RX_OPENPILOT_SEGMENT_DIR = /^([0-9a-f]{8}--[0-9a-f]{10})--(\d{1,5})$/i;
 const RX_OPENPILOT_SEGMENT_FILE = /^(fcamera|ecamera|dcamera|qcamera|qlog|rlog)\.(hevc|ts|zst)$/i;
 
@@ -506,13 +509,14 @@ export function parseOpenpilotFileName(file: {
 }): OpenpilotFileName | null {
     const segs = file.relativePath.split("/").filter((s) => s.length > 0);
     const dirSegs = segs.slice(0, -1);
-    const flat = file.file.name.match(RX_OPENPILOT_FLAT);
+    const fileName = originalDownloadName(file.file.name);
+    const flat = fileName.match(RX_OPENPILOT_FLAT);
     if (flat) {
         const stream = flat[3]!.toLowerCase() as OpenpilotStream;
         if (OPENPILOT_STREAM_EXTENSION[stream] !== flat[4]!.toLowerCase()) return null;
         return { route: flat[1]!.toLowerCase(), segment: Number(flat[2]), stream, routeDir: dirSegs.join("/") };
     }
-    const named = file.file.name.match(RX_OPENPILOT_SEGMENT_FILE);
+    const named = fileName.match(RX_OPENPILOT_SEGMENT_FILE);
     const folder = dirSegs.at(-1)?.match(RX_OPENPILOT_SEGMENT_DIR);
     if (!named || !folder) return null;
     const stream = named[1]!.toLowerCase() as OpenpilotStream;
@@ -527,7 +531,8 @@ export function parseOpenpilotFileName(file: {
 
 /** Segment and stream an openpilot file name states by itself, without its
  *  folder. A bare device-layout name has no segment (empty string). */
-function openpilotBaseName(name: string): { segment: string; stream: OpenpilotStream } | null {
+function openpilotBaseName(downloadedName: string): { segment: string; stream: OpenpilotStream } | null {
+    const name = originalDownloadName(downloadedName);
     const flat = name.match(RX_OPENPILOT_FLAT);
     const bare = flat ? null : name.match(RX_OPENPILOT_SEGMENT_FILE);
     const stream = (flat?.[3] ?? bare?.[1])?.toLowerCase() as OpenpilotStream | undefined;
@@ -538,7 +543,7 @@ function openpilotBaseName(name: string): { segment: string; stream: OpenpilotSt
 
 /**
  * Identity of one openpilot stream file regardless of how its name was
- * spelled: letter case and a browser's " (N)" download suffix differ between
+ * spelled: letter case and a browser's repeated-download suffix differ between
  * the name a log predicts and the file on disk. A bare device-layout name
  * carries no segment, so callers scope it by the log's recording key. null for
  * any other name.

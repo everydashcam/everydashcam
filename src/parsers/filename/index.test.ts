@@ -1750,6 +1750,12 @@ describe("openpilot route techniques", () => {
             `x/0123456789ABCDEF_${ROUTE}--19--fcamera (3).hevc`,
             "x",
         ],
+        // Firefox spells the duplicate suffix without a space
+        [
+            `0123456789abcdef_${ROUTE}--19--fcamera(1).hevc`,
+            `Downloads/0123456789abcdef_${ROUTE}--19--fcamera(1).hevc`,
+            "Downloads",
+        ],
         // device or SSH copy: one folder per segment
         ["fcamera.hevc", `realdata/${ROUTE}--19/fcamera.hevc`, "realdata"],
         ["fcamera.hevc", `${ROUTE}--19/fcamera.hevc`, ""],

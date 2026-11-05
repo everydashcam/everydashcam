@@ -55,6 +55,7 @@ import {
     RX_WOLFBOX,
     isNovatekFamilyFilename,
 } from "./filename/_patterns.js";
+import { asOriginalDownload } from "./filename/download-copy.js";
 
 /**
  * Where a format keeps its GPS. Drives the embedded-extraction pre-filter.
@@ -411,14 +412,16 @@ export function resolveSourceCollision(matched: readonly DeclaredGpsSource[]): G
 }
 
 /**
- * Returns the GPS-source hint for a file by walking the registry. When several
+ * Returns the GPS-source hint for a file by walking the registry; a browser's
+ * repeated download matches under its original name. When several
  * hints match (rare - patterns are mostly disjoint), the most permissive
  * source wins (embedded > sidecar > none) so we never skip a probe for a
  * file that might genuinely have embedded GPS.
  *
  * "unknown" - no hint matched. Treat as "try embedded" downstream.
  */
-export function classifyGpsSource(file: VendorFile): GpsSource {
+export function classifyGpsSource(downloaded: VendorFile): GpsSource {
+    const file = asOriginalDownload(downloaded);
     // Collect the declared source of every matching hint (>1 is rare - the
     // patterns are mostly disjoint) and let the shared resolver pick the most
     // permissive one, so the priority rule lives in exactly one place.
@@ -443,8 +446,9 @@ export function classifyGpsSource(file: VendorFile): GpsSource {
  *    its name shape is generic, so with no records yet we probe rather than
  *    silently leave a lookalike file unread.
  */
-export function shouldTryEmbeddedGps(file: VendorFile, hasExistingRecords: boolean): boolean {
+export function shouldTryEmbeddedGps(downloaded: VendorFile, hasExistingRecords: boolean): boolean {
     if (hasExistingRecords) return false;
+    const file = asOriginalDownload(downloaded);
     // One walk collects both the resolved source and whether any matched hint
     // opts into a probe-when-empty (generic-shaped sidecar formats).
     const matched: DeclaredGpsSource[] = [];

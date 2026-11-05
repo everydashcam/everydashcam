@@ -32,6 +32,7 @@ import {
     matchFilenameMode,
     matchFilenameTime,
 } from "./parsers/filename/index.js";
+import { isRepeatedDownloadName, originalDownloadName } from "./parsers/filename/download-copy.js";
 import { isVideoFile } from "./parsers/registry-light.js";
 import type { Channel, RecordingMode, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import { vendorFileKey } from "./vendor-file-key.js";
@@ -77,16 +78,12 @@ function dedupKey(file: File): string {
     // retain one comparison key even when their enclosing folders differ.
     // Renamed copies with a different filename timestamp or time technique
     // stay separate; a trigger-time name does not identify the original span.
+    // A browser's repeated download keys like its original (the time walk
+    // reads the original name too); the content probe still decides.
     const time = matchFilenameTime({ file, relativePath: file.name });
     return time.value === null
-        ? `name:${withoutDownloadSuffix(file.name)}|${file.size}`
+        ? `name:${originalDownloadName(file.name)}|${file.size}`
         : `time:${time.matchedId}|${time.value.getTime()}|${file.size}`;
-}
-
-/** A browser saves a repeated download of `clip.ts` as `clip (1).ts`. Only the
- *  grouping key drops the suffix; the content probe still decides. */
-function withoutDownloadSuffix(name: string): string {
-    return name.replace(/ \(\d+\)(\.[^.]+)$/, "$1");
 }
 
 async function readBytes(file: File, start: number, end: number): Promise<Uint8Array> {
@@ -268,7 +265,7 @@ export async function dropDuplicateFiles(
         if (aRank.channel !== null && bRank.channel !== null && aRank.channel !== bRank.channel) return false;
         // Preserve the existing backup-copy contract for equal basenames,
         // including a browser's renamed repeat download.
-        if (withoutDownloadSuffix(a.file.name) === withoutDownloadSuffix(b.file.name)) return true;
+        if (originalDownloadName(a.file.name) === originalDownloadName(b.file.name)) return true;
         if (
             aRank.mode === null ||
             bRank.mode === null ||
@@ -322,10 +319,9 @@ export async function dropDuplicateFiles(
         const bRank = rankOf(b);
         if (aRank.channelRank !== bRank.channelRank) return aRank.channelRank - bRank.channelRank;
         // The original name over a browser's renamed repeat download: sidecars
-        // and logs pair by the original basename. Ahead of camera cohesion,
-        // whose name mask groups "(1)" and "(2)" copies apart from the original.
-        const aRenamed = withoutDownloadSuffix(a.file.name) !== a.file.name;
-        const bRenamed = withoutDownloadSuffix(b.file.name) !== b.file.name;
+        // and logs pair by the exact original basename.
+        const aRenamed = isRepeatedDownloadName(a.file.name);
+        const bRenamed = isRepeatedDownloadName(b.file.name);
         if (aRenamed !== bRenamed) return aRenamed ? 1 : -1;
         const freq = getFingerprintFreq();
         const aFreq = freq.get(fingerprintOf(a)) ?? 0;

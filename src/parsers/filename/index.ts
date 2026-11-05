@@ -12,6 +12,7 @@
 
 import type { RecordingMode, VendorFile } from "../types.js";
 import { FILENAME_CAMERA_KEY } from "./camera-key.js";
+import { asOriginalDownload } from "./download-copy.js";
 import { FILENAME_CHANNEL } from "./channel.js";
 import { FILENAME_MODE } from "./mode.js";
 import { FILENAME_SEQUENCE } from "./sequence.js";
@@ -22,7 +23,10 @@ import type { ChannelMatch, FilenameMatch, FilenameTechnique } from "./types.js"
 
 export type { FilenameMatch } from "./types.js";
 
-function walk<T>(techniques: readonly FilenameTechnique<T>[], file: VendorFile): FilenameMatch<T> {
+// Every technique reads a browser's repeated download under its original
+// name (download-copy.ts), so the copy classifies exactly like the original.
+function walk<T>(techniques: readonly FilenameTechnique<T>[], downloaded: VendorFile): FilenameMatch<T> {
+    const file = asOriginalDownload(downloaded);
     let heuristic: FilenameMatch<T> | null = null;
     for (const t of techniques) {
         const value = t.extract(file);

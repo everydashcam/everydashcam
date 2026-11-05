@@ -133,6 +133,30 @@ describe("dropDuplicateFiles", () => {
         expect(dropped).toEqual([{ droppedPath: `dl/${name} (1).TS`, keptPath: `dl/${name}.TS` }]);
     });
 
+    it.each(["NO20260101-120000-000042F", "2026_0101_120000_0042F"])(
+        "folds a repeated download of clocked %s into the original, Chromium or Firefox",
+        async (stem) => {
+            const content = makeContent(LARGE_SIZE, 3);
+            const incoming = [
+                vf(`dl/${stem} (1).MP4`, content),
+                vf(`dl/${stem}.MP4`, content),
+                vf(`dl/${stem}(2).MP4`, content),
+            ];
+            const { kept, dropped } = await dropDuplicateFiles(incoming, []);
+            expect(kept).toEqual([incoming[1]]);
+            expect(dropped.map((entry) => entry.keptPath)).toEqual([`dl/${stem}.MP4`, `dl/${stem}.MP4`]);
+        },
+    );
+
+    it("folds a repeated download into an already loaded original", async () => {
+        const content = makeContent(LARGE_SIZE, 3);
+        const loaded = vf("dl/NO20260101-120000-000042F.MP4", content);
+        const copy = vf("dl/NO20260101-120000-000042F (1).MP4", content);
+        const { kept, dropped } = await dropDuplicateFiles([copy], [loaded]);
+        expect(kept).toEqual([]);
+        expect(dropped).toEqual([{ droppedPath: copy.relativePath, keptPath: loaded.relativePath }]);
+    });
+
     it.each(["EV", "VL", "PA"])("collapses a real-time 70mai NO/%s copy while retaining the event", async (prefix) => {
         const content = makeContent(LARGE_SIZE, 7);
         const normal = vf("card/Normal/Front/NO20260101-120000-000042F.MP4", content);

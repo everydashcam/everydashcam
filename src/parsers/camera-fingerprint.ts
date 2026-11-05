@@ -18,6 +18,7 @@
 //      whose channel folders and filenames happen to be identical.
 
 import { maskName } from "./filename/camera-key.js";
+import { originalDownloadName } from "./filename/download-copy.js";
 import { classifyFilenameCameraKey } from "./filename/index.js";
 import { matchChannelFolder } from "./filename/channel-folder.js";
 import type { VendorFile } from "./types.js";
@@ -26,7 +27,7 @@ export function cameraFingerprint(file: VendorFile): string {
     const fromTechnique = classifyFilenameCameraKey(file);
     if (fromTechnique !== null) return fromTechnique;
     const dir = matchChannelFolder(file.relativePath)?.parentDir ?? parentDir(file.relativePath);
-    return `${maskName(file.file.name)}|${dir}`;
+    return `${maskName(originalDownloadName(file.file.name))}|${dir}`;
 }
 
 function parentDir(relativePath: string): string {
