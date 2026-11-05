@@ -103,9 +103,10 @@ export function disposeAllFrameDecoders(): void {
 /**
  * Extracts a single frame at timeSec. mediabunny handles keyframe rounding
  * internally (seeks to the nearest preceding keyframe and decodes forward
- * to timeSec). Returns a transferable ImageBitmap, or null on decode failure.
+ * to timeSec). Returns a transferable ImageBitmap, or null on decode failure
+ * or when the signal aborts, which also stops the worker's work on it.
  */
-export async function extractFrameAt(file: File, timeSec: number): Promise<ImageBitmap | null> {
-    const out = await workerExtractFrames(file, [timeSec]);
+export async function extractFrameAt(file: File, timeSec: number, signal?: AbortSignal): Promise<ImageBitmap | null> {
+    const out = await workerExtractFrames(file, [timeSec], signal);
     return out[0] ?? null;
 }

@@ -131,9 +131,20 @@ describe("rawHevcMp4View", () => {
         expect(demuxed.packets[60]!.bytes).toBeGreaterThan(demuxed.packets[0]!.bytes);
     });
 
-    it("returns the cached view for the same file", async () => {
+    it("returns the cached view for the same file, rate and extent", async () => {
         const file = hevcFile(fixtureBytes("fcamera"));
-        expect(rawHevcMp4View(file, 20)).toBe(rawHevcMp4View(file, 20));
+        const first = rawHevcMp4View(file, 20, { firstPictureOnly: true });
+        expect(rawHevcMp4View(file, 20, { firstPictureOnly: true })).toBe(first);
+        const full = rawHevcMp4View(file, 20);
+        expect(full).not.toBe(first);
+        expect(rawHevcMp4View(file, 20)).toBe(full);
+        // A full view serves a later first-picture request; another rate is another view.
+        expect(rawHevcMp4View(hevcFile(fixtureBytes("fcamera")), 20)).not.toBe(full);
+        const fresh = hevcFile(fixtureBytes("fcamera"));
+        const freshFull = rawHevcMp4View(fresh, 20);
+        expect(rawHevcMp4View(fresh, 20, { firstPictureOnly: true })).toBe(freshFull);
+        expect(rawHevcMp4View(fresh, 10)).not.toBe(freshFull);
+        expect((await demux(await rawHevcMp4View(fresh, 10))).duration).toBeCloseTo(6, 6);
     });
 
     it("keeps a picture whose slices a prefix SEI separates in one sample", async () => {
@@ -161,6 +172,45 @@ describe("rawHevcMp4View", () => {
         const original = await demux(await rawHevcMp4View(hevcFile(raw), 20));
         const demuxed = await demux(await rawHevcMp4View(hevcFile(padded), 20));
         expect(demuxed.packets).toEqual(original.packets);
+    });
+
+    it("builds a first-picture view from the head of the stream", async () => {
+        const raw = fixtureBytes("fcamera");
+        const twice = new Uint8Array(raw.length * 2);
+        twice.set(raw, 0);
+        twice.set(raw, raw.length);
+        const file = hevcFile(twice);
+        let furthest = 0;
+        const view = await rawHevcMp4View(file, 20, {
+            firstPictureOnly: true,
+            readRange: async (start, end) => {
+                furthest = Math.max(furthest, end);
+                return new Uint8Array(await file.slice(start, end).arrayBuffer());
+            },
+        });
+        expect(furthest).toBeLessThan(file.size);
+        const demuxed = await demux(view);
+        expect(demuxed.packets).toHaveLength(1);
+        expect(demuxed.packets[0]!.type).toBe("key");
+        expect(await sampleEntryOf(view)).toEqual(["hvc1"]);
+    });
+
+    it("reads through the given reader and stops when its signal aborts", async () => {
+        const file = hevcFile(fixtureBytes("fcamera"));
+        const controller = new AbortController();
+        const reads: Array<[number, number]> = [];
+        const view = rawHevcMp4View(file, 20, {
+            signal: controller.signal,
+            readRange: async (start, end) => {
+                reads.push([start, end]);
+                controller.abort();
+                return new Uint8Array(await file.slice(start, end).arrayBuffer());
+            },
+        });
+        await expect(view).rejects.toMatchObject({ name: "AbortError" });
+        expect(reads).toEqual([[0, file.size]]);
+        // The aborted build is not cached.
+        expect((await demux(await rawHevcMp4View(file, 20))).packets).toHaveLength(60);
     });
 
     it("rejects a stream without a usable head or without pictures, and retries later", async () => {

@@ -202,7 +202,7 @@ async function runTrackPass(
         if (endLocal - seedLocal <= 0) continue;
 
         const input = new Input({
-            source: await createBlobSource(seg.file, signal),
+            source: await createBlobSource(seg.file, { signal }),
             formats: VIDEO_INPUT_FORMATS,
         });
         try {
@@ -503,7 +503,7 @@ async function runDetectPass(
             const startLocal = Math.max(seg.startInFile, interval.startSec - seg.tripStart);
             const endLocal = Math.min(seg.endInFile, interval.endSec - seg.tripStart);
             if (endLocal <= startLocal) continue;
-            const input = new Input({ source: await createBlobSource(seg.file, signal), formats: VIDEO_INPUT_FORMATS });
+            const input = new Input({ source: await createBlobSource(seg.file, { signal }), formats: VIDEO_INPUT_FORMATS });
             try {
                 const vtrack = await input.getPrimaryVideoTrack();
                 if (!vtrack) throw new Error("detect: source has no video track");

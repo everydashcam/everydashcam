@@ -61,7 +61,7 @@ describe("mseCanPlayRawHevc", () => {
             }),
         );
         expect(mseCanPlayRawHevc()).toBe(true);
-        expect(asked).toEqual(['video/mp4; codecs="hvc1.1.6.L150.90"']);
+        expect(asked).toEqual(['video/mp4; codecs="hvc1.1.6.L150.B0"']);
     });
 
     it("reports no HEVC without MSE or when the probe throws", () => {
@@ -75,6 +75,29 @@ describe("mseCanPlayRawHevc", () => {
             }),
         );
         expect(mseCanPlayRawHevc()).toBe(false);
+    });
+});
+
+describe("raw HEVC without MSE HEVC support", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("fails before spawning a worker that would read the whole stream", async () => {
+        vi.stubGlobal(
+            "MediaSource",
+            Object.assign(function FakeRuntime() {}, { isTypeSupported: (mime: string) => !mime.includes("hvc1") }),
+        );
+        const spawned = vi.fn();
+        vi.stubGlobal("Worker", spawned);
+        const errors: string[] = [];
+        const backend = new PerFileMseBackend({
+            file: new File([], "fcamera.hevc"),
+            onError: (reason) => errors.push(reason),
+        });
+        await backend.attach({} as HTMLVideoElement);
+        expect(errors).toEqual(['mime-not-supported: video/mp4; codecs="hvc1.1.6.L150.B0"']);
+        expect(spawned).not.toHaveBeenCalled();
     });
 });
 

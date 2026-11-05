@@ -67,7 +67,8 @@ function disposeEntry(entry: DecoderEntry): void {
     }
 }
 
-async function getOrOpenDecoder(file: File): Promise<DecoderEntry | null> {
+/** The signal aborts opening (a raw HEVC view scans the whole file first). */
+async function getOrOpenDecoder(file: File, signal: AbortSignal): Promise<DecoderEntry | null> {
     const key = decoderCacheKey(file);
     const cached = decoderCache.get(key);
     if (cached) {
@@ -79,7 +80,7 @@ async function getOrOpenDecoder(file: File): Promise<DecoderEntry | null> {
     let input: Input | null = null;
     try {
         input = new Input({
-            source: await createBlobSource(file),
+            source: await createBlobSource(file, { signal }),
             formats: VIDEO_INPUT_FORMATS,
         });
         const track = await input.getPrimaryVideoTrack();
@@ -145,7 +146,7 @@ async function extractFrames(file: File, timestamps: number[], signal: AbortSign
         return bitmaps;
     };
     if (signal.aborted) return bitmaps;
-    let entry = await getOrOpenDecoder(file);
+    let entry = await getOrOpenDecoder(file, signal);
     if (!entry) return bitmaps;
     if (signal.aborted) return bitmaps;
 
@@ -207,7 +208,7 @@ async function extractFrames(file: File, timestamps: number[], signal: AbortSign
                         decoderCache.delete(key);
                         disposeEntry(entry);
                     }
-                    const fresh = await getOrOpenDecoder(file);
+                    const fresh = await getOrOpenDecoder(file, signal);
                     if (!fresh) return bitmaps;
                     entry = fresh;
                 }

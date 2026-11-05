@@ -30,7 +30,7 @@
 
 import { createSerialQueue } from "./serial-queue.js";
 import { createLogger } from "./log.js";
-import { demuxPreparationBudgetMs } from "./video-format-names.js";
+import { demuxPreparationBudgetMs, isRawHevcName } from "./video-format-names.js";
 import {
     MSE_NOTIFY_DROP_AUDIO,
     MSE_NOTIFY_ERROR,
@@ -174,17 +174,16 @@ export function resolveMediaSourceRuntime(): MediaSourceRuntime | null {
     return null;
 }
 
-// Main profile, level 5.0: the road cameras of current comma devices
-// (docs/format-openpilot.md). Raw HEVC plays only through this backend.
-const RAW_HEVC_MSE_MIME = 'video/mp4; codecs="hvc1.1.6.L150.90"';
+// Main profile, level 5.0, constraint byte 0xB0: what the comma four's
+// 1344x760 road cameras write. Raw HEVC plays only through this backend.
+const RAW_HEVC_MSE_MIME = 'video/mp4; codecs="hvc1.1.6.L150.B0"';
 
 /**
  * Whether MSE in this browser accepts HEVC, the only way a raw HEVC stream
  * (openpilot fcamera.hevc) can play. Chromium reports MSE HEVC only with a
  * platform decoder, which is also what the backend would use.
  */
-export function mseCanPlayRawHevc(): boolean {
-    const runtime = resolveMediaSourceRuntime();
+export function mseCanPlayRawHevc(runtime: MediaSourceRuntime | null = resolveMediaSourceRuntime()): boolean {
     if (!runtime) return false;
     try {
         return runtime.ctor.isTypeSupported(RAW_HEVC_MSE_MIME);
@@ -375,6 +374,12 @@ export class PerFileMseBackend {
         const runtime = this.mediaSourceRuntime;
         if (!runtime) {
             this.fail("media-source-unavailable");
+            return null;
+        }
+        // A raw HEVC stream's view costs a full read of the file in the worker;
+        // where MSE cannot play HEVC, refuse before paying for it.
+        if (isRawHevcName(this._file.name) && !mseCanPlayRawHevc(runtime)) {
+            this.fail(`mime-not-supported: ${RAW_HEVC_MSE_MIME}`);
             return null;
         }
         try {

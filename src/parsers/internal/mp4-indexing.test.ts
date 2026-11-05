@@ -254,15 +254,19 @@ describe("indexOneFile on a raw HEVC stream", () => {
     });
 
     it("reads no further than the head", async () => {
-        const file = new File([bytes], name);
+        // Larger than the 256 KiB probe limit, so a whole-file read would show.
+        const file = new File([bytes, bytes], name);
+        expect(file.size).toBeGreaterThan(256 * 1024);
         const slice = file.slice.bind(file);
         let furthest = 0;
         file.slice = (start, end, contentType) => {
             furthest = Math.max(furthest, end ?? file.size);
             return slice(start, end, contentType);
         };
-        await indexOneFile(file, false);
-        expect(furthest).toBeLessThanOrEqual(256 * 1024);
+        const { indexed } = await indexOneFile(file, false);
+        expect(indexed).not.toBeNull();
+        // The probe stops at the first picture, a few hundred bytes in.
+        expect(furthest).toBeLessThanOrEqual(64 * 1024);
     });
 
     it("skips a stream without parameter sets", async () => {

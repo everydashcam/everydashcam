@@ -196,7 +196,7 @@ export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Pro
     try {
         // A GPS trailer at EOF breaks mediabunny's TS packet-sync scan (it made
         // whole cards read as "empty folder"); clamp reads to the clean stream.
-        input = new Input({ source: await createBlobSource(file, signal), formats: VIDEO_INPUT_FORMATS });
+        input = new Input({ source: await createBlobSource(file, { signal }), formats: VIDEO_INPUT_FORMATS });
         // mediabunny has no InputOptions.signal - dispose() is the documented way
         // to cancel in-flight reads. computeDuration searches the container for its
         // last packet (no moov), which is slow on a cold SD card; without this an

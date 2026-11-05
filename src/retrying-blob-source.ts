@@ -311,7 +311,12 @@ export function createRetryingBlobSource(blob: Blob, signal?: AbortSignal): Cust
     let effectiveSize: Promise<number> | null = null;
     return new CustomSource({
         getSize: () =>
-            (effectiveSize ??= demuxView(blob).then((view) => {
+            // A raw HEVC view scans the whole file first; its reads need the
+            // same retries and abort as the demux reads after it.
+            (effectiveSize ??= demuxView(blob, {
+                readRange: (start, end) => readRangeWithRetry(blob, start, end, readSignal),
+                signal: readSignal,
+            }).then((view) => {
                 readBlob = view;
                 return view.size;
             })),

@@ -49,7 +49,7 @@ function failingRecording(yieldPrefix: boolean) {
 }
 
 const factories: Array<{ name: string; create: (file: File, signal?: AbortSignal) => Source | Promise<Source> }> = [
-    { name: "blob source", create: createBlobSource },
+    { name: "blob source", create: (file, signal) => createBlobSource(file, signal ? { signal } : {}) },
     { name: "retrying source", create: createRetryingBlobSource },
 ];
 

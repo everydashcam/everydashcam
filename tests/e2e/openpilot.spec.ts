@@ -34,7 +34,7 @@ const directories: string[] = [];
 /** Raw HEVC plays only through MSE; ingest keeps the full-res road view only then. */
 async function mseHevcSupported(page: Page): Promise<boolean> {
     return await page.evaluate(
-        () => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L150.90"'),
+        () => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L150.B0"'),
     );
 }
 

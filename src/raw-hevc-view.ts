@@ -11,17 +11,25 @@
 // The view is built on the first demux of a file (blob-source.ts demuxView) and
 // cached per File in the current thread. Ingest only reads the head
 // (probeRawHevcHead): scanning every recording at import time would read
-// gigabytes.
+// gigabytes. A still frame needs only the first picture, so its view stops
+// scanning at the second one.
 //
 // Decode order is taken as presentation order (no B-frames, no ctts box).
 // openpilot, the only raw source ingest admits, encodes with b_frames = 0
 // (openpilot/system/loggerd/loggerd.h).
 
+import { throwIfCancelled } from "./abort-signals.js";
 import { box, fourCC, fullBox, identityMatrix, u16, u32 } from "./export/iso-write.js";
 import { HEVC_NAL_PPS, HEVC_NAL_SPS, HEVC_NAL_VPS, buildHvcC, parseHevcSps } from "./hevc-parameter-sets.js";
 
 // Bounded read size of the scan. The scan holds one chunk at a time.
 const SCAN_CHUNK_BYTES = 4 * 1024 * 1024;
+// The head probe stops at the first picture, a few hundred bytes in; reading
+// its whole limit at once would fetch it for nothing.
+const PROBE_CHUNK_BYTES = 16 * 1024;
+// A first-picture view stops at the second picture: one key frame of a
+// per-minute segment, a few hundred KB.
+const FIRST_PICTURE_CHUNK_BYTES = 256 * 1024;
 // Start codes are preceded by a few zero bytes (Annex B allows any number).
 const MAX_CARRY_ZEROS = 64;
 // The parameter sets precede the first picture; a raw stream that has not
@@ -53,23 +61,44 @@ interface Sample {
     sync: boolean;
 }
 
-const viewCache = new WeakMap<Blob, Promise<Blob>>();
+/** Reads [start, end) of the stream. */
+export type RangeReader = (start: number, end: number) => Promise<Uint8Array>;
+
+export interface RawHevcViewOptions {
+    /** Reads stream bytes for the scan; a plain slice read by default. */
+    readRange?: RangeReader;
+    /** Aborts the scan between reads. */
+    signal?: AbortSignal;
+    /** Only the first picture: enough for a still frame, without a full read. */
+    firstPictureOnly?: boolean;
+}
+
+// Per blob, by frame rate and extent. A full view also serves a first-picture
+// request.
+const viewCache = new WeakMap<Blob, Map<string, Promise<Blob>>>();
 
 /**
  * Returns an MP4 Blob (hvc1, one video track, constant frame rate) whose
  * samples reference the raw stream's bytes. Cached per blob in this thread;
- * a failed build is not cached, so a later demux retries.
+ * a failed or aborted build is not cached, so a later demux retries.
  *
  * Throws when the stream has no parseable SPS before its first picture or no
- * pictures at all.
+ * pictures at all, and AbortError when the signal aborts the scan.
  */
-export function rawHevcMp4View(blob: Blob, frameRate: number): Promise<Blob> {
-    const cached = viewCache.get(blob);
+export function rawHevcMp4View(blob: Blob, frameRate: number, options: RawHevcViewOptions = {}): Promise<Blob> {
+    let views = viewCache.get(blob);
+    if (!views) {
+        views = new Map();
+        viewCache.set(blob, views);
+    }
+    const fullKey = `${frameRate}|all`;
+    const key = options.firstPictureOnly ? `${frameRate}|first` : fullKey;
+    const cached = views.get(fullKey) ?? views.get(key);
     if (cached) return cached;
-    const built = buildRawHevcMp4View(blob, frameRate);
-    viewCache.set(blob, built);
+    const built = buildRawHevcMp4View(blob, frameRate, options);
+    views.set(key, built);
     built.catch(() => {
-        if (viewCache.get(blob) === built) viewCache.delete(blob);
+        if (views.get(key) === built) views.delete(key);
     });
     return built;
 }
@@ -80,15 +109,40 @@ export function rawHevcMp4View(blob: Blob, frameRate: number): Promise<Blob> {
  * ingest, which must not scan the whole file.
  */
 export async function probeRawHevcHead(blob: Blob): Promise<RawHevcHead | null> {
-    const index = await scanNalUnits(blob, Math.min(blob.size, HEAD_PROBE_BYTES), (type) => isVcl(type));
-    return await readHead(blob, index);
+    // The scan stops within the first few hundred bytes, at the first picture.
+    const read = sliceReader(blob);
+    const index = await scanNalUnits(blob, Math.min(blob.size, HEAD_PROBE_BYTES), {
+        read,
+        stopAt: (type) => isVcl(type),
+        chunkBytes: PROBE_CHUNK_BYTES,
+    });
+    return await readHead(index, read);
 }
 
-async function buildRawHevcMp4View(blob: Blob, frameRate: number): Promise<Blob> {
+function sliceReader(blob: Blob): RangeReader {
+    return async (start, end) => new Uint8Array(await blob.slice(start, end).arrayBuffer());
+}
+
+async function buildRawHevcMp4View(blob: Blob, frameRate: number, options: RawHevcViewOptions): Promise<Blob> {
     if (!Number.isInteger(frameRate) || frameRate <= 0) throw new Error(`unsupported raw hevc frame rate ${frameRate}`);
-    const index = await scanNalUnits(blob, blob.size);
+    const read = options.readRange ?? sliceReader(blob);
+    let pictures = 0;
+    const index = await scanNalUnits(blob, blob.size, {
+        read,
+        ...(options.signal ? { signal: options.signal } : {}),
+        // The second picture's first slice ends the scan; its own end is
+        // unknown, so it leaves the index.
+        ...(options.firstPictureOnly
+            ? {
+                  stopAt: (_type: number, firstSlice: boolean) => firstSlice && ++pictures === 2,
+                  chunkBytes: FIRST_PICTURE_CHUNK_BYTES,
+              }
+            : {}),
+    });
+    throwIfCancelled(options.signal);
+    if (pictures === 2) dropLastNal(index);
     const { samples, inBandParameterSets } = groupAccessUnits(index);
-    const codec = await readHead(blob, index, !inBandParameterSets);
+    const codec = await readHead(index, read, !inBandParameterSets);
     if (!codec) throw new Error("raw hevc stream has no sequence parameter set before its first picture");
     if (samples.length === 0) throw new Error("raw hevc stream has no pictures");
 
@@ -156,14 +210,18 @@ async function buildRawHevcMp4View(blob: Blob, frameRate: number): Promise<Blob>
     return new Blob(parts, { type: "video/mp4" });
 }
 
-/** Scans Annex-B start codes over [0, limit) in bounded chunks. stopAt ends the
- *  scan right after the first NAL type it accepts; that NAL's end stays unknown. */
-async function scanNalUnits(
-    blob: Blob,
-    limit: number,
-    stopAt?: (type: number) => boolean,
-    chunkBytes = SCAN_CHUNK_BYTES,
-): Promise<NalIndex> {
+interface ScanOptions {
+    read: RangeReader;
+    signal?: AbortSignal;
+    /** Ends the scan right after the first NAL unit it accepts; that unit's
+     *  end stays unknown. */
+    stopAt?: (type: number, firstSlice: boolean) => boolean;
+    chunkBytes?: number;
+}
+
+/** Scans Annex-B start codes over [0, limit) in bounded chunks. */
+async function scanNalUnits(blob: Blob, limit: number, options: ScanOptions): Promise<NalIndex> {
+    const chunkBytes = options.chunkBytes ?? SCAN_CHUNK_BYTES;
     const index: NalIndex = { starts: [], ends: [], types: [], firstSlice: [] };
     let carry = new Uint8Array(0);
     let pos = 0;
@@ -172,8 +230,9 @@ async function scanNalUnits(
     // ends with the stop bit.
     let tailEnd = limit;
     while (pos < limit) {
+        throwIfCancelled(options.signal);
         const chunkEnd = Math.min(limit, pos + chunkBytes);
-        const chunk = new Uint8Array(await blob.slice(pos, chunkEnd).arrayBuffer());
+        const chunk = await options.read(pos, chunkEnd);
         const isLast = chunkEnd >= limit;
         let buf = chunk;
         if (carry.length > 0) {
@@ -207,10 +266,11 @@ async function scanNalUnits(
                 if (index.starts.length > index.ends.length) index.ends.push(base + zeros);
                 if (i + 2 < buf.length) {
                     const type = (buf[i + 1]! >> 1) & 0x3f;
+                    const firstSlice = isVcl(type) && i + 3 < buf.length && buf[i + 3]! >> 7 === 1;
                     index.starts.push(base + i + 1);
                     index.types.push(type);
-                    index.firstSlice.push(isVcl(type) && i + 3 < buf.length && buf[i + 3]! >> 7 === 1);
-                    if (stopAt?.(type)) return index;
+                    index.firstSlice.push(firstSlice);
+                    if (options.stopAt?.(type, firstSlice)) return index;
                 }
             }
             i = buf.indexOf(1, i + 1);
@@ -223,6 +283,14 @@ async function scanNalUnits(
         index.ends.push(Math.max(tailEnd, index.starts.at(-1)! + 2));
     }
     return index;
+}
+
+/** Removes the last NAL unit from an index whose scan stopped at it. */
+function dropLastNal(index: NalIndex): void {
+    index.starts.pop();
+    index.types.pop();
+    index.firstSlice.pop();
+    if (index.ends.length > index.starts.length) index.ends.pop();
 }
 
 function isVcl(type: number): boolean {
@@ -241,12 +309,12 @@ function opensAccessUnit(type: number): boolean {
 
 /** Leading parameter sets (before the first picture) into an hvcC; see
  *  buildHvcC for arraysComplete. */
-async function readHead(blob: Blob, index: NalIndex, arraysComplete = true): Promise<RawHevcHead | null> {
+async function readHead(index: NalIndex, read: RangeReader, arraysComplete = true): Promise<RawHevcHead | null> {
     const arrays = new Map<number, Uint8Array[]>();
     for (let nal = 0; nal < index.types.length && !isVcl(index.types[nal]!); nal++) {
         const type = index.types[nal]!;
         if (!isParameterSet(type) || index.ends[nal] === undefined) continue;
-        const bytes = new Uint8Array(await blob.slice(index.starts[nal]!, index.ends[nal]!).arrayBuffer());
+        const bytes = await read(index.starts[nal]!, index.ends[nal]!);
         arrays.set(type, [...(arrays.get(type) ?? []), bytes]);
     }
     const hvcc = buildHvcC(
@@ -403,5 +471,5 @@ export function _testScanNalUnits(
     blob: Blob,
     chunkBytes: number,
 ): Promise<{ starts: number[]; ends: number[]; types: number[]; firstSlice: boolean[] }> {
-    return scanNalUnits(blob, blob.size, undefined, chunkBytes);
+    return scanNalUnits(blob, blob.size, { read: sliceReader(blob), chunkBytes });
 }
