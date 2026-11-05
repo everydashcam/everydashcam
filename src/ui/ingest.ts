@@ -11,8 +11,10 @@ import {
     attachRecordsToCandidates,
     bindRecordsByFilename,
     buildVideoAssociationIndex,
+    mergeLogVideoTimingHints,
     rebindRecordingCopyRecords,
     recordsForVideo,
+    resolveLogVideoTimingHints,
     settleFilenameAssociations,
 } from "../gps-association.js";
 import { dropDuplicateFiles } from "../ingest-dedup.js";
@@ -410,6 +412,13 @@ async function ingestFilesInternal(
             });
         }
     }
+    // Timing hints apply even without GPS records (a segment with no fix
+    // still counts its frames), and resolve against every loaded video so a
+    // log dropped after its videos reaches them too.
+    if (logsResult.videoTimingHints.length > 0) {
+        state.logVideoTimingHints = mergeLogVideoTimingHints(state.logVideoTimingHints, logsResult.videoTimingHints);
+    }
+    const videoTimingByFileKey = resolveLogVideoTimingHints(state.logVideoTimingHints, videoAssociation);
     if (logsResult.errors.length > 0) {
         log.warn("gps log parse errors", { count: logsResult.errors.length, errors: logsResult.errors });
     }
@@ -646,6 +655,7 @@ async function ingestFilesInternal(
         newVideos: videosToIndex,
         allCandidates,
         logExtractorByFileKey: logsResult.extractorByFileKey,
+        videoTimingByFileKey,
         sidecarExtractorByFileKey: sidecarResult.extractorByFileKey,
         accelByFileKey: accelSidecarResult.accelByFileKey,
         cachedEmbeddedAccelByFileKey: restoredEmbeddedAccelByFileKey,

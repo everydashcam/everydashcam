@@ -32,7 +32,7 @@ import {
     matchFilenameMode,
     matchFilenameTime,
 } from "./parsers/filename/index.js";
-import { RX_VIDEO_EXT } from "./parsers/registry-light.js";
+import { isVideoFile } from "./parsers/registry-light.js";
 import type { Channel, RecordingMode, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 
@@ -195,7 +195,7 @@ export async function dropDuplicateFiles(
     for (const vf of incoming) {
         // Equal external bytes can belong to different recordings. Their
         // association must survive until the parser knows the video owner.
-        if (!RX_VIDEO_EXT.test(vf.file.name)) {
+        if (!isVideoFile(vf)) {
             keep.add(vf);
             continue;
         }

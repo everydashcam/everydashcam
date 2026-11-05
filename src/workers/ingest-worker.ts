@@ -75,6 +75,7 @@ createTypedWorkerServer<IngestWorkerContract>(self, {
                     return {
                         records: parsed.records,
                         skipped: parsed.skipped,
+                        ...(parsed.videoTimingHints ? { videoTimingHints: parsed.videoTimingHints } : {}),
                     } satisfies ParseLogResult;
                 } catch (err) {
                     // WrongFormatError mirrors registry.dispatchParseLogs: marker

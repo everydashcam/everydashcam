@@ -42,6 +42,7 @@ import {
 } from "../trips.js";
 import type { Trip, TripFrame, VideoCandidate } from "../trips.js";
 import { playbackTimeForContent } from "../video-frame-time.js";
+import { isRawHevcName } from "../video-format-names.js";
 import { resolveRegroupPlaybackTarget } from "./player-regroup-target.js";
 
 const log = createLogger("player");
@@ -1280,7 +1281,9 @@ function attachCandidateToVideo(
             ? "matroska"
             : cand.audioNeedsTranscode
               ? "adpcm-transcode"
-              : null;
+              : isRawHevcName(cand.file.name)
+                ? "raw-hevc"
+                : null;
     // Summary info log for "what is actually playing" - gives a picture of the trip load without
     // having to dig through debug output. Useful on ingest and after seeks: channel, file, pipeline
     // (mse vs native), and start position all in one place.

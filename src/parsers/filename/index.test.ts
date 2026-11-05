@@ -24,11 +24,13 @@ import {
     RX_REDTIGER,
     RX_VUEROID,
     mai70NameCore,
+    parseOpenpilotFileName,
 } from "./_patterns.js";
 import {
     classifyFilenameChannel,
     classifyFilenameClockTimelapse,
     classifyFilenameMode,
+    classifyFilenameRecordingKey,
     classifyFilenameSequence,
     classifyFilenameTime,
     classifyFilenameTimelapse,
@@ -1730,5 +1732,73 @@ describe("timestamp-channel TS mode suffixes", () => {
 
     it("does not claim unknown suffixes", () => {
         expect(matchFilenameTime(vf("20260904_202849F_OTHER.ts")).matchedId).not.toBe("juscar-time");
+    });
+});
+
+describe("openpilot route techniques", () => {
+    const ROUTE = "0000002a--4e1f3c9a0b";
+
+    it.each([
+        // comma connect download, with and without a browser's duplicate suffix
+        [
+            `0123456789abcdef_${ROUTE}--19--fcamera.hevc`,
+            `Downloads/0123456789abcdef_${ROUTE}--19--fcamera.hevc`,
+            "Downloads",
+        ],
+        [
+            `0123456789ABCDEF_${ROUTE.toUpperCase()}--19--fcamera (3).hevc`,
+            `x/0123456789ABCDEF_${ROUTE}--19--fcamera (3).hevc`,
+            "x",
+        ],
+        // device or SSH copy: one folder per segment
+        ["fcamera.hevc", `realdata/${ROUTE}--19/fcamera.hevc`, "realdata"],
+        ["fcamera.hevc", `${ROUTE}--19/fcamera.hevc`, ""],
+    ])("reads %s as segment 19 of its route", (name, path, routeDir) => {
+        const file = vf(name, path);
+        expect(parseOpenpilotFileName(file)).toEqual({ route: ROUTE, segment: 19, stream: "fcamera", routeDir });
+        expect(matchFilenameChannel(file)).toMatchObject({ matchedId: "openpilot-channel" });
+        expect(matchFilenameSequence(file)).toEqual({ matchedId: "openpilot-sequence", value: 19 });
+        expect(classifyFilenameRecordingKey(file)).toBe(`${ROUTE}--19`);
+        expect(classifyFilenameTime(file)).toBeNull();
+        expect(cameraFingerprint(file)).toBe(`openpilot|${routeDir}`);
+    });
+
+    it.each([
+        ["fcamera.hevc", { channel: "front", confident: true }],
+        ["qcamera.ts", { channel: "front", confident: true }],
+        ["dcamera.hevc", { channel: "interior", confident: true }],
+        // The wide road camera has no slot of its own; its label stays positional.
+        ["ecamera.hevc", { channel: "side", confident: false }],
+    ])("maps %s to its camera's channel", (name, channel) => {
+        expect(classifyFilenameChannel(vf(name, `${ROUTE}--0/${name}`))).toEqual(channel);
+    });
+
+    it("gives every camera of a segment one recording and every route in a folder one camera", () => {
+        const files = ["fcamera.hevc", "ecamera.hevc", "dcamera.hevc", "qcamera.ts"].map((name) =>
+            vf(name, `card/${ROUTE}--5/${name}`),
+        );
+        expect(new Set(files.map(classifyFilenameRecordingKey))).toEqual(new Set([`${ROUTE}--5`]));
+        const otherRoute = vf("fcamera.hevc", "card/00000001--0000000000--0/fcamera.hevc");
+        expect(new Set([...files, otherRoute].map(cameraFingerprint))).toEqual(new Set(["openpilot|card"]));
+        expect(classifyFilenameRecordingKey(otherRoute)).not.toBe(classifyFilenameRecordingKey(files[0]!));
+    });
+
+    it.each([
+        // stream with another stream's extension
+        [`0123456789abcdef_${ROUTE}--19--fcamera.ts`, `0123456789abcdef_${ROUTE}--19--fcamera.ts`],
+        ["qcamera.hevc", `${ROUTE}--19/qcamera.hevc`],
+        // stream file outside a segment folder, or a folder that is not a segment
+        ["fcamera.hevc", "fcamera.hevc"],
+        ["fcamera.hevc", "trip/fcamera.hevc"],
+        ["fcamera.hevc", `${ROUTE}/fcamera.hevc`],
+        // old route names (date based, pre-2022) and malformed ids
+        ["fcamera.hevc", "2019-06-01--12-00-00--3/fcamera.hevc"],
+        [`0123456789abcde_${ROUTE}--19--fcamera.hevc`, `0123456789abcde_${ROUTE}--19--fcamera.hevc`],
+        [`0123456789abcdef_${ROUTE}--19--fcamera.mp4`, `0123456789abcdef_${ROUTE}--19--fcamera.mp4`],
+    ])("rejects %s at %s", (name, path) => {
+        const file = vf(name, path);
+        expect(parseOpenpilotFileName(file)).toBeNull();
+        expect(matchFilenameChannel(file).matchedId).not.toBe("openpilot-channel");
+        expect(classifyFilenameRecordingKey(file)).toBeNull();
     });
 });

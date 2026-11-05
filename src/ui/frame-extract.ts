@@ -11,6 +11,7 @@ import type { FrameExtractWorkerContract } from "../workers/frame-extract-protoc
 
 import { combineAbortSignals } from "../abort-signals.js";
 import { createLogger } from "../log.js";
+import { demuxPreparationBudgetMs } from "../video-format-names.js";
 import {
     FRAME_NOTIFY_DISPOSE_ALL,
     FRAME_REQUEST_EXTRACT,
@@ -74,7 +75,7 @@ async function workerExtractFrames(
     const timer = setTimeout(() => {
         log.warn("frame-extract request timed out", { file: file.name, count: timestamps.length });
         timeoutCtrl.abort();
-    }, WORKER_REQUEST_TIMEOUT_MS);
+    }, WORKER_REQUEST_TIMEOUT_MS + demuxPreparationBudgetMs(file));
     const combined = combineAbortSignals(signal ? [signal, timeoutCtrl.signal] : [timeoutCtrl.signal]);
 
     const req: ExtractRequestData = { file, timestamps };

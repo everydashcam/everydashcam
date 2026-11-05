@@ -52,6 +52,23 @@ describe("classifyGpsSource", () => {
         expect(shouldTryEmbeddedGps(vf(name), false)).toBe(true);
     });
 
+    it.each([
+        [
+            "0123456789abcdef_00000001--0000000000--3--fcamera.hevc",
+            "0123456789abcdef_00000001--0000000000--3--fcamera.hevc",
+        ],
+        ["qcamera.ts", "realdata/00000001--0000000000--3/qcamera.ts"],
+        ["dcamera.hevc", "00000001--0000000000--3/dcamera.hevc"],
+    ])("leaves the GPS of openpilot video %s to its segment's qlog", (name, path) => {
+        expect(classifyGpsSource(vf(name, path))).toBe("log-sidecar");
+        expect(shouldTryEmbeddedGps(vf(name, path), false)).toBe(false);
+    });
+
+    it("keeps probing a .ts that only shares an openpilot stream name", () => {
+        expect(classifyGpsSource(vf("qcamera.ts"))).toBe("unknown");
+        expect(shouldTryEmbeddedGps(vf("qcamera.ts"), false)).toBe(true);
+    });
+
     it("basename-sidecar formats", () => {
         expect(classifyGpsSource(vf("20240429_1830_CAM.mp4"))).toBe("basename-sidecar"); // Escort
         expect(classifyGpsSource(vf("20190719161640_0060.mp4"))).toBe("basename-sidecar"); // DDPai normal

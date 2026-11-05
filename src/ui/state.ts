@@ -10,6 +10,7 @@ import type * as maplibregl from "maplibre-gl";
 
 import { recordsHaveGps } from "../parser.js";
 import type { ParsedLog } from "../parser.js";
+import type { LogVideoTimingHint } from "../gps-association.js";
 import type { ClassifiedFile } from "../parsers/registry.js";
 import type { Channel, VendorFile } from "../parsers/types.js";
 import type { IngestStructureEntry } from "../ingest-structure.js";
@@ -121,6 +122,9 @@ export interface CompositionState {
 
 export interface AppState {
     gpsLog: ParsedLog | null;
+    // Video timing from logs (openpilot qlog), kept across drops with each
+    // log's reference so a video loaded after its log still receives it.
+    logVideoTimingHints: LogVideoTimingHint[];
     // Session file identities (source + relativePath + size + mtime). The
     // metadata component lets a loop-recording overwrite at the same path join
     // the session instead of being mistaken for a repeated drop.
@@ -441,6 +445,7 @@ function resizeSlotArray<T>(arr: T[], targetLen: number, fillWith: T): T[] {
 
 export const state: AppState = {
     gpsLog: null,
+    logVideoTimingHints: [],
     addedKeys: new Set(),
     trips: [],
     unindexed: new Set(),

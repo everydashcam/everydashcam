@@ -71,6 +71,7 @@ import {
     matchNovatekNvtMovFilename,
     matchNovatekSingleFilename,
     stripNovatekLockedFolder,
+    parseOpenpilotFileName,
 } from "./_patterns.js";
 import { matchDailyCsvChannelPath } from "../internal/daily-csv-path.js";
 import type { FilenameCameraKeyTechnique } from "./types.js";
@@ -739,6 +740,18 @@ const datetimeChannelTsCameraKey: FilenameCameraKeyTechnique = {
     },
 };
 
+// openpilot: one key per folder of routes. The dongle id in connect
+// downloads would separate devices, but it is a device identifier that would
+// then travel into logs and feedback reports; two devices in one folder are
+// still told apart by their overlapping clocks (groupTrips overlap split).
+const openpilotCameraKey: FilenameCameraKeyTechnique = {
+    id: "openpilot-camera-key",
+    extract(file: VendorFile): string | null {
+        const name = parseOpenpilotFileName(file);
+        return name ? `openpilot|${name.routeDir}` : null;
+    },
+};
+
 /**
  * Camera-key techniques in walk order. Each returns a cross-channel string
  * or null when the format does not match.
@@ -771,6 +784,7 @@ export const FILENAME_CAMERA_KEY: readonly FilenameCameraKeyTechnique[] = [
             return `hms-channel-mode|${dir}|${token}`;
         },
     },
+    openpilotCameraKey,
     datetimeChannelTsCameraKey,
     mai70CameraKey,
     beferichCameraKey,

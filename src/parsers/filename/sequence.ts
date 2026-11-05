@@ -28,6 +28,7 @@ import {
     RX_TESLA_PATH,
     RX_TESLA_RECENT,
     matchNovatekSingleFilename,
+    parseOpenpilotFileName,
 } from "./_patterns.js";
 import type { FilenameSequenceTechnique } from "./types.js";
 
@@ -212,6 +213,12 @@ const teslaSequence: FilenameSequenceTechnique = {
     },
 };
 
+// The openpilot segment number: every camera of one segment shares it.
+const openpilotSequence: FilenameSequenceTechnique = {
+    id: "openpilot-sequence",
+    extract: (file) => parseOpenpilotFileName(file)?.segment ?? null,
+};
+
 export const FILENAME_SEQUENCE: readonly FilenameSequenceTechnique[] = [
     {
         id: "grmn-sequence",
@@ -220,6 +227,7 @@ export const FILENAME_SEQUENCE: readonly FilenameSequenceTechnique[] = [
             return match ? safeSequence(match[1]!) : null;
         },
     },
+    openpilotSequence,
     mai70Sequence,
     carcamSequence,
     recSingleSequence,

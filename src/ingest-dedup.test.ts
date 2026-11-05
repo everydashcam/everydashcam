@@ -101,6 +101,25 @@ describe("dropDuplicateFiles", () => {
         expect(copies).toEqual([{ kept: incoming[0], duplicate: incoming[1] }]);
     });
 
+    it("tells openpilot segments sharing a stream name apart and drops a copied route", async () => {
+        const segment4 = makeContent(LARGE_SIZE, 4);
+        const segment5 = makeContent(LARGE_SIZE, 5);
+        const incoming = [
+            vf("realdata/00000001--0000000000--4/fcamera.hevc", segment4),
+            vf("realdata/00000001--0000000000--5/fcamera.hevc", segment5),
+            vf("backup/00000001--0000000000--4/fcamera.hevc", segment4),
+            vf("export/clip.hevc", segment4),
+        ];
+        const { kept, dropped } = await dropDuplicateFiles(incoming, []);
+        expect(kept).toEqual([incoming[0], incoming[1], incoming[3]]);
+        expect(dropped).toEqual([
+            {
+                droppedPath: "backup/00000001--0000000000--4/fcamera.hevc",
+                keptPath: "realdata/00000001--0000000000--4/fcamera.hevc",
+            },
+        ]);
+    });
+
     it("compares a browser's repeated download with the original by content", async () => {
         const preview = makeContent(LARGE_SIZE, 1);
         const name = "0123456789abcdef_00000001--0000000000--4--qcamera";

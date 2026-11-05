@@ -45,6 +45,7 @@ import { dailyCsvGpsPrimitive } from "./daily-csv-gps.js";
 import { nmeaTarPrimitive } from "./nmea-tar.js";
 import { sectionedNmeaLogPrimitive } from "./sectioned-nmea-log.js";
 import { threeSixtyGpsJsonlPrimitive } from "./360gps-jsonl.js";
+import { openpilotLogPrimitive } from "./openpilot-log.js";
 
 // GPS primitives that extract from a video container. The dispatcher walks
 // marker() in order; the first one yielding records wins.
@@ -185,6 +186,8 @@ export const LOG_SIDECAR_PRIMITIVES: readonly Primitive[] = [
     nmeaTarPrimitive,
     sectionedNmeaLogPrimitive,
     threeSixtyGpsJsonlPrimitive,
+    // Gated by the openpilot route name before it reads 4 magic bytes.
+    openpilotLogPrimitive,
 ];
 
 export type { Primitive } from "./types.js";

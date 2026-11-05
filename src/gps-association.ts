@@ -1,15 +1,20 @@
 import { mergeIntoGpsLog } from "./parser.js";
-import { mai70NameCore } from "./parsers/filename/_patterns.js";
-import type { GpsRecord, ParsedLog, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
+import { mai70NameCore, openpilotRoadViewCore, openpilotStreamCore } from "./parsers/filename/_patterns.js";
+import { classifyFilenameRecordingKey } from "./parsers/filename/index.js";
+import type { GpsRecord, ParsedLog, VendorFile, VideoTimingHint, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
 import { vendorFileKey } from "./vendor-file-key.js";
 
 export interface VideoAssociationIndex {
     videosByFilename: ReadonlyMap<string, readonly VendorFile[]>;
     // 70mai logs can name a clip by another mode prefix, no prefix at all, or
-    // with bytes after ".MP4" (see mai70NameCore). Exact names always win; the
-    // core is the fallback key, so these rows still get a concrete owner and
-    // extractor attribution instead of a later name-only rebind.
+    // with bytes after ".MP4" (see mai70NameCore); an openpilot log predicts
+    // a file's name without its letter case or download suffix
+    // (openpilotStreamCore) and names a segment's road view by its full-res
+    // file when only the preview may be loaded (openpilotRoadViewCore). Exact
+    // names always win; cores are fallback keys, so these rows still get a
+    // concrete owner and extractor attribution instead of a later name-only
+    // rebind.
     videosByNameCore: ReadonlyMap<string, readonly VendorFile[]>;
     canonicalByFileKey: ReadonlyMap<string, VideoWithRecordingCopies>;
 }
@@ -96,8 +101,9 @@ export function buildVideoAssociationIndex(videos: readonly VideoWithRecordingCo
             }
             canonicalByFileKey.set(key, video);
             pushToBucket(mutable, physical.file.name, physical);
-            const core = mai70NameCore(physical.file.name);
-            if (core !== null) pushToBucket(videosByNameCore, core, physical);
+            for (const core of videoNameCores(physical.file.name, "view")) {
+                pushToBucket(videosByNameCore, core, physical);
+            }
         }
     }
     return { videosByFilename: mutable, videosByNameCore, canonicalByFileKey };
@@ -202,15 +208,46 @@ function uniqueCanonicalVideo(videos: readonly VendorFile[], index: VideoAssocia
     return canonical;
 }
 
+/**
+ * What a log's video name may stand for when no file has that exact name:
+ * "file" - the same file spelled differently; "view" - also another file
+ * showing the same picture (an openpilot preview for its full-res file).
+ */
+type NameScope = "file" | "view";
+
+/** Fallback keys of a name, most specific first. */
+function videoNameCores(name: string, scope: NameScope): string[] {
+    const cores = [mai70NameCore(name), openpilotStreamCore(name)];
+    if (scope === "view") cores.push(openpilotRoadViewCore(name));
+    return cores.filter((core) => core !== null);
+}
+
+/** Recording that a log's own name identifies (an openpilot segment's log), or null. */
+function logRecordingKey(relativePath: string): string | null {
+    const name = relativePath.slice(relativePath.lastIndexOf("/") + 1);
+    return classifyFilenameRecordingKey({ file: new File([], name), relativePath });
+}
+
+/**
+ * The loaded video a log names. A log whose own name identifies a recording
+ * binds only to videos of that recording: the same basename in a sibling
+ * segment folder is another recording, however close its path. scope says
+ * what the name may stand for; data that describes one exact file (its frame
+ * count, say) resolves with "file".
+ */
 function resolveVideo(
     source: Pick<VendorFile, "relativePath" | "sourceKey">,
     mp4Filename: string,
     index: VideoAssociationIndex,
+    scope: NameScope = "view",
 ): VendorFile | null {
-    let candidates = [...(index.videosByFilename.get(mp4Filename) ?? [])];
-    if (candidates.length === 0) {
-        const core = mai70NameCore(mp4Filename);
-        if (core !== null) candidates = [...(index.videosByNameCore.get(core) ?? [])];
+    const recording = logRecordingKey(source.relativePath);
+    const ofRecording = (videos: readonly VendorFile[] | undefined): VendorFile[] =>
+        (videos ?? []).filter((video) => recording === null || classifyFilenameRecordingKey(video) === recording);
+    let candidates = ofRecording(index.videosByFilename.get(mp4Filename));
+    for (const core of videoNameCores(mp4Filename, scope)) {
+        if (candidates.length > 0) break;
+        candidates = ofRecording(index.videosByNameCore.get(core));
     }
     if (candidates.length === 0) return null;
 
@@ -277,6 +314,86 @@ export function associateRecordsWithVideos(
             record.mp4Filename = video.file.name;
         }
     }
+}
+
+/** A log's timing hint plus the log reference that resolves it on later ingests. */
+export interface LogVideoTimingHint extends VideoTimingHint {
+    sourcePath: string;
+    sourceKey?: string;
+    extractorId: string;
+}
+
+/** Timing a log established for one loaded video. */
+export interface LogVideoTiming {
+    startUtc: number | null;
+    durationSec: number | null;
+}
+
+/**
+ * Keeps the newest hint per (log source, log path, video name): a re-dropped
+ * log replaces its own earlier hints and leaves other logs' hints alone.
+ */
+export function mergeLogVideoTimingHints(
+    existing: readonly LogVideoTimingHint[],
+    incoming: readonly LogVideoTimingHint[],
+): LogVideoTimingHint[] {
+    const byReference = new Map<string, LogVideoTimingHint>();
+    for (const hint of [...existing, ...incoming]) {
+        byReference.set(JSON.stringify([hint.sourceKey ?? null, hint.sourcePath, hint.mp4Filename]), hint);
+    }
+    return [...byReference.values()];
+}
+
+/**
+ * Resolves log timing hints to loaded videos, keyed by vendorFileKey. An exact
+ * owner from the parse context wins while it is loaded; otherwise the hint's
+ * name resolves from the log's own source and folder, as a named GPS record
+ * does, but only to the same file: a frame count describes one stream, not
+ * the preview standing in for it. Unresolved hints stay inert until an
+ * ingest loads their video.
+ */
+export function resolveLogVideoTimingHints(
+    hints: readonly LogVideoTimingHint[],
+    videos: VideosOrIndex,
+): Map<string, LogVideoTiming> {
+    const index = asIndex(videos);
+    const timing = new Map<string, LogVideoTiming>();
+    for (const hint of hints) {
+        const exact = hint.videoKey === undefined ? undefined : index.canonicalByFileKey.get(hint.videoKey);
+        const video =
+            exact ??
+            resolveVideo({ relativePath: hint.sourcePath, sourceKey: hint.sourceKey }, hint.mp4Filename, index, "file");
+        if (video) timing.set(vendorFileKey(video), { startUtc: hint.startUtc, durationSec: hint.durationSec });
+    }
+    return timing;
+}
+
+/**
+ * Applies resolved log timing to candidates: the start becomes the frame-0
+ * hint deriveStartUtc trusts first, the duration replaces what metadata could
+ * not count. Returns whether any candidate changed, so the caller re-derives
+ * start times and regroups.
+ */
+export function applyLogVideoTiming(
+    candidates: readonly VideoCandidate[],
+    timingByFileKey: ReadonlyMap<string, LogVideoTiming>,
+): boolean {
+    if (timingByFileKey.size === 0) return false;
+    let changed = false;
+    for (const candidate of candidates) {
+        const timing = timingByFileKey.get(vendorFileKey(candidate));
+        if (!timing) continue;
+        if (timing.startUtc !== null && candidate.embeddedStartUtcHint !== timing.startUtc) {
+            candidate.embeddedStartUtcHint = timing.startUtc;
+            changed = true;
+        }
+        if (timing.durationSec !== null && candidate.logDurationSec !== timing.durationSec) {
+            candidate.logDurationSec = timing.durationSec;
+            candidate.durationSec = timing.durationSec;
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 /** Resolves named logs retained from earlier drops with their original source scope. */

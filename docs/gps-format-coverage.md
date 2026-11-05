@@ -82,6 +82,7 @@ recognize and reject the layout with a code comment explaining why.
 | NMEA `.nmea` sidecar | samplefiles MOV_0581, Navman MiVue 150 Safety, Mio MiVue 955WD Pro | 955WD Pro sidecar belongs to the front clip; preserve sibling F/R folders for pairing. [Fixtures](../src/parsers/__fixtures__/mivue-955wd/real-anonymized.test.ts). |
 | Recording-scoped `@Sonygps` NMEA log | Sony HDR-AS30V | One log section per recording; bind by section start, not first fix, which may arrive much later. [Fixtures](../src/parsers/__fixtures__/sectioned-nmea-log/real-anonymized.test.ts). |
 | `360GPSINFO` whole-session JSONL log | Botslab G300H Pro (G300HPro firmware/OSD) | Session-wide log with relative timing; preserve the card tree. [Format](format-360gps-jsonl.md). |
+| openpilot `qlog.zst` (zstd Cap'n Proto) with raw HEVC route videos | comma four, openpilot 0.11.2 (comma connect download) | GPS, each camera's frame-0 UTC and frame count come from the qlog; raw HEVC plays through an MP4 view of its bytes. The rlog is not read; date-named and bzip2 routes are not recognized; the device folder layout follows openpilot's sources without a sample. [Format](format-openpilot.md). |
 
 ### Video samples without readable GPS
 

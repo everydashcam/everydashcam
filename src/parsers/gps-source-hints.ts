@@ -16,6 +16,7 @@
 import type { VendorFile } from "./types.js";
 import {
     RX_360_CARDVR_REC_PATH,
+    parseOpenpilotFileName,
     RX_DATETIME_CHANNEL_TS,
     RX_70MAI,
     RX_BEFERICH,
@@ -188,6 +189,13 @@ const GPS_SOURCE_HINTS: readonly GpsSourceHint[] = [
         id: "date-sequence-cam",
         matches: (f) => RX_DATE_SEQUENCE_CAM.test(f.file.name),
         source: "embedded",
+    },
+    // openpilot: the segment's qlog carries the GPS; the videos never do (raw
+    // HEVC has no container to hold it, qcamera.ts has only its video stream).
+    {
+        id: "openpilot",
+        matches: (f) => parseOpenpilotFileName(f) !== null,
+        source: "log-sidecar",
     },
     // 360CARDVR: one preallocated 360GPSINFO JSONL log spans the loop-recording
     // MP4 files under REC/. The path gate keeps the shared MP4 name language

@@ -452,3 +452,108 @@ export const RX_SEI_DOUBLE_GPS_PATH = /(?:^|\/)(InternalView|ExteriorView)\/(\d{
 // tokens. GKU inserts `_GAP` before the suffix on its time-lapse clips.
 // Groups: date, clock, GAP token (or undefined), channel letter.
 export const RX_DATETIME_CHANNEL_TS = /^(20\d{6})_(\d{6})(?:_(GAP))?_([A-Z])\.ts$/i;
+
+// comma.ai openpilot route files (openpilot/system/loggerd/logger.cc). A route
+// name is `%08x--<10 hex>`: a boot counter plus a random id, with no date
+// because the device has no trustworthy clock at boot. Routes are cut into
+// one-minute segments `--<n>`, and every segment holds a fixed set of files:
+// fcamera.hevc (road), ecamera.hevc (wide road), dcamera.hevc (driver) - raw
+// Annex-B H.265 without a container - qcamera.ts (low-res road preview,
+// H.264 in MPEG-TS), qlog.zst / rlog.zst (zstd Cap'n Proto logs).
+// Two layouts reach us:
+//   - comma connect download, flat: `<16-hex dongle id>_<route>--<n>--<file>`;
+//     browsers append ` (N)` before the extension to repeated downloads;
+//   - device or SSH copy: `<route>--<n>/<file>`, the segment folder from
+//     /data/media/0/realdata.
+// Literals rather than composed `new RegExp` calls: a module-level call is
+// kept by tree-shaking in every parser bundle importing this file, which would
+// change their cache revisions for nothing.
+const RX_OPENPILOT_FLAT =
+    /^[0-9a-f]{16}_([0-9a-f]{8}--[0-9a-f]{10})--(\d{1,5})--(fcamera|ecamera|dcamera|qcamera|qlog|rlog)(?: \(\d+\))?\.(hevc|ts|zst)$/i;
+const RX_OPENPILOT_SEGMENT_DIR = /^([0-9a-f]{8}--[0-9a-f]{10})--(\d{1,5})$/i;
+const RX_OPENPILOT_SEGMENT_FILE = /^(fcamera|ecamera|dcamera|qcamera|qlog|rlog)\.(hevc|ts|zst)$/i;
+
+/** One stream of an openpilot segment, named after its file. */
+export type OpenpilotStream = "fcamera" | "ecamera" | "dcamera" | "qcamera" | "qlog" | "rlog";
+
+const OPENPILOT_STREAM_EXTENSION: Record<OpenpilotStream, string> = {
+    fcamera: "hevc",
+    ecamera: "hevc",
+    dcamera: "hevc",
+    qcamera: "ts",
+    qlog: "zst",
+    rlog: "zst",
+};
+
+export interface OpenpilotFileName {
+    /** `%08x--<10 hex>`, lower-cased. */
+    route: string;
+    segment: number;
+    stream: OpenpilotStream;
+    /** Folder holding the route: the parent directory, minus the segment
+     *  folder in the device layout. Shared by every file of one route. */
+    routeDir: string;
+}
+
+/**
+ * Recognises an openpilot route file in either layout. Returns null for any
+ * other name, including a known stream with the wrong extension (a renamed
+ * export is not evidence of the openpilot layout).
+ */
+export function parseOpenpilotFileName(file: {
+    file: { name: string };
+    relativePath: string;
+}): OpenpilotFileName | null {
+    const segs = file.relativePath.split("/").filter((s) => s.length > 0);
+    const dirSegs = segs.slice(0, -1);
+    const flat = file.file.name.match(RX_OPENPILOT_FLAT);
+    if (flat) {
+        const stream = flat[3]!.toLowerCase() as OpenpilotStream;
+        if (OPENPILOT_STREAM_EXTENSION[stream] !== flat[4]!.toLowerCase()) return null;
+        return { route: flat[1]!.toLowerCase(), segment: Number(flat[2]), stream, routeDir: dirSegs.join("/") };
+    }
+    const named = file.file.name.match(RX_OPENPILOT_SEGMENT_FILE);
+    const folder = dirSegs.at(-1)?.match(RX_OPENPILOT_SEGMENT_DIR);
+    if (!named || !folder) return null;
+    const stream = named[1]!.toLowerCase() as OpenpilotStream;
+    if (OPENPILOT_STREAM_EXTENSION[stream] !== named[2]!.toLowerCase()) return null;
+    return {
+        route: folder[1]!.toLowerCase(),
+        segment: Number(folder[2]),
+        stream,
+        routeDir: dirSegs.slice(0, -1).join("/"),
+    };
+}
+
+/** Segment and stream an openpilot file name states by itself, without its
+ *  folder. A bare device-layout name has no segment (empty string). */
+function openpilotBaseName(name: string): { segment: string; stream: OpenpilotStream } | null {
+    const flat = name.match(RX_OPENPILOT_FLAT);
+    const bare = flat ? null : name.match(RX_OPENPILOT_SEGMENT_FILE);
+    const stream = (flat?.[3] ?? bare?.[1])?.toLowerCase() as OpenpilotStream | undefined;
+    const extension = (flat?.[4] ?? bare?.[2])?.toLowerCase();
+    if (stream === undefined || OPENPILOT_STREAM_EXTENSION[stream] !== extension) return null;
+    return { segment: flat ? `${flat[1]!.toLowerCase()}--${Number(flat[2])}` : "", stream };
+}
+
+/**
+ * Identity of one openpilot stream file regardless of how its name was
+ * spelled: letter case and a browser's " (N)" download suffix differ between
+ * the name a log predicts and the file on disk. A bare device-layout name
+ * carries no segment, so callers scope it by the log's recording key. null for
+ * any other name.
+ */
+export function openpilotStreamCore(name: string): string | null {
+    const base = openpilotBaseName(name);
+    return base ? `openpilot-stream|${base.segment}|${base.stream}` : null;
+}
+
+/**
+ * Identity of an openpilot segment's road view, shared by fcamera.hevc and its
+ * qcamera.ts preview: a log names the full-resolution file, which may be
+ * absent while the preview is loaded. Scoped like openpilotStreamCore.
+ */
+export function openpilotRoadViewCore(name: string): string | null {
+    const base = openpilotBaseName(name);
+    return base && (base.stream === "fcamera" || base.stream === "qcamera") ? `openpilot-road|${base.segment}` : null;
+}

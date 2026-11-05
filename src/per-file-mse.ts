@@ -30,6 +30,7 @@
 
 import { createSerialQueue } from "./serial-queue.js";
 import { createLogger } from "./log.js";
+import { demuxPreparationBudgetMs } from "./video-format-names.js";
 import {
     MSE_NOTIFY_DROP_AUDIO,
     MSE_NOTIFY_ERROR,
@@ -171,6 +172,25 @@ export function resolveMediaSourceRuntime(): MediaSourceRuntime | null {
     if (typeof scope.MediaSource === "function") return { ctor: scope.MediaSource, managed: false };
     if (typeof scope.ManagedMediaSource === "function") return { ctor: scope.ManagedMediaSource, managed: true };
     return null;
+}
+
+// Main profile, level 5.0: the road cameras of current comma devices
+// (docs/format-openpilot.md). Raw HEVC plays only through this backend.
+const RAW_HEVC_MSE_MIME = 'video/mp4; codecs="hvc1.1.6.L150.90"';
+
+/**
+ * Whether MSE in this browser accepts HEVC, the only way a raw HEVC stream
+ * (openpilot fcamera.hevc) can play. Chromium reports MSE HEVC only with a
+ * platform decoder, which is also what the backend would use.
+ */
+export function mseCanPlayRawHevc(): boolean {
+    const runtime = resolveMediaSourceRuntime();
+    if (!runtime) return false;
+    try {
+        return runtime.ctor.isTypeSupported(RAW_HEVC_MSE_MIME);
+    } catch {
+        return false;
+    }
 }
 
 function timeRangesContain(ranges: TimeRanges, time: number): boolean {
@@ -370,7 +390,10 @@ export class PerFileMseBackend {
                 onNotification: (msg) => this.onWorkerNotification(msg),
             });
             this.initAbort = new AbortController();
-            const timeoutTimer = setTimeout(() => this.initAbort?.abort(), READY_TIMEOUT_MS);
+            const timeoutTimer = setTimeout(
+                () => this.initAbort?.abort(),
+                READY_TIMEOUT_MS + demuxPreparationBudgetMs(this._file),
+            );
             let initResult: InitResult;
             try {
                 // Live playback and exported files have different codec

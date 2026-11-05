@@ -1,20 +1,30 @@
 import { BlobSource } from "mediabunny";
 
 import { createLogger } from "./log.js";
+import { OPENPILOT_FRAME_RATE } from "./parsers/internal/openpilot.js";
+import { rawHevcMp4View } from "./raw-hevc-view.js";
 import { maskTsDtsStreams } from "./ts-program-map.js";
 import { clampTsTrailingBytes } from "./ts-trailer.js";
-import { isTransportStreamName } from "./video-format-names.js";
+import { isRawHevcName, isTransportStreamName } from "./video-format-names.js";
 
 const log = createLogger("media-source");
 
 /**
  * The bytes of a recording that mediabunny should demux. A .ts file loses the
  * bytes past its last whole packet (ts-trailer.ts) and the DTS typing of
- * private streams (ts-program-map.ts); any other file is returned as is. A
- * changed view is a plain Blob without the File name.
+ * private streams (ts-program-map.ts). A raw .hevc stream is presented as an
+ * MP4 that references its bytes (raw-hevc-view.ts); building it reads the
+ * file once, so it happens here, on first demux, not at ingest. Any other file
+ * is returned as is. A changed view is a plain Blob without the File name.
  */
 export async function demuxView(blob: Blob): Promise<Blob> {
-    if (!(blob instanceof File) || !isTransportStreamName(blob.name)) return blob;
+    if (!(blob instanceof File)) return blob;
+    if (isRawHevcName(blob.name)) {
+        // Ingest admits raw HEVC only under the openpilot route layout
+        // (registry-light.ts isVideoFile), whose streams all run at its rate.
+        return await rawHevcMp4View(blob, OPENPILOT_FRAME_RATE);
+    }
+    if (!isTransportStreamName(blob.name)) return blob;
     return maskTsDtsStreams(await clampTsTrailingBytes(blob));
 }
 

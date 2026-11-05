@@ -182,7 +182,7 @@ export function applyIndexedMetadata(
 ): { phantomRepaired: boolean; hvccRepaired: boolean } {
     const applied = applyIndexRepair(candidate.file, indexed.needsHevcRemux, repair);
     candidate.file = applied.file;
-    candidate.durationSec = indexed.durationSec;
+    candidate.durationSec = candidate.logDurationSec ?? indexed.durationSec;
     candidate.createdUtc = indexed.createdUtc;
     candidate.codec = indexed.codec;
     candidate.codecParam = indexed.codecParam;

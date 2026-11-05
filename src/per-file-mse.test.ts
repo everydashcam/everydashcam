@@ -1,7 +1,7 @@
 // biome-ignore-all lint/complexity/useLiteralKeys: bracket access keeps private test setup type-checked without exposing internals publicly.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PerFileMseBackend, resolveMediaSourceRuntime } from "./per-file-mse.js";
+import { PerFileMseBackend, mseCanPlayRawHevc, resolveMediaSourceRuntime } from "./per-file-mse.js";
 import {
     MSE_NOTIFY_MEDIA_SEGMENT,
     MSE_NOTIFY_SEEK,
@@ -37,6 +37,44 @@ describe("resolveMediaSourceRuntime", () => {
         vi.stubGlobal("MediaSource", undefined);
         vi.stubGlobal("ManagedMediaSource", undefined);
         expect(resolveMediaSourceRuntime()).toBeNull();
+    });
+});
+
+describe("mseCanPlayRawHevc", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /** An MSE constructor whose type probe answers with `answer`. */
+    function mseRuntime(answer: (mime: string) => boolean): unknown {
+        return Object.assign(function FakeRuntime() {}, { isTypeSupported: answer });
+    }
+
+    it("asks the MSE runtime about HEVC in MP4", () => {
+        const asked: string[] = [];
+        vi.stubGlobal("MediaSource", undefined);
+        vi.stubGlobal(
+            "ManagedMediaSource",
+            mseRuntime((mime) => {
+                asked.push(mime);
+                return mime.includes("hvc1");
+            }),
+        );
+        expect(mseCanPlayRawHevc()).toBe(true);
+        expect(asked).toEqual(['video/mp4; codecs="hvc1.1.6.L150.90"']);
+    });
+
+    it("reports no HEVC without MSE or when the probe throws", () => {
+        vi.stubGlobal("MediaSource", undefined);
+        vi.stubGlobal("ManagedMediaSource", undefined);
+        expect(mseCanPlayRawHevc()).toBe(false);
+        vi.stubGlobal(
+            "MediaSource",
+            mseRuntime(() => {
+                throw new Error("probe failed");
+            }),
+        );
+        expect(mseCanPlayRawHevc()).toBe(false);
     });
 });
 

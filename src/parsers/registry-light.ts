@@ -8,9 +8,52 @@ import { nearestIndexBy } from "../sorted-search.js";
 
 import { accelMagnitude } from "../parser.js";
 import type { AccelSample, GpsRecord, VendorFile } from "./types.js";
+import { parseOpenpilotFileName } from "./filename/_patterns.js";
 
 // Video extensions - fast cutoff for role classification.
 export const RX_VIDEO_EXT = /\.(mp4|mov|ts|m2ts|mkv)$/i;
+
+/**
+ * Whether a file is a recording. Container extensions decide alone; raw HEVC
+ * elementary streams count only under the openpilot route layout, the one
+ * source of containerless video we can time (its qlog dates every frame).
+ * Any other `.hevc` stays unknown, exactly as before openpilot support.
+ */
+export function isVideoFile(vf: VendorFile): boolean {
+    if (RX_VIDEO_EXT.test(vf.file.name)) return true;
+    const stream = parseOpenpilotFileName(vf)?.stream;
+    return stream === "fcamera" || stream === "ecamera" || stream === "dcamera";
+}
+
+/**
+ * openpilot records the road view twice per segment: fcamera.hevc at full
+ * resolution and qcamera.ts as a 526x330 preview. Showing both would put two
+ * files in one channel slot, so one of them is left out for segments that have
+ * both in the drop: the preview when this browser can play raw HEVC (comma
+ * connect uploads the preview by default and the full-res file only on
+ * request), the full-res file when it cannot. Returns the files to leave out.
+ */
+function supersededOpenpilotRoadViews(files: readonly VendorFile[], rawHevcPlayable: boolean): Set<VendorFile> {
+    const segmentKey = (vf: VendorFile, routeDir: string, route: string, segment: number): string =>
+        JSON.stringify([vf.sourceKey ?? null, routeDir, route, segment]);
+    // Arrays: repeated downloads add " (N)" copies of either view.
+    const fullRes = new Map<string, VendorFile[]>();
+    const previews = new Map<string, VendorFile[]>();
+    for (const vf of files) {
+        const name = parseOpenpilotFileName(vf);
+        if (!name || (name.stream !== "fcamera" && name.stream !== "qcamera")) continue;
+        const views = name.stream === "fcamera" ? fullRes : previews;
+        const key = segmentKey(vf, name.routeDir, name.route, name.segment);
+        views.set(key, [...(views.get(key) ?? []), vf]);
+    }
+    const superseded = new Set<VendorFile>();
+    for (const [key, segmentPreviews] of previews) {
+        const segmentFullRes = fullRes.get(key);
+        if (!segmentFullRes) continue;
+        for (const vf of rawHevcPlayable ? segmentPreviews : segmentFullRes) superseded.add(vf);
+    }
+    return superseded;
+}
 
 export interface ClassifiedFile {
     file: VendorFile;
@@ -28,16 +71,20 @@ export interface ClassifiedFile {
  * src/ui/ingest-shim.ts start here, then diverge on how they classify the
  * non-video remainder. knownVideos is seeded with existingVideoNames plus the
  * just-found videos because sidecar matching needs the full set.
+ * rawHevcPlayable decides which of an openpilot segment's two road views is
+ * kept (see supersededOpenpilotRoadViews).
  */
 export function splitVideosByExtension(
     files: VendorFile[],
     existingVideoNames: Iterable<string> = [],
+    rawHevcPlayable = true,
 ): { videoEntries: ClassifiedFile[]; knownVideos: Set<string>; nonVideo: VendorFile[] } {
     const videoEntries: ClassifiedFile[] = [];
     const knownVideos = new Set<string>(existingVideoNames);
     const nonVideo: VendorFile[] = [];
+    const superseded = supersededOpenpilotRoadViews(files, rawHevcPlayable);
     for (const vf of files) {
-        if (RX_VIDEO_EXT.test(vf.file.name)) {
+        if (isVideoFile(vf) && !superseded.has(vf)) {
             videoEntries.push({
                 file: vf,
                 role: "video",

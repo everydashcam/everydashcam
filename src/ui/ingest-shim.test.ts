@@ -1,7 +1,11 @@
+import { zstdCompressSync } from "node:zlib";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACCEL_SIDECARS, SIDECARS, classifyOneNonVideo } from "../parsers/registry.js";
+import { concatBytes, frameIndexEvents } from "../parsers/__fixtures__/openpilot/build-log.js";
 import { dailyCsvGpsPrimitive } from "../parsers/primitives/daily-csv-gps.js";
+import { openpilotLogPrimitive } from "../parsers/primitives/openpilot-log.js";
 import { vendorFileKey } from "../vendor-file-key.js";
 import type { VendorFile } from "../parsers/types.js";
 import type { ClassifyBatchRequestData, ParseLogRequestData } from "../workers/ingest-protocol.js";
@@ -75,6 +79,42 @@ it("keeps a daily log's preserved card owner across the worker boundary", async 
     expect(result.errors).toEqual([]);
     expect(result.records.map((record) => record.videoKey)).toEqual([vendorFileKey(own)]);
     expect([...result.extractorByFileKey]).toEqual([[vendorFileKey(own), "daily-csv-gps"]]);
+});
+
+it("collects a log's video timing with its reference even when it holds no GPS record", async () => {
+    installWorkers((pair) => {
+        createWorkerServer(pair.workerEndpoint, {
+            onRequest: async (_type, data) => {
+                const request = data as ParseLogRequestData;
+                return openpilotLogPrimitive.parse(request.file, undefined, undefined, {
+                    knownVideos: request.knownVideos,
+                });
+            },
+        });
+    });
+    const folder = "drive/00000001--0000000000--7";
+    const fcamera = { ...file("fcamera.hevc", "f"), relativePath: `${folder}/fcamera.hevc`, sourceKey: "pick" };
+    const qlog: VendorFile = {
+        file: new File([zstdCompressSync(concatBytes(frameIndexEvents("fcamera", 7, 20, 1e12)))], "qlog.zst"),
+        relativePath: `${folder}/qlog.zst`,
+        sourceKey: "pick",
+    };
+    const classified = await classifyOneNonVideo(qlog, new Set(["fcamera.hevc"]), SIDECARS, ACCEL_SIDECARS);
+    expect(classified).toMatchObject({ role: "gps-log", logExtractorId: "openpilot-log" });
+    const result = await dispatchParseLogsViaPool([classified], [fcamera]);
+    expect(result.errors).toEqual([]);
+    expect(result.records).toEqual([]);
+    expect(result.videoTimingHints).toEqual([
+        {
+            mp4Filename: "fcamera.hevc",
+            videoKey: vendorFileKey(fcamera),
+            startUtc: null,
+            durationSec: 1,
+            sourcePath: `${folder}/qlog.zst`,
+            sourceKey: "pick",
+            extractorId: "openpilot-log",
+        },
+    ]);
 });
 
 describe("classifyFilesViaPool", () => {

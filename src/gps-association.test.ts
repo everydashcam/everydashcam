@@ -2,12 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+    applyLogVideoTiming,
     associateRecordsWithVideos,
     bindRecordsByFilename,
     bindRecordsByRecordingStart,
     buildVideoAssociationIndex,
+    type LogVideoTimingHint,
+    mergeLogVideoTimingHints,
     rebindRecordingCopyRecords,
     recordsForVideo,
+    resolveLogVideoTimingHints,
     resolveVideoKey,
     settleFilenameAssociations,
 } from "./gps-association.js";
@@ -706,5 +710,156 @@ describe("GPS video association", () => {
         expect(result.boundRecords).toBe(0);
         expect(first.recordingAssociation).toBeDefined();
         expect(second.recordingAssociation).toBeDefined();
+    });
+});
+
+describe("log video timing hints", () => {
+    const SEGMENT_7 = "drive/00000001--0000000000--7";
+    const SEGMENT_8 = "drive/00000001--0000000000--8";
+
+    function hint(overrides: Partial<LogVideoTimingHint> = {}): LogVideoTimingHint {
+        return {
+            mp4Filename: "fcamera.hevc",
+            startUtc: 1_793_696_243.9,
+            durationSec: 3,
+            sourcePath: `${SEGMENT_7}/qlog.zst`,
+            sourceKey: "card",
+            extractorId: "openpilot-log",
+            ...overrides,
+        };
+    }
+
+    it("keeps the newest hint per log and video", () => {
+        const merged = mergeLogVideoTimingHints(
+            [
+                hint({ startUtc: 1 }),
+                hint({ mp4Filename: "ecamera.hevc", startUtc: 2 }),
+                hint({ sourceKey: "copy", startUtc: 4 }),
+            ],
+            [hint({ startUtc: 3 })],
+        );
+        expect(merged.map((h) => [h.sourceKey, h.mp4Filename, h.startUtc])).toEqual([
+            ["card", "fcamera.hevc", 3],
+            ["card", "ecamera.hevc", 2],
+            ["copy", "fcamera.hevc", 4],
+        ]);
+    });
+
+    it("resolves an exact owner first, then the name nearest to the log", () => {
+        const own = video(`${SEGMENT_7}/fcamera.hevc`, "card");
+        const next = video(`${SEGMENT_8}/fcamera.hevc`, "card");
+        const timing = resolveLogVideoTimingHints(
+            [
+                hint(),
+                hint({ sourcePath: `${SEGMENT_8}/qlog.zst`, videoKey: vendorFileKey(next), startUtc: 2 }),
+                hint({ sourcePath: `${SEGMENT_8}/qlog.zst`, mp4Filename: "ecamera.hevc", startUtc: 3 }),
+            ],
+            [own, next],
+        );
+        expect(Object.fromEntries(timing)).toEqual({
+            [vendorFileKey(own)]: { startUtc: 1_793_696_243.9, durationSec: 3 },
+            [vendorFileKey(next)]: { startUtc: 2, durationSec: 3 },
+        });
+    });
+
+    it("falls back to the name when the exact owner is no longer loaded", () => {
+        const own = video(`${SEGMENT_7}/fcamera.hevc`, "card");
+        const timing = resolveLogVideoTimingHints([hint({ videoKey: "gone" })], [own]);
+        expect([...timing.keys()]).toEqual([vendorFileKey(own)]);
+    });
+
+    it("applies the start and duration once and leaves unknown values alone", () => {
+        const candidate = recordingCandidate(`${SEGMENT_7}/fcamera.hevc`, "card", 0);
+        const key = vendorFileKey(candidate);
+        expect(applyLogVideoTiming([candidate], new Map())).toBe(false);
+        expect(applyLogVideoTiming([candidate], new Map([[key, { startUtc: 1000, durationSec: 3 }]]))).toBe(true);
+        expect(candidate).toMatchObject({ embeddedStartUtcHint: 1000, logDurationSec: 3, durationSec: 3 });
+        expect(applyLogVideoTiming([candidate], new Map([[key, { startUtc: 1000, durationSec: 3 }]]))).toBe(false);
+        expect(applyLogVideoTiming([candidate], new Map([[key, { startUtc: null, durationSec: null }]]))).toBe(false);
+        expect(candidate).toMatchObject({ embeddedStartUtcHint: 1000, logDurationSec: 3, durationSec: 3 });
+    });
+});
+
+describe("openpilot segment logs", () => {
+    const ROUTE = "realdata/00000001--0000000000";
+    const log = (segment: number) => video(`${ROUTE}--${segment}/qlog.zst`, "card");
+
+    it("binds a segment's log only to videos of its own segment", () => {
+        const next = video(`${ROUTE}--20/fcamera.hevc`, "card");
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [next])).toBeNull();
+        const own = video(`${ROUTE}--19/fcamera.hevc`, "card");
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [next, own])).toBe(vendorFileKey(own));
+        const timing = resolveLogVideoTimingHints(
+            [
+                {
+                    mp4Filename: "fcamera.hevc",
+                    startUtc: 1,
+                    durationSec: 3,
+                    sourcePath: log(19).relativePath,
+                    sourceKey: "card",
+                    extractorId: "openpilot-log",
+                },
+            ],
+            [next],
+        );
+        expect(timing.size).toBe(0);
+    });
+
+    it("gives road-view GPS to the segment's preview when its full-res file is absent", () => {
+        const preview19 = video(`${ROUTE}--19/qcamera.ts`, "card");
+        const preview20 = video(`${ROUTE}--20/qcamera.ts`, "card");
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [preview20, preview19])).toBe(vendorFileKey(preview19));
+        const flat = video("dl/0123456789abcdef_00000001--0000000000--19--qcamera (1).ts", "card");
+        expect(
+            resolveVideoKey(
+                video("dl/0123456789abcdef_00000001--0000000000--19--qlog.zst", "card"),
+                "0123456789abcdef_00000001--0000000000--19--fcamera.hevc",
+                [flat],
+            ),
+        ).toBe(vendorFileKey(flat));
+    });
+
+    it("keeps a raw stream's frame count off its preview", () => {
+        const preview = video(`${ROUTE}--19/qcamera.ts`, "card");
+        const timing = resolveLogVideoTimingHints(
+            [
+                {
+                    mp4Filename: "fcamera.hevc",
+                    startUtc: 1,
+                    durationSec: 3,
+                    sourcePath: log(19).relativePath,
+                    sourceKey: "card",
+                    extractorId: "openpilot-log",
+                },
+            ],
+            [preview],
+        );
+        expect(timing.size).toBe(0);
+    });
+
+    it("finds the stream a log names under another spelling, but never another stream", () => {
+        const prefix = "dl/0123456789abcdef_00000001--0000000000--19";
+        const hint = (stream: string): LogVideoTimingHint => ({
+            mp4Filename: `0123456789abcdef_00000001--0000000000--19--${stream}`,
+            startUtc: 1,
+            durationSec: 3,
+            sourcePath: `${prefix}--qlog.zst`,
+            sourceKey: "card",
+            extractorId: "openpilot-log",
+        });
+        const renamed = video(`${prefix}--fcamera (1).hevc`, "card");
+        const upper = video(`${prefix}--qcamera.TS`, "card");
+        const timing = resolveLogVideoTimingHints([hint("fcamera.hevc"), hint("qcamera.ts")], [renamed, upper]);
+        expect([...timing.keys()].sort()).toEqual([vendorFileKey(renamed), vendorFileKey(upper)].sort());
+        expect(resolveLogVideoTimingHints([hint("fcamera.hevc")], [upper]).size).toBe(0);
+        // GPS prefers the same stream before the preview standing in for it.
+        expect(
+            resolveVideoKey(video(`${prefix}--qlog.zst`, "card"), hint("fcamera.hevc").mp4Filename, [upper, renamed]),
+        ).toBe(vendorFileKey(renamed));
+    });
+
+    it("leaves logs without a recording in their name to folder proximity", () => {
+        const other = video("card/B/clip.mp4", "card");
+        expect(resolveVideoKey(video("card/A/gps.log", "card"), "clip.mp4", [other])).toBe(vendorFileKey(other));
     });
 });

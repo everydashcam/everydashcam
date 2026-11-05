@@ -68,6 +68,8 @@ import {
     RX_WOLFBOX_PATH_REAR,
     matchNovatekSingleFilename,
     matchModeChannelFolder,
+    type OpenpilotStream,
+    parseOpenpilotFileName,
 } from "./_patterns.js";
 import { channelFromFolder, matchChannelFolder } from "./channel-folder.js";
 import type { ChannelMatch, FilenameChannelTechnique } from "./types.js";
@@ -102,6 +104,26 @@ function folderChannel(word: string | undefined): ChannelMatch | null {
     const channel = channelFromFolder(word);
     return channel === null ? null : sure(channel);
 }
+
+// openpilot names each stream after its camera. The wide road camera has no
+// slot of its own; it takes the spare fourth one, labelled positionally
+// (confident: false) because "side" is not what that camera films. The
+// qcamera preview films the road camera's view at low resolution, so it is
+// front too - ingest keeps it only when the full-res fcamera is absent.
+const OPENPILOT_CHANNELS: Partial<Record<OpenpilotStream, ChannelMatch>> = {
+    fcamera: { channel: "front", confident: true },
+    qcamera: { channel: "front", confident: true },
+    dcamera: { channel: "interior", confident: true },
+    ecamera: { channel: "side", confident: false },
+};
+
+const openpilotChannel: FilenameChannelTechnique = {
+    id: "openpilot-channel",
+    extract(file: VendorFile): ChannelMatch | null {
+        const name = parseOpenpilotFileName(file);
+        return name ? (OPENPILOT_CHANNELS[name.stream] ?? null) : null;
+    },
+};
 
 const mai70Channel: FilenameChannelTechnique = {
     id: "70mai-channel",
@@ -645,6 +667,7 @@ const spelledFolderChannel: FilenameChannelTechnique = {
 
 export const FILENAME_CHANNEL: readonly FilenameChannelTechnique[] = [
     grmnChannel,
+    openpilotChannel,
     hmsChannelModeChannel,
     // Prefer the adjacent spelled-out folder over unscoped ancestor heuristics.
     // The dispatcher still gives every format-specific match priority over it.

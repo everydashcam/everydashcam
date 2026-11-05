@@ -204,6 +204,11 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     // (e.g. RVMI tReV baseline). null when unknown - deriveStartUtc then falls
     // back to mvhd/firstGps/etc. See ParsedRecords.videoStartUtcHint.
     embeddedStartUtcHint: number | null;
+    // Duration counted by a log for a video that cannot state its own (a raw
+    // HEVC stream has no timestamps; see VideoTimingHint). Wins over the
+    // indexer's nominal value when metadata is applied. Absent for every
+    // other recording.
+    logDurationSec?: number;
     // False while byte-derived recording metadata is pending: durationSec is an
     // estimate and codec/container fields are placeholders. Undefined or true
     // means ready, preserving compatibility with cached candidates that predate

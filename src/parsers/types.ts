@@ -232,6 +232,24 @@ export interface ParsedRecords {
     // dispatcher collects them per file; source (sidecar vs container) makes
     // no difference past that point.
     accelSamples?: AccelSample[];
+    // Optional, log sidecars only: recording timing the log knows for videos
+    // it names - an openpilot qlog indexes every frame of every camera in its
+    // segment and dates them through GPS. Ingest applies each hint to the named
+    // candidate (embeddedStartUtcHint, logDurationSec) and recomputes it from
+    // the log on every ingest; it is never persisted in the index cache.
+    videoTimingHints?: VideoTimingHint[];
+}
+
+/** Timing of one video as known from a log. */
+export interface VideoTimingHint {
+    // Video the hint describes: an exact owner from the parse context when the
+    // video is loaded, otherwise a name resolved like a record's mp4Filename.
+    mp4Filename: string;
+    videoKey?: string;
+    /** Wall-clock UTC of frame 0, or null when the log has no usable clock. */
+    startUtc: number | null;
+    /** Span of the video's frames in seconds, or null when the log cannot count them. */
+    durationSec: number | null;
 }
 
 // Vendor-neutral sidecar handlers for basename-binding formats (GPX,

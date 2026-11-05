@@ -13,7 +13,7 @@ import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.
 
 import type { ClassifiedFile } from "../parsers/registry.js";
 import type { PrimitiveVideoRef } from "../parsers/primitives/types.js";
-import type { AccelSample, GpsRecord, SkippedLine, VendorFile } from "../parsers/types.js";
+import type { AccelSample, GpsRecord, SkippedLine, VendorFile, VideoTimingHint } from "../parsers/types.js";
 
 // === Classify (batch per shard) ===
 export const INGEST_REQUEST_CLASSIFY_BATCH = "classify-batch";
@@ -39,6 +39,9 @@ export interface ParseLogRequestData {
 export interface ParseLogResult {
     records: GpsRecord[];
     skipped: SkippedLine[];
+    // Copied field by field in ingest-worker.ts: a field missing there never
+    // reaches the main thread, and the type cannot flag the omission.
+    videoTimingHints?: VideoTimingHint[];
 }
 
 // === Parse gps-sidecar (atomic per file) ===

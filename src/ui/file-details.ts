@@ -11,6 +11,7 @@ import type { VideoCodec } from "mediabunny";
 import { escapeHtml } from "../escape.js";
 import { getDateLocale, t } from "../i18n/index.js";
 import type { Channel } from "../parsers/types.js";
+import { isRawHevcName } from "../video-format-names.js";
 import {
     frameChannels,
     tripChannels,
@@ -85,6 +86,7 @@ function audioCodecName(raw: string | null): string | null {
 function containerName(candidate: VideoCandidate): string {
     if (candidate.isTransportStream) return "MPEG-TS";
     if (candidate.isMatroska) return "Matroska";
+    if (isRawHevcName(candidate.file.name)) return "HEVC elementary stream";
     return "MP4";
 }
 

@@ -22,12 +22,14 @@ import { extendArray } from "../array-extend.js";
 import {
     associateRecordsWithVideos,
     buildVideoAssociationIndex,
+    type LogVideoTimingHint,
     resolveVideoKey,
     type VideoAssociationIndex,
 } from "../gps-association.js";
 import { createLogger } from "../log.js";
 import { vendorFileKey } from "../vendor-file-key.js";
 import { splitVideosByExtension, type ClassifiedFile } from "../parsers/registry-light.js";
+import { mseCanPlayRawHevc } from "../per-file-mse.js";
 import type { AccelSample, GpsRecord, SkippedLine, VendorFile } from "../parsers/types.js";
 import { gpxSidecar } from "../parsers/sidecars/gpx.js";
 
@@ -100,7 +102,11 @@ export async function classifyFilesViaPool(
     signal?: AbortSignal,
 ): Promise<ClassifiedFilesResult> {
     throwIfCancelled(signal);
-    const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(files, existingVideoNames);
+    const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(
+        files,
+        existingVideoNames,
+        mseCanPlayRawHevc(),
+    );
     const result: ClassifiedFile[] = [...videoEntries];
     const errors: ClassifiedFilesResult["errors"] = [];
 
@@ -228,6 +234,8 @@ interface DispatchedLogsResult {
     extractorByFileKey: Map<string, string>;
     records: GpsRecord[];
     skipped: SkippedLine[];
+    /** Per-video timing the logs established, with their log reference. */
+    videoTimingHints: LogVideoTimingHint[];
     errors: Array<{ file: string; extractor: string; message: string }>;
 }
 
@@ -246,8 +254,9 @@ export async function dispatchParseLogsViaPool(
     const used = new Set<string>();
     const extractorByFileKey = new Map<string, string>();
 
+    const videoTimingHints: LogVideoTimingHint[] = [];
     if (targets.length === 0) {
-        return { appliedExtractors: [], extractorByFileKey, records: [], skipped: [], errors };
+        return { appliedExtractors: [], extractorByFileKey, records: [], skipped: [], videoTimingHints, errors };
     }
 
     const knownVideoRefs = [...videoIndex.videosByFilename.values()].flatMap((sameName) =>
@@ -271,6 +280,16 @@ export async function dispatchParseLogsViaPool(
         // extendArray, not push(...): a single whole-card 70mai log parses to
         // 130k+ records and the spread overflows the call-argument limit.
         extendArray(allSkipped, r.skipped);
+        // Outside the records branch: a segment without a GPS fix still
+        // counts its frames.
+        for (const hint of r.videoTimingHints ?? []) {
+            videoTimingHints.push({
+                ...hint,
+                sourcePath: c.file.relativePath,
+                ...(c.file.sourceKey === undefined ? {} : { sourceKey: c.file.sourceKey }),
+                extractorId,
+            });
+        }
         if (r.records.length > 0) {
             associateRecordsWithVideos(r.records, c.file, videoIndex, extractorId);
             extendArray(allRecords, r.records);
@@ -283,7 +302,14 @@ export async function dispatchParseLogsViaPool(
         }
     }
 
-    return { appliedExtractors: [...used], extractorByFileKey, records: allRecords, skipped: allSkipped, errors };
+    return {
+        appliedExtractors: [...used],
+        extractorByFileKey,
+        records: allRecords,
+        skipped: allSkipped,
+        videoTimingHints,
+        errors,
+    };
 }
 
 // ===== parse sidecars =====

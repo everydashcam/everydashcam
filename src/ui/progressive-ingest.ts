@@ -5,8 +5,10 @@
 
 import { indexAllMp4Files } from "../indexer.js";
 import {
+    applyLogVideoTiming,
     attachRecordsToCandidates,
     buildVideoAssociationIndex,
+    type LogVideoTiming,
     recordsForVideo,
     type VideoAssociationIndex,
 } from "../gps-association.js";
@@ -193,6 +195,8 @@ export interface ProgressiveIngestContext {
     allCandidates: VideoCandidate[];
     /** logsResult attribution keyed by vendorFileKey. */
     logExtractorByFileKey: Map<string, string>;
+    /** Video timing from logs (openpilot qlog) keyed by vendorFileKey. */
+    videoTimingByFileKey: ReadonlyMap<string, LogVideoTiming>;
     /** sidecarResult attribution keyed by vendorFileKey. */
     sidecarExtractorByFileKey: Map<string, string>;
     /** BlackVue-style accel-only sidecar (.3gf) samples per video identity. */
@@ -347,6 +351,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     for (const cf of ctx.newVideos) {
         const fingerprint = cameraFingerprint(cf.file);
         const classifierFields = filenameClassifierFields(cf.file);
+        const logTiming = ctx.videoTimingByFileKey.get(vendorFileKey(cf.file));
         const records = state.gpsLog ? recordsForVideo(state.gpsLog, cf.file, ctx.videoAssociation) : [];
         const { startUtc, source } = deriveStartUtc({
             file: cf.file,
@@ -362,7 +367,9 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
                 cf.file,
                 classifyFilenameTime,
             ),
-            embeddedStartUtcHint: null,
+            // A log that dates frame 0 places the clip before any metadata read,
+            // so the first trip list is already grouped by real time.
+            embeddedStartUtcHint: logTiming?.startUtc ?? null,
             // No moov yet (createdUtc null), so the mvhd-corroborated branches
             // the flag gates cannot fire here; the real wall span is derived in
             // the post-metadata read rederive sweep.
@@ -419,8 +426,11 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
         return;
     }
 
-    // A newly added GPS log can belong to carried-over recordings, so records
-    // and extractor attribution both cover the complete candidate pool.
+    // A newly added GPS log can belong to carried-over recordings, so records,
+    // timing and extractor attribution all cover the complete candidate pool.
+    // Cache hydration rebuilt cached candidates without log timing; this
+    // restores it on every ingest.
+    const logTimingChanged = applyLogVideoTiming(ctx.allCandidates, ctx.videoTimingByFileKey);
     for (const candidate of ctx.allCandidates) {
         const key = vendorFileKey(candidate);
         for (const extractors of [ctx.logExtractorByFileKey, ctx.sidecarExtractorByFileKey]) {
@@ -440,6 +450,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     // hours away from the same cold-ingest recording until the closing sweep.
     applyStoredCameraTimezones(ctx.allCandidates, state.gpsLog);
     if (
+        logTimingChanged ||
         ctx.allCandidates.some(
             (candidate) => candidate.metadataReady === true || candidate.cameraTimezoneOverrideSec != null,
         )

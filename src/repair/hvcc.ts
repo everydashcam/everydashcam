@@ -23,15 +23,19 @@
 // remain valid - only the payload bytes are replaced via zero-copy Blob
 // concatenation: file.slice() + Uint8Array + file.slice().
 
+import {
+    HEVC_NAL_PPS as NAL_TYPE_PPS,
+    HEVC_NAL_SPS as NAL_TYPE_SPS,
+    HEVC_NAL_VPS as NAL_TYPE_VPS,
+    type HevcSps,
+    parseHevcSps,
+    writeHvcCHeader,
+} from "../hevc-parameter-sets.js";
 import { cleanHvccDescription } from "../hevc-remux.js";
 import { createLogger } from "../log.js";
 import { findBox, findHvccInTrak, findMoovInFile, iterBoxes } from "../parsers/internal/mp4-walker.js";
 
 const log = createLogger("repair:hvcc");
-
-const NAL_TYPE_VPS = 32;
-const NAL_TYPE_SPS = 33;
-const NAL_TYPE_PPS = 34;
 
 /** Result of a successful repair. */
 export interface RepairedHvcC {
@@ -302,109 +306,6 @@ function tryParseNalArraysAfterHeader(payload: Uint8Array): NalArray[] | null {
     return arrays;
 }
 
-/** Fields extracted from SPS needed to synthesize the hvcC header. */
-interface SpsExtract {
-    profile_space: number;
-    tier_flag: number;
-    profile_idc: number;
-    profile_compatibility_flags: number;
-    /** general_constraint_indicator_flags (48 bits), packed into 6 bytes. */
-    constraint_indicator_48: bigint;
-    level_idc: number;
-    chromaFormat: number;
-    bitDepthLumaMinus8: number;
-    bitDepthChromaMinus8: number;
-    /** numTemporalLayers = sps_max_sub_layers_minus1 + 1. */
-    numTemporalLayers: number;
-    /** sps_temporal_id_nesting_flag. */
-    temporalIdNested: number;
-}
-
-/**
- * Parses SPS RBSP up to and including bit_depth_chroma_minus8, also
- * extracting profile_tier_level. Returns null if:
- *   - sps_max_sub_layers_minus1 > 0 (multi-temporal-layer; not seen on
- *     dashcams; supporting sub-layer profile_tier_level adds more bug surface
- *     than real cases it would cover);
- *   - sanity bounds: profile_idc / chroma_format_idc / bit_depth outside spec.
- *
- * Does not parse further than needed; we do not reconstruct VUI/sub_layer/etc.
- */
-function parseSps(spsNalu: Uint8Array): SpsExtract | null {
-    if (spsNalu.length < 3) return null;
-    // Skip 2-byte NAL header.
-    const rbsp = stripEmulationPrevention(spsNalu.subarray(2));
-    const reader = makeBitReader(rbsp);
-    try {
-        reader.u(4); // sps_video_parameter_set_id
-        const max_sub_layers_minus1 = reader.u(3);
-        const temporal_id_nesting_flag = reader.u(1);
-        if (max_sub_layers_minus1 > 0) return null;
-
-        // profile_tier_level(profilePresentFlag=1, max_sub_layers_minus1=0)
-        const profile_space = reader.u(2);
-        const tier_flag = reader.u(1);
-        const profile_idc = reader.u(5);
-        // profile_compatibility_flags - 32 bits, fits in JS Number (u32 ok).
-        const profile_compatibility_flags = reader.u(32);
-        // 4 individual constraint flags
-        const progressive = reader.u(1);
-        const interlaced = reader.u(1);
-        const nonPacked = reader.u(1);
-        const frameOnly = reader.u(1);
-        // 44 bits: read as 22+22 to stay within the 32-bit JS u() limit.
-        const reservedHi22 = reader.u(22);
-        const reservedLo22 = reader.u(22);
-        const level_idc = reader.u(8);
-        // max_sub_layers_minus1 = 0 => no sub-layer block.
-
-        // sps_seq_parameter_set_id ue(v)
-        reader.ue();
-        const chroma_format_idc = reader.ue();
-        if (chroma_format_idc === 3) reader.u(1); // separate_colour_plane_flag
-        reader.ue(); // pic_width_in_luma_samples
-        reader.ue(); // pic_height_in_luma_samples
-        const conformanceWindow = reader.u(1);
-        if (conformanceWindow) {
-            reader.ue();
-            reader.ue();
-            reader.ue();
-            reader.ue();
-        }
-        const bit_depth_luma_minus8 = reader.ue();
-        const bit_depth_chroma_minus8 = reader.ue();
-
-        // Spec sanity bounds:
-        //   profile_idc 0..31 (5 bit)
-        //   chroma_format_idc 0..3
-        //   bit_depth_*_minus8 0..6 (8..14 bit)
-        if (profile_idc > 31) return null;
-        if (chroma_format_idc > 3) return null;
-        if (bit_depth_luma_minus8 > 6) return null;
-        if (bit_depth_chroma_minus8 > 6) return null;
-
-        // 48-bit constraint_indicator: 4 individual flags (MSB first) + 44 reserved.
-        const top4 = (progressive << 3) | (interlaced << 2) | (nonPacked << 1) | frameOnly;
-        const constraint_indicator_48 = (BigInt(top4) << 44n) | (BigInt(reservedHi22) << 22n) | BigInt(reservedLo22);
-
-        return {
-            profile_space,
-            tier_flag,
-            profile_idc,
-            profile_compatibility_flags,
-            constraint_indicator_48,
-            level_idc,
-            chromaFormat: chroma_format_idc,
-            bitDepthLumaMinus8: bit_depth_luma_minus8,
-            bitDepthChromaMinus8: bit_depth_chroma_minus8,
-            numTemporalLayers: max_sub_layers_minus1 + 1,
-            temporalIdNested: temporal_id_nesting_flag,
-        };
-    } catch {
-        return null;
-    }
-}
-
 /**
  * Reconstructs the hvcC payload: a new 23-byte header (all reserved bits = 1
  * as required by ISO/IEC 14496-15) + the original body bytes starting at
@@ -419,135 +320,20 @@ function rebuildHvcC(payload: Uint8Array): Uint8Array | null {
     if (!arrays) return null;
     const spsArray = arrays.find((a) => a.nalUnitType === NAL_TYPE_SPS);
     if (!spsArray || spsArray.nalus.length === 0) return null;
-    const spec = parseSps(spsArray.nalus[0]!);
+    const spec = parseHevcSps(spsArray.nalus[0]!);
     if (!spec) return null;
 
     const out = new Uint8Array(payload.length);
     // Body is already correct - copy payload as-is, then overwrite the header.
     out.set(payload);
 
-    // Header (23 bytes) per ISO/IEC 14496-15 §8.3.3.1 + FFmpeg hvcc_write.
-    // All reserved bits = '1' (via 0xfX masks).
-    out[0] = 1; // configurationVersion
-    out[1] = ((spec.profile_space & 0x3) << 6) | ((spec.tier_flag & 0x1) << 5) | (spec.profile_idc & 0x1f);
-    // profile_compatibility_flags (32 bit BE)
-    writeU32BE(out, 2, spec.profile_compatibility_flags >>> 0);
-    // constraint_indicator_flags (48 bit BE)
-    const c = spec.constraint_indicator_48;
-    out[6] = Number((c >> 40n) & 0xffn);
-    out[7] = Number((c >> 32n) & 0xffn);
-    out[8] = Number((c >> 24n) & 0xffn);
-    out[9] = Number((c >> 16n) & 0xffn);
-    out[10] = Number((c >> 8n) & 0xffn);
-    out[11] = Number(c & 0xffn);
-    out[12] = spec.level_idc & 0xff;
-    // 4 reserved '1' + 12 bit min_spatial_segmentation_idc=0
-    out[13] = 0xf0;
-    out[14] = 0x00;
-    // 6 reserved '1' + 2 bit parallelismType=0
-    out[15] = 0xfc;
-    // 6 reserved '1' + 2 bit chromaFormat
-    out[16] = 0xfc | (spec.chromaFormat & 0x3);
-    // 5 reserved '1' + 3 bit bitDepthLumaMinus8
-    out[17] = 0xf8 | (spec.bitDepthLumaMinus8 & 0x7);
-    // 5 reserved '1' + 3 bit bitDepthChromaMinus8
-    out[18] = 0xf8 | (spec.bitDepthChromaMinus8 & 0x7);
-    // 16 bit avgFrameRate=0 (unspecified - valid per spec)
-    out[19] = 0;
-    out[20] = 0;
-    // 2 bit constantFrameRate=0 + 3 bit numTemporalLayers + 1 bit temporalIdNested + 2 bit lengthSizeMinusOne=3
-    out[21] =
-        ((0 & 0x3) << 6) | ((spec.numTemporalLayers & 0x7) << 3) | ((spec.temporalIdNested & 0x1) << 2) | (3 & 0x3);
-    // numOfArrays - actual count found in the payload
-    out[22] = arrays.length & 0xff;
+    // Header (23 bytes); the arrays after it are the payload's own.
+    writeHvcCHeader(out, spec, arrays.length);
 
     return out;
 }
 
-// ====== bit utilities ======
-
-function writeU32BE(out: Uint8Array, off: number, value: number): void {
-    out[off] = (value >>> 24) & 0xff;
-    out[off + 1] = (value >>> 16) & 0xff;
-    out[off + 2] = (value >>> 8) & 0xff;
-    out[off + 3] = value & 0xff;
-}
-
-/**
- * Removes emulation_prevention_three_bytes (0x03 after two 0x00) from a NAL
- * RBSP (ITU-T H.265 §B.2). Returns a new Uint8Array.
- */
-function stripEmulationPrevention(nalRbsp: Uint8Array): Uint8Array {
-    const out: number[] = [];
-    let zeroes = 0;
-    for (let i = 0; i < nalRbsp.length; i++) {
-        const b = nalRbsp[i]!;
-        if (zeroes >= 2 && b === 0x03) {
-            zeroes = 0;
-            continue;
-        }
-        out.push(b);
-        if (b === 0) zeroes++;
-        else zeroes = 0;
-    }
-    return new Uint8Array(out);
-}
-
-interface BitReader {
-    u(n: number): number;
-    ue(): number;
-}
-
-/**
- * Bit-reader for RBSP. Big-endian (MSB first) as required by HEVC.
- * u(n) reads an unsigned n-bit field (n up to 32). ue() reads an exp-Golomb
- * unsigned value (ITU-T H.265 §9.2).
- */
-function makeBitReader(bytes: Uint8Array): BitReader {
-    let bytePos = 0;
-    let bitPos = 0;
-    const u = (n: number): number => {
-        // JS bitwise ops are sign-extended 32 bits. Read a 32-bit field as two
-        // u(16) and combine to avoid going negative on the high bit.
-        // HEVC profile_compat_flags fits in u32 (≤ 0xFFFFFFFF).
-        if (n === 32) {
-            const hi = u(16);
-            const lo = u(16);
-            return hi * 0x10000 + lo;
-        }
-        if (n > 32) throw new Error("bit reader n > 32");
-        let v = 0;
-        for (let i = 0; i < n; i++) {
-            if (bytePos >= bytes.length) throw new Error("bit reader: out of bounds");
-            const b = (bytes[bytePos]! >> (7 - bitPos)) & 1;
-            v = (v << 1) | b;
-            bitPos++;
-            if (bitPos === 8) {
-                bitPos = 0;
-                bytePos++;
-            }
-        }
-        // Force unsigned in case v went negative via signed left-shift of the MSB.
-        return v >>> 0;
-    };
-    const ue = (): number => {
-        let zeroes = 0;
-        // Cap to avoid looping forever on an all-zero tail.
-        while (zeroes < 32) {
-            if (bytePos >= bytes.length) throw new Error("bit reader: out of bounds in ue");
-            if (u(1) !== 0) break;
-            zeroes++;
-        }
-        if (zeroes === 0) return 0;
-        if (zeroes >= 32) throw new Error("bit reader: ue overflow");
-        const tail = u(zeroes);
-        // 2**zeroes (not 1<<zeroes): the signed 32-bit shift makes 1<<31
-        // negative, flipping the value by 2^32. 2**zeroes is an exact double
-        // for zeroes <= 31. Matches the module's other signed-overflow guards.
-        return 2 ** zeroes - 1 + tail;
-    };
-    return { u, ue };
-}
+// ====== utilities ======
 
 function hex(bytes: Uint8Array): string {
     return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ");
@@ -559,8 +345,8 @@ function hex(bytes: Uint8Array): string {
  * Test wrapper: parses SPS RBSP and returns extracted fields. Used by
  * `repair/hvcc.test.ts`; production code only calls rebuildHvcC.
  */
-export function _testParseSps(spsNalu: Uint8Array): SpsExtract | null {
-    return parseSps(spsNalu);
+export function _testParseSps(spsNalu: Uint8Array): HevcSps | null {
+    return parseHevcSps(spsNalu);
 }
 
 /**

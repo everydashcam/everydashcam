@@ -7,6 +7,7 @@
 // cycle player <-> zoom.
 
 import type { VideoCandidate } from "../trips.js";
+import { isRawHevcName } from "../video-format-names.js";
 
 // videoAttachedFile: which File currently "owns" a <video>. Idempotency of
 // attachCandidateToVideo and race protection in the MSE IIFE both rely on
@@ -34,7 +35,15 @@ export const videoOwnedBlobUrl: WeakMap<HTMLVideoElement, string> = new WeakMap(
  * preload eligibility, mini-map. Keep all callsites going through this helper.
  */
 export function requiresMseBackend(cand: VideoCandidate): boolean {
-    return cand.needsHevcRemux || cand.isTransportStream || cand.isMatroska || cand.audioNeedsTranscode;
+    return (
+        cand.needsHevcRemux ||
+        cand.isTransportStream ||
+        cand.isMatroska ||
+        cand.audioNeedsTranscode ||
+        // A raw HEVC stream has no container <video> could open; its MP4 view
+        // exists only for mediabunny (blob-source.ts demuxView).
+        isRawHevcName(cand.file.name)
+    );
 }
 
 /**

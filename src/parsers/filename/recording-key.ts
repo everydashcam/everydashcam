@@ -1,4 +1,4 @@
-import { RX_E_ACE } from "./_patterns.js";
+import { RX_E_ACE, parseOpenpilotFileName } from "./_patterns.js";
 import type { VendorFile } from "../types.js";
 import type { FilenameRecordingKeyTechnique } from "./types.js";
 
@@ -12,4 +12,16 @@ const eaceRecordingKey: FilenameRecordingKeyTechnique = {
     },
 };
 
-export const FILENAME_RECORDING_KEY: readonly FilenameRecordingKeyTechnique[] = [eaceRecordingKey];
+/** Every camera of one openpilot segment is cut at the same frame. */
+const openpilotRecordingKey: FilenameRecordingKeyTechnique = {
+    id: "openpilot-recording-key",
+    extract(file: VendorFile): string | null {
+        const name = parseOpenpilotFileName(file);
+        return name ? `${name.route}--${name.segment}` : null;
+    },
+};
+
+export const FILENAME_RECORDING_KEY: readonly FilenameRecordingKeyTechnique[] = [
+    openpilotRecordingKey,
+    eaceRecordingKey,
+];

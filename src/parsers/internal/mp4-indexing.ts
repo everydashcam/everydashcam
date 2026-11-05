@@ -12,8 +12,10 @@ import { needsHevcRemux } from "../../hevc-remux.js";
 import { detectMoovRepairs } from "../../repair/moov-repair.js";
 import { createBlobSource } from "../../blob-source.js";
 import { VIDEO_INPUT_FORMATS } from "../../video-formats.js";
-import { isNonIsobmffContainerName } from "../../video-format-names.js";
+import { probeRawHevcHead } from "../../raw-hevc-view.js";
+import { isNonIsobmffContainerName, isRawHevcName } from "../../video-format-names.js";
 import type { IndexedMp4, IndexerRepair } from "../../workers/indexer-protocol.js";
+import { OPENPILOT_FRAME_RATE, OPENPILOT_SEGMENT_SEC } from "./openpilot.js";
 
 import {
     findBox,
@@ -313,12 +315,45 @@ export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Pro
     }
 }
 
+/**
+ * Raw HEVC stream: codec and size from the parameter sets at its head. The
+ * stream has no timestamps, so its duration is unknown without reading every
+ * byte; ingest must not do that. Ingest admits raw HEVC only under the
+ * openpilot layout, so the duration is openpilot's nominal segment length;
+ * the segment's log replaces it with the counted frames (logDurationSec on
+ * the candidate). Only a route copied without its logs keeps the nominal value.
+ */
+async function indexRawHevcFile(file: File): Promise<IndexedWithMoov> {
+    const head = await probeRawHevcHead(file);
+    if (!head) {
+        log.info("raw hevc indexing skipped: no parameter sets before the first picture", { file: file.name });
+        return { indexed: null };
+    }
+    return {
+        indexed: {
+            durationSec: OPENPILOT_SEGMENT_SEC,
+            createdUtc: null,
+            codec: "hevc",
+            codecParam: null,
+            videoCodecString: hevcCodecStringFromHvcc(head.hvcc),
+            rotation: 0,
+            width: head.width,
+            height: head.height,
+            fps: OPENPILOT_FRAME_RATE,
+            audio: null,
+            needsHevcRemux: false,
+            audioNeedsTranscode: false,
+        },
+    };
+}
+
 /** Routes to the ISOBMFF moov walk or the mediabunny container scan based on
  *  filename extension. The optional signal cuts an in-flight non-ISOBMFF scan on
  *  ingest cancel (see indexNonIsobmffFile); the MP4 path is a bounded moov walk,
  *  fast enough that the worker's loop-boundary abort check suffices, so it takes
  *  no signal. */
 export async function indexOneFile(file: File, captureMoov: boolean, signal?: AbortSignal): Promise<IndexedWithMoov> {
+    if (isRawHevcName(file.name)) return await indexRawHevcFile(file);
     if (isNonIsobmffContainerName(file.name)) {
         return await indexNonIsobmffFile(file, signal);
     }

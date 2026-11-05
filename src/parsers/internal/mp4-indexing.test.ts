@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 import { indexMp4FileWithMoov, indexOneFile } from "./mp4-indexing.js";
 
@@ -227,5 +229,44 @@ describe("indexMp4FileWithMoov: broken hvcC codec string", () => {
         expect(indexed!.codec).toBe("hevc");
         expect(indexed!.videoCodecString).toBe("hev1.1.6.L150");
         expect(indexed!.videoCodecString).not.toBe("hev1.2.0.L0.0.44");
+    });
+});
+
+describe("indexOneFile on a raw HEVC stream", () => {
+    const name = "0123456789abcdef_00000001--0000000000--19--fcamera.hevc";
+    const bytes = readFileSync(new URL(`../__fixtures__/openpilot/${name}`, import.meta.url));
+
+    it("reads the codec from the head and reports openpilot's nominal segment", async () => {
+        const { indexed } = await indexOneFile(new File([bytes], name), false);
+        expect(indexed).toMatchObject({
+            durationSec: 60,
+            createdUtc: null,
+            codec: "hevc",
+            width: 320,
+            height: 192,
+            fps: 20,
+            rotation: 0,
+            audio: null,
+            needsHevcRemux: false,
+            audioNeedsTranscode: false,
+        });
+        expect(indexed!.videoCodecString).toMatch(/^hev1\.1\./);
+    });
+
+    it("reads no further than the head", async () => {
+        const file = new File([bytes], name);
+        const slice = file.slice.bind(file);
+        let furthest = 0;
+        file.slice = (start, end, contentType) => {
+            furthest = Math.max(furthest, end ?? file.size);
+            return slice(start, end, contentType);
+        };
+        await indexOneFile(file, false);
+        expect(furthest).toBeLessThanOrEqual(256 * 1024);
+    });
+
+    it("skips a stream without parameter sets", async () => {
+        const { indexed } = await indexOneFile(new File([new Uint8Array([0, 0, 1, 0x02, 0x01, 0x80])], name), false);
+        expect(indexed).toBeNull();
     });
 });
