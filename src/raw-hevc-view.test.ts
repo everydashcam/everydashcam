@@ -118,6 +118,12 @@ describe("rawHevcMp4View", () => {
         twice.set(raw, raw.length);
         const view = await rawHevcMp4View(hevcFile(twice), 20);
         expect(await sampleEntryOf(view)).toEqual(["hev1"]);
+        // In-band copies make the hvcC arrays incomplete (array_completeness = 0).
+        const head = new Uint8Array(await view.slice(0, 4096).arrayBuffer());
+        const hvcc = new TextDecoder("latin1").decode(head).indexOf("hvcC") + 4;
+        const arrayCount = head[hvcc + 22]!;
+        expect(arrayCount).toBe(3);
+        expect(head[hvcc + 23]! & 0x80).toBe(0);
         const demuxed = await demux(view);
         expect(demuxed.packets).toHaveLength(120);
         expect(demuxed.packets.filter((packet) => packet.type === "key")).toHaveLength(6);
@@ -128,6 +134,33 @@ describe("rawHevcMp4View", () => {
     it("returns the cached view for the same file", async () => {
         const file = hevcFile(fixtureBytes("fcamera"));
         expect(rawHevcMp4View(file, 20)).toBe(rawHevcMp4View(file, 20));
+    });
+
+    it("keeps a picture whose slices a prefix SEI separates in one sample", async () => {
+        const raw = fixtureBytes("fcamera");
+        const index = await _testScanNalUnits(hevcFile(raw), raw.length);
+        const secondSlice = index.types.findIndex((type, nal) => type < 32 && !index.firstSlice[nal]);
+        expect(secondSlice, "fixture has multi-slice pictures").toBeGreaterThan(0);
+        const at = index.ends[secondSlice - 1]!;
+        const sei = new Uint8Array([0, 0, 1, 0x4e, 0x01, 0x80]);
+        const withSei = new Uint8Array(raw.length + sei.length);
+        withSei.set(raw.subarray(0, at), 0);
+        withSei.set(sei, at);
+        withSei.set(raw.subarray(at), at + sei.length);
+        const original = await demux(await rawHevcMp4View(hevcFile(raw), 20));
+        const demuxed = await demux(await rawHevcMp4View(hevcFile(withSei), 20));
+        expect(demuxed.packets).toHaveLength(60);
+        expect(demuxed.packets[0]).toMatchObject({ type: "key", bytes: original.packets[0]!.bytes + 4 + 3 });
+        expect(demuxed.packets[1]).toEqual(original.packets[1]);
+    });
+
+    it("leaves trailing zero bytes out of the last sample", async () => {
+        const raw = fixtureBytes("fcamera");
+        const padded = new Uint8Array(raw.length + 4096);
+        padded.set(raw, 0);
+        const original = await demux(await rawHevcMp4View(hevcFile(raw), 20));
+        const demuxed = await demux(await rawHevcMp4View(hevcFile(padded), 20));
+        expect(demuxed.packets).toEqual(original.packets);
     });
 
     it("rejects a stream without a usable head or without pictures, and retries later", async () => {

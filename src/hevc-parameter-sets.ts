@@ -178,11 +178,12 @@ export interface HvcCNalArray {
 
 /**
  * Builds a complete hvcC payload from parameter-set NAL units (each with its
- * 2-byte header, without start codes or emulation stripping). Every array is
- * marked complete: the caller keeps these parameter sets out of the samples.
- * Returns null when the arrays carry no parseable SPS.
+ * 2-byte header, without start codes or emulation stripping). arraysComplete
+ * marks every array complete (ISO/IEC 14496-15 8.3.3.1): true when the samples
+ * carry no parameter sets of their own (hvc1), false when they repeat in-band
+ * (hev1). Returns null when the arrays carry no parseable SPS.
  */
-export function buildHvcC(arrays: readonly HvcCNalArray[]): Uint8Array | null {
+export function buildHvcC(arrays: readonly HvcCNalArray[], arraysComplete = true): Uint8Array | null {
     const nonEmpty = arrays.filter((array) => array.nalus.length > 0);
     const spsNalu = nonEmpty.find((array) => array.nalUnitType === HEVC_NAL_SPS)?.nalus[0];
     const sps = spsNalu ? parseHevcSps(spsNalu) : null;
@@ -196,8 +197,8 @@ export function buildHvcC(arrays: readonly HvcCNalArray[]): Uint8Array | null {
     writeHvcCHeader(out, sps, nonEmpty.length);
     let p = HVCC_HEADER_BYTES;
     for (const array of nonEmpty) {
-        // array_completeness=1, reserved=0, NAL_unit_type
-        out[p] = 0x80 | (array.nalUnitType & 0x3f);
+        // array_completeness, reserved=0, NAL_unit_type
+        out[p] = (arraysComplete ? 0x80 : 0) | (array.nalUnitType & 0x3f);
         out[p + 1] = (array.nalus.length >> 8) & 0xff;
         out[p + 2] = array.nalus.length & 0xff;
         p += 3;

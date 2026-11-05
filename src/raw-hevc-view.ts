@@ -87,9 +87,9 @@ export async function probeRawHevcHead(blob: Blob): Promise<RawHevcHead | null> 
 async function buildRawHevcMp4View(blob: Blob, frameRate: number): Promise<Blob> {
     if (!Number.isInteger(frameRate) || frameRate <= 0) throw new Error(`unsupported raw hevc frame rate ${frameRate}`);
     const index = await scanNalUnits(blob, blob.size);
-    const codec = await readHead(blob, index);
-    if (!codec) throw new Error("raw hevc stream has no sequence parameter set before its first picture");
     const { samples, inBandParameterSets } = groupAccessUnits(index);
+    const codec = await readHead(blob, index, !inBandParameterSets);
+    if (!codec) throw new Error("raw hevc stream has no sequence parameter set before its first picture");
     if (samples.length === 0) throw new Error("raw hevc stream has no pictures");
 
     const sampleSizes = samples.map((sample) =>
@@ -167,6 +167,10 @@ async function scanNalUnits(
     const index: NalIndex = { starts: [], ends: [], types: [], firstSlice: [] };
     let carry = new Uint8Array(0);
     let pos = 0;
+    // Where the stream's trailing zero bytes start (trailing_zero_8bits, or
+    // zero fill after a cut). A NAL unit never ends in a zero byte: its RBSP
+    // ends with the stop bit.
+    let tailEnd = limit;
     while (pos < limit) {
         const chunkEnd = Math.min(limit, pos + chunkBytes);
         const chunk = new Uint8Array(await blob.slice(pos, chunkEnd).arrayBuffer());
@@ -184,6 +188,11 @@ async function scanNalUnits(
         // all-zero stretch, where the leftover zeros trail a NAL harmlessly.
         let resumeAt = buf.length;
         while (resumeAt > 0 && buf.length - resumeAt < MAX_CARRY_ZEROS && buf[resumeAt - 1] === 0) resumeAt--;
+        if (isLast && limit >= blob.size) {
+            let end = buf.length;
+            while (end > 0 && buf[end - 1] === 0) end--;
+            tailEnd = base + end;
+        }
         let i = buf.indexOf(1, 2);
         while (i !== -1) {
             if (buf[i - 1] === 0 && buf[i - 2] === 0) {
@@ -209,7 +218,10 @@ async function scanNalUnits(
         carry = buf.slice(resumeAt);
         pos = chunkEnd;
     }
-    if (index.starts.length > index.ends.length) index.ends.push(limit);
+    if (index.starts.length > index.ends.length) {
+        // The last unit keeps at least its two-byte header.
+        index.ends.push(Math.max(tailEnd, index.starts.at(-1)! + 2));
+    }
     return index;
 }
 
@@ -227,8 +239,9 @@ function opensAccessUnit(type: number): boolean {
     return (type >= 32 && type <= 35) || type === 39 || (type >= 41 && type <= 44) || (type >= 48 && type <= 55);
 }
 
-/** Leading parameter sets (before the first picture) into an hvcC. */
-async function readHead(blob: Blob, index: NalIndex): Promise<RawHevcHead | null> {
+/** Leading parameter sets (before the first picture) into an hvcC; see
+ *  buildHvcC for arraysComplete. */
+async function readHead(blob: Blob, index: NalIndex, arraysComplete = true): Promise<RawHevcHead | null> {
     const arrays = new Map<number, Uint8Array[]>();
     for (let nal = 0; nal < index.types.length && !isVcl(index.types[nal]!); nal++) {
         const type = index.types[nal]!;
@@ -241,6 +254,7 @@ async function readHead(blob: Blob, index: NalIndex): Promise<RawHevcHead | null
             nalUnitType: type,
             nalus: arrays.get(type) ?? [],
         })),
+        arraysComplete,
     );
     const sps = arrays.get(HEVC_NAL_SPS)?.[0];
     const parsed = sps ? parseHevcSps(sps) : null;
@@ -251,35 +265,42 @@ async function readHead(blob: Blob, index: NalIndex): Promise<RawHevcHead | null
 /**
  * Groups NAL units into access units. Parameter sets before the first picture
  * live in the hvcC and are left out of the samples; any that repeat later stay
- * in-band, which the hev1 sample entry permits. Units after the last picture
- * that would open a new access unit are dropped: they describe no picture.
+ * in-band, which the hev1 sample entry permits. A unit that may open an access
+ * unit (H.265 7.4.2.4.4) does so only when the next slice starts a new
+ * picture: a prefix SEI or a PPS may also sit between two slices of one
+ * picture. Such units after the last picture are dropped: they describe no
+ * picture.
  */
 function groupAccessUnits(index: NalIndex): { samples: Sample[]; inBandParameterSets: boolean } {
     const samples: Sample[] = [];
+    // The access unit of the latest picture, while its slices may continue.
     let current: Sample | null = null;
-    let currentHasPicture = false;
-    let seenPicture = false;
+    // Units after an opener, waiting for the slice that decides their unit.
+    let pending: number[] = [];
     let inBandParameterSets = false;
     for (let nal = 0; nal < index.types.length; nal++) {
         const type = index.types[nal]!;
+        const seenPicture = current !== null;
         if (!seenPicture && isParameterSet(type)) continue;
         if (seenPicture && isParameterSet(type)) inBandParameterSets = true;
-        const vcl = isVcl(type);
-        const opens = vcl ? index.firstSlice[nal]! : opensAccessUnit(type);
-        if (!current || (opens && currentHasPicture)) {
-            if (current && currentHasPicture) samples.push(current);
-            current = { nals: [], sync: false };
-            currentHasPicture = false;
-        }
-        current.nals.push(nal);
-        if (vcl) {
-            currentHasPicture = true;
-            seenPicture = true;
+        if (isVcl(type)) {
+            if (current && !index.firstSlice[nal]!) {
+                current.nals.push(...pending, nal);
+            } else {
+                if (current) samples.push(current);
+                current = { nals: [...pending, nal], sync: false };
+            }
+            pending = [];
             // IRAP pictures (BLA/IDR/CRA, types 16..23) are random access points.
             if (type >= 16 && type <= 23) current.sync = true;
+        } else if (current && pending.length === 0 && !opensAccessUnit(type)) {
+            // Suffix SEI, end of sequence and the like close the current unit.
+            current.nals.push(nal);
+        } else {
+            pending.push(nal);
         }
     }
-    if (current && currentHasPicture) samples.push(current);
+    if (current) samples.push(current);
     return { samples, inBandParameterSets };
 }
 
