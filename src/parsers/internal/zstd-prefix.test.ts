@@ -62,4 +62,27 @@ describe("inflateZstdPrefix", () => {
         });
         expect(await inflateZstdPrefix(compressed, 2 << 20)).toEqual({ kind: "too-large" });
     });
+
+    it("refuses a later frame whose header asks for more than the limit", async () => {
+        // A small whole frame, then one with a 4 MiB window (descriptor 0x60)
+        // holding a single raw byte: fzstd would allocate that window first.
+        const first = zstdCompressSync(new Uint8Array(64));
+        const second = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x60, 0x09, 0x00, 0x00, 0x2a]);
+        const both = new Uint8Array(first.length + second.length);
+        both.set(first, 0);
+        both.set(second, first.length);
+        expect(await inflateZstdPrefix(both, 4 << 20)).toMatchObject({ kind: "decoded", complete: true });
+        expect(await inflateZstdPrefix(both, 1 << 20)).toEqual({ kind: "too-large" });
+    });
+
+    it("walks past skippable frames and frame checksums to the next header", async () => {
+        const checked = zstdCompressSync(new Uint8Array(64), { params: { [constants.ZSTD_c_checksumFlag]: 1 } });
+        const skippable = new Uint8Array([0x50, 0x2a, 0x4d, 0x18, 0x02, 0x00, 0x00, 0x00, 0xaa, 0xbb]);
+        const large = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x60, 0x09, 0x00, 0x00, 0x2a]);
+        const stream = new Uint8Array(checked.length + skippable.length + large.length);
+        stream.set(checked, 0);
+        stream.set(skippable, checked.length);
+        stream.set(large, checked.length + skippable.length);
+        expect(await inflateZstdPrefix(stream, 1 << 20)).toEqual({ kind: "too-large" });
+    });
 });
