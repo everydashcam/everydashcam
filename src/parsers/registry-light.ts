@@ -17,7 +17,7 @@ export const RX_VIDEO_EXT = /\.(mp4|mov|ts|m2ts|mkv)$/i;
  * Whether a file is a recording. Container extensions decide alone; raw HEVC
  * elementary streams count only under the openpilot route layout, the one
  * source of containerless video we can time (its qlog dates every frame).
- * Any other `.hevc` stays unknown, exactly as before openpilot support.
+ * Any other `.hevc` stays unknown.
  */
 export function isVideoFile(vf: VendorFile): boolean {
     if (RX_VIDEO_EXT.test(vf.file.name)) return true;
