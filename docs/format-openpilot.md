@@ -60,7 +60,10 @@ segment folder holds the same file names, so a log whose segment's videos are
 missing must not fall back to a sibling folder's `fcamera.hevc`. GPS the log
 names after `fcamera.hevc` goes to the segment's preview when only the preview
 is loaded; frame counts and start times stay with the stream they describe,
-whatever its letter case or download suffix.
+whatever its letter case or download suffix. A video answers for the segment
+its name or folder states, so a connect download and a device copy of one
+segment bind to each other in either direction. When the file owning a
+segment's GPS fails to load, the GPS moves to the segment's next loaded camera.
 
 ## Timing from the qlog
 
@@ -89,7 +92,8 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
   closes it only on exit, so a crash, a power loss or an interrupted download
   leaves it without its last blocks. The GPS and frame-0 times before the cut
   stay; raw streams keep the nominal 60 s, since their frame counts stop early.
-  Decompression stops at 64 MiB (a real qlog is about 2.5 MB).
+  Decompression stops at 64 MiB (a real qlog is about 2.5 MB). The limits
+  bound memory, not decoding time (see `src/parsers/internal/zstd-prefix.ts`).
 
 GPS records come from `gpsLocation` (1 Hz in the qlog) and
 `gpsLocationExternal` (decimated to 1 Hz) and belong to one loaded video of the
