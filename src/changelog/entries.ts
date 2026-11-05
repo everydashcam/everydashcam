@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-05.1",
+        category: "support",
+        text: {
+            en: "Added support for comma.ai openpilot recordings.",
+            ru: "Добавлена поддержка записей comma.ai openpilot.",
+            de: "Unterstützung für Aufnahmen von comma.ai openpilot hinzugefügt.",
+            es: "Añadida compatibilidad con las grabaciones de comma.ai openpilot.",
+            fr: "Ajout de la prise en charge des enregistrements de comma.ai openpilot.",
+            pl: "Dodano obsługę nagrań z comma.ai openpilot.",
+            pt: "Adicionado suporte para gravações do comma.ai openpilot.",
+            zh: "新增对 comma.ai openpilot 录像的支持。",
+            ja: "comma.ai openpilot の録画に対応しました。",
+            ko: "comma.ai openpilot 녹화 지원을 추가했어요.",
+        },
+    },
+    {
         id: "2026-11-03.1",
         category: "fix",
         text: {
