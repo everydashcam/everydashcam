@@ -553,12 +553,37 @@ export function openpilotStreamCore(name: string): string | null {
     return base ? `openpilot-stream|${base.segment}|${base.stream}` : null;
 }
 
+// What each camera of a segment films, in the order a segment's GPS prefers
+// an owner: the road view (fcamera and its qcamera preview), the wide road
+// camera, then the driver camera.
+const OPENPILOT_VIEW_OF_STREAM: Partial<Record<OpenpilotStream, string>> = {
+    fcamera: "road",
+    qcamera: "road",
+    ecamera: "wide",
+    dcamera: "driver",
+};
+const OPENPILOT_VIEWS_BY_PREFERENCE = ["road", "wide", "driver"] as const;
+
 /**
- * Identity of an openpilot segment's road view, shared by fcamera.hevc and its
- * qcamera.ts preview: a log names the full-resolution file, which may be
- * absent while the preview is loaded. Scoped like openpilotStreamCore.
+ * The view an openpilot camera file shows in its segment, shared by fcamera
+ * and its qcamera preview. Scoped like openpilotStreamCore. null for any other
+ * name.
  */
-export function openpilotRoadViewCore(name: string): string | null {
+export function openpilotViewCore(name: string): string | null {
     const base = openpilotBaseName(name);
-    return base && (base.stream === "fcamera" || base.stream === "qcamera") ? `openpilot-road|${base.segment}` : null;
+    const view = base ? OPENPILOT_VIEW_OF_STREAM[base.stream] : undefined;
+    return base && view ? `openpilot-view|${base.segment}|${view}` : null;
+}
+
+/**
+ * Views of the same segment that may stand in for a named openpilot camera
+ * file as the owner of the segment's GPS, best first. A log names the
+ * full-resolution road file, which may be absent while the preview, the wide
+ * or the driver camera is loaded; every camera of a segment records the same
+ * drive. Empty for any other name.
+ */
+export function openpilotViewFallbacks(name: string): string[] {
+    const base = openpilotBaseName(name);
+    if (!base || OPENPILOT_VIEW_OF_STREAM[base.stream] === undefined) return [];
+    return OPENPILOT_VIEWS_BY_PREFERENCE.map((view) => `openpilot-view|${base.segment}|${view}`);
 }

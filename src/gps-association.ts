@@ -1,5 +1,10 @@
 import { mergeIntoGpsLog } from "./parser.js";
-import { mai70NameCore, openpilotRoadViewCore, openpilotStreamCore } from "./parsers/filename/_patterns.js";
+import {
+    mai70NameCore,
+    openpilotStreamCore,
+    openpilotViewCore,
+    openpilotViewFallbacks,
+} from "./parsers/filename/_patterns.js";
 import { classifyFilenameRecordingKey } from "./parsers/filename/index.js";
 import type { GpsRecord, ParsedLog, VendorFile, VideoTimingHint, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
@@ -10,9 +15,9 @@ export interface VideoAssociationIndex {
     // 70mai logs can name a clip by another mode prefix, no prefix at all, or
     // with bytes after ".MP4" (see mai70NameCore); an openpilot log predicts
     // a file's name without its letter case or download suffix
-    // (openpilotStreamCore) and names a segment's road view by its full-res
-    // file when only the preview may be loaded (openpilotRoadViewCore). Exact
-    // names always win; cores are fallback keys, so these rows still get a
+    // (openpilotStreamCore) and names its segment's full-res road file when
+    // only another camera of the segment may be loaded (openpilotViewCore).
+    // Exact names always win; cores are fallback keys, so these rows still get a
     // concrete owner and extractor attribution instead of a later name-only
     // rebind.
     videosByNameCore: ReadonlyMap<string, readonly VendorFile[]>;
@@ -101,7 +106,7 @@ export function buildVideoAssociationIndex(videos: readonly VideoWithRecordingCo
             }
             canonicalByFileKey.set(key, video);
             pushToBucket(mutable, physical.file.name, physical);
-            for (const core of videoNameCores(physical.file.name, "view")) {
+            for (const core of videoIndexCores(physical.file.name)) {
                 pushToBucket(videosByNameCore, core, physical);
             }
         }
@@ -210,16 +215,21 @@ function uniqueCanonicalVideo(videos: readonly VendorFile[], index: VideoAssocia
 
 /**
  * What a log's video name may stand for when no file has that exact name:
- * "file" - the same file spelled differently; "view" - also another file
- * showing the same picture (an openpilot preview for its full-res file).
+ * "file" - the same file spelled differently; "view" - also another file of
+ * the same recording (an openpilot preview or side camera for its full-res
+ * road file).
  */
 type NameScope = "file" | "view";
 
-/** Fallback keys of a name, most specific first. */
-function videoNameCores(name: string, scope: NameScope): string[] {
-    const cores = [mai70NameCore(name), openpilotStreamCore(name)];
-    if (scope === "view") cores.push(openpilotRoadViewCore(name));
-    return cores.filter((core) => core !== null);
+/** Fallback keys a loaded video answers to. */
+function videoIndexCores(name: string): string[] {
+    return [mai70NameCore(name), openpilotStreamCore(name), openpilotViewCore(name)].filter((core) => core !== null);
+}
+
+/** Fallback keys a log's video name looks up, most specific first. */
+function videoLookupCores(name: string, scope: NameScope): string[] {
+    const cores = [mai70NameCore(name), openpilotStreamCore(name)].filter((core) => core !== null);
+    return scope === "view" ? [...cores, ...openpilotViewFallbacks(name)] : cores;
 }
 
 /** Recording that a log's own name identifies (an openpilot segment's log), or null. */
@@ -245,7 +255,7 @@ function resolveVideo(
     const ofRecording = (videos: readonly VendorFile[] | undefined): VendorFile[] =>
         (videos ?? []).filter((video) => recording === null || classifyFilenameRecordingKey(video) === recording);
     let candidates = ofRecording(index.videosByFilename.get(mp4Filename));
-    for (const core of videoNameCores(mp4Filename, scope)) {
+    for (const core of videoLookupCores(mp4Filename, scope)) {
         if (candidates.length > 0) break;
         candidates = ofRecording(index.videosByNameCore.get(core));
     }

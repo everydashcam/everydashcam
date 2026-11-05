@@ -28,8 +28,10 @@ const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd];
 // Clocks before this are unsynced placeholders, not drive times; openpilot
 // routes in this layout postdate it by years.
 const MIN_PLAUSIBLE_UNIX_SEC = 1577836800; // 2020-01-01 UTC
-// Road view first: GPS records belong to the front video of the segment.
-const FRONT_STREAMS: readonly OpenpilotCameraStream[] = ["fcamera", "qcamera"];
+// GPS records belong to one loaded video of the segment: the road view when
+// loaded, else the wide, else the driver camera - every camera of a segment
+// records the same drive (openpilotViewFallbacks resolves later drops alike).
+const GPS_OWNER_STREAMS: readonly OpenpilotCameraStream[] = ["fcamera", "qcamera", "ecamera", "dcamera"];
 const CAMERA_STREAMS: readonly OpenpilotCameraStream[] = ["fcamera", "ecamera", "dcamera", "qcamera"];
 
 export const openpilotLogPrimitive: Primitive = {
@@ -61,8 +63,8 @@ export const openpilotLogPrimitive: Primitive = {
         if (log.messages === 0) throw new WrongFormatError("openpilot qlog holds no capnp messages");
 
         const videos = segmentVideos(file, name, context?.knownVideos ?? []);
-        const front = FRONT_STREAMS.map((stream) => videos.get(stream)).find((video) => video !== undefined);
-        const owner = front ?? { name: canonicalVideoName(file, name, "fcamera") };
+        const loadedOwner = GPS_OWNER_STREAMS.map((stream) => videos.get(stream)).find((video) => video !== undefined);
+        const owner = loadedOwner ?? { name: canonicalVideoName(file, name, "fcamera") };
         const records = gpsRecords(log, owner);
         const offsetNs = bootToUnixOffsetNs(log);
         const videoTimingHints: VideoTimingHint[] = [];
@@ -87,7 +89,7 @@ export const openpilotLogPrimitive: Primitive = {
     },
 };
 
-/** GPS fixes as records of the segment's front video, in time order. */
+/** GPS fixes as records of the segment's owning video, in time order. */
 function gpsRecords(log: OpenpilotLog, owner: { name: string; videoKey?: string }): GpsRecord[] {
     const records: GpsRecord[] = [];
     for (const fix of log.gps) {

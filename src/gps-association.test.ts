@@ -819,6 +819,32 @@ describe("openpilot segment logs", () => {
         ).toBe(vendorFileKey(flat));
     });
 
+    it("falls back from the road view to the wide, then the driver camera of the segment", () => {
+        const wide = video(`${ROUTE}--19/ecamera.hevc`, "card");
+        const driver = video(`${ROUTE}--19/dcamera.hevc`, "card");
+        const preview = video(`${ROUTE}--19/qcamera.ts`, "card");
+        const otherWide = video(`${ROUTE}--20/ecamera.hevc`, "card");
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [driver])).toBe(vendorFileKey(driver));
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [driver, wide, otherWide])).toBe(vendorFileKey(wide));
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [driver, wide, preview])).toBe(vendorFileKey(preview));
+        expect(resolveVideoKey(log(19), "fcamera.hevc", [otherWide])).toBeNull();
+        // A frame count stays with its exact stream.
+        const timing = resolveLogVideoTimingHints(
+            [
+                {
+                    mp4Filename: "fcamera.hevc",
+                    startUtc: 1,
+                    durationSec: 3,
+                    sourcePath: log(19).relativePath,
+                    sourceKey: "card",
+                    extractorId: "openpilot-log",
+                },
+            ],
+            [wide, driver],
+        );
+        expect(timing.size).toBe(0);
+    });
+
     it("keeps a raw stream's frame count off its preview", () => {
         const preview = video(`${ROUTE}--19/qcamera.ts`, "card");
         const timing = resolveLogVideoTimingHints(

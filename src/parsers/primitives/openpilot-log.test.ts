@@ -189,6 +189,20 @@ describe("openpilotLogPrimitive.parse", () => {
         expect(parsed.records[0]).toMatchObject({ mp4Filename: preview, videoKey: "q" });
     });
 
+    it("gives GPS to the wide, then the driver camera when no road view is loaded", async () => {
+        const wide = `${PREFIX}--ecamera.hevc`;
+        const driver = `${PREFIX}--dcamera.hevc`;
+        const parse = (knownVideos: PrimitiveVideoRef[]) =>
+            openpilotLogPrimitive.parse(qlogFile([...cameras(), ...fixes()]), undefined, undefined, { knownVideos });
+        const both = await parse([
+            { name: driver, relativePath: driver, videoKey: "d" },
+            { name: wide, relativePath: wide, videoKey: "e" },
+        ]);
+        expect(both.records[0]).toMatchObject({ mp4Filename: wide, videoKey: "e" });
+        const driverOnly = await parse([{ name: driver, relativePath: driver, videoKey: "d" }]);
+        expect(driverOnly.records[0]).toMatchObject({ mp4Filename: driver, videoKey: "d" });
+    });
+
     it("names unloaded videos in the device layout by their bare file names", async () => {
         const parsed = await openpilotLogPrimitive.parse(
             qlogFile([...cameras(), ...fixes()], {
