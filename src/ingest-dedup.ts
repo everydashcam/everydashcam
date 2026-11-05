@@ -79,8 +79,14 @@ function dedupKey(file: File): string {
     // stay separate; a trigger-time name does not identify the original span.
     const time = matchFilenameTime({ file, relativePath: file.name });
     return time.value === null
-        ? `name:${file.name}|${file.size}`
+        ? `name:${withoutDownloadSuffix(file.name)}|${file.size}`
         : `time:${time.matchedId}|${time.value.getTime()}|${file.size}`;
+}
+
+/** A browser saves a repeated download of `clip.ts` as `clip (1).ts`. Only the
+ *  grouping key drops the suffix; the content probe still decides. */
+function withoutDownloadSuffix(name: string): string {
+    return name.replace(/ \(\d+\)(\.[^.]+)$/, "$1");
 }
 
 async function readBytes(file: File, start: number, end: number): Promise<Uint8Array> {
@@ -260,8 +266,9 @@ export async function dropDuplicateFiles(
         const aRank = rankOf(a);
         const bRank = rankOf(b);
         if (aRank.channel !== null && bRank.channel !== null && aRank.channel !== bRank.channel) return false;
-        // Preserve the existing backup-copy contract for equal basenames.
-        if (a.file.name === b.file.name) return true;
+        // Preserve the existing backup-copy contract for equal basenames,
+        // including a browser's renamed repeat download.
+        if (withoutDownloadSuffix(a.file.name) === withoutDownloadSuffix(b.file.name)) return true;
         if (
             aRank.mode === null ||
             bRank.mode === null ||
@@ -307,12 +314,19 @@ export async function dropDuplicateFiles(
         return freq;
     };
 
-    /** Orders copies by recognised channel path, camera cohesion, event mode
-     * within one camera, path depth, then path. Classifiers stay cached. */
+    /** Orders copies by recognised channel path, original name over a renamed
+     * download, camera cohesion, event mode within one camera, path depth,
+     * then path. Classifiers stay cached. */
     const compareKeepPreference = (a: VendorFile, b: VendorFile, preferEvent: boolean): number => {
         const aRank = rankOf(a);
         const bRank = rankOf(b);
         if (aRank.channelRank !== bRank.channelRank) return aRank.channelRank - bRank.channelRank;
+        // The original name over a browser's renamed repeat download: sidecars
+        // and logs pair by the original basename. Ahead of camera cohesion,
+        // whose name mask groups "(1)" and "(2)" copies apart from the original.
+        const aRenamed = withoutDownloadSuffix(a.file.name) !== a.file.name;
+        const bRenamed = withoutDownloadSuffix(b.file.name) !== b.file.name;
+        if (aRenamed !== bRenamed) return aRenamed ? 1 : -1;
         const freq = getFingerprintFreq();
         const aFreq = freq.get(fingerprintOf(a)) ?? 0;
         const bFreq = freq.get(fingerprintOf(b)) ?? 0;

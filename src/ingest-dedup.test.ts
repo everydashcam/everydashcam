@@ -101,6 +101,19 @@ describe("dropDuplicateFiles", () => {
         expect(copies).toEqual([{ kept: incoming[0], duplicate: incoming[1] }]);
     });
 
+    it("compares a browser's repeated download with the original by content", async () => {
+        const preview = makeContent(LARGE_SIZE, 1);
+        const name = "0123456789abcdef_00000001--0000000000--4--qcamera";
+        const incoming = [
+            vf(`dl/${name}.TS`, preview),
+            vf(`dl/${name} (1).TS`, preview),
+            vf(`dl/${name} (2).TS`, makeContent(LARGE_SIZE, 1, { 1000: 2 })),
+        ];
+        const { kept, dropped } = await dropDuplicateFiles(incoming, []);
+        expect(kept).toEqual([incoming[0], incoming[2]]);
+        expect(dropped).toEqual([{ droppedPath: `dl/${name} (1).TS`, keptPath: `dl/${name}.TS` }]);
+    });
+
     it.each(["EV", "VL", "PA"])("collapses a real-time 70mai NO/%s copy while retaining the event", async (prefix) => {
         const content = makeContent(LARGE_SIZE, 7);
         const normal = vf("card/Normal/Front/NO20260101-120000-000042F.MP4", content);
