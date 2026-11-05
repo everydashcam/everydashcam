@@ -1,6 +1,6 @@
 import { SUPPORTED_BRANDS } from "../../vite-plugins/supported-brands.js";
 
-export const BRAND_ALPHABET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
+export const BRAND_ALPHABET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.";
 const BRAND_WORD = "EVERY";
 const cameraBrands = SUPPORTED_BRANDS.map((brand) => brand.displayName.toUpperCase());
 const maxDrums = Math.max(BRAND_WORD.length, ...cameraBrands.map((word) => word.length));

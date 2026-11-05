@@ -77,6 +77,9 @@ export interface VendorLocaleContent {
     modelsCompat: string;
     // Camera-specific instructions shown before the opening steps.
     formatIntro: string;
+    // Replaces the shared SD-card steps for a camera whose recordings reach
+    // the computer another way, such as a cloud download.
+    howSteps?: [string, string, string];
 }
 
 // Camera-specific recording guidance and localized marketing copy.
@@ -565,7 +568,7 @@ ${vendor.models.length ? `<ul class="vp-models">${vendor.models.map((m) => `<li>
 <h2 class="vp-h2">${escapeText(labels.howHeading.replace("{vendor}", v))}</h2>
 <p>${escapeText(content.formatIntro)}</p>
 <ol class="vp-steps">
-${labels.howSteps.map((step) => `<li>${escapeText(step)}</li>`).join("\n")}
+${(content.howSteps ?? labels.howSteps).map((step) => `<li>${escapeText(step)}</li>`).join("\n")}
 </ol>
 <a href="${ctaHref}" class="vp-cta vp-cta--secondary">${escapeText(labels.howSecondaryCta)}</a>
 </section>

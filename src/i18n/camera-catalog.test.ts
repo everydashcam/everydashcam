@@ -61,7 +61,7 @@ describe("supported camera catalog", () => {
 
     it("retains verified GPS support on cards that link to English guidance", () => {
         const html = renderCamerasIndexPage("pt", {});
-        for (const slug of ["blackvue", "vantrue", "thinkware", "nextbase", "redtiger", "navitel", "mio-mivue", "navman-mivue", "ddpai", "blackview", "innovv", "xega", "aspiring"]) {
+        for (const slug of ["blackvue", "vantrue", "thinkware", "nextbase", "redtiger", "navitel", "mio-mivue", "navman-mivue", "ddpai", "blackview", "innovv", "xega", "aspiring", "comma-ai"]) {
             const card = new RegExp(`<li id="camera-${slug}">([\\s\\S]*?)</li>`).exec(html)?.[1];
             expect(card, slug).toContain("Vídeo e GPS");
             expect(card, slug).toContain('hreflang="en"');
@@ -143,6 +143,21 @@ describe("supported camera catalog", () => {
         expect(() => renderVendorPage(incomplete, "de", {})).toThrow("missing reviewed copy");
     });
 
+    it("replaces the SD-card steps only for cameras whose recordings come from a download", () => {
+        for (const lang of ["en", "ru", "ko"] as const) {
+            const route = matchVendorRoute(`/${lang}/cameras/comma/`);
+            if (route?.kind !== "vendor") throw new Error(`missing comma.ai page: ${lang}`);
+            const html = renderVendorPage(route.vendor, lang, {});
+            const steps = [...(/<ol class="vp-steps">([\s\S]*?)<\/ol>/.exec(html)?.[1] ?? "").matchAll(/<li>([^<]+)<\/li>/g)];
+            expect(steps, lang).toHaveLength(3);
+            expect(steps[0]?.[1], lang).toContain("comma connect");
+            expect(html, lang).not.toMatch(/SD[- ]?(?:card|карт|카드)/);
+        }
+        const route = matchVendorRoute("/en/cameras/70mai/");
+        if (route?.kind !== "vendor") throw new Error("missing 70mai page");
+        expect(renderVendorPage(route.vendor, "en", {})).toContain("Take the SD card out of the dashcam");
+    });
+
     it("retains essential companion-file guidance in all published translations", () => {
         const requiredFiles: Record<string, string[]> = {
             comtec: ["EG-1", ".TS", "Movie", "Front", "Rear"],
@@ -153,6 +168,7 @@ describe("supported camera catalog", () => {
             garmin: ["Dash Cam 57", "GRMN"],
             vantrue: ["N2X", "S1 Pro Max"],
             nextbase: ["322GW", "422GW", "_FH"],
+            comma: ["comma four", "qlog.zst", "qcamera.ts", "fcamera.hevc", "comma connect"],
             navman: [".NMEA"],
             botslab: ["GPS.TXT", "360CARDVR/REC"],
             sony: [".LOG"],

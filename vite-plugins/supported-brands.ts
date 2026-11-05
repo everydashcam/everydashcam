@@ -85,7 +85,8 @@ export type VendorSlug =
     | "xega"
     | "aspiring"
     | "jooyfact"
-    | "rexing";
+    | "rexing"
+    | "comma";
 
 // A new product locale must not silently multiply every vendor page. The
 // rollout list is explicit per brand so only useful, reviewed translations
@@ -322,6 +323,13 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         hasLandingPage: true,
         locales: ["en", "ru"],
         videoSamples: ["SC4KS"],
+    },
+    {
+        displayName: "comma.ai",
+        slug: "comma",
+        hasLandingPage: true,
+        locales: ["en", "ru", "ko"],
+        gpsSamples: ["comma four"],
     },
     { displayName: "E-ACE", hasLandingPage: false, videoSamples: [] },
     { displayName: "Fujida", hasLandingPage: false, videoSamples: ["Karma Pro Max"] },

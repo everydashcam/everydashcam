@@ -12,6 +12,7 @@ interface CameraCopy {
     lead: string;
     compatibility: string;
     openTip: string;
+    howSteps?: [string, string, string];
 }
 
 interface CameraMetadata {
@@ -51,6 +52,7 @@ function localize(copy: CameraCopy, name: string, lang: Lang): VendorLocaleConte
         ctaPrimary: OPEN_RECORDINGS_CTA[lang](name),
         modelsCompat: copy.compatibility,
         formatIntro: copy.openTip,
+        ...(copy.howSteps ? { howSteps: copy.howSteps } : {}),
     };
 }
 
@@ -844,6 +846,57 @@ const PAGES: CameraPage[] = [
                 "Проверенный пример SC4KS воспроизводится, но не содержит читаемого GPS. Карта маршрута для этой записи не подтверждена; другие модели Rexing могут использовать иные форматы.",
             openTip:
                 "Открой исходную папку с записями и сохрани файлы .TS, имена и подпапки. Используй файлы с карты: преобразовывать их в MP4 перед открытием не нужно.",
+        },
+    },
+    {
+        slug: "comma",
+        displayName: "comma.ai",
+        models: ["comma four"],
+        features: MULTI_CAMERA_FEATURES,
+        en: {
+            title: "comma.ai openpilot route player with video and GPS",
+            description:
+                "Watch comma four drives downloaded from comma connect, with the GPS route, speed and every recorded camera. Segments join into one trip on your device.",
+            lead: "Review an openpilot drive from your comma four: road, wide and driver cameras next to the route and speed. One-minute segments join into a single trip, and your files stay on your device.",
+            compatibility:
+                "Checked on comma four routes recorded by openpilot 0.11.2 and downloaded from comma connect. The GPS route and the start time of each camera come from qlog.zst. Older routes with date-based names and .bz2 logs aren't recognized; other comma devices haven't been checked yet.",
+            openTip:
+                "By default, the only video your comma four uploads to comma connect is the low-resolution qcamera.ts road preview. To watch the full-resolution fcamera.hevc, ecamera.hevc and dcamera.hevc cameras, request their upload in comma connect and use a browser that plays HEVC video. The preview plays in any browser.",
+            howSteps: [
+                "Open the drive in comma connect and download every file of the segments you need, including qlog.zst.",
+                "Open everydashcam.app in any modern browser.",
+                "Drag all the downloaded files onto the page together — the segments join into one trip.",
+            ],
+        },
+        ru: {
+            title: "Плеер записей comma.ai openpilot с видео и GPS",
+            description:
+                "Смотри поездки comma four, скачанные из comma connect: GPS-маршрут, скорость и все записанные камеры. Сегменты собираются в одну поездку на твоём устройстве.",
+            lead: "Посмотри поездку openpilot с comma four: дорожная, широкоугольная и салонная камеры рядом с маршрутом и скоростью. Минутные сегменты собираются в одну поездку, а файлы остаются на твоём устройстве.",
+            compatibility:
+                "Проверено на записях comma four, сделанных openpilot 0.11.2 и скачанных из comma connect. GPS-маршрут и время старта каждой камеры берутся из qlog.zst. Старые записи с датой в имени и логами .bz2 не распознаются; другие устройства comma пока не проверены.",
+            openTip:
+                "По умолчанию из видео comma four загружает в comma connect только превью дорожной камеры в низком разрешении — qcamera.ts. Чтобы смотреть камеры в полном разрешении (fcamera.hevc, ecamera.hevc и dcamera.hevc), запроси их загрузку в comma connect и открой файлы в браузере, который воспроизводит HEVC. Превью воспроизводится в любом браузере.",
+            howSteps: [
+                "Открой поездку в comma connect и скачай все файлы нужных сегментов, включая qlog.zst.",
+                "Открой everydashcam.app в любом современном браузере.",
+                "Перетащи все скачанные файлы на страницу разом — сегменты соберутся в одну поездку.",
+            ],
+        },
+        ko: {
+            title: "comma.ai 오픈파일럿(openpilot) 주행 영상·GPS 플레이어",
+            description:
+                "comma connect에서 내려받은 comma four 주행을 GPS 경로, 속도, 녹화된 모든 카메라와 함께 확인하세요. 세그먼트는 내 기기 안에서 하나의 주행으로 합쳐져요.",
+            lead: "comma four로 기록한 오픈파일럿 주행을 도로·광각·운전자 카메라와 경로, 속도와 함께 확인하세요. 1분 단위 세그먼트가 하나의 주행으로 합쳐지고, 파일은 내 기기에만 보관돼요.",
+            compatibility:
+                "openpilot 0.11.2로 기록하고 comma connect에서 내려받은 comma four 주행으로 확인했어요. GPS 경로와 각 카메라의 시작 시각은 qlog.zst에서 읽어요. 날짜 형식 이름과 .bz2 로그를 쓰는 예전 주행은 인식하지 않으며, 다른 comma 기기는 아직 확인하지 않았어요.",
+            openTip:
+                "comma four는 기본적으로 영상 중 저해상도 도로 미리보기인 qcamera.ts만 comma connect에 업로드해요. 원본 해상도의 fcamera.hevc, ecamera.hevc, dcamera.hevc를 보려면 comma connect에서 업로드를 요청하고 HEVC 영상을 재생할 수 있는 브라우저를 사용하세요. 미리보기는 어느 브라우저에서나 재생돼요.",
+            howSteps: [
+                "comma connect에서 주행을 열고 필요한 세그먼트의 파일을 qlog.zst까지 모두 내려받으세요.",
+                "최신 브라우저에서 everydashcam.app을 여세요.",
+                "내려받은 파일을 한꺼번에 페이지로 끌어다 놓으면 세그먼트가 하나의 주행으로 합쳐져요.",
+            ],
         },
     },
 ];
