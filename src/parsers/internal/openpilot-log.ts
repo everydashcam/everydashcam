@@ -29,6 +29,9 @@ import {
 // union member is a pointer, sharing pointer slot 0.
 const EVENT_LOG_MONO_TIME = 0;
 const EVENT_DISCRIMINANT = 8;
+// Event.valid Bool @67 = true takes the first bit after the discriminant.
+// Cap'n Proto stores a field XOR its default, so a set bit means invalid.
+const EVENT_INVALID_BIT = 80;
 
 // Discriminant = rank of the member's ordinal within the union. The union holds
 // every ordinal from @1 upward except @67 (Event.valid), so the value is
@@ -94,8 +97,9 @@ export interface OpenpilotFrameIndex {
 export interface OpenpilotLog {
     gps: OpenpilotGpsFix[];
     frames: Map<OpenpilotCameraStream, OpenpilotFrameIndex>;
-    /** Clocks events: the device's system clock against its boot clock. */
-    wallClock: Array<{ monoNs: number; unixNanos: number }>;
+    /** Clocks events: the device's system clock against its boot clock.
+     *  isValid is openpilot's own verdict on whether that clock was set. */
+    wallClock: Array<{ monoNs: number; unixNanos: number; isValid: boolean }>;
     messages: number;
     /** See CapnpWalkResult.malformedAt. */
     malformedAt: number | null;
@@ -120,7 +124,13 @@ export function decodeOpenpilotLog(bytes: Uint8Array): OpenpilotLog {
         }
         if (discriminant === EVENT_CLOCKS) {
             const clocks = capnpStructAt(event, 0);
-            if (clocks) wallClock.push({ monoNs, unixNanos: capnpU64(clocks, CLOCKS_WALL_TIME_NANOS) });
+            if (clocks) {
+                wallClock.push({
+                    monoNs,
+                    unixNanos: capnpU64(clocks, CLOCKS_WALL_TIME_NANOS),
+                    isValid: !capnpBit(event, EVENT_INVALID_BIT),
+                });
+            }
             return;
         }
         const stream = ENCODE_INDEX_STREAMS.get(discriminant);

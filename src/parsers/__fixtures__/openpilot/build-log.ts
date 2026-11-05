@@ -76,11 +76,18 @@ const DISCRIMINANT = {
 } as const;
 
 /** An Event with the given union member. */
-export function eventMessage(monoNs: number, discriminant: number, payload: CapnpStructSpec | null): Uint8Array {
+export function eventMessage(
+    monoNs: number,
+    discriminant: number,
+    payload: CapnpStructSpec | null,
+    isValid = true,
+): Uint8Array {
     return capnpMessage({
         data: structData(2, (view) => {
             view.setBigUint64(0, BigInt(monoNs), true);
             view.setUint16(8, discriminant, true);
+            // Event.valid (default true) is stored inverted at bit 80.
+            if (!isValid) view.setUint8(10, 1);
         }),
         pointers: [payload],
     });
@@ -131,9 +138,9 @@ export function encodeIndexEvent(
 }
 
 /** Clocks: wallTimeNanos u64 @24, after three deprecated words. */
-export function clocksEvent(monoNs: number, wallTimeNanos: number): Uint8Array {
+export function clocksEvent(monoNs: number, wallTimeNanos: number, isValid = true): Uint8Array {
     const payload = structData(4, (view) => view.setBigUint64(24, BigInt(wallTimeNanos), true));
-    return eventMessage(monoNs, DISCRIMINANT.clocks, { data: payload });
+    return eventMessage(monoNs, DISCRIMINANT.clocks, { data: payload }, isValid);
 }
 
 /** Frame index entries of `frames` frames at 20 fps starting at `firstSofNs`. */

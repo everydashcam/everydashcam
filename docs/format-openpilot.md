@@ -73,8 +73,11 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
 - Boot-to-UTC offset: median of `unixTimestampMillis * 1e6 - logMonoTime` over
   fixes with `hasFix` and a date after 2020. A fix is published tens of
   milliseconds after it is taken, so the result runs early by that latency.
-- Without a fix, the `clocks` events' system time stands in if it is after 2020.
-  On the sample it agrees with the GPS offset within 10 ms.
+- Without a fix, the `clocks` events' system time stands in when openpilot
+  marks the event valid (`Event.valid`, set from `system_time_valid()` in
+  `timed.py`) and its date is after 2020. An unsynced device reports its OS
+  build date, which passes any fixed floor, so the flag decides. On the sample
+  the clock agrees with the GPS offset within 10 ms.
 - Frame 0 of each camera: start-of-frame time of the entry with
   `segmentId == 0`, plus the offset. On the sample, consecutive segments start
   60.001 s apart.
@@ -89,7 +92,8 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
 
 GPS records come from `gpsLocation` (1 Hz in the qlog) and
 `gpsLocationExternal` (decimated to 1 Hz) and belong to the segment's front
-video. Only the qlog is read: the rlog holds the same events undecimated, and
+video. Fixes off the globe are dropped; the stream has no checksum. Only the
+qlog is read: the rlog holds the same events undecimated, and
 reading both would double the track. Timing is recomputed from the logs on
 every ingest and never stored in the index cache.
 

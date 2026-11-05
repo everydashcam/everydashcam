@@ -12,6 +12,7 @@
 
 import { throwIfCancelled } from "../../abort-signals.js";
 import { createLogger } from "../../log.js";
+import { isValidGpsFix } from "../../parser.js";
 import { type OpenpilotFileName, parseOpenpilotFileName } from "../filename/_patterns.js";
 import { OPENPILOT_FRAME_RATE } from "../internal/openpilot.js";
 import { type OpenpilotCameraStream, type OpenpilotLog, decodeOpenpilotLog } from "../internal/openpilot-log.js";
@@ -109,7 +110,7 @@ function gpsRecords(decoded: OpenpilotLog, owner: { name: string; videoKey?: str
         const unixSeconds = fix.unixMillis / 1000;
         // A fix-less report repeats a stale or zero position; only fixes are track.
         if (!fix.hasFix || unixSeconds < MIN_PLAUSIBLE_UNIX_SEC) continue;
-        records.push({
+        const record: GpsRecord = {
             unixSeconds,
             active: true,
             lat: fix.lat,
@@ -122,7 +123,10 @@ function gpsRecords(decoded: OpenpilotLog, owner: { name: string; videoKey?: str
             accelZg: 0,
             mp4Filename: owner.name,
             ...(owner.videoKey === undefined ? {} : { videoKey: owner.videoKey }),
-        });
+        };
+        // The zstd stream has no checksum: a flipped bit on the card reaches
+        // the fix as a coordinate off the globe.
+        if (isValidGpsFix(record)) records.push(record);
     }
     return records.sort((a, b) => a.unixSeconds - b.unixSeconds);
 }
@@ -131,10 +135,10 @@ function gpsRecords(decoded: OpenpilotLog, owner: { name: string; videoKey?: str
  * Offset that turns the device's boot clock (logMonoTime, frame timestamps)
  * into Unix nanoseconds. GPS fixes pair both clocks directly; the median
  * absorbs per-fix publish latency. Without a fix the system clock stands in,
- * if it is plausibly set: openpilot syncs it from GPS or the network, and a
- * device that never synced reports an old date, which the floor rejects.
- * A fix is published tens of milliseconds after it is taken, so the result
- * runs early by that latency.
+ * but only samples openpilot itself marks valid: an unsynced device reports
+ * its OS build date, which is recent enough to pass any fixed floor (timed.py
+ * publishes clocks with valid = system_time_valid()). A fix is published tens
+ * of milliseconds after it is taken, so the result runs early by that latency.
  */
 function bootToUnixOffsetNs(decoded: OpenpilotLog): number | null {
     const fromGps = decoded.gps
@@ -142,7 +146,7 @@ function bootToUnixOffsetNs(decoded: OpenpilotLog): number | null {
         .map((fix) => fix.unixMillis * 1e6 - fix.monoNs);
     if (fromGps.length > 0) return median(fromGps);
     const fromClock = decoded.wallClock
-        .filter((sample) => sample.unixNanos / 1e9 >= MIN_PLAUSIBLE_UNIX_SEC)
+        .filter((sample) => sample.isValid && sample.unixNanos / 1e9 >= MIN_PLAUSIBLE_UNIX_SEC)
         .map((sample) => sample.unixNanos - sample.monoNs);
     return fromClock.length > 0 ? median(fromClock) : null;
 }

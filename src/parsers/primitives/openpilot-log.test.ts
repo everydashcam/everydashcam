@@ -244,6 +244,14 @@ describe("openpilotLogPrimitive.parse", () => {
         });
     });
 
+    it("ignores a clock openpilot marks unset, however recent its date", async () => {
+        const offsetNs = T0_MS * 1e6 - BOOT_NS;
+        const parsed = await openpilotLogPrimitive.parse(
+            qlogFile([...cameras(), clocksEvent(BOOT_NS, BOOT_NS + offsetNs, false)]),
+        );
+        expect(parsed.videoTimingHints![0]).toMatchObject({ startUtc: null, durationSec: 2 });
+    });
+
     it("keeps the GPS and start of a log cut short, but not its frame counts", async () => {
         // Over 128 KiB of events, so the fixes sit in a whole first block.
         const cut: VendorFile = {
@@ -256,6 +264,12 @@ describe("openpilotLogPrimitive.parse", () => {
         expect(front, "front camera hint").toBeDefined();
         expect(front!.startUtc!).toBeCloseTo(EXPECTED_START, 4);
         expect(front!.durationSec).toBeNull();
+    });
+
+    it("drops fixes off the globe from the track", async () => {
+        const parsed = await openpilotLogPrimitive.parse(qlogFile([...cameras(), ...fixes({ lat: 391 })]));
+        expect(parsed.records).toEqual([]);
+        expect(parsed.videoTimingHints![0]!.startUtc!).toBeCloseTo(EXPECTED_START, 4);
     });
 
     it("ignores a frame index of a different segment than its file name", async () => {

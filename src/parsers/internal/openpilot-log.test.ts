@@ -98,9 +98,17 @@ describe("decodeOpenpilotLog", () => {
         expect(log.frames.get("fcamera")).toEqual({ segment: 3, frameCount: 4, firstFrameSofNs: null });
     });
 
-    it("reads the system clock samples", () => {
-        const log = decodeOpenpilotLog(clocksEvent(BOOT_NS, 1_793_000_000_000_000_000));
-        expect(log.wallClock).toEqual([{ monoNs: BOOT_NS, unixNanos: 1_793_000_000_000_000_000 }]);
+    it("reads the system clock samples with openpilot's validity flag", () => {
+        const log = decodeOpenpilotLog(
+            concatBytes([
+                clocksEvent(BOOT_NS, 1_793_000_000_000_000_000),
+                clocksEvent(BOOT_NS + 1, 1_740_000_000_000_000_000, false),
+            ]),
+        );
+        expect(log.wallClock).toEqual([
+            { monoNs: BOOT_NS, unixNanos: 1_793_000_000_000_000_000, isValid: true },
+            { monoNs: BOOT_NS + 1, unixNanos: 1_740_000_000_000_000_000, isValid: false },
+        ]);
     });
 
     it("skips other events and events without a payload, counting them as messages", () => {
