@@ -823,7 +823,11 @@ async function emitSilenceFrames(
             // Interleaved f32 (all zeros). sampleRate/channels match the real
             // source samples (caller passes the probed format), so the source's
             // input-constancy guard sees one uniform format across silence and
-            // audio; the layout (f32 vs planar) is abstracted by the encoder.
+            // audio. The layout may differ from decoded audio (f32 vs planar):
+            // an encode source's transform resampler re-emits every sample as
+            // interleaved f32, so no layout change reaches the AudioEncoder
+            // (some reset their state on one, mediabunny #444), and the pcm-s16
+            // source converts each sample on its own.
             format: "f32",
             numberOfChannels: channels,
             sampleRate,
