@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { constants, zstdCompressSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
@@ -27,7 +28,8 @@ describe("inflateZstdPrefix", () => {
             expect(result.kind).toBe("decoded");
             if (result.kind !== "decoded") continue;
             expect(result.complete).toBe(true);
-            expect(result.bytes).toEqual(original);
+            // Compare bytes directly; deep equality walks 600,000 indexed properties.
+            expect(Buffer.from(result.bytes).equals(original), "decoded bytes match the input").toBe(true);
         }
     });
 
@@ -38,7 +40,10 @@ describe("inflateZstdPrefix", () => {
         expect(result.complete).toBe(false);
         expect(result.bytes.length).toBeGreaterThan(0);
         expect(result.bytes.length).toBeLessThan(original.length);
-        expect(result.bytes).toEqual(original.subarray(0, result.bytes.length));
+        expect(
+            Buffer.from(result.bytes).equals(original.subarray(0, result.bytes.length)),
+            "decoded bytes match the input prefix",
+        ).toBe(true);
     });
 
     it("reports a stream that decodes to nothing as invalid", async () => {
