@@ -75,6 +75,39 @@ describe("inflateZstdPrefix", () => {
         expect(await inflateZstdPrefix(both, 1 << 20)).toEqual({ kind: "too-large" });
     });
 
+    it("keeps a later frame's header cut short away from the decoder", async () => {
+        // A whole frame, then a header cut after its window descriptor (0x90,
+        // 256 MiB) while its descriptor still asks for an 8-byte content size.
+        // The walk cannot check that header; fzstd would allocate its window.
+        const first = zstdCompressSync(new Uint8Array(64).fill(7));
+        const cutHeader = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0xc0, 0x90]);
+        const stream = new Uint8Array(first.length + cutHeader.length);
+        stream.set(first, 0);
+        stream.set(cutHeader, first.length);
+        const before = process.memoryUsage().arrayBuffers;
+        const result = await inflateZstdPrefix(stream, 1 << 20);
+        const allocated = process.memoryUsage().arrayBuffers - before;
+        expect(result).toEqual({ kind: "decoded", bytes: new Uint8Array(64).fill(7), complete: false });
+        expect(allocated, "bytes allocated while decoding").toBeLessThan(64 << 20);
+    });
+
+    it("keeps the decoded prefix when fzstd fails without a decode error code", async () => {
+        // 1 KiB window: a raw block of 512 bytes, then an RLE block claiming
+        // 4096 bytes, more than the window holds. fzstd hands the block out,
+        // then throws a plain RangeError copying it into the window.
+        const rleHeader = (4096 << 3) | (1 << 1) | 1;
+        const stream = new Uint8Array([
+            ...[0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00],
+            ...[(512 << 3) & 0xff, (512 << 3) >> 8, 0],
+            ...new Array<number>(512).fill(0x41),
+            ...[rleHeader & 0xff, (rleHeader >> 8) & 0xff, rleHeader >> 16, 0x42],
+        ]);
+        const result = await inflateZstdPrefix(stream, 1 << 20);
+        expect(result).toMatchObject({ kind: "decoded", complete: false });
+        if (result.kind !== "decoded") return;
+        expect(result.bytes.subarray(0, 512)).toEqual(new Uint8Array(512).fill(0x41));
+    });
+
     it("walks past skippable frames and frame checksums to the next header", async () => {
         const checked = zstdCompressSync(new Uint8Array(64), { params: { [constants.ZSTD_c_checksumFlag]: 1 } });
         const skippable = new Uint8Array([0x50, 0x2a, 0x4d, 0x18, 0x02, 0x00, 0x00, 0x00, 0xaa, 0xbb]);
