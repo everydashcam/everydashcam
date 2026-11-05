@@ -136,7 +136,10 @@ at 8/16/24, `bearingDeg` `f32` at 32, `horizontalAccuracy` `f32` at 36,
 `unixTimestampMillis` `i64` at 40, `hasFix` at bit 480.
 
 `EncodeIndex`: `segmentNum` `i32` at 12, `segmentId` `u32` at 16,
-`timestampSof` `u64` at 24.
+`timestampSof` `u64` at 24. `segmentNum` is encoderd's own counter; loggerd
+keeps its offset to the route's segments but logs the raw value, so after
+either process restarts mid-drive it no longer equals the segment in the
+file name.
 
 `Clocks`: `wallTimeNanos` `u64` at 24.
 

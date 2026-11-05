@@ -75,10 +75,10 @@ describe("decodeOpenpilotLog", () => {
             ]),
         );
         expect(Object.fromEntries(log.frames)).toEqual({
-            fcamera: { segment: 19, frameCount: 40, firstFrameSofNs: BOOT_NS },
-            ecamera: { segment: 19, frameCount: 39, firstFrameSofNs: BOOT_NS + 1_000_000 },
-            dcamera: { segment: 19, frameCount: 20, firstFrameSofNs: BOOT_NS + 2_000_000 },
-            qcamera: { segment: 19, frameCount: 40, firstFrameSofNs: BOOT_NS },
+            fcamera: { frameCount: 40, firstFrameSofNs: BOOT_NS },
+            ecamera: { frameCount: 39, firstFrameSofNs: BOOT_NS + 1_000_000 },
+            dcamera: { frameCount: 20, firstFrameSofNs: BOOT_NS + 2_000_000 },
+            qcamera: { frameCount: 40, firstFrameSofNs: BOOT_NS },
         });
     });
 
@@ -90,14 +90,13 @@ describe("decodeOpenpilotLog", () => {
                 encodeIndexEvent("fcamera", { segmentNum: 19, segmentId: 4, sofNs: BOOT_NS + 200_000_000 }),
             ]),
         );
-        expect(log.frames.get("fcamera")).toEqual({ segment: 19, frameCount: 5, firstFrameSofNs: BOOT_NS });
+        expect(log.frames.get("fcamera")).toEqual({ frameCount: 5, firstFrameSofNs: BOOT_NS });
     });
 
     it("starts a segment that opened past frame 0 at its first logged frame", () => {
         // loggerd drops the frames before the first keyframe from the video and the log alike.
         const log = decodeOpenpilotLog(concatBytes(frameIndexEvents("fcamera", 3, 5, BOOT_NS).slice(2)));
         expect(log.frames.get("fcamera")).toEqual({
-            segment: 3,
             frameCount: 3,
             firstFrameSofNs: BOOT_NS + 100_000_000,
         });
@@ -111,7 +110,6 @@ describe("decodeOpenpilotLog", () => {
             ]),
         );
         expect(log.frames.get("fcamera")).toEqual({
-            segment: 3,
             frameCount: 3,
             firstFrameSofNs: BOOT_NS + 100_000_000,
         });
@@ -119,7 +117,7 @@ describe("decodeOpenpilotLog", () => {
 
     it("leaves the first frame time unknown when no entry carries a time", () => {
         const log = decodeOpenpilotLog(concatBytes(frameIndexEvents("fcamera", 3, 2, 0).slice(0, 1)));
-        expect(log.frames.get("fcamera")).toEqual({ segment: 3, frameCount: 1, firstFrameSofNs: null });
+        expect(log.frames.get("fcamera")).toEqual({ frameCount: 1, firstFrameSofNs: null });
     });
 
     it("reads the system clock samples with openpilot's validity flag", () => {

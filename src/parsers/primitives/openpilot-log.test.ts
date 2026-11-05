@@ -272,11 +272,17 @@ describe("openpilotLogPrimitive.parse", () => {
         expect(parsed.videoTimingHints![0]!.startUtc!).toBeCloseTo(EXPECTED_START, 4);
     });
 
-    it("ignores a frame index of a different segment than its file name", async () => {
+    it("dates a camera whose logged segment number differs from its file name", async () => {
+        // loggerd logs encoderd's own segment counter, which runs ahead of the
+        // route's numbering once either process restarts mid-drive.
         const parsed = await openpilotLogPrimitive.parse(
-            qlogFile([...frameIndexEvents("fcamera", 8, 40, BOOT_NS), ...fixes()]),
+            qlogFile([...frameIndexEvents("fcamera", 12, 40, BOOT_NS - 500_000_000), ...fixes()]),
         );
-        expect(parsed.videoTimingHints).toEqual([]);
+        expect(parsed.videoTimingHints).toHaveLength(1);
+        const hint = parsed.videoTimingHints![0]!;
+        expect(hint.mp4Filename).toBe(`${PREFIX}--fcamera.hevc`);
+        expect(hint.startUtc!).toBeCloseTo(EXPECTED_START, 4);
+        expect(hint.durationSec).toBe(2);
         expect(parsed.records).toHaveLength(3);
     });
 

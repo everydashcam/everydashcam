@@ -88,7 +88,6 @@ export interface OpenpilotGpsFix {
 
 /** Frames of one camera stream's file, from the encode index of its segment. */
 export interface OpenpilotFrameIndex {
-    segment: number;
     frameCount: number;
     /** Start-of-frame time of the file's first frame, on the boot clock; null
      *  when no entry has a time. */
@@ -108,13 +107,16 @@ export interface OpenpilotLog {
 
 /**
  * Decodes the events this viewer uses from a decompressed openpilot log. Other
- * events are skipped. Frame indexes from a different segment number than the
- * majority (none were observed) are ignored rather than mixed in.
+ * events are skipped.
  *
  * loggerd logs a frame's encode index entry right after writing the frame and
  * drops the frames before a segment's first keyframe from both, so a stream's
  * entries describe its file from the first byte: the lowest logged segmentId
  * is the file's first frame, 0 only when the segment opened on a keyframe.
+ * segmentNum is encoderd's own counter, logged without the offset loggerd
+ * keeps to its own segments, so it says nothing about which segment the log
+ * is. Within one log a second numbering (encoderd restarted mid-segment)
+ * loses to the majority rather than mixing in.
  */
 export function decodeOpenpilotLog(bytes: Uint8Array): OpenpilotLog {
     const gps: OpenpilotGpsFix[] = [];
@@ -174,7 +176,7 @@ export function decodeOpenpilotLog(bytes: Uint8Array): OpenpilotLog {
         const firstFrameSofNs = earliestTimed
             ? earliestTimed.sofNs - ((earliestTimed.id - firstId) * 1e9) / OPENPILOT_FRAME_RATE
             : null;
-        frames.set(stream, { segment, frameCount: ids.size, firstFrameSofNs });
+        frames.set(stream, { frameCount: ids.size, firstFrameSofNs });
     }
     return { gps, frames, wallClock, messages: walk.messages, malformedAt: walk.malformedAt };
 }

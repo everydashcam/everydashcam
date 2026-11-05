@@ -84,7 +84,7 @@ export const openpilotLogPrimitive: Primitive = {
         const videoTimingHints: VideoTimingHint[] = [];
         for (const stream of CAMERA_STREAMS) {
             const frames = decoded.frames.get(stream);
-            if (!frames || frames.segment !== name.segment || frames.frameCount === 0) continue;
+            if (!frames || frames.frameCount === 0) continue;
             const video = videos.get(stream);
             videoTimingHints.push({
                 mp4Filename: video?.name ?? canonicalVideoName(file, name, stream),
