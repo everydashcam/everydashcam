@@ -344,6 +344,7 @@ export const enDict = {
     "fileDetails.timeSource.mtime": "file date",
     "fileDetails.none.audio": "no audio",
     "fileDetails.none.gps": "no GPS",
+    "fileDetails.none.container": "none (raw HEVC)",
 
     "channel.front": "Front camera",
     "channel.rear": "Rear camera",

@@ -342,6 +342,7 @@ export const zhDict = {
     "fileDetails.timeSource.mtime": "文件日期",
     "fileDetails.none.audio": "无音频",
     "fileDetails.none.gps": "无GPS",
+    "fileDetails.none.container": "无（原始HEVC流）",
 
     "channel.front": "前置摄像头",
     "channel.rear": "后置摄像头",

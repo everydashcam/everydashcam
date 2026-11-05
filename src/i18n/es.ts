@@ -343,6 +343,7 @@ export const esDict = {
     "fileDetails.timeSource.mtime": "fecha del archivo",
     "fileDetails.none.audio": "sin audio",
     "fileDetails.none.gps": "sin GPS",
+    "fileDetails.none.container": "ninguno (HEVC en bruto)",
 
     "channel.front": "Cámara frontal",
     "channel.rear": "Cámara trasera",

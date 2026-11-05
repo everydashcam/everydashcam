@@ -343,6 +343,7 @@ export const frDict = {
     "fileDetails.timeSource.mtime": "date du fichier",
     "fileDetails.none.audio": "pas d'audio",
     "fileDetails.none.gps": "pas de GPS",
+    "fileDetails.none.container": "aucun (HEVC brut)",
 
     "channel.front": "Caméra avant",
     "channel.rear": "Caméra arrière",

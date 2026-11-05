@@ -450,6 +450,7 @@ export type I18nKey =
     | "fileDetails.timeSource.mtime"
     | "fileDetails.none.audio"
     | "fileDetails.none.gps"
+    | "fileDetails.none.container"
 
     // Multi-camera dashcam channels. Full names for tooltip and selector;
     // short names (1 char) for badges next to clip names.

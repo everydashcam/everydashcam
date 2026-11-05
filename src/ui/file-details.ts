@@ -86,7 +86,7 @@ function audioCodecName(raw: string | null): string | null {
 function containerName(candidate: VideoCandidate): string {
     if (candidate.isTransportStream) return "MPEG-TS";
     if (candidate.isMatroska) return "Matroska";
-    if (isRawHevcName(candidate.file.name)) return "HEVC elementary stream";
+    if (isRawHevcName(candidate.file.name)) return t("fileDetails.none.container");
     return "MP4";
 }
 

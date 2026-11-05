@@ -341,6 +341,7 @@ export const deDict = {
     "fileDetails.timeSource.mtime": "Dateidatum",
     "fileDetails.none.audio": "kein Audio",
     "fileDetails.none.gps": "kein GPS",
+    "fileDetails.none.container": "keiner (rohes HEVC)",
 
     "channel.front": "Frontkamera",
     "channel.rear": "Heckkamera",

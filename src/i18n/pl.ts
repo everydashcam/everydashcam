@@ -343,6 +343,7 @@ export const plDict = {
     "fileDetails.timeSource.mtime": "data pliku",
     "fileDetails.none.audio": "bez dźwięku",
     "fileDetails.none.gps": "bez GPS",
+    "fileDetails.none.container": "brak (surowy HEVC)",
 
     "channel.front": "Kamera przednia",
     "channel.rear": "Kamera tylna",

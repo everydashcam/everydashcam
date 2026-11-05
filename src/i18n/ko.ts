@@ -352,6 +352,7 @@ export const koDict = {
     "fileDetails.timeSource.mtime": "파일 날짜",
     "fileDetails.none.audio": "오디오 없음",
     "fileDetails.none.gps": "GPS 없음",
+    "fileDetails.none.container": "없음 (원시 HEVC)",
 
     "channel.front": "전방 카메라",
     "channel.rear": "후방 카메라",

@@ -353,6 +353,7 @@ export const jaDict = {
     "fileDetails.timeSource.mtime": "ファイル日時",
     "fileDetails.none.audio": "音声なし",
     "fileDetails.none.gps": "GPSなし",
+    "fileDetails.none.container": "なし（HEVC生ストリーム）",
 
     "channel.front": "フロントカメラ",
     "channel.rear": "リアカメラ",

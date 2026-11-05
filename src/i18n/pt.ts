@@ -343,6 +343,7 @@ export const ptDict = {
     "fileDetails.timeSource.mtime": "data do arquivo",
     "fileDetails.none.audio": "sem áudio",
     "fileDetails.none.gps": "sem GPS",
+    "fileDetails.none.container": "nenhum (HEVC bruto)",
 
     "channel.front": "Câmera frontal",
     "channel.rear": "Câmera traseira",

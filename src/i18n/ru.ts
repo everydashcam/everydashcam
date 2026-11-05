@@ -348,6 +348,7 @@ export const ruDict = {
     "fileDetails.timeSource.mtime": "дата файла",
     "fileDetails.none.audio": "без звука",
     "fileDetails.none.gps": "без GPS",
+    "fileDetails.none.container": "нет (сырой HEVC)",
 
     "channel.front": "Передняя камера",
     "channel.rear": "Задняя камера",
