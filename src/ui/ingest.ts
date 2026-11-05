@@ -327,7 +327,7 @@ async function ingestFilesInternal(
     for (const copy of dedup.copies) existingVideoNames.add(copy.duplicate.file.name);
     setIngestStage(t("ingestOverlay.stage.classifying"));
     const { classified, errors: classificationErrors } = await mark("classify", () =>
-        dispatchClassifyFiles(vfiles, existingVideoNames, signal),
+        dispatchClassifyFiles(vfiles, { existingVideoNames, loadedVideos: alreadyLoaded }, signal),
     );
     reportParseErrors("classify", classificationErrors);
 

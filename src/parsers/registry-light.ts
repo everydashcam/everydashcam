@@ -28,31 +28,56 @@ export function isVideoFile(vf: VendorFile): boolean {
 /**
  * openpilot records the road view twice per segment: fcamera.hevc at full
  * resolution and qcamera.ts as a 526x330 preview. Showing both would put two
- * files in one channel slot, so one of them is left out for segments that have
- * both in the drop: the preview when this browser can play raw HEVC (comma
- * connect uploads the preview by default and the full-res file only on
- * request), the full-res file when it cannot. Returns the files to leave out.
+ * files in one channel slot, so a segment keeps one. A view already loaded
+ * stays, and every road view of its segment in the drop is left out; a
+ * segment new to the session that brings both keeps the full-res file when
+ * this browser can play raw HEVC (comma connect uploads the preview by default
+ * and the full-res file only on request), the preview when it cannot. The
+ * route name embeds a random id, so route and segment identify the recording
+ * wherever its files sit. Returns the files to leave out.
  */
-function supersededOpenpilotRoadViews(files: readonly VendorFile[], rawHevcPlayable: boolean): Set<VendorFile> {
-    const segmentKey = (vf: VendorFile, routeDir: string, route: string, segment: number): string =>
-        JSON.stringify([vf.sourceKey ?? null, routeDir, route, segment]);
-    // Arrays: repeated downloads add " (N)" copies of either view.
+function supersededOpenpilotRoadViews(
+    files: readonly VendorFile[],
+    loadedVideos: readonly VendorFile[],
+    rawHevcPlayable: boolean,
+): Set<VendorFile> {
+    const loadedSegments = new Set(loadedVideos.map(openpilotRoadViewSegment).filter((key) => key !== null));
+    // Arrays: repeated downloads add copies of either view.
     const fullRes = new Map<string, VendorFile[]>();
     const previews = new Map<string, VendorFile[]>();
+    const superseded = new Set<VendorFile>();
     for (const vf of files) {
-        const name = parseOpenpilotFileName(vf);
-        if (!name || (name.stream !== "fcamera" && name.stream !== "qcamera")) continue;
-        const views = name.stream === "fcamera" ? fullRes : previews;
-        const key = segmentKey(vf, name.routeDir, name.route, name.segment);
+        const key = openpilotRoadViewSegment(vf);
+        if (key === null) continue;
+        if (loadedSegments.has(key)) {
+            superseded.add(vf);
+            continue;
+        }
+        const views = parseOpenpilotFileName(vf)!.stream === "fcamera" ? fullRes : previews;
         views.set(key, [...(views.get(key) ?? []), vf]);
     }
-    const superseded = new Set<VendorFile>();
     for (const [key, segmentPreviews] of previews) {
         const segmentFullRes = fullRes.get(key);
         if (!segmentFullRes) continue;
         for (const vf of rawHevcPlayable ? segmentPreviews : segmentFullRes) superseded.add(vf);
     }
     return superseded;
+}
+
+/** Segment of an openpilot road view (fcamera or qcamera), or null for any other file. */
+function openpilotRoadViewSegment(vf: VendorFile): string | null {
+    const name = parseOpenpilotFileName(vf);
+    return name && (name.stream === "fcamera" || name.stream === "qcamera") ? `${name.route}--${name.segment}` : null;
+}
+
+/** What the session already holds, for classifying a new drop against it. */
+export interface VideoSplitContext {
+    /** Names of loaded videos and their copies; sidecar matching needs the full set. */
+    existingVideoNames?: Iterable<string>;
+    /** Loaded videos; an openpilot segment keeps the road view it already has. */
+    loadedVideos?: readonly VendorFile[];
+    /** Whether MSE plays raw HEVC; picks a new openpilot segment's road view. Defaults to true. */
+    rawHevcPlayable?: boolean;
 }
 
 export interface ClassifiedFile {
@@ -71,18 +96,15 @@ export interface ClassifiedFile {
  * src/ui/ingest-shim.ts start here, then diverge on how they classify the
  * non-video remainder. knownVideos is seeded with existingVideoNames plus the
  * just-found videos because sidecar matching needs the full set.
- * rawHevcPlayable decides which of an openpilot segment's two road views is
- * kept (see supersededOpenpilotRoadViews).
  */
 export function splitVideosByExtension(
     files: VendorFile[],
-    existingVideoNames: Iterable<string> = [],
-    rawHevcPlayable = true,
+    context: VideoSplitContext = {},
 ): { videoEntries: ClassifiedFile[]; knownVideos: Set<string>; nonVideo: VendorFile[] } {
     const videoEntries: ClassifiedFile[] = [];
-    const knownVideos = new Set<string>(existingVideoNames);
+    const knownVideos = new Set<string>(context.existingVideoNames ?? []);
     const nonVideo: VendorFile[] = [];
-    const superseded = supersededOpenpilotRoadViews(files, rawHevcPlayable);
+    const superseded = supersededOpenpilotRoadViews(files, context.loadedVideos ?? [], context.rawHevcPlayable ?? true);
     for (const vf of files) {
         if (isVideoFile(vf) && !superseded.has(vf)) {
             videoEntries.push({

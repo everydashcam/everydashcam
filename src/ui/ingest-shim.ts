@@ -28,7 +28,7 @@ import {
 } from "../gps-association.js";
 import { createLogger } from "../log.js";
 import { vendorFileKey } from "../vendor-file-key.js";
-import { splitVideosByExtension, type ClassifiedFile } from "../parsers/registry-light.js";
+import { splitVideosByExtension, type ClassifiedFile, type VideoSplitContext } from "../parsers/registry-light.js";
 import { mseCanPlayRawHevc } from "../per-file-mse.js";
 import type { AccelSample, GpsRecord, SkippedLine, VendorFile } from "../parsers/types.js";
 import { gpxSidecar } from "../parsers/sidecars/gpx.js";
@@ -98,15 +98,14 @@ interface ClassifiedFilesResult {
  */
 export async function classifyFilesViaPool(
     files: VendorFile[],
-    existingVideoNames: Iterable<string> = [],
+    loaded: Omit<VideoSplitContext, "rawHevcPlayable"> = {},
     signal?: AbortSignal,
 ): Promise<ClassifiedFilesResult> {
     throwIfCancelled(signal);
-    const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(
-        files,
-        existingVideoNames,
-        mseCanPlayRawHevc(),
-    );
+    const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(files, {
+        ...loaded,
+        rawHevcPlayable: mseCanPlayRawHevc(),
+    });
     const result: ClassifiedFile[] = [...videoEntries];
     const errors: ClassifiedFilesResult["errors"] = [];
 

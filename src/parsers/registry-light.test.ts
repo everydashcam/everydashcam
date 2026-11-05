@@ -35,26 +35,23 @@ describe("isVideoFile", () => {
 describe("splitVideosByExtension with openpilot previews", () => {
     const names = (entries: Array<{ file: VendorFile }>) => entries.map((entry) => entry.file.relativePath);
 
-    it("drops a segment's preview only when its full-res road video is in the same drop and folder", () => {
+    it("leaves out a segment's preview when its full-res road video comes along, from any folder or source", () => {
         const files = [
             vf(`a/${SEGMENT}/fcamera.hevc`, "s"),
             vf(`a/${SEGMENT}/qcamera.ts`, "s"),
-            // Another route folder, another source and another segment keep theirs.
-            vf(`b/${SEGMENT}/qcamera.ts`, "s"),
-            vf(`a/${SEGMENT}/qcamera.ts`, "t"),
+            vf(`b/${SEGMENT}/qcamera.ts`, "t"),
+            // Another segment keeps its preview.
             vf("a/00000001--0000000000--5/qcamera.ts", "s"),
         ];
         expect(names(splitVideosByExtension(files).videoEntries)).toEqual([
             `a/${SEGMENT}/fcamera.hevc`,
-            `b/${SEGMENT}/qcamera.ts`,
-            `a/${SEGMENT}/qcamera.ts`,
             "a/00000001--0000000000--5/qcamera.ts",
         ]);
     });
 
     it("keeps the preview instead of the full-res file when raw HEVC cannot play", () => {
         const files = [vf(`${SEGMENT}/fcamera.hevc`), vf(`${SEGMENT}/qcamera.ts`), vf(`${SEGMENT}/dcamera.hevc`)];
-        expect(names(splitVideosByExtension(files, [], false).videoEntries)).toEqual([
+        expect(names(splitVideosByExtension(files, { rawHevcPlayable: false }).videoEntries)).toEqual([
             `${SEGMENT}/qcamera.ts`,
             `${SEGMENT}/dcamera.hevc`,
         ]);
@@ -62,12 +59,12 @@ describe("splitVideosByExtension with openpilot previews", () => {
 
     it("leaves out every downloaded copy of the superseded view", () => {
         const flat = (stream: string) => vf(`dl/0123456789abcdef_${SEGMENT}--${stream}`);
-        const files = [flat("fcamera.hevc"), flat("qcamera.TS"), flat("qcamera (1).TS"), flat("fcamera (2).hevc")];
+        const files = [flat("fcamera.hevc"), flat("qcamera.TS"), flat("qcamera (1).TS"), flat("fcamera(2).hevc")];
         expect(names(splitVideosByExtension(files).videoEntries)).toEqual([
             files[0]!.relativePath,
             files[3]!.relativePath,
         ]);
-        expect(names(splitVideosByExtension(files, [], false).videoEntries)).toEqual([
+        expect(names(splitVideosByExtension(files, { rawHevcPlayable: false }).videoEntries)).toEqual([
             files[1]!.relativePath,
             files[2]!.relativePath,
         ]);
@@ -77,4 +74,26 @@ describe("splitVideosByExtension with openpilot previews", () => {
         const files = [vf(`${SEGMENT}/ecamera.hevc`), vf(`${SEGMENT}/dcamera.hevc`), vf(`${SEGMENT}/qcamera.ts`)];
         expect(splitVideosByExtension(files).videoEntries).toHaveLength(3);
     });
+
+    it.each([
+        ["full-res", "fcamera.hevc", true],
+        ["full-res", "fcamera.hevc", false],
+        ["preview", "qcamera.ts", true],
+        ["preview", "qcamera.ts", false],
+    ])(
+        "adds no road view to a segment whose %s view %s is loaded (raw HEVC plays: %s)",
+        (_label, loadedName, playable) => {
+            const loadedVideos = [vf(`card/${SEGMENT}/${loadedName}`, "first")];
+            // A repeated pick: the loaded view itself was folded away by dedup.
+            const files = [
+                vf(`card/${SEGMENT}/fcamera.hevc`, "second"),
+                vf(`card/${SEGMENT}/qcamera.ts`, "second"),
+                vf(`card/${SEGMENT}/ecamera.hevc`, "second"),
+                vf("card/00000001--0000000000--5/qcamera.ts", "second"),
+            ].filter((file) => file.relativePath !== loadedVideos[0]!.relativePath);
+            expect(
+                names(splitVideosByExtension(files, { loadedVideos, rawHevcPlayable: playable }).videoEntries),
+            ).toEqual([`card/${SEGMENT}/ecamera.hevc`, "card/00000001--0000000000--5/qcamera.ts"]);
+        },
+    );
 });

@@ -59,12 +59,9 @@ test.afterEach(() => {
     for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-test("an openpilot route is dated and sized by its qlog", async ({ page }) => {
-    await page.locator("#folder-input").setInputFiles(routeFolder());
-    await expect(page.locator("li.trip:not(.unindexed-note)").first()).toBeVisible({ timeout: 30_000 });
-    await waitForMetadata(page);
-
-    const clips = await page.evaluate(() =>
+/** Every loaded clip of every trip, with the fields the qlog decides. */
+async function loadedClips(page: Page) {
+    return await page.evaluate(() =>
         window.__everydashcam.state.trips.flatMap((trip) =>
             trip.frames.flatMap((frame) =>
                 Object.entries(frame.channels).map(([channel, candidate]) => ({
@@ -78,6 +75,14 @@ test("an openpilot route is dated and sized by its qlog", async ({ page }) => {
             ),
         ),
     );
+}
+
+test("an openpilot route is dated and sized by its qlog", async ({ page }) => {
+    await page.locator("#folder-input").setInputFiles(routeFolder());
+    await expect(page.locator("li.trip:not(.unindexed-note)").first()).toBeVisible({ timeout: 30_000 });
+    await waitForMetadata(page);
+
+    const clips = await loadedClips(page);
     const byName = new Map(clips.map((clip) => [clip.name.replace(`${PREFIX}--`, ""), clip]));
     const clip = (name: string) => {
         const found = byName.get(name);
@@ -97,6 +102,30 @@ test("an openpilot route is dated and sized by its qlog", async ({ page }) => {
     expect(clip("20--qcamera.TS").startUtc - clip(road).startUtc).toBeCloseTo(60, 1);
     expect(clip(road).gpsRecords).toBeGreaterThan(0);
     expect(clip("20--qcamera.TS").gpsRecords).toBeGreaterThan(0);
+});
+
+test("picking the route again adds no second road view", async ({ page }) => {
+    const folder = routeFolder();
+    await page.locator("#folder-input").setInputFiles(folder);
+    await expect(page.locator("li.trip:not(.unindexed-note)").first()).toBeVisible({ timeout: 30_000 });
+    await waitForMetadata(page);
+    const names = async () => (await loadedClips(page)).map((clip) => clip.name).sort();
+    const first = await names();
+    expect(first).toHaveLength(4);
+
+    // The second ingest replaces lastIngestFiles first and clears its controller last.
+    const firstIngest = await page.evaluateHandle(() => window.__everydashcam.state.lastIngestFiles);
+    await page.locator("#folder-input").setInputFiles(folder);
+    await expect
+        .poll(() =>
+            page.evaluate((previous) => {
+                const state = window.__everydashcam.state;
+                return state.lastIngestFiles !== previous && state.ingestController === null;
+            }, firstIngest),
+        )
+        .toBe(true);
+    await waitForMetadata(page);
+    expect(await names()).toEqual(first);
 });
 
 test("raw HEVC cameras play through their MP4 view", async ({ page }) => {

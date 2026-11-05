@@ -192,7 +192,7 @@ describe("classifyFilesViaPool", () => {
         });
 
         await expect(
-            classifyFilesViaPool([file("trip.mp4"), file("metadata.txt")], [], controller.signal),
+            classifyFilesViaPool([file("trip.mp4"), file("metadata.txt")], {}, controller.signal),
         ).rejects.toMatchObject({ name: "AbortError" });
     });
 
@@ -203,7 +203,7 @@ describe("classifyFilesViaPool", () => {
         const controller = new AbortController();
         controller.abort();
 
-        await expect(classifyFilesViaPool([file("trip.mp4")], [], controller.signal)).rejects.toMatchObject({
+        await expect(classifyFilesViaPool([file("trip.mp4")], {}, controller.signal)).rejects.toMatchObject({
             name: "AbortError",
         });
     });

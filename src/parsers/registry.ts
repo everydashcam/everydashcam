@@ -166,7 +166,7 @@ export async function classifyFiles(
     files: VendorFile[],
     existingVideoNames: Iterable<string> = [],
 ): Promise<ClassifiedFile[]> {
-    const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(files, existingVideoNames);
+    const { videoEntries, knownVideos, nonVideo } = splitVideosByExtension(files, { existingVideoNames });
     const result: ClassifiedFile[] = [...videoEntries];
     for (const vf of nonVideo) {
         result.push(await classifyOneNonVideo(vf, knownVideos, SIDECARS, ACCEL_SIDECARS));
