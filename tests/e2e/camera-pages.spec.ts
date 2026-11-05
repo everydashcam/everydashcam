@@ -96,14 +96,14 @@ for (const locale of ["en", "ru"]) {
         );
     });
 
-    test(`unverified Garmin models do not appear as supported in ${locale}`, async ({ page }) => {
+    test(`Garmin lists only the checked Dash Cam 57 as supported in ${locale}`, async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.goto(`/${locale}/cameras/garmin/`);
-        await expect(page.locator(".vp-models")).toHaveCount(0);
+        await expect(page.locator(".vp-models li")).toHaveText(["Dash Cam 57"]);
         await expect(page.locator("article")).not.toContainText("X310");
-        await expect(page.locator('.vp-feature-links a[href*="overlay"]')).toHaveCount(0);
+        await expect(page.locator('.vp-feature-links a[href*="overlay"]')).toHaveCount(1);
         await expect(page.locator("article")).toContainText(
-            locale === "en" ? "not yet been verified" : "пока не проверен",
+            locale === "en" ? "have not been checked yet" : "пока не проверены",
         );
         await page.evaluate(() => document.fonts.ready);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

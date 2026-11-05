@@ -112,7 +112,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         slug: "70mai",
         hasLandingPage: true,
         locales: ALL_VENDOR_LOCALES,
-        gpsSamples: ["A810", "A510", "M500", "X800", "Pro (D02 / D03)"],
+        gpsSamples: ["A810", "A800", "A510", "A500S", "M500", "X800", "Pro (D02 / D03)"],
     },
     {
         displayName: "Viofo",
@@ -142,8 +142,15 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         slug: "garmin",
         hasLandingPage: true,
         locales: ["en", "ru", "de", "es", "fr", "pl", "pt", "zh", "ja"],
+        gpsSamples: ["Dash Cam 57"],
     },
-    { displayName: "Vantrue", slug: "vantrue", hasLandingPage: true, locales: ALL_EXCEPT_PT, gpsSamples: ["N2X"] },
+    {
+        displayName: "Vantrue",
+        slug: "vantrue",
+        hasLandingPage: true,
+        locales: ALL_EXCEPT_PT,
+        gpsSamples: ["N2X", "S1 Pro Max"],
+    },
     {
         displayName: "Thinkware",
         slug: "thinkware",
@@ -156,7 +163,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         slug: "nextbase",
         hasLandingPage: true,
         locales: ["en", "ru", "de", "es", "fr", "pl"],
-        gpsSamples: ["322GW"],
+        gpsSamples: ["322GW", "422GW"],
     },
     {
         displayName: "REDTIGER",
@@ -318,7 +325,11 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
     },
     { displayName: "E-ACE", hasLandingPage: false, videoSamples: [] },
     { displayName: "Fujida", hasLandingPage: false, videoSamples: ["Karma Pro Max"] },
-    { displayName: "GKU", hasLandingPage: false, videoSamples: ["D900"] },
+    { displayName: "GKU", hasLandingPage: false, gpsSamples: ["600 Pro"], videoSamples: ["D900"] },
+    { displayName: "Transcend", hasLandingPage: false, gpsSamples: ["DrivePro 550"] },
+    { displayName: "Mikavi", hasLandingPage: false, gpsSamples: ["PQ6 3CH"] },
+    { displayName: "WonVon", hasLandingPage: false, gpsSamples: ["W4K"] },
+    { displayName: "Type S", hasLandingPage: false, gpsSamples: ["S403"] },
 ];
 
 // Brands with a dedicated landing page.

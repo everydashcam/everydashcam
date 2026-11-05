@@ -41,78 +41,78 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "70mai",
         displayName: "70mai",
-        models: ["A810", "A510", "M500", "X800", "Pro (D02 / D03)"],
+        models: ["A810", "A800", "A510", "A500S", "M500", "X800", "Pro (D02 / D03)"],
         features: MULTI_CAMERA_FEATURES,
         locales: {
             en: {
-                lead: "Watch 70mai A810, A510, M500 and X800 trips with video, a route map and speed. Open the original folder in your browser.",
+                lead: "Watch 70mai A810, A800, A510, A500S, M500 and X800 trips with video, a route map and speed. Open the original folder in your browser.",
                 compatibility:
                     "GPS is supported for the listed recordings, including older Pro D02/D03 files. A510 keeps GPS in the front recording; keep it when watching the rear view.",
                 openTip:
-                    "Open the whole card, including GPSData*.txt files used by X800. Keep the original front, rear and cabin filenames; a video copied on its own can leave the route behind.",
+                    "Open the whole card, including the GPSData*.txt logs used by X800, A500S and A800. A800 keeps them in a .GPS folder that your file manager may hide. Keep the original front, rear and cabin filenames; a video copied on its own can leave the route behind.",
             },
             ru: {
-                lead: "Смотри поездки с 70mai A810, A510, M500 и X800: видео, маршрут и скорость. Открой исходную папку в браузере.",
+                lead: "Смотри поездки с 70mai A810, A800, A510, A500S, M500 и X800: видео, маршрут и скорость. Открой исходную папку в браузере.",
                 compatibility:
                     "GPS поддерживается в перечисленных записях, включая старые Pro D02/D03. У A510 GPS хранится в передней записи: сохрани её для просмотра заднего ракурса с картой.",
                 openTip:
-                    "Открой карту целиком, включая файлы GPSData*.txt у X800. Сохрани исходные имена передних, задних и салонных записей: при копировании одного видео маршрут может остаться на карте.",
+                    "Открой карту целиком, включая логи GPSData*.txt у X800, A500S и A800. У A800 они лежат в папке .GPS, которую файловый менеджер может скрывать. Сохрани исходные имена передних, задних и салонных записей: при копировании одного видео маршрут может остаться на карте.",
             },
             de: {
-                lead: "Sieh dir Fahrten von 70mai A810, A510, M500 und X800 mit Video, Route und Tempo an. Öffne den Originalordner im Browser.",
+                lead: "Sieh dir Fahrten von 70mai A810, A800, A510, A500S, M500 und X800 mit Video, Route und Tempo an. Öffne den Originalordner im Browser.",
                 compatibility:
                     "GPS wird bei den aufgeführten Aufnahmen unterstützt, auch bei älteren Pro D02/D03. Beim A510 steckt GPS in der Frontaufnahme; behalte sie auch für die Heckansicht mit Karte.",
                 openTip:
-                    "Öffne die ganze Karte samt GPSData*.txt-Dateien des X800. Behalte die ursprünglichen Dateinamen für Front, Heck und Innenraum. Kopierst du nur ein Video, kann die Route fehlen.",
+                    "Öffne die ganze Karte samt GPSData*.txt-Dateien von X800, A500S und A800. Der A800 legt sie im Ordner .GPS ab, den dein Dateimanager eventuell ausblendet. Behalte die ursprünglichen Dateinamen für Front, Heck und Innenraum. Kopierst du nur ein Video, kann die Route fehlen.",
             },
             es: {
-                lead: "Mira viajes de 70mai A810, A510, M500 y X800 con vídeo, ruta y velocidad. Abre la carpeta original en el navegador.",
+                lead: "Mira viajes de 70mai A810, A800, A510, A500S, M500 y X800 con vídeo, ruta y velocidad. Abre la carpeta original en el navegador.",
                 compatibility:
                     "El GPS funciona con las grabaciones indicadas, incluidas las antiguas Pro D02/D03. El A510 guarda el GPS en el vídeo delantero: consérvalo para ver la cámara trasera con mapa.",
                 openTip:
-                    "Abre toda la tarjeta, incluidos los archivos GPSData*.txt del X800. Conserva los nombres originales de las cámaras delantera, trasera e interior; copiar solo un vídeo puede dejar fuera la ruta.",
+                    "Abre toda la tarjeta, incluidos los archivos GPSData*.txt del X800, el A500S y el A800. El A800 los guarda en la carpeta .GPS, que el explorador de archivos puede ocultar. Conserva los nombres originales de las cámaras delantera, trasera e interior; copiar solo un vídeo puede dejar fuera la ruta.",
             },
             fr: {
-                lead: "Regarde les trajets des 70mai A810, A510, M500 et X800 avec vidéo, carte et vitesse. Ouvre le dossier original dans ton navigateur.",
+                lead: "Regarde les trajets des 70mai A810, A800, A510, A500S, M500 et X800 avec vidéo, carte et vitesse. Ouvre le dossier original dans ton navigateur.",
                 compatibility:
                     "Le GPS est pris en charge pour les enregistrements indiqués, y compris les anciens Pro D02/D03. Sur l’A510, il est dans la vidéo avant : garde-la pour voir l’arrière avec la carte.",
                 openTip:
-                    "Ouvre toute la carte, avec les fichiers GPSData*.txt du X800. Garde les noms d’origine des vidéos avant, arrière et habitacle ; une vidéo copiée seule peut perdre son trajet.",
+                    "Ouvre toute la carte, avec les fichiers GPSData*.txt des X800, A500S et A800. L’A800 les range dans le dossier .GPS, que ton gestionnaire de fichiers peut masquer. Garde les noms d’origine des vidéos avant, arrière et habitacle ; une vidéo copiée seule peut perdre son trajet.",
             },
             pl: {
-                lead: "Oglądaj przejazdy z 70mai A810, A510, M500 i X800 z filmem, mapą i prędkością. Otwórz oryginalny folder w przeglądarce.",
+                lead: "Oglądaj przejazdy z 70mai A810, A800, A510, A500S, M500 i X800 z filmem, mapą i prędkością. Otwórz oryginalny folder w przeglądarce.",
                 compatibility:
                     "GPS działa w wymienionych nagraniach, także ze starszych Pro D02/D03. A510 zapisuje GPS w przednim nagraniu; zachowaj je, by oglądać tył razem z mapą.",
                 openTip:
-                    "Otwórz całą kartę, w tym pliki GPSData*.txt z X800. Zachowaj oryginalne nazwy nagrań przodu, tyłu i wnętrza. Kopiując sam film, możesz pominąć trasę.",
+                    "Otwórz całą kartę, w tym pliki GPSData*.txt z X800, A500S i A800. A800 zapisuje je w folderze .GPS, który menedżer plików może ukrywać. Zachowaj oryginalne nazwy nagrań przodu, tyłu i wnętrza. Kopiując sam film, możesz pominąć trasę.",
             },
             pt: {
-                lead: "Veja viagens de 70mai A810, A510, M500 e X800 com vídeo, mapa e velocidade. Abra a pasta original no navegador.",
+                lead: "Veja viagens de 70mai A810, A800, A510, A500S, M500 e X800 com vídeo, mapa e velocidade. Abra a pasta original no navegador.",
                 compatibility:
                     "O GPS funciona nas gravações indicadas, incluindo as antigas Pro D02/D03. O A510 guarda o GPS no vídeo frontal; mantenha esse vídeo para ver a câmera traseira com o mapa.",
                 openTip:
-                    "Abra o cartão inteiro, incluindo os arquivos GPSData*.txt do X800. Preserve os nomes originais das câmeras frontal, traseira e interna; copiar só um vídeo pode deixar o trajeto de fora.",
+                    "Abra o cartão inteiro, incluindo os arquivos GPSData*.txt do X800, do A500S e do A800. O A800 os guarda na pasta .GPS, que o gerenciador de arquivos pode ocultar. Preserve os nomes originais das câmeras frontal, traseira e interna; copiar só um vídeo pode deixar o trajeto de fora.",
             },
             zh: {
-                lead: "在浏览器中打开原始文件夹，查看 70mai A810、A510、M500 和 X800 的行车视频、路线和速度。",
+                lead: "在浏览器中打开原始文件夹，查看 70mai A810、A800、A510、A500S、M500 和 X800 的行车视频、路线和速度。",
                 compatibility:
                     "支持所列录像的 GPS，包括旧款 Pro D02/D03。A510 将 GPS 保存在前置录像中；查看后置画面时也要保留前置文件，才能显示地图。",
                 openTip:
-                    "打开整张存储卡，包括 X800 的 GPSData*.txt 文件。保留前置、后置和车内录像的原始文件名；只复制视频可能会漏掉路线数据。",
+                    "打开整张存储卡，包括 X800、A500S 和 A800 的 GPSData*.txt 文件。A800 将它们保存在 .GPS 文件夹中，文件管理器可能会隐藏该文件夹。保留前置、后置和车内录像的原始文件名；只复制视频可能会漏掉路线数据。",
             },
             ja: {
-                lead: "70mai A810、A510、M500、X800 の映像をルートや速度と一緒に確認。元のフォルダーをブラウザーで開けます。",
+                lead: "70mai A810、A800、A510、A500S、M500、X800 の映像をルートや速度と一緒に確認。元のフォルダーをブラウザーで開けます。",
                 compatibility:
                     "旧型 Pro D02/D03 を含む、記載された録画の GPS に対応しています。A510 の GPS は前方録画にあるため、後方映像を地図と見るときも前方ファイルを残してください。",
                 openTip:
-                    "X800 の GPSData*.txt を含め、カード全体を開いてください。前方・後方・車内の元のファイル名を保ちます。動画だけをコピーするとルートが欠ける場合があります。",
+                    "X800、A500S、A800 の GPSData*.txt を含め、カード全体を開いてください。A800 はこれを .GPS フォルダーに保存し、ファイル管理アプリでは非表示になる場合があります。前方・後方・車内の元のファイル名を保ちます。動画だけをコピーするとルートが欠ける場合があります。",
             },
             ko: {
-                lead: "70mai A810, A510, M500, X800의 주행 영상을 경로와 속도와 함께 확인해요. 원본 폴더를 브라우저에서 열면 돼요.",
+                lead: "70mai A810, A800, A510, A500S, M500, X800의 주행 영상을 경로와 속도와 함께 확인해요. 원본 폴더를 브라우저에서 열면 돼요.",
                 compatibility:
                     "이 목록의 녹화와 구형 Pro D02/D03의 GPS를 지원해요. A510은 앞쪽 녹화에 GPS를 저장하므로 뒤쪽 영상에 지도를 보려면 앞쪽 파일도 보관해 주세요.",
                 openTip:
-                    "X800의 GPSData*.txt 파일을 포함해 카드 전체를 열어 주세요. 앞쪽·뒤쪽·실내 영상의 원래 파일명을 유지하세요. 영상만 복사하면 경로가 빠질 수 있어요.",
+                    "X800, A500S, A800의 GPSData*.txt 파일을 포함해 카드 전체를 열어 주세요. A800은 이 파일을 .GPS 폴더에 저장하는데, 파일 탐색기에서는 이 폴더가 숨겨져 있을 수 있어요. 앞쪽·뒤쪽·실내 영상의 원래 파일명을 유지하세요. 영상만 복사하면 경로가 빠질 수 있어요.",
             },
         },
     },
@@ -345,140 +345,140 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "garmin",
         displayName: "Garmin",
-        models: [],
-        features: VIDEO_FEATURES,
+        models: ["Dash Cam 57"],
+        features: GPS_FEATURES,
         locales: {
             en: {
-                lead: "Open Garmin recordings locally and save the part of the drive you need. A readable video and a GPS route are separate capabilities.",
+                lead: "Watch Garmin Dash Cam 57 recordings with the GPS route and speed saved in the video. Open the original files locally and save the part of the drive you need.",
                 compatibility:
-                    "Garmin GPS support has not yet been verified with a real camera recording. There is no confirmed model list for X-series, Mini or other Garmin Dash Cams; do not rely on a route map for these models.",
+                    "GPS is checked on Garmin Dash Cam 57 recordings. Other Garmin models, such as the X series or DriveAssist, have not been checked yet; some store GPS differently.",
                 openTip:
-                    "Choose the original recording folder from the Garmin card. Keep the source files when saving an edited clip: a visible speed stamp is part of the picture, not a separate GPS route.",
+                    "Choose the original recording folder from the Garmin card and keep the GRMN….MP4 files unchanged. A visible speed stamp is part of the picture; the map route comes from GPS data inside the original video, which an edited copy can lose.",
             },
             ru: {
-                lead: "Открой записи Garmin локально и сохрани нужный участок поездки. Просмотр видео и карта GPS — отдельные возможности.",
+                lead: "Смотри записи Garmin Dash Cam 57 с GPS-маршрутом и скоростью, сохранёнными в видео. Открой исходные файлы локально и сохрани нужный участок поездки.",
                 compatibility:
-                    "GPS Garmin пока не проверен на реальной записи камеры. Подтверждённого списка моделей X, Mini и других Garmin Dash Cam нет; рассчитывать на карту для этих моделей пока нельзя.",
+                    "GPS проверен на записях Garmin Dash Cam 57. Другие модели Garmin, например серии X или DriveAssist, пока не проверены; некоторые из них хранят GPS иначе.",
                 openTip:
-                    "Выбери исходную папку с карты Garmin. Сохрани оригиналы, когда будешь сохранять изменённый фрагмент: видимый штамп скорости — часть изображения, а не отдельный GPS-маршрут.",
+                    "Выбери исходную папку с карты Garmin и не меняй файлы GRMN….MP4. Видимый штамп скорости — часть изображения; маршрут на карте берётся из GPS-данных внутри исходного видео, а в изменённой копии их может не быть.",
             },
             de: {
-                lead: "Öffne Garmin-Aufnahmen lokal und speichere den benötigten Teil der Fahrt. Videowiedergabe und GPS-Route sind getrennte Funktionen.",
+                lead: "Sieh dir Aufnahmen der Garmin Dash Cam 57 mit GPS-Route und Tempo aus dem Video an. Öffne die Originaldateien lokal und speichere den benötigten Teil der Fahrt.",
                 compatibility:
-                    "Garmin-GPS wurde noch nicht an einer echten Kameraaufnahme geprüft. Für X-Serie, Mini und andere Garmin Dash Cams gibt es keine bestätigte Modellliste; verlasse dich bei diesen Modellen nicht auf eine Routenkarte.",
+                    "GPS wurde an Aufnahmen der Garmin Dash Cam 57 geprüft. Andere Garmin-Modelle wie die X-Serie oder DriveAssist sind noch nicht geprüft; manche speichern GPS anders.",
                 openTip:
-                    "Wähle den Originalordner auf der Garmin-Karte. Behalte die Quelldateien beim Speichern eines bearbeiteten Clips: Eine sichtbare Tempoanzeige gehört zum Bild und ist keine separate GPS-Route.",
+                    "Wähle den Originalordner auf der Garmin-Karte und lass die GRMN….MP4-Dateien unverändert. Eine sichtbare Tempoanzeige gehört zum Bild; die Route auf der Karte stammt aus den GPS-Daten im Originalvideo, die einer bearbeiteten Kopie fehlen können.",
             },
             es: {
-                lead: "Abre grabaciones Garmin localmente y guarda la parte del viaje que necesitas. Reproducir vídeo y mostrar una ruta GPS son funciones distintas.",
+                lead: "Mira grabaciones de Garmin Dash Cam 57 con la ruta GPS y la velocidad guardadas en el vídeo. Abre los archivos originales localmente y guarda la parte del viaje que necesitas.",
                 compatibility:
-                    "El GPS de Garmin aún no se ha verificado con una grabación real. No hay una lista confirmada de modelos X, Mini u otras Garmin Dash Cam; no cuentes con el mapa para estos modelos.",
+                    "El GPS se ha comprobado en grabaciones de Garmin Dash Cam 57. Otros modelos Garmin, como la serie X o DriveAssist, aún no se han comprobado; algunos guardan el GPS de otra forma.",
                 openTip:
-                    "Elige la carpeta original de la tarjeta Garmin. Conserva los originales al guardar un clip editado: una velocidad impresa en la imagen no es una ruta GPS separada.",
+                    "Elige la carpeta original de la tarjeta Garmin y no modifiques los archivos GRMN….MP4. Una velocidad impresa en la imagen forma parte del vídeo; la ruta del mapa sale de los datos GPS del vídeo original, que una copia editada puede perder.",
             },
             fr: {
-                lead: "Ouvre les vidéos Garmin localement et garde le passage utile du trajet. La lecture vidéo et le trajet GPS sont deux fonctions distinctes.",
+                lead: "Regarde les vidéos de la Garmin Dash Cam 57 avec le trajet GPS et la vitesse enregistrés dans la vidéo. Ouvre les fichiers originaux localement et garde le passage utile du trajet.",
                 compatibility:
-                    "Le GPS Garmin n’a pas encore été vérifié sur une vraie vidéo de caméra. Aucune liste de modèles X, Mini ou autres Garmin Dash Cam n’est confirmée ; ne compte pas sur une carte pour ces modèles.",
+                    "Le GPS a été vérifié sur des vidéos de la Garmin Dash Cam 57. Les autres modèles Garmin, comme la série X ou DriveAssist, ne sont pas encore vérifiés ; certains stockent le GPS autrement.",
                 openTip:
-                    "Choisis le dossier original de la carte Garmin. Garde les originaux quand tu enregistres un extrait modifié : une vitesse inscrite dans l’image n’est pas un trajet GPS séparé.",
+                    "Choisis le dossier original de la carte Garmin et ne modifie pas les fichiers GRMN….MP4. Une vitesse inscrite dans l’image fait partie de la vidéo ; le trajet sur la carte vient des données GPS de la vidéo originale, qu’une copie modifiée peut perdre.",
             },
             pl: {
-                lead: "Otwórz nagrania Garmin lokalnie i zapisz potrzebny odcinek przejazdu. Odtwarzanie filmu i mapa GPS to oddzielne funkcje.",
+                lead: "Oglądaj nagrania z Garmin Dash Cam 57 z trasą GPS i prędkością zapisaną w filmie. Otwórz oryginalne pliki lokalnie i zapisz potrzebny odcinek przejazdu.",
                 compatibility:
-                    "GPS Garmin nie został jeszcze sprawdzony na prawdziwym nagraniu z kamery. Nie ma potwierdzonej listy modeli X, Mini ani innych Garmin Dash Cam; nie zakładaj, że pokażą mapę.",
+                    "GPS sprawdzono w nagraniach z Garmin Dash Cam 57. Inne modele Garmin, np. seria X czy DriveAssist, nie zostały jeszcze sprawdzone; niektóre zapisują GPS inaczej.",
                 openTip:
-                    "Wybierz oryginalny folder z karty Garmin. Zachowaj pliki źródłowe przy zapisywaniu edytowanego klipu: prędkość widoczna na obrazie nie jest oddzielną trasą GPS.",
+                    "Wybierz oryginalny folder z karty Garmin i nie zmieniaj plików GRMN….MP4. Prędkość widoczna na obrazie jest częścią filmu; trasa na mapie pochodzi z danych GPS w oryginalnym nagraniu, które edytowana kopia może utracić.",
             },
             pt: {
-                lead: "Abra gravações Garmin localmente e salve a parte da viagem de que precisa. Reprodução de vídeo e trajeto GPS são recursos separados.",
+                lead: "Veja gravações da Garmin Dash Cam 57 com o trajeto GPS e a velocidade salvos no vídeo. Abra os arquivos originais localmente e salve a parte da viagem de que precisa.",
                 compatibility:
-                    "O GPS Garmin ainda não foi verificado com uma gravação real. Não há uma lista confirmada de modelos X, Mini ou outras Garmin Dash Cam; não conte com o mapa nesses modelos.",
+                    "O GPS foi verificado em gravações da Garmin Dash Cam 57. Outros modelos Garmin, como a série X ou DriveAssist, ainda não foram verificados; alguns guardam o GPS de outra forma.",
                 openTip:
-                    "Escolha a pasta original do cartão Garmin. Mantenha os arquivos originais ao salvar um clipe editado: a velocidade estampada na imagem não é um trajeto GPS separado.",
+                    "Escolha a pasta original do cartão Garmin e não altere os arquivos GRMN….MP4. A velocidade estampada na imagem faz parte do vídeo; o trajeto no mapa vem dos dados GPS do vídeo original, que uma cópia editada pode perder.",
             },
             zh: {
-                lead: "在本机打开 Garmin 录像，保存需要的行车片段。播放视频和显示 GPS 路线是两项独立功能。",
+                lead: "查看 Garmin Dash Cam 57 录像及视频中保存的 GPS 路线和速度。在本机打开原始文件，保存需要的行车片段。",
                 compatibility:
-                    "Garmin GPS 尚未用真实摄像机录像验证。X 系列、Mini 及其他 Garmin Dash Cam 都没有已确认的型号清单；目前不能依赖这些型号显示路线地图。",
+                    "已在 Garmin Dash Cam 57 录像中验证 GPS。X 系列、DriveAssist 等其他 Garmin 型号尚未验证，其中一些型号的 GPS 保存方式不同。",
                 openTip:
-                    "选择 Garmin 存储卡中的原始录像文件夹。保存编辑后的片段时，也请保留源文件：画面上的速度数字属于图像，并不是独立的 GPS 路线。",
+                    "选择 Garmin 存储卡中的原始录像文件夹，不要修改 GRMN….MP4 文件。画面上的速度数字属于图像；地图上的路线来自原始视频中的 GPS 数据，编辑后的副本可能会丢失这些数据。",
             },
             ja: {
-                lead: "Garmin の録画を端末で開き、必要な走行区間を保存。動画の再生と GPS ルートの表示は別の機能です。",
+                lead: "Garmin Dash Cam 57 の録画を、動画内に保存された GPS ルートや速度と一緒に確認。元のファイルを端末で開き、必要な走行区間を保存できます。",
                 compatibility:
-                    "Garmin の GPS は実際のカメラ録画ではまだ未検証です。X シリーズ、Mini、その他の Garmin Dash Cam に確認済みモデルの一覧はなく、地図の表示は保証できません。",
+                    "Garmin Dash Cam 57 の録画で GPS を確認しています。X シリーズや DriveAssist など他の Garmin モデルは未確認で、GPS の保存方法が異なるものもあります。",
                 openTip:
-                    "Garmin カードの元の録画フォルダーを選びます。編集したクリップを保存するときも元のファイルを残してください。映像に写った速度の数字は画像の一部で、独立した GPS ルートではありません。",
+                    "Garmin カードの元の録画フォルダーを選び、GRMN….MP4 ファイルは変更しないでください。映像に写った速度の数字は画像の一部です。地図のルートは元の動画内の GPS データから読み取るため、編集したコピーでは失われる場合があります。",
             },
         },
     },
     {
         slug: "vantrue",
         displayName: "Vantrue",
-        models: ["N2X"],
+        models: ["N2X", "S1 Pro Max"],
         features: MULTI_CAMERA_FEATURES,
         locales: {
             en: {
-                lead: "Review Vantrue N2X recordings with the GPS route and speed saved in the video. Find a moment and save it locally in your browser.",
+                lead: "Review Vantrue N2X and S1 Pro Max recordings with the GPS route and speed saved in the video. Find a moment and save it locally in your browser.",
                 compatibility:
-                    "GPS is checked on N2X recordings. Other Vantrue models can use different GPS formats. Letters identify camera views, but the player may need you to choose their positions.",
+                    "GPS is checked on N2X and S1 Pro Max recordings. Other Vantrue models can use different GPS formats. Letters identify camera views, but the player may need you to choose their positions.",
                 openTip:
                     "Open the original folder and retain the A, B or C endings in filenames. Keep normal, event and parking clips with their original names so the trip and camera views can be grouped.",
             },
             ru: {
-                lead: "Смотри записи Vantrue N2X с GPS-маршрутом и скоростью из видео. Найди нужный момент и сохрани его локально в браузере.",
+                lead: "Смотри записи Vantrue N2X и S1 Pro Max с GPS-маршрутом и скоростью из видео. Найди нужный момент и сохрани его локально в браузере.",
                 compatibility:
-                    "GPS проверен на записях N2X. Другие модели Vantrue могут хранить GPS иначе. Буквы обозначают ракурсы, но их положение может потребоваться выбрать в плеере.",
+                    "GPS проверен на записях N2X и S1 Pro Max. Другие модели Vantrue могут хранить GPS иначе. Буквы обозначают ракурсы, но их положение может потребоваться выбрать в плеере.",
                 openTip:
                     "Открой исходную папку и сохрани окончания A, B или C в именах. Не переименовывай обычные, событийные и парковочные ролики, чтобы плеер сгруппировал поездку и ракурсы.",
             },
             de: {
-                lead: "Prüfe Vantrue-N2X-Aufnahmen mit GPS-Route und Tempo aus dem Video. Finde den passenden Moment und speichere ihn lokal im Browser.",
+                lead: "Prüfe Aufnahmen von Vantrue N2X und S1 Pro Max mit GPS-Route und Tempo aus dem Video. Finde den passenden Moment und speichere ihn lokal im Browser.",
                 compatibility:
-                    "GPS wurde an N2X-Aufnahmen geprüft. Andere Vantrue-Modelle können GPS anders speichern. Buchstaben kennzeichnen Kameraansichten; ihre Position musst du eventuell im Player wählen.",
+                    "GPS wurde an Aufnahmen von N2X und S1 Pro Max geprüft. Andere Vantrue-Modelle können GPS anders speichern. Buchstaben kennzeichnen Kameraansichten; ihre Position musst du eventuell im Player wählen.",
                 openTip:
                     "Öffne den Originalordner und behalte die Endungen A, B oder C. Lass die Namen normaler, Ereignis- und Parkclips unverändert, damit Fahrt und Ansichten zusammenbleiben.",
             },
             es: {
-                lead: "Revisa grabaciones Vantrue N2X con la ruta GPS y la velocidad guardadas en el vídeo. Encuentra el momento y guárdalo localmente en el navegador.",
+                lead: "Revisa grabaciones Vantrue N2X y S1 Pro Max con la ruta GPS y la velocidad guardadas en el vídeo. Encuentra el momento y guárdalo localmente en el navegador.",
                 compatibility:
-                    "El GPS se ha comprobado en grabaciones N2X. Otros Vantrue pueden guardarlo de otra forma. Las letras identifican las vistas; quizá debas elegir su posición en el reproductor.",
+                    "El GPS se ha comprobado en grabaciones N2X y S1 Pro Max. Otros Vantrue pueden guardarlo de otra forma. Las letras identifican las vistas; quizá debas elegir su posición en el reproductor.",
                 openTip:
                     "Abre la carpeta original y conserva las terminaciones A, B o C. Mantén los nombres de clips normales, de eventos y de aparcamiento para agrupar el viaje y las cámaras.",
             },
             fr: {
-                lead: "Regarde les vidéos Vantrue N2X avec leur trajet GPS et leur vitesse. Trouve le bon moment et enregistre-le localement dans ton navigateur.",
+                lead: "Regarde les vidéos Vantrue N2X et S1 Pro Max avec leur trajet GPS et leur vitesse. Trouve le bon moment et enregistre-le localement dans ton navigateur.",
                 compatibility:
-                    "Le GPS a été vérifié sur des vidéos N2X. D’autres Vantrue peuvent le stocker autrement. Les lettres désignent les vues ; tu devras peut-être choisir leur position dans le lecteur.",
+                    "Le GPS a été vérifié sur des vidéos N2X et S1 Pro Max. D’autres Vantrue peuvent le stocker autrement. Les lettres désignent les vues ; tu devras peut-être choisir leur position dans le lecteur.",
                 openTip:
                     "Ouvre le dossier original et garde les terminaisons A, B ou C. Conserve les noms des vidéos normales, d’événement et de stationnement pour regrouper trajet et caméras.",
             },
             pl: {
-                lead: "Przeglądaj nagrania Vantrue N2X z trasą GPS i prędkością zapisaną w filmie. Znajdź moment i zapisz go lokalnie w przeglądarce.",
+                lead: "Przeglądaj nagrania Vantrue N2X i S1 Pro Max z trasą GPS i prędkością zapisaną w filmie. Znajdź moment i zapisz go lokalnie w przeglądarce.",
                 compatibility:
-                    "GPS sprawdzono w nagraniach N2X. Inne Vantrue mogą zapisywać go inaczej. Litery oznaczają widoki kamer; ich pozycję może być trzeba wybrać w odtwarzaczu.",
+                    "GPS sprawdzono w nagraniach N2X i S1 Pro Max. Inne Vantrue mogą zapisywać go inaczej. Litery oznaczają widoki kamer; ich pozycję może być trzeba wybrać w odtwarzaczu.",
                 openTip:
                     "Otwórz oryginalny folder i zachowaj końcówki A, B lub C. Nie zmieniaj nazw nagrań zwykłych, zdarzeń i parkingowych, aby połączyć przejazd oraz widoki kamer.",
             },
             zh: {
-                lead: "查看 Vantrue N2X 录像及视频中保存的 GPS 路线和速度。找到需要的时刻，在浏览器中保存到本机。",
+                lead: "查看 Vantrue N2X 和 S1 Pro Max 录像及视频中保存的 GPS 路线和速度。找到需要的时刻，在浏览器中保存到本机。",
                 compatibility:
-                    "已在 N2X 录像中验证 GPS。其他 Vantrue 型号可能采用不同的保存方式。字母用于区分摄像头画面，但具体位置可能需要在播放器中选择。",
+                    "已在 N2X 和 S1 Pro Max 录像中验证 GPS。其他 Vantrue 型号可能采用不同的保存方式。字母用于区分摄像头画面，但具体位置可能需要在播放器中选择。",
                 openTip:
                     "打开原始文件夹，保留文件名末尾的 A、B 或 C。不要更改普通、事件和停车录像的名称，以便将同次行程和各摄像头画面归组。",
             },
             ja: {
-                lead: "Vantrue N2X の録画を動画内の GPS ルートや速度と確認。必要な場面を探して、ブラウザーで端末に保存できます。",
+                lead: "Vantrue N2X と S1 Pro Max の録画を動画内の GPS ルートや速度と確認。必要な場面を探して、ブラウザーで端末に保存できます。",
                 compatibility:
-                    "N2X の録画で GPS を確認しています。他の Vantrue は保存方法が異なる場合があります。文字で映像を区別しますが、カメラの位置はプレーヤーで選ぶ場合があります。",
+                    "N2X と S1 Pro Max の録画で GPS を確認しています。他の Vantrue は保存方法が異なる場合があります。文字で映像を区別しますが、カメラの位置はプレーヤーで選ぶ場合があります。",
                 openTip:
                     "元のフォルダーを開き、ファイル名末尾の A、B、C を残してください。通常・イベント・駐車録画の名前を保つと、走行と各カメラの映像をまとめられます。",
             },
             ko: {
-                lead: "Vantrue N2X 녹화를 영상에 저장된 GPS 경로와 속도와 함께 확인해요. 원하는 순간을 찾아 브라우저에서 기기에 저장하세요.",
+                lead: "Vantrue N2X와 S1 Pro Max 녹화를 영상에 저장된 GPS 경로와 속도와 함께 확인해요. 원하는 순간을 찾아 브라우저에서 기기에 저장하세요.",
                 compatibility:
-                    "N2X 녹화에서 GPS를 확인했어요. 다른 Vantrue 모델은 저장 방식이 다를 수 있어요. 문자로 카메라를 구분하지만 위치는 플레이어에서 직접 선택해야 할 수도 있어요.",
+                    "N2X와 S1 Pro Max 녹화에서 GPS를 확인했어요. 다른 Vantrue 모델은 저장 방식이 다를 수 있어요. 문자로 카메라를 구분하지만 위치는 플레이어에서 직접 선택해야 할 수도 있어요.",
                 openTip:
                     "원본 폴더를 열고 파일명 끝의 A, B, C를 유지하세요. 일반·이벤트·주차 녹화의 이름을 보존해야 주행과 카메라 영상을 함께 묶을 수 있어요.",
             },
@@ -558,48 +558,48 @@ const PAGES: EstablishedCamera[] = [
     {
         slug: "nextbase",
         displayName: "Nextbase",
-        models: ["322GW"],
+        models: ["322GW", "422GW"],
         features: GPS_FEATURES,
         locales: {
             en: {
-                lead: "Open original Nextbase 322GW recordings with a GPS route and speed chart. Review the drive and save a clip locally in your browser.",
+                lead: "Open original Nextbase 322GW and 422GW recordings with a GPS route and speed chart. Review the drive and save a clip locally in your browser.",
                 compatibility:
-                    "Video and GPS are checked on a 322GW recording ending _FH. This does not confirm other Nextbase models or every front/rear recording combination.",
+                    "Video and GPS are checked on a 322GW recording ending _FH and on a 422GW recording. This does not confirm other Nextbase models or every front/rear recording combination.",
                 openTip:
                     "Use the original high-quality clips, with H at the end of the filename, such as _FH.MP4. L versions are smaller copies of the same view; keep the original names and dates.",
             },
             ru: {
-                lead: "Открой исходные записи Nextbase 322GW с GPS-маршрутом и графиком скорости. Просмотри поездку и сохрани фрагмент локально в браузере.",
+                lead: "Открой исходные записи Nextbase 322GW и 422GW с GPS-маршрутом и графиком скорости. Просмотри поездку и сохрани фрагмент локально в браузере.",
                 compatibility:
-                    "Видео и GPS проверены на записи 322GW с окончанием _FH. Это не подтверждает другие модели Nextbase или все сочетания передней и задней камер.",
+                    "Видео и GPS проверены на записи 322GW с окончанием _FH и на записи 422GW. Это не подтверждает другие модели Nextbase или все сочетания передней и задней камер.",
                 openTip:
                     "Используй исходные ролики высокого качества с H в конце имени, например _FH.MP4. Версии L — уменьшенные копии того же ракурса; сохрани исходные имена и даты.",
             },
             de: {
-                lead: "Öffne originale Nextbase-322GW-Aufnahmen mit GPS-Route und Tempo-Diagramm. Prüfe die Fahrt und speichere einen Clip lokal im Browser.",
+                lead: "Öffne originale Aufnahmen von Nextbase 322GW und 422GW mit GPS-Route und Tempo-Diagramm. Prüfe die Fahrt und speichere einen Clip lokal im Browser.",
                 compatibility:
-                    "Video und GPS wurden an einer 322GW-Aufnahme mit der Endung _FH geprüft. Andere Nextbase-Modelle oder alle Front-Heck-Kombinationen sind damit nicht bestätigt.",
+                    "Video und GPS wurden an einer 322GW-Aufnahme mit der Endung _FH und an einer 422GW-Aufnahme geprüft. Andere Nextbase-Modelle oder alle Front-Heck-Kombinationen sind damit nicht bestätigt.",
                 openTip:
                     "Nutze die Originalclips hoher Qualität mit H am Namensende, etwa _FH.MP4. L-Versionen sind kleinere Kopien derselben Ansicht. Behalte die ursprünglichen Namen und Datumsangaben.",
             },
             es: {
-                lead: "Abre las grabaciones originales de Nextbase 322GW con ruta GPS y gráfico de velocidad. Revisa el viaje y guarda un fragmento localmente en el navegador.",
+                lead: "Abre las grabaciones originales de Nextbase 322GW y 422GW con ruta GPS y gráfico de velocidad. Revisa el viaje y guarda un fragmento localmente en el navegador.",
                 compatibility:
-                    "El vídeo y el GPS se han comprobado en una grabación del 322GW terminada en _FH. Esto no confirma la compatibilidad de otros modelos Nextbase ni de todas las combinaciones de grabaciones delanteras y traseras.",
+                    "El vídeo y el GPS se han comprobado en una grabación del 322GW terminada en _FH y en una grabación del 422GW. Esto no confirma la compatibilidad de otros modelos Nextbase ni de todas las combinaciones de grabaciones delanteras y traseras.",
                 openTip:
                     "Usa los vídeos originales de alta calidad, con H al final del nombre, como _FH.MP4. Las versiones L son copias más pequeñas de la misma vista; conserva los nombres y las fechas originales.",
             },
             fr: {
-                lead: "Ouvre les vidéos originales Nextbase 322GW avec trajet GPS et graphique de vitesse. Regarde le trajet et garde un extrait localement.",
+                lead: "Ouvre les vidéos originales Nextbase 322GW et 422GW avec trajet GPS et graphique de vitesse. Regarde le trajet et garde un extrait localement.",
                 compatibility:
-                    "La vidéo et le GPS ont été vérifiés sur un fichier 322GW finissant par _FH. Cela ne confirme pas les autres Nextbase ni toutes les combinaisons avant/arrière.",
+                    "La vidéo et le GPS ont été vérifiés sur un fichier 322GW finissant par _FH et sur un fichier 422GW. Cela ne confirme pas les autres Nextbase ni toutes les combinaisons avant/arrière.",
                 openTip:
                     "Utilise les originaux de haute qualité avec H à la fin du nom, comme _FH.MP4. Les versions L sont des copies plus petites de la même vue. Garde les noms et dates d’origine.",
             },
             pl: {
-                lead: "Otwórz oryginalne nagrania Nextbase 322GW z trasą GPS i wykresem prędkości. Przejrzyj przejazd i zapisz fragment lokalnie w przeglądarce.",
+                lead: "Otwórz oryginalne nagrania Nextbase 322GW i 422GW z trasą GPS i wykresem prędkości. Przejrzyj przejazd i zapisz fragment lokalnie w przeglądarce.",
                 compatibility:
-                    "Wideo i GPS sprawdzono na nagraniu 322GW z końcówką _FH. Nie potwierdza to innych Nextbase ani wszystkich połączeń przedniej i tylnej kamery.",
+                    "Wideo i GPS sprawdzono na nagraniu 322GW z końcówką _FH oraz na nagraniu 422GW. Nie potwierdza to innych Nextbase ani wszystkich połączeń przedniej i tylnej kamery.",
                 openTip:
                     "Użyj oryginałów wysokiej jakości z H na końcu nazwy, np. _FH.MP4. Wersje L to mniejsze kopie tego samego widoku. Zachowaj oryginalne nazwy i daty.",
             },
