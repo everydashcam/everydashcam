@@ -9,6 +9,7 @@ import {
     attachRecordsToCandidates,
     buildVideoAssociationIndex,
     type LogVideoTiming,
+    rebindFailedOpenpilotOwners,
     recordsForVideo,
     type VideoAssociationIndex,
 } from "../gps-association.js";
@@ -1306,11 +1307,17 @@ function startBackgroundFill(): void {
         releaseIndexCacheWriteBlocks(terminalFailures);
         if (run) publishRecordingAnalysisProgress(run, run.analysisCandidates);
         const readable = candidatePool.filter((candidate) => candidate.metadataFailed !== true);
-        for (const candidate of candidatePool) {
-            if (candidate.metadataFailed === true) state.addedKeys.delete(vendorFileKey(candidate));
-        }
+        const failed = candidatePool.filter((candidate) => candidate.metadataFailed === true);
+        for (const candidate of failed) state.addedKeys.delete(vendorFileKey(candidate));
         candidatePool = readable;
         candidateAssociation = buildVideoAssociationIndex(readable);
+        if (state.gpsLog && failed.length > 0) {
+            const rebound = rebindFailedOpenpilotOwners(state.gpsLog, failed, candidateAssociation);
+            state.gpsLog = rebound.log;
+            if (rebound.reboundRecords > 0) {
+                log.info("moved gps of failed openpilot cameras", { records: rebound.reboundRecords });
+            }
+        }
         bindReadyRecordingLogs(readable);
         if (state.gpsLog) attachRecordsToCandidates(state.gpsLog, readable, candidateAssociation);
         reanchorRecordingCandidates(readable);

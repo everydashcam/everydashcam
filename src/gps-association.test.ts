@@ -9,6 +9,7 @@ import {
     buildVideoAssociationIndex,
     type LogVideoTimingHint,
     mergeLogVideoTimingHints,
+    rebindFailedOpenpilotOwners,
     rebindRecordingCopyRecords,
     recordsForVideo,
     resolveLogVideoTimingHints,
@@ -913,5 +914,50 @@ describe("openpilot segment logs", () => {
         const flatVideo = video(`Downloads/0123456789abcdef_00000001--0000000000--19--ecamera.hevc`, "dl");
         expect(resolveVideoKey(log(19), "ecamera.hevc", [flatVideo])).toBe(vendorFileKey(flatVideo));
         expect(resolveVideoKey(log(20), "ecamera.hevc", [flatVideo])).toBeNull();
+    });
+});
+
+describe("rebindFailedOpenpilotOwners", () => {
+    const SEGMENT = "realdata/00000001--0000000000--19";
+
+    function ownedBy(owner: VendorFile, count: number): GpsRecord[] {
+        return Array.from({ length: count }, (_, i) => ({
+            ...record(40 + i),
+            unixSeconds: 100 + i,
+            mp4Filename: owner.file.name,
+            videoKey: vendorFileKey(owner),
+        }));
+    }
+
+    it("moves a failed road file's GPS to the next loaded camera of its segment", () => {
+        const road = video(`${SEGMENT}/fcamera.hevc`, "card");
+        const wide = video(`${SEGMENT}/ecamera.hevc`, "card");
+        const driver = video(`${SEGMENT}/dcamera.hevc`, "card");
+        const otherWide = video("realdata/00000001--0000000000--20/ecamera.hevc", "card");
+        const log = mergeIntoGpsLog(null, { records: ownedBy(road, 3), appliedExtractors: [], skipped: [] });
+
+        const rebound = rebindFailedOpenpilotOwners(log, [road], [driver, otherWide, wide]);
+
+        expect(rebound.reboundRecords).toBe(3);
+        expect(recordsForVideo(rebound.log, wide, [driver, otherWide, wide])).toHaveLength(3);
+        expect(recordsForVideo(rebound.log, driver, [driver, otherWide, wide])).toEqual([]);
+        expect(recordsForVideo(rebound.log, otherWide, [driver, otherWide, wide])).toEqual([]);
+    });
+
+    it("keeps the owner key when no camera of the segment loaded or the format is not openpilot", () => {
+        const road = video(`${SEGMENT}/fcamera.hevc`, "card");
+        const otherWide = video("realdata/00000001--0000000000--20/ecamera.hevc", "card");
+        const clip = video("card/A/clip.mp4", "card");
+        const sibling = video("card/A/clip2.mp4", "card");
+        const log = mergeIntoGpsLog(null, {
+            records: [...ownedBy(road, 2), ...ownedBy(clip, 2)],
+            appliedExtractors: [],
+            skipped: [],
+        });
+
+        const rebound = rebindFailedOpenpilotOwners(log, [road, clip], [otherWide, sibling]);
+
+        expect(rebound.reboundRecords).toBe(0);
+        expect(rebound.log).toBe(log);
     });
 });

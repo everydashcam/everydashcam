@@ -3,6 +3,7 @@ import {
     mai70NameCore,
     openpilotLookupCores,
     openpilotVideoCores,
+    parseOpenpilotFileName,
 } from "./parsers/filename/_patterns.js";
 import { classifyFilenameRecordingKey } from "./parsers/filename/index.js";
 import type { GpsRecord, ParsedLog, VendorFile, VideoTimingHint, VideoWithRecordingCopies } from "./parsers/types.js";
@@ -452,6 +453,43 @@ export function bindRecordsByFilename(
         }),
         boundRecords: replacements.size,
         extractorByFileKey,
+    };
+}
+
+/**
+ * Moves GPS owned by openpilot cameras that failed to load to the camera of
+ * the same segment next in GPS-owner order (OPENPILOT_GPS_OWNER_STREAMS). A
+ * qlog names its owner before any video metadata is read, so a road file that
+ * then fails to index would keep the segment's track from the cameras that did
+ * load. Owners of other formats keep their key: there no other file stands
+ * for the failed one. Records stay put when no camera of the segment loaded.
+ */
+export function rebindFailedOpenpilotOwners(
+    log: ParsedLog,
+    failedVideos: readonly VendorFile[],
+    loadedVideos: VideosOrIndex,
+): { log: ParsedLog; reboundRecords: number } {
+    const index = asIndex(loadedVideos);
+    const standInByFailedKey = new Map<string, VendorFile>();
+    for (const failed of failedVideos) {
+        const key = vendorFileKey(failed);
+        if (!log.byVideoKey.has(key) || parseOpenpilotFileName(failed) === null) continue;
+        // The failed file names itself the way its segment's log does, so it
+        // resolves like the log would after a later drop.
+        const standIn = resolveVideo(failed, failed.file.name, index, "view");
+        if (standIn && vendorFileKey(standIn) !== key) standInByFailedKey.set(key, standIn);
+    }
+    if (standInByFailedKey.size === 0) return { log, reboundRecords: 0 };
+    let reboundRecords = 0;
+    const records = log.records.map((record) => {
+        const standIn = record.videoKey === undefined ? undefined : standInByFailedKey.get(record.videoKey);
+        if (!standIn) return record;
+        reboundRecords++;
+        return { ...record, videoKey: vendorFileKey(standIn), mp4Filename: standIn.file.name };
+    });
+    return {
+        log: mergeIntoGpsLog(null, { records, appliedExtractors: log.appliedExtractors, skipped: log.skipped }),
+        reboundRecords,
     };
 }
 
