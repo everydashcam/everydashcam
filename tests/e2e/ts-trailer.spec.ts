@@ -59,7 +59,9 @@ test.describe("TS trailer recording ingest", () => {
                 await page.locator("#trip-filter-reset").click();
                 await expect(trips).toHaveCount(1);
             }
-            await trips.first().click();
+            // Metadata replaces provisional cards; open through the title's play action.
+            await expect(trips.first()).not.toHaveAttribute("aria-busy", "true");
+            await trips.first().locator(".trip-title").click();
             for (const channel of ["front", "rear"]) {
                 await expect(page.locator(`#video-grid .video-tile[data-channel="${channel}"]`)).toBeVisible();
             }
