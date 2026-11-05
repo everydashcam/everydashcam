@@ -76,6 +76,16 @@ describe("raw hevc NAL scan", () => {
         expect(file.size - payload).toBeGreaterThanOrEqual(3 * whole.starts.length);
         expect(file.size - payload).toBeLessThanOrEqual(5 * whole.starts.length);
     });
+
+    it("ends the last NAL before a zero fill longer than a chunk", async () => {
+        const raw = fixtureBytes("fcamera");
+        const padded = new Uint8Array(raw.length + 10_000);
+        padded.set(raw, 0);
+        const whole = await _testScanNalUnits(hevcFile(raw), raw.length);
+        for (const chunk of [4093, 65_536]) {
+            expect(await _testScanNalUnits(hevcFile(padded), chunk), `chunk ${chunk}`).toEqual(whole);
+        }
+    });
 });
 
 describe("probeRawHevcHead", () => {

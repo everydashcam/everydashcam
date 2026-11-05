@@ -225,15 +225,19 @@ async function scanNalUnits(blob: Blob, limit: number, options: ScanOptions): Pr
     const index: NalIndex = { starts: [], ends: [], types: [], firstSlice: [] };
     let carry = new Uint8Array(0);
     let pos = 0;
-    // Where the stream's trailing zero bytes start (trailing_zero_8bits, or
-    // zero fill after a cut). A NAL unit never ends in a zero byte: its RBSP
-    // ends with the stop bit.
-    let tailEnd = limit;
+    // Where the zero bytes that reach the end of the bytes read so far start:
+    // at the end of the stream they are trailing_zero_8bits or zero fill after
+    // a cut, which can span chunks. A NAL unit never ends in a zero byte: its
+    // RBSP ends with the stop bit.
+    let zeroRunStart = 0;
     while (pos < limit) {
         throwIfCancelled(options.signal);
         const chunkEnd = Math.min(limit, pos + chunkBytes);
         const chunk = await options.read(pos, chunkEnd);
         const isLast = chunkEnd >= limit;
+        let lastNonZero = chunk.length - 1;
+        while (lastNonZero >= 0 && chunk[lastNonZero] === 0) lastNonZero--;
+        if (lastNonZero >= 0) zeroRunStart = pos + lastNonZero + 1;
         let buf = chunk;
         if (carry.length > 0) {
             buf = new Uint8Array(carry.length + chunk.length);
@@ -247,11 +251,6 @@ async function scanNalUnits(blob: Blob, limit: number, options: ScanOptions): Pr
         // all-zero stretch, where the leftover zeros trail a NAL harmlessly.
         let resumeAt = buf.length;
         while (resumeAt > 0 && buf.length - resumeAt < MAX_CARRY_ZEROS && buf[resumeAt - 1] === 0) resumeAt--;
-        if (isLast && limit >= blob.size) {
-            let end = buf.length;
-            while (end > 0 && buf[end - 1] === 0) end--;
-            tailEnd = base + end;
-        }
         let i = buf.indexOf(1, 2);
         while (i !== -1) {
             if (buf[i - 1] === 0 && buf[i - 2] === 0) {
@@ -279,6 +278,8 @@ async function scanNalUnits(blob: Blob, limit: number, options: ScanOptions): Pr
         pos = chunkEnd;
     }
     if (index.starts.length > index.ends.length) {
+        // A scan cut at a limit cannot tell fill from payload past it.
+        const tailEnd = limit >= blob.size ? zeroRunStart : limit;
         // The last unit keeps at least its two-byte header.
         index.ends.push(Math.max(tailEnd, index.starts.at(-1)! + 2));
     }
