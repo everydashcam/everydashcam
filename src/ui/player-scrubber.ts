@@ -154,11 +154,23 @@ export function initPlayerScrubber(deps: {
     // out-of-order resolves (a slow extract finishing after a fast one).
     let thumbExtractToken = 0;
     let thumbExtractTimer: ReturnType<typeof setTimeout> | null = null;
-    // Aborts the in-flight extract: the worker serves requests one at a time,
-    // and a superseded one may still be opening a file (a raw HEVC stream is
-    // read whole first).
-    let thumbExtractAbort: AbortController | null = null;
+    // Extracts sent to the worker and not yet answered, with the file each
+    // reads. The worker serves requests one at a time, and opening a raw HEVC
+    // stream reads it whole first. A superseded extract of the same file keeps
+    // running: its open caches the decoder the next hover needs, where an
+    // abort would restart the read on every move. One of another file is
+    // aborted so it does not hold the queue.
+    const thumbExtractsInFlight = new Map<AbortController, File>();
     let lastThumbSec = -1;
+
+    /** Aborts the in-flight extracts of every file but keepFile (all for null). */
+    function abortThumbExtracts(keepFile: File | null): void {
+        for (const [abort, file] of thumbExtractsInFlight) {
+            if (file === keepFile) continue;
+            abort.abort();
+            thumbExtractsInFlight.delete(abort);
+        }
+    }
 
     function cancelPendingThumb(): void {
         if (thumbExtractTimer) {
@@ -170,8 +182,6 @@ export function initPlayerScrubber(deps: {
         // the canvas after hideTooltip. scheduleThumbExtract re-bumps the token
         // right after calling this, so a freshly scheduled extract stays valid.
         thumbExtractToken++;
-        thumbExtractAbort?.abort();
-        thumbExtractAbort = null;
     }
 
     function clearThumbCanvas(): void {
@@ -202,10 +212,12 @@ export function initPlayerScrubber(deps: {
         const picked = pickFrameChannel(frame, mainChannel());
         if (!picked) return;
         const fileSec = frameMediaOffset(frame, picked.channel) + at.offsetInFrame;
+        const file = picked.candidate.file;
+        abortThumbExtracts(file);
         const abort = new AbortController();
-        thumbExtractAbort = abort;
+        thumbExtractsInFlight.set(abort, file);
         try {
-            const bitmap = await extractFrameAt(picked.candidate.file, fileSec, abort.signal);
+            const bitmap = await extractFrameAt(file, fileSec, abort.signal);
             if (!bitmap || token !== thumbExtractToken) {
                 bitmap?.close?.();
                 return;
@@ -242,7 +254,7 @@ export function initPlayerScrubber(deps: {
         } catch {
             /* decoder fail - leave placeholder background; non-critical */
         } finally {
-            if (thumbExtractAbort === abort) thumbExtractAbort = null;
+            thumbExtractsInFlight.delete(abort);
         }
     }
 
@@ -274,6 +286,7 @@ export function initPlayerScrubber(deps: {
     function hideTooltip(): void {
         if (tooltip) tooltip.hidden = true;
         cancelPendingThumb();
+        abortThumbExtracts(null);
         clearThumbCanvas();
         lastThumbSec = -1;
     }
