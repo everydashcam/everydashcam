@@ -31,7 +31,10 @@ declare const self: WorkerScopeEndpoint;
 async function extractFirstFrameDataUrl(file: File): Promise<string | null> {
     let input: Input | null = null;
     try {
-        input = new Input({ source: await createBlobSource(file, { firstPictureOnly: true }), formats: VIDEO_INPUT_FORMATS });
+        input = new Input({
+            source: await createBlobSource(file, { firstPictureOnly: true }),
+            formats: VIDEO_INPUT_FORMATS,
+        });
         const track = await input.getPrimaryVideoTrack();
         if (!track) return null;
 
