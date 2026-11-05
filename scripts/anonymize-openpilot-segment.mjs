@@ -9,7 +9,9 @@
 // the first frame. Latitude and longitude are rounded to whole degrees and
 // altitude zeroed, in place; timestamps stay untouched (without position and
 // footage they identify nothing). Messages are copied verbatim otherwise, so
-// the fixture exercises the real Cap'n Proto layout.
+// the fixture exercises the real Cap'n Proto layout. The result is compressed
+// as one streamed zstd frame without a content size, like loggerd writes it,
+// so the fixture takes the decoder path real logs take.
 //
 // Video: every camera stream is replaced by an ffmpeg test pattern (one per
 // camera) with the same frame count at openpilot's 20 fps - raw HEVC for
@@ -27,7 +29,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { zstdCompressSync, zstdDecompressSync } from "node:zlib";
+import { constants, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 
 const FRAME_RATE = 20;
 // Event union discriminants and field offsets: see openpilot-log.ts.
@@ -145,7 +147,7 @@ for (const m of kept) {
 }
 mkdirSync(outDir, { recursive: true });
 const qlogOut = join(outDir, `${prefix}--qlog.zst`);
-writeFileSync(qlogOut, zstdCompressSync(out));
+writeFileSync(qlogOut, zstdCompressSync(out, { params: { [constants.ZSTD_c_contentSizeFlag]: 0 } }));
 console.error(`qlog: ${kept.length} events (${gpsKept} gps) -> ${qlogOut}`);
 
 // A distinct pattern per camera: identical bytes would make the cameras of a

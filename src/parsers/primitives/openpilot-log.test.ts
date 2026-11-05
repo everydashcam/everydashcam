@@ -9,6 +9,7 @@ import {
     type GpsFixSpec,
     gpsEvent,
 } from "../__fixtures__/openpilot/build-log.js";
+import { cutInsideLastBlock, streamedZstd } from "../__fixtures__/zstd-stream.js";
 import { type VendorFile, WrongFormatError } from "../types.js";
 import { openpilotLogPrimitive } from "./openpilot-log.js";
 import type { PrimitiveVideoRef } from "./types.js";
@@ -243,6 +244,20 @@ describe("openpilotLogPrimitive.parse", () => {
         });
     });
 
+    it("keeps the GPS and start of a log cut short, but not its frame counts", async () => {
+        // Over 128 KiB of events, so the fixes sit in a whole first block.
+        const cut: VendorFile = {
+            file: new File([cutInsideLastBlock(streamedZstd(concatBytes([...fixes(), ...cameras(1200)])))], FLAT_NAME),
+            relativePath: FLAT_NAME,
+        };
+        const parsed = await openpilotLogPrimitive.parse(cut);
+        expect(parsed.records).toHaveLength(3);
+        const front = parsed.videoTimingHints!.find((hint) => hint.mp4Filename.endsWith("fcamera.hevc"));
+        expect(front, "front camera hint").toBeDefined();
+        expect(front!.startUtc!).toBeCloseTo(EXPECTED_START, 4);
+        expect(front!.durationSec).toBeNull();
+    });
+
     it("ignores a frame index of a different segment than its file name", async () => {
         const parsed = await openpilotLogPrimitive.parse(
             qlogFile([...frameIndexEvents("fcamera", 8, 40, BOOT_NS), ...fixes()]),
@@ -251,13 +266,18 @@ describe("openpilotLogPrimitive.parse", () => {
         expect(parsed.records).toHaveLength(3);
     });
 
-    it("throws WrongFormatError for a non-zstd body, an empty log and a foreign name", async () => {
+    it("throws WrongFormatError for a non-zstd body, an empty log, a zstd bomb and a foreign name", async () => {
         const garbage: VendorFile = {
             file: new File([new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 1, 2, 3, 4, 5])], FLAT_NAME),
             relativePath: FLAT_NAME,
         };
         await expect(openpilotLogPrimitive.parse(garbage)).rejects.toBeInstanceOf(WrongFormatError);
         await expect(openpilotLogPrimitive.parse(qlogFile([]))).rejects.toBeInstanceOf(WrongFormatError);
+        const bomb: VendorFile = {
+            file: new File([new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0xf8, 0, 0, 0])], FLAT_NAME),
+            relativePath: FLAT_NAME,
+        };
+        await expect(openpilotLogPrimitive.parse(bomb)).rejects.toBeInstanceOf(WrongFormatError);
         await expect(openpilotLogPrimitive.parse(qlogFile(fixes(), { name: "qlog.zst" }))).rejects.toBeInstanceOf(
             WrongFormatError,
         );

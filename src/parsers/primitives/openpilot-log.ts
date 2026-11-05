@@ -11,9 +11,11 @@
 // Format notes and layout derivation: docs/format-openpilot.md.
 
 import { throwIfCancelled } from "../../abort-signals.js";
+import { createLogger } from "../../log.js";
 import { type OpenpilotFileName, parseOpenpilotFileName } from "../filename/_patterns.js";
 import { OPENPILOT_FRAME_RATE } from "../internal/openpilot.js";
 import { type OpenpilotCameraStream, type OpenpilotLog, decodeOpenpilotLog } from "../internal/openpilot-log.js";
+import { inflateZstdPrefix } from "../internal/zstd-prefix.js";
 import {
     type GpsRecord,
     type ParsedRecords,
@@ -24,6 +26,9 @@ import {
 import type { Primitive, PrimitiveVideoRef } from "./types.js";
 
 const FORMAT_ID = "openpilot-log";
+const log = createLogger("primitive:openpilot-log");
+// A real qlog decompresses to about 2.5 MB per one-minute segment.
+const MAX_QLOG_BYTES = 64 * 1024 * 1024;
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd];
 // Clocks before this are unsynced placeholders, not drive times; openpilot
 // routes in this layout postdate it by years.
@@ -48,28 +53,36 @@ export const openpilotLogPrimitive: Primitive = {
     async parse(file: VendorFile, _index, signal, context): Promise<ParsedRecords> {
         const name = parseOpenpilotFileName(file);
         if (name?.stream !== "qlog") throw new WrongFormatError("not an openpilot qlog name");
-        // Loaded with the first openpilot log only; no other format needs zstd.
-        const { decompress } = await import("fzstd");
         const compressed = new Uint8Array(await file.file.arrayBuffer());
         throwIfCancelled(signal);
-        let bytes: Uint8Array;
-        try {
-            bytes = decompress(compressed);
-        } catch {
-            throw new WrongFormatError("openpilot qlog is not a valid zstd stream");
-        }
+        const inflated = await inflateZstdPrefix(compressed, MAX_QLOG_BYTES);
+        if (inflated.kind === "invalid") throw new WrongFormatError("openpilot qlog is not a valid zstd stream");
+        if (inflated.kind === "too-large")
+            throw new WrongFormatError("openpilot qlog decompresses past its size limit");
         throwIfCancelled(signal);
-        const log = decodeOpenpilotLog(bytes);
-        if (log.messages === 0) throw new WrongFormatError("openpilot qlog holds no capnp messages");
+        const decoded = decodeOpenpilotLog(inflated.bytes);
+        if (decoded.messages === 0) throw new WrongFormatError("openpilot qlog holds no capnp messages");
+        // A log cut short (crash, power loss, interrupted download) still
+        // dates frame 0 and carries the GPS before the cut, but its frame
+        // counts stop early: a raw stream keeps its nominal duration instead.
+        const isComplete = inflated.complete && decoded.malformedAt === null;
+        if (!isComplete) {
+            log.warn("openpilot qlog is incomplete", {
+                file: file.file.name,
+                zstdComplete: inflated.complete,
+                malformedAt: decoded.malformedAt,
+                messages: decoded.messages,
+            });
+        }
 
         const videos = segmentVideos(file, name, context?.knownVideos ?? []);
         const loadedOwner = GPS_OWNER_STREAMS.map((stream) => videos.get(stream)).find((video) => video !== undefined);
         const owner = loadedOwner ?? { name: canonicalVideoName(file, name, "fcamera") };
-        const records = gpsRecords(log, owner);
-        const offsetNs = bootToUnixOffsetNs(log);
+        const records = gpsRecords(decoded, owner);
+        const offsetNs = bootToUnixOffsetNs(decoded);
         const videoTimingHints: VideoTimingHint[] = [];
         for (const stream of CAMERA_STREAMS) {
-            const frames = log.frames.get(stream);
+            const frames = decoded.frames.get(stream);
             if (!frames || frames.segment !== name.segment || frames.frameCount === 0) continue;
             const video = videos.get(stream);
             videoTimingHints.push({
@@ -82,7 +95,7 @@ export const openpilotLogPrimitive: Primitive = {
                 // Only raw HEVC lacks its own timestamps. The qcamera.ts
                 // preview carries PTS; a truncated preview must keep the
                 // duration its bytes support, not the frames the log counted.
-                durationSec: stream === "qcamera" ? null : frames.frameCount / OPENPILOT_FRAME_RATE,
+                durationSec: stream === "qcamera" || !isComplete ? null : frames.frameCount / OPENPILOT_FRAME_RATE,
             });
         }
         return { records, skipped: [], videoTimingHints };
@@ -90,9 +103,9 @@ export const openpilotLogPrimitive: Primitive = {
 };
 
 /** GPS fixes as records of the segment's owning video, in time order. */
-function gpsRecords(log: OpenpilotLog, owner: { name: string; videoKey?: string }): GpsRecord[] {
+function gpsRecords(decoded: OpenpilotLog, owner: { name: string; videoKey?: string }): GpsRecord[] {
     const records: GpsRecord[] = [];
-    for (const fix of log.gps) {
+    for (const fix of decoded.gps) {
         const unixSeconds = fix.unixMillis / 1000;
         // A fix-less report repeats a stale or zero position; only fixes are track.
         if (!fix.hasFix || unixSeconds < MIN_PLAUSIBLE_UNIX_SEC) continue;
@@ -123,12 +136,12 @@ function gpsRecords(log: OpenpilotLog, owner: { name: string; videoKey?: string 
  * A fix is published tens of milliseconds after it is taken, so the result
  * runs early by that latency.
  */
-function bootToUnixOffsetNs(log: OpenpilotLog): number | null {
-    const fromGps = log.gps
+function bootToUnixOffsetNs(decoded: OpenpilotLog): number | null {
+    const fromGps = decoded.gps
         .filter((fix) => fix.hasFix && fix.unixMillis / 1000 >= MIN_PLAUSIBLE_UNIX_SEC)
         .map((fix) => fix.unixMillis * 1e6 - fix.monoNs);
     if (fromGps.length > 0) return median(fromGps);
-    const fromClock = log.wallClock
+    const fromClock = decoded.wallClock
         .filter((sample) => sample.unixNanos / 1e9 >= MIN_PLAUSIBLE_UNIX_SEC)
         .map((sample) => sample.unixNanos - sample.monoNs);
     return fromClock.length > 0 ? median(fromClock) : null;
@@ -146,7 +159,7 @@ function median(values: number[]): number {
  * fresh source key, so any source is the fallback.
  */
 function segmentVideos(
-    log: VendorFile,
+    logFile: VendorFile,
     name: OpenpilotFileName,
     knownVideos: readonly PrimitiveVideoRef[],
 ): Map<OpenpilotCameraStream, PrimitiveVideoRef> {
@@ -159,7 +172,9 @@ function segmentVideos(
             videoName.routeDir === name.routeDir
         );
     });
-    const sameSource = matching.filter((video) => log.sourceKey !== undefined && video.sourceKey === log.sourceKey);
+    const sameSource = matching.filter(
+        (video) => logFile.sourceKey !== undefined && video.sourceKey === logFile.sourceKey,
+    );
     const byStream = new Map<OpenpilotCameraStream, PrimitiveVideoRef>();
     for (const video of sameSource.length > 0 ? sameSource : matching) {
         const stream = parseOpenpilotFileName({ file: { name: video.name }, relativePath: video.relativePath })!.stream;
@@ -170,10 +185,10 @@ function segmentVideos(
 }
 
 /** Name a segment's video has in the log's own layout, for a video that is not
- *  loaded yet. A browser's " (N)" duplicate suffix is not predictable and stays off. */
-function canonicalVideoName(log: VendorFile, name: OpenpilotFileName, stream: OpenpilotCameraStream): string {
+ *  loaded yet. A browser's repeated-download suffix is not predictable and stays off. */
+function canonicalVideoName(logFile: VendorFile, name: OpenpilotFileName, stream: OpenpilotCameraStream): string {
     const extension = stream === "qcamera" ? "ts" : "hevc";
-    if (log.file.name.toLowerCase().startsWith("qlog")) return `${stream}.${extension}`;
-    const prefix = log.file.name.slice(0, log.file.name.indexOf("_"));
+    if (logFile.file.name.toLowerCase().startsWith("qlog")) return `${stream}.${extension}`;
+    const prefix = logFile.file.name.slice(0, logFile.file.name.indexOf("_"));
     return `${prefix}_${name.route}--${name.segment}--${stream}.${extension}`;
 }

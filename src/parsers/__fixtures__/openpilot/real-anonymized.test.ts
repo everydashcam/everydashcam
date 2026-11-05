@@ -1,7 +1,8 @@
 // End-to-end parse of two anonymized real openpilot segments (comma four,
-// openpilot 0.11.2, comma connect download). The qlogs keep the real GPS,
-// frame-index and clock events of the first three seconds, byte for byte, with
-// coordinates rounded to whole degrees and altitude zeroed; videos are ffmpeg
+// openpilot 0.11.2, comma connect download). The qlogs keep the real
+// frame-index events of the first three seconds and GPS and clock events of the
+// first ten, byte for byte, with coordinates rounded to whole degrees and
+// altitude zeroed, in a streamed zstd frame like loggerd's; videos are ffmpeg
 // test patterns with the frame count the log indexes. Regenerate with:
 //   node scripts/anonymize-openpilot-segment.mjs <...--19--qlog.zst> \
 //     src/parsers/__fixtures__/openpilot 0123456789abcdef_00000001--0000000000--19

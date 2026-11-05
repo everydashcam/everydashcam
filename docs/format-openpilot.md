@@ -81,6 +81,11 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
 - Duration of each raw HEVC stream: distinct `segmentId` values / 20. The
   preview keeps its own timestamps, so a truncated download keeps the duration
   its bytes support.
+- A log cut short is read up to the cut. loggerd streams one zstd frame and
+  closes it only on exit, so a crash, a power loss or an interrupted download
+  leaves it without its last blocks. The GPS and frame-0 times before the cut
+  stay; raw streams keep the nominal 60 s, since their frame counts stop early.
+  Decompression stops at 64 MiB (a real qlog is about 2.5 MB).
 
 GPS records come from `gpsLocation` (1 Hz in the qlog) and
 `gpsLocationExternal` (decimated to 1 Hz) and belong to the segment's front
@@ -146,9 +151,11 @@ to `hev1`; openpilot does not write them, but other encoders do.
 
 ## Anonymized fixtures
 
-`src/parsers/__fixtures__/openpilot/` keeps the GPS, encode-index and clock
-events of each segment's first three seconds byte for byte, with coordinates
-rounded to whole degrees and altitude zeroed. `initData`, which carries the
+`src/parsers/__fixtures__/openpilot/` keeps the encode-index events of each
+segment's first three seconds and the GPS and clock events of its first ten,
+byte for byte, with coordinates rounded to whole degrees and altitude zeroed.
+The result is compressed as one streamed zstd frame without a content size, as
+loggerd writes it. `initData`, which carries the
 dongle id, device parameters and git remotes, and every other event are
 dropped. Videos are ffmpeg test patterns, one per camera, encoded like
 openpilot's streams with the frame count the log indexes.
