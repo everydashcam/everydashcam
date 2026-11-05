@@ -67,7 +67,7 @@ const ENCODE_SEGMENT_NUM = 12;
 const ENCODE_SEGMENT_ID = 16;
 const ENCODE_TIMESTAMP_SOF = 24;
 
-// Clocks: wallTimeNanos u64 @3 sits after the four deprecated u64 fields @0..@2.
+// Clocks: wallTimeNanos u64 @3 sits after the three deprecated u64 fields @0..@2.
 const CLOCKS_WALL_TIME_NANOS = 24;
 
 export type OpenpilotCameraStream = Extract<OpenpilotStream, "fcamera" | "ecamera" | "dcamera" | "qcamera">;

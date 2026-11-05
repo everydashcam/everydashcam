@@ -91,9 +91,9 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
   Decompression stops at 64 MiB (a real qlog is about 2.5 MB).
 
 GPS records come from `gpsLocation` (1 Hz in the qlog) and
-`gpsLocationExternal` (decimated to 1 Hz) and belong to the segment's front
-video. Fixes off the globe are dropped; the stream has no checksum. Only the
-qlog is read: the rlog holds the same events undecimated, and
+`gpsLocationExternal` (decimated to 1 Hz) and belong to one loaded video of the
+segment: the road view, else the wide camera, else the driver camera. Fixes off
+the globe are dropped; the stream has no checksum. Only the qlog is read: the rlog holds the same events undecimated, and
 reading both would double the track. Timing is recomputed from the logs on
 every ingest and never stored in the index cache.
 
@@ -137,7 +137,8 @@ at 8/16/24, `bearingDeg` `f32` at 32, `horizontalAccuracy` `f32` at 36,
 The road and driver streams are bare H.265 without B-frames
 (`EncoderSettings` in `loggerd.h`). On the comma four sample each file starts
 with one VPS/SPS/PPS set, followed by an IDR picture every 20 frames and two
-slices per picture; wider cameras use a 30-frame GOP.
+slices per picture. A camera wider than 1344 pixels encodes with a 30-frame GOP
+(`MainEncoderSettings`).
 Neither `<video>` nor mediabunny opens such a stream. Rewriting it into an MP4
 would copy the recording, so the first demux of a file builds a Blob that is an
 MP4 whose samples reference the original bytes: a small `ftyp`+`moov` from one

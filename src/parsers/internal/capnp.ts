@@ -86,8 +86,9 @@ export function capnpI32(s: CapnpStruct, byteOffset: number): number {
     return inData(s, byteOffset, 4) ? s.view.getInt32(s.dataOffset + byteOffset, true) : 0;
 }
 
-/** UInt64 as a number: exact below 2^53, which holds for nanosecond clocks
- *  until year 2255 and for boot-relative nanoseconds for 104 days. */
+/** UInt64 as a number: exact below 2^53, which boot-relative nanoseconds stay
+ *  under for 104 days. Unix nanoseconds are past 2^53 and lose up to 128 ns to
+ *  rounding, far below the millisecond precision anything here needs. */
 export function capnpU64(s: CapnpStruct, byteOffset: number): number {
     return inData(s, byteOffset, 8) ? Number(s.view.getBigUint64(s.dataOffset + byteOffset, true)) : 0;
 }
