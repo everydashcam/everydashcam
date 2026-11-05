@@ -81,10 +81,13 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
   `timed.py`) and its date is after 2020. An unsynced device reports its OS
   build date, which passes any fixed floor, so the flag decides. On the sample
   the clock agrees with the GPS offset within 10 ms.
-- Frame 0 of each camera: start-of-frame time of the entry with
-  `segmentId == 0`, plus the offset. On the sample, consecutive segments start
-  60.001 s apart. Without that entry, the earliest logged frame `k` stands in
-  at `timestampSof - k * 50 ms`.
+- Start of each camera: start-of-frame time of its lowest logged
+  `segmentId`, plus the offset. On the sample that is `segmentId == 0`, and
+  consecutive segments start 60.001 s apart. loggerd logs a frame's entry right
+  after writing the frame and drops the frames before a segment's first
+  keyframe from both (`write_encode_data` in `loggerd.cc`), so the lowest
+  logged frame is the file's first even when it is not 0. When that entry has
+  no time, the next timed one stands in, counted back at 50 ms per frame.
 - Duration of each raw HEVC stream: distinct `segmentId` values / 20. The
   preview keeps its own timestamps, so a truncated download keeps the duration
   its bytes support.

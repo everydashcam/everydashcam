@@ -93,9 +93,28 @@ describe("decodeOpenpilotLog", () => {
         expect(log.frames.get("fcamera")).toEqual({ segment: 19, frameCount: 5, firstFrameSofNs: BOOT_NS });
     });
 
-    it("counts the first frame time back from the earliest logged frame when frame 0 is missing", () => {
+    it("starts a segment that opened past frame 0 at its first logged frame", () => {
+        // loggerd drops the frames before the first keyframe from the video and the log alike.
         const log = decodeOpenpilotLog(concatBytes(frameIndexEvents("fcamera", 3, 5, BOOT_NS).slice(2)));
-        expect(log.frames.get("fcamera")).toEqual({ segment: 3, frameCount: 3, firstFrameSofNs: BOOT_NS });
+        expect(log.frames.get("fcamera")).toEqual({
+            segment: 3,
+            frameCount: 3,
+            firstFrameSofNs: BOOT_NS + 100_000_000,
+        });
+    });
+
+    it("counts the first frame time back from the next timed frame when the first has none", () => {
+        const log = decodeOpenpilotLog(
+            concatBytes([
+                encodeIndexEvent("fcamera", { segmentNum: 3, segmentId: 2, sofNs: 0, monoNs: BOOT_NS }),
+                ...frameIndexEvents("fcamera", 3, 5, BOOT_NS).slice(3),
+            ]),
+        );
+        expect(log.frames.get("fcamera")).toEqual({
+            segment: 3,
+            frameCount: 3,
+            firstFrameSofNs: BOOT_NS + 100_000_000,
+        });
     });
 
     it("leaves the first frame time unknown when no entry carries a time", () => {

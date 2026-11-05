@@ -86,13 +86,12 @@ export interface OpenpilotGpsFix {
     hasFix: boolean;
 }
 
-/** Frames of one camera stream within one segment, from its encode index. */
+/** Frames of one camera stream's file, from the encode index of its segment. */
 export interface OpenpilotFrameIndex {
     segment: number;
     frameCount: number;
-    /** Start-of-frame time of the segment's first frame, on the boot clock.
-     *  Extrapolated at the nominal frame rate from the earliest frame the log
-     *  holds when frame 0's entry is missing; null when no entry has a time. */
+    /** Start-of-frame time of the file's first frame, on the boot clock; null
+     *  when no entry has a time. */
     firstFrameSofNs: number | null;
 }
 
@@ -111,6 +110,11 @@ export interface OpenpilotLog {
  * Decodes the events this viewer uses from a decompressed openpilot log. Other
  * events are skipped. Frame indexes from a different segment number than the
  * majority (none were observed) are ignored rather than mixed in.
+ *
+ * loggerd logs a frame's encode index entry right after writing the frame and
+ * drops the frames before a segment's first keyframe from both, so a stream's
+ * entries describe its file from the first byte: the lowest logged segmentId
+ * is the file's first frame, 0 only when the segment opened on a keyframe.
  */
 export function decodeOpenpilotLog(bytes: Uint8Array): OpenpilotLog {
     const gps: OpenpilotGpsFix[] = [];
@@ -157,16 +161,19 @@ export function decodeOpenpilotLog(bytes: Uint8Array): OpenpilotLog {
         for (const entry of entries) bySegment.set(entry.segment, (bySegment.get(entry.segment) ?? 0) + 1);
         const segment = [...bySegment].sort((a, b) => b[1] - a[1])[0]![0];
         const ids = new Set<number>();
+        let firstId = Number.POSITIVE_INFINITY;
         // Earliest frame with a start-of-frame time; a zero time is a missing field.
-        let earliest: { id: number; sofNs: number } | null = null;
+        let earliestTimed: { id: number; sofNs: number } | null = null;
         for (const entry of entries) {
             if (entry.segment !== segment) continue;
             ids.add(entry.id);
-            if (entry.sofNs > 0 && (earliest === null || entry.id < earliest.id)) earliest = entry;
+            firstId = Math.min(firstId, entry.id);
+            if (entry.sofNs > 0 && (earliestTimed === null || entry.id < earliestTimed.id)) earliestTimed = entry;
         }
-        // Frame 0 itself when logged; otherwise counted back from the earliest
-        // one, off by 50 ms for each frame the camera dropped before it.
-        const firstFrameSofNs = earliest ? earliest.sofNs - (earliest.id * 1e9) / OPENPILOT_FRAME_RATE : null;
+        // The first frame's own time, or counted back from the next timed one.
+        const firstFrameSofNs = earliestTimed
+            ? earliestTimed.sofNs - ((earliestTimed.id - firstId) * 1e9) / OPENPILOT_FRAME_RATE
+            : null;
         frames.set(stream, { segment, frameCount: ids.size, firstFrameSofNs });
     }
     return { gps, frames, wallClock, messages: walk.messages, malformedAt: walk.malformedAt };
