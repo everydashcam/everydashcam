@@ -888,4 +888,30 @@ describe("openpilot segment logs", () => {
         const other = video("card/B/clip.mp4", "card");
         expect(resolveVideoKey(video("card/A/gps.log", "card"), "clip.mp4", [other])).toBe(vendorFileKey(other));
     });
+
+    it("binds a connect-layout log to the same segment copied in the device layout elsewhere", () => {
+        const flatLog = video("Downloads/0123456789abcdef_00000001--0000000000--19--qlog.zst", "dl");
+        const own = video(`${ROUTE}--19/fcamera.hevc`, "card");
+        const next = video(`${ROUTE}--20/fcamera.hevc`, "card");
+        const flatName = "0123456789abcdef_00000001--0000000000--19--fcamera.hevc";
+        expect(resolveVideoKey(flatLog, flatName, [next, own])).toBe(vendorFileKey(own));
+        const timing = resolveLogVideoTimingHints(
+            [
+                {
+                    mp4Filename: flatName,
+                    startUtc: 1,
+                    durationSec: 3,
+                    sourcePath: flatLog.relativePath,
+                    sourceKey: "dl",
+                    extractorId: "openpilot-log",
+                },
+            ],
+            [next, own],
+        );
+        expect([...timing.keys()]).toEqual([vendorFileKey(own)]);
+        // And the other way round: a device-layout log names a bare file.
+        const flatVideo = video(`Downloads/0123456789abcdef_00000001--0000000000--19--ecamera.hevc`, "dl");
+        expect(resolveVideoKey(log(19), "ecamera.hevc", [flatVideo])).toBe(vendorFileKey(flatVideo));
+        expect(resolveVideoKey(log(20), "ecamera.hevc", [flatVideo])).toBeNull();
+    });
 });

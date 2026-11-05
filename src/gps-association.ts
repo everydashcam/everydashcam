@@ -1,9 +1,8 @@
 import { mergeIntoGpsLog } from "./parser.js";
 import {
     mai70NameCore,
-    openpilotStreamCore,
-    openpilotViewCore,
-    openpilotViewFallbacks,
+    openpilotLookupCores,
+    openpilotVideoCores,
 } from "./parsers/filename/_patterns.js";
 import { classifyFilenameRecordingKey } from "./parsers/filename/index.js";
 import type { GpsRecord, ParsedLog, VendorFile, VideoTimingHint, VideoWithRecordingCopies } from "./parsers/types.js";
@@ -14,9 +13,9 @@ export interface VideoAssociationIndex {
     videosByFilename: ReadonlyMap<string, readonly VendorFile[]>;
     // 70mai logs can name a clip by another mode prefix, no prefix at all, or
     // with bytes after ".MP4" (see mai70NameCore); an openpilot log predicts
-    // a file's name without its letter case or download suffix
-    // (openpilotStreamCore) and names its segment's full-res road file when
-    // only another camera of the segment may be loaded (openpilotViewCore).
+    // a file's name in its own layout, without its letter case or download
+    // suffix, and names its segment's full-res road file when only another
+    // camera of the segment may be loaded (openpilotVideoCores).
     // Exact names always win; cores are fallback keys, so these rows still get a
     // concrete owner and extractor attribution instead of a later name-only
     // rebind.
@@ -106,7 +105,7 @@ export function buildVideoAssociationIndex(videos: readonly VideoWithRecordingCo
             }
             canonicalByFileKey.set(key, video);
             pushToBucket(mutable, physical.file.name, physical);
-            for (const core of videoIndexCores(physical.file.name)) {
+            for (const core of videoIndexCores(physical)) {
                 pushToBucket(videosByNameCore, core, physical);
             }
         }
@@ -222,20 +221,25 @@ function uniqueCanonicalVideo(videos: readonly VendorFile[], index: VideoAssocia
 type NameScope = "file" | "view";
 
 /** Fallback keys a loaded video answers to. */
-function videoIndexCores(name: string): string[] {
-    return [mai70NameCore(name), openpilotStreamCore(name), openpilotViewCore(name)].filter((core) => core !== null);
+function videoIndexCores(video: VendorFile): string[] {
+    const core = mai70NameCore(video.file.name);
+    return [...(core === null ? [] : [core]), ...openpilotVideoCores(video)];
 }
 
 /** Fallback keys a log's video name looks up, most specific first. */
-function videoLookupCores(name: string, scope: NameScope): string[] {
-    const cores = [mai70NameCore(name), openpilotStreamCore(name)].filter((core) => core !== null);
-    return scope === "view" ? [...cores, ...openpilotViewFallbacks(name)] : cores;
+function videoLookupCores(sourcePath: string, name: string, scope: NameScope): string[] {
+    const core = mai70NameCore(name);
+    const namedBy = { file: { name: baseName(sourcePath) }, relativePath: sourcePath };
+    return [...(core === null ? [] : [core]), ...openpilotLookupCores(namedBy, name, scope === "view")];
+}
+
+function baseName(relativePath: string): string {
+    return relativePath.slice(relativePath.lastIndexOf("/") + 1);
 }
 
 /** Recording that a log's own name identifies (an openpilot segment's log), or null. */
 function logRecordingKey(relativePath: string): string | null {
-    const name = relativePath.slice(relativePath.lastIndexOf("/") + 1);
-    return classifyFilenameRecordingKey({ file: new File([], name), relativePath });
+    return classifyFilenameRecordingKey({ file: new File([], baseName(relativePath)), relativePath });
 }
 
 /**
@@ -255,7 +259,7 @@ function resolveVideo(
     const ofRecording = (videos: readonly VendorFile[] | undefined): VendorFile[] =>
         (videos ?? []).filter((video) => recording === null || classifyFilenameRecordingKey(video) === recording);
     let candidates = ofRecording(index.videosByFilename.get(mp4Filename));
-    for (const core of videoLookupCores(mp4Filename, scope)) {
+    for (const core of videoLookupCores(source.relativePath, mp4Filename, scope)) {
         if (candidates.length > 0) break;
         candidates = ofRecording(index.videosByNameCore.get(core));
     }

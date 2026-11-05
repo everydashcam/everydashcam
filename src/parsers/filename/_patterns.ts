@@ -529,61 +529,72 @@ export function parseOpenpilotFileName(file: {
     };
 }
 
-/** Segment and stream an openpilot file name states by itself, without its
- *  folder. A bare device-layout name has no segment (empty string). */
-function openpilotBaseName(downloadedName: string): { segment: string; stream: OpenpilotStream } | null {
-    const name = originalDownloadName(downloadedName);
-    const flat = name.match(RX_OPENPILOT_FLAT);
-    const bare = flat ? null : name.match(RX_OPENPILOT_SEGMENT_FILE);
-    const stream = (flat?.[3] ?? bare?.[1])?.toLowerCase() as OpenpilotStream | undefined;
-    const extension = (flat?.[4] ?? bare?.[2])?.toLowerCase();
-    if (stream === undefined || OPENPILOT_STREAM_EXTENSION[stream] !== extension) return null;
-    return { segment: flat ? `${flat[1]!.toLowerCase()}--${Number(flat[2])}` : "", stream };
-}
-
 /**
- * Identity of one openpilot stream file regardless of how its name was
- * spelled: letter case and a browser's repeated-download suffix differ between
- * the name a log predicts and the file on disk. A bare device-layout name
- * carries no segment, so callers scope it by the log's recording key. null for
- * any other name.
+ * Camera streams in the order a segment's GPS prefers its owner: the road
+ * view at full resolution, its low-res preview, the wide road camera, then the
+ * driver camera. Every camera of a segment records the same drive.
  */
-export function openpilotStreamCore(name: string): string | null {
-    const base = openpilotBaseName(name);
-    return base ? `openpilot-stream|${base.segment}|${base.stream}` : null;
-}
+export const OPENPILOT_GPS_OWNER_STREAMS = ["fcamera", "qcamera", "ecamera", "dcamera"] as const;
 
-// What each camera of a segment films, in the order a segment's GPS prefers
-// an owner: the road view (fcamera and its qcamera preview), the wide road
-// camera, then the driver camera.
-const OPENPILOT_VIEW_OF_STREAM: Partial<Record<OpenpilotStream, string>> = {
+type OpenpilotCameraName = (typeof OPENPILOT_GPS_OWNER_STREAMS)[number];
+
+// What each camera of a segment films: fcamera and its qcamera preview share
+// the road view.
+const OPENPILOT_VIEW_OF_STREAM: Record<OpenpilotCameraName, string> = {
     fcamera: "road",
     qcamera: "road",
     ecamera: "wide",
     dcamera: "driver",
 };
-const OPENPILOT_VIEWS_BY_PREFERENCE = ["road", "wide", "driver"] as const;
 
-/**
- * The view an openpilot camera file shows in its segment, shared by fcamera
- * and its qcamera preview. Scoped like openpilotStreamCore. null for any other
- * name.
- */
-export function openpilotViewCore(name: string): string | null {
-    const base = openpilotBaseName(name);
-    const view = base ? OPENPILOT_VIEW_OF_STREAM[base.stream] : undefined;
-    return base && view ? `openpilot-view|${base.segment}|${view}` : null;
+function isOpenpilotCamera(stream: OpenpilotStream): stream is OpenpilotCameraName {
+    return stream in OPENPILOT_VIEW_OF_STREAM;
 }
 
 /**
- * Views of the same segment that may stand in for a named openpilot camera
- * file as the owner of the segment's GPS, best first. A log names the
- * full-resolution road file, which may be absent while the preview, the wide
- * or the driver camera is loaded; every camera of a segment records the same
- * drive. Empty for any other name.
+ * Keys a loaded openpilot camera file answers to when a log's name for it is
+ * spelled otherwise: its stream of its segment, then the view it shows. The
+ * segment comes from the name or, in the device layout, from its folder, so a
+ * file answers alike in both layouts. Empty for any other file.
  */
-export function openpilotViewFallbacks(name: string): string[] {
-    const base = openpilotBaseName(name);
-    if (!base || OPENPILOT_VIEW_OF_STREAM[base.stream] === undefined) return [];
-    return OPENPILOT_VIEWS_BY_PREFERENCE.map((view) => `openpilot-view|${base.segment}|${view}`);
+export function openpilotVideoCores(file: { file: { name: string }; relativePath: string }): string[] {
+    const name = parseOpenpilotFileName(file);
+    if (!name || !isOpenpilotCamera(name.stream)) return [];
+    const segment = `${name.route}--${name.segment}`;
+    return [
+        `openpilot-stream|${segment}|${name.stream}`,
+        `openpilot-view|${segment}|${OPENPILOT_VIEW_OF_STREAM[name.stream]}`,
+    ];
+}
+
+/**
+ * Keys an openpilot log looks up for a camera file it names, most specific
+ * first: the same stream, then, when the name may stand for another camera,
+ * every view of the segment in GPS-owner order. A connect-layout name states
+ * its segment; a bare device-layout name takes the segment of the file that
+ * names it. Letter case and a browser's repeated-download suffix do not
+ * matter. Empty when no segment and camera follow.
+ */
+export function openpilotLookupCores(
+    namedBy: { file: { name: string }; relativePath: string },
+    videoName: string,
+    includeOtherViews: boolean,
+): string[] {
+    const name = originalDownloadName(videoName);
+    const flat = name.match(RX_OPENPILOT_FLAT);
+    const bare = flat ? null : name.match(RX_OPENPILOT_SEGMENT_FILE);
+    const stream = (flat?.[3] ?? bare?.[1])?.toLowerCase() as OpenpilotStream | undefined;
+    const extension = (flat?.[4] ?? bare?.[2])?.toLowerCase();
+    if (stream === undefined || OPENPILOT_STREAM_EXTENSION[stream] !== extension || !isOpenpilotCamera(stream)) {
+        return [];
+    }
+    const namer = flat ? null : parseOpenpilotFileName(namedBy);
+    const segment = flat
+        ? `${flat[1]!.toLowerCase()}--${Number(flat[2])}`
+        : namer && `${namer.route}--${namer.segment}`;
+    if (!segment) return [];
+    const cores = [`openpilot-stream|${segment}|${stream}`];
+    if (!includeOtherViews) return cores;
+    const views = new Set(OPENPILOT_GPS_OWNER_STREAMS.map((owner) => OPENPILOT_VIEW_OF_STREAM[owner]));
+    return [...cores, ...[...views].map((view) => `openpilot-view|${segment}|${view}`)];
 }

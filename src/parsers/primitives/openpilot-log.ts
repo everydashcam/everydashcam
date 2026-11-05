@@ -13,7 +13,7 @@
 import { throwIfCancelled } from "../../abort-signals.js";
 import { createLogger } from "../../log.js";
 import { isValidGpsFix } from "../../parser.js";
-import { type OpenpilotFileName, parseOpenpilotFileName } from "../filename/_patterns.js";
+import { OPENPILOT_GPS_OWNER_STREAMS, type OpenpilotFileName, parseOpenpilotFileName } from "../filename/_patterns.js";
 import { OPENPILOT_FRAME_RATE } from "../internal/openpilot.js";
 import { type OpenpilotCameraStream, type OpenpilotLog, decodeOpenpilotLog } from "../internal/openpilot-log.js";
 import { inflateZstdPrefix } from "../internal/zstd-prefix.js";
@@ -34,10 +34,6 @@ const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd];
 // Clocks before this are unsynced placeholders, not drive times; openpilot
 // routes in this layout postdate it by years.
 const MIN_PLAUSIBLE_UNIX_SEC = 1577836800; // 2020-01-01 UTC
-// GPS records belong to one loaded video of the segment: the road view when
-// loaded, else the wide, else the driver camera - every camera of a segment
-// records the same drive (openpilotViewFallbacks resolves later drops alike).
-const GPS_OWNER_STREAMS: readonly OpenpilotCameraStream[] = ["fcamera", "qcamera", "ecamera", "dcamera"];
 const CAMERA_STREAMS: readonly OpenpilotCameraStream[] = ["fcamera", "ecamera", "dcamera", "qcamera"];
 
 export const openpilotLogPrimitive: Primitive = {
@@ -77,7 +73,11 @@ export const openpilotLogPrimitive: Primitive = {
         }
 
         const videos = segmentVideos(file, name, context?.knownVideos ?? []);
-        const loadedOwner = GPS_OWNER_STREAMS.map((stream) => videos.get(stream)).find((video) => video !== undefined);
+        // GPS records belong to one loaded camera of the segment, in the owner
+        // order later drops resolve by too (openpilotLookupCores).
+        const loadedOwner = OPENPILOT_GPS_OWNER_STREAMS.map((stream) => videos.get(stream)).find(
+            (video) => video !== undefined,
+        );
         const owner = loadedOwner ?? { name: canonicalVideoName(file, name, "fcamera") };
         const records = gpsRecords(decoded, owner);
         const offsetNs = bootToUnixOffsetNs(decoded);
