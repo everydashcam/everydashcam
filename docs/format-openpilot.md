@@ -80,7 +80,8 @@ start-of-frame time on the device's boot clock. GPS fixes pair that boot clock
   the clock agrees with the GPS offset within 10 ms.
 - Frame 0 of each camera: start-of-frame time of the entry with
   `segmentId == 0`, plus the offset. On the sample, consecutive segments start
-  60.001 s apart.
+  60.001 s apart. Without that entry, the earliest logged frame `k` stands in
+  at `timestampSof - k * 50 ms`.
 - Duration of each raw HEVC stream: distinct `segmentId` values / 20. The
   preview keeps its own timestamps, so a truncated download keeps the duration
   its bytes support.

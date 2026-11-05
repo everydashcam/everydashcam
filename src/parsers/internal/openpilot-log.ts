@@ -10,6 +10,7 @@
 // Full derivation: docs/format-openpilot.md.
 
 import type { OpenpilotStream } from "../filename/_patterns.js";
+import { OPENPILOT_FRAME_RATE } from "./openpilot.js";
 import {
     type CapnpStruct,
     capnpBit,
@@ -90,7 +91,8 @@ export interface OpenpilotFrameIndex {
     segment: number;
     frameCount: number;
     /** Start-of-frame time of the segment's first frame, on the boot clock.
-     *  null when that frame's index entry is missing from the log. */
+     *  Extrapolated at the nominal frame rate from the earliest frame the log
+     *  holds when frame 0's entry is missing; null when no entry has a time. */
     firstFrameSofNs: number | null;
 }
 
@@ -155,12 +157,16 @@ export function decodeOpenpilotLog(bytes: Uint8Array): OpenpilotLog {
         for (const entry of entries) bySegment.set(entry.segment, (bySegment.get(entry.segment) ?? 0) + 1);
         const segment = [...bySegment].sort((a, b) => b[1] - a[1])[0]![0];
         const ids = new Set<number>();
-        let firstFrameSofNs: number | null = null;
+        // Earliest frame with a start-of-frame time; a zero time is a missing field.
+        let earliest: { id: number; sofNs: number } | null = null;
         for (const entry of entries) {
             if (entry.segment !== segment) continue;
             ids.add(entry.id);
-            if (entry.id === 0) firstFrameSofNs = entry.sofNs;
+            if (entry.sofNs > 0 && (earliest === null || entry.id < earliest.id)) earliest = entry;
         }
+        // Frame 0 itself when logged; otherwise counted back from the earliest
+        // one, off by 50 ms for each frame the camera dropped before it.
+        const firstFrameSofNs = earliest ? earliest.sofNs - (earliest.id * 1e9) / OPENPILOT_FRAME_RATE : null;
         frames.set(stream, { segment, frameCount: ids.size, firstFrameSofNs });
     }
     return { gps, frames, wallClock, messages: walk.messages, malformedAt: walk.malformedAt };

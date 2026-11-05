@@ -93,9 +93,14 @@ describe("decodeOpenpilotLog", () => {
         expect(log.frames.get("fcamera")).toEqual({ segment: 19, frameCount: 5, firstFrameSofNs: BOOT_NS });
     });
 
-    it("leaves the first frame time unknown when frame 0 is missing from the log", () => {
-        const log = decodeOpenpilotLog(concatBytes(frameIndexEvents("fcamera", 3, 5, BOOT_NS).slice(1)));
-        expect(log.frames.get("fcamera")).toEqual({ segment: 3, frameCount: 4, firstFrameSofNs: null });
+    it("counts the first frame time back from the earliest logged frame when frame 0 is missing", () => {
+        const log = decodeOpenpilotLog(concatBytes(frameIndexEvents("fcamera", 3, 5, BOOT_NS).slice(2)));
+        expect(log.frames.get("fcamera")).toEqual({ segment: 3, frameCount: 3, firstFrameSofNs: BOOT_NS });
+    });
+
+    it("leaves the first frame time unknown when no entry carries a time", () => {
+        const log = decodeOpenpilotLog(concatBytes(frameIndexEvents("fcamera", 3, 2, 0).slice(0, 1)));
+        expect(log.frames.get("fcamera")).toEqual({ segment: 3, frameCount: 1, firstFrameSofNs: null });
     });
 
     it("reads the system clock samples with openpilot's validity flag", () => {
