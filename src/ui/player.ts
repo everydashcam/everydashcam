@@ -654,6 +654,9 @@ function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
     swapActiveSlot(masterCh);
     state.active = { trip: state.active.trip, frame: nextFrameIdx };
     activeClipEndedByFailure = false;
+    // The promoted slot already sits at the frame start. A seek pin that
+    // outlived the clip never landed and names a position in the previous one.
+    clearPendingSeek();
 
     // Slave channels (if any) are moved to their next-frame files via
     // attachCandidateToVideo - micro-pause for slaves, but master plays without
@@ -765,6 +768,14 @@ export function playFrame(
     // schedulePreloadNext. A prewarmed MSE backend for this very frame stays.
     if (state.active) invalidateWarmSourcesFor(trip, frame, intent);
     state.active = { trip: tripIdx, frame: frameIdx };
+    // The reported position holds this call's target while its source loads:
+    // an interval that starts inside a file first reports the file's start.
+    // A seek still pinned from before is re-aimed too. It names a position in
+    // the frame or trip playback is leaving, would not land here, and would
+    // hold the playhead and the map there until its safety timeout.
+    if (frame.mediaOffsetSec || pendingSeekTripSec !== null) {
+        setPendingSeek((trip.timeline.segments[frameIdx]?.contentStart ?? 0) + startOffsetSec);
+    }
 
     // Marker rAF loop stops when state is empty. Restart here - first playFrame
     // after ingest/clear triggers the loop.
@@ -956,9 +967,6 @@ export function playFrame(
         videoAttachedFile.get(master) === video.file &&
         master.readyState >= master.HAVE_METADATA;
 
-    if (frame.mediaOffsetSec) {
-        setPendingSeek((trip.timeline.segments[frameIdx]?.contentStart ?? 0) + startOffsetSec);
-    }
     pendingPlay = autoPlay;
     isPlaybackIntended = autoPlay;
     pendingFileOffset = fileOffsetSec;
