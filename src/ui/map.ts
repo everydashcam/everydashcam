@@ -1780,11 +1780,6 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
 // directly without cycling.
 
 /**
- * Real UTC for the player's current position. Both native and per-file MSE
- * backends present file-relative currentTime; an interval may start later
- * inside that file when the cameras cut at different times.
- */
-/**
  * Wall-clock second of the playback position in the trip's `frameIndex`
  * frame, or null when the frame or its timeline segment is missing. The
  * position is the player's, not the media element's: a seek into another
