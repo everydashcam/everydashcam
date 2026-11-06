@@ -98,7 +98,7 @@ import {
     videoAttachedFile,
     videoOwnedBlobUrl,
 } from "./player-video-src.js";
-import { resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
+import { pairedTailHoldCandidate, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
 import {
     applyVideoZoom,
     consumeDragClickSuppress,
@@ -1562,6 +1562,27 @@ function reattachBackendsAtOffset(frame: TripFrame, offsetInFrame: number, wasPl
     return reattachedChannels;
 }
 
+// Channels absent from the active frame that keep their ended element on its
+// last frame (pairedTailHoldCandidate), with the file they hold. Slave sync
+// leaves them alone: play() would restart an ended element from its start.
+const heldTailChannels = new Map<Channel, VideoCandidate>();
+
+/**
+ * Recomputes heldTailChannels for `frame`, which must be the active frame. A
+ * channel holds only while its element still shows that file: a jump into a
+ * tail interval has nothing on screen to hold, so the tile hides as before.
+ */
+function refreshHeldTailChannels(frame: TripFrame): void {
+    heldTailChannels.clear();
+    const trip = activeTrip();
+    if (!trip || !state.active || trip.frames[state.active.frame] !== frame) return;
+    for (const ch of ALL_CHANNELS) {
+        const cand = pairedTailHoldCandidate(trip.frames, state.active.frame, ch);
+        if (!cand || runtimePlaybackFailures.has(cand)) continue;
+        if (videoAttachedFile.get(channelPlayers[ch]) === cand.file) heldTailChannels.set(ch, cand);
+    }
+}
+
 /**
  * Writes the layout-derived attributes for a frame: grid dataset
  * (channelCount / viewMode / layout) plus each tile's slot, tileRole and
@@ -1576,7 +1597,8 @@ function reattachBackendsAtOffset(frame: TripFrame, offsetInFrame: number, wasPl
  * role is cleared - CSS auto-flow places tiles via data-channel-count.
  *
  * Owns tile VISIBILITY (tile.hidden) and the grid's data-channel-count: a tile
- * shows iff the frame has the channel AND the composition includes it, so a
+ * shows iff the frame has the channel (or the channel holds a paired tail's
+ * last frame, heldTailChannels) AND the composition includes it, so a
  * camera toggled off in the top-panel disappears from the grid and the
  * data-channel-count shrinks (CSS templates key off it). Does NOT touch
  * <video>.src / backends - only syncFrameToGrid attaches/disposes media.
@@ -1600,7 +1622,8 @@ function applyTileLayoutRoles(frame: TripFrame, activeCh: Channel, masterOffsetS
         const cand = frame.channels[ch];
         const slotIdx = channelOrder.indexOf(ch);
         const inComposition = slotIdx >= 0;
-        const playbackCand = ch === activeCh ? cand : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand);
+        const playbackCand =
+            ch === activeCh ? cand : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand ?? heldTailChannels.get(ch));
         const failed = !!playbackCand && runtimePlaybackFailures.has(playbackCand);
         const playable = !!playbackCand?.canPlay && !failed;
         // Three tile states (not a binary visible/hidden):
@@ -1660,6 +1683,7 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
     // is media only. Media is attached for every playable frame channel, even
     // ones excluded from the composition, so toggling a camera back on is
     // instant (no re-attach / MSE re-seek) - it only un-hides the tile.
+    refreshHeldTailChannels(frame);
     applyTileLayoutRoles(frame, activeCh, masterOffsetSec);
     for (const ch of ALL_CHANNELS) {
         let v = channelPlayers[ch];
@@ -1715,18 +1739,20 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
                 const positionSec = Math.min(Math.max(startSec, 0), duration);
                 if (Math.abs(v.currentTime - positionSec) > 0.01) v.currentTime = positionSec;
             }
-        } else {
+        } else if (!heldTailChannels.has(ch)) {
             // Release decoder and backend - canPlay=false or channel absent.
-            // A prewarmed next file stays: a channel absent only from a
-            // paired tail interval attaches it right after. playFrame and
-            // schedulePreloadNext drop it when it is no longer next.
+            // A held tail channel keeps its ended element on the last frame
+            // until its next file attaches. A prewarmed next file stays too:
+            // a channel absent only from a paired tail interval attaches it
+            // right after. playFrame and schedulePreloadNext drop it when it
+            // is no longer next.
             disposeChannelBackend(ch);
             clearVideoSrc(v);
             clearVideoSrc(preloadPlayer(ch));
         }
     }
     // Hide the view-mode button on single-channel trips - layout choice is moot.
-    dom.viewModeBtn.hidden = frameChannels(frame).length <= 1;
+    dom.viewModeBtn.hidden = frameChannels(frame).length + heldTailChannels.size <= 1;
     syncViewModeButton();
     relabelChannelTiles();
     syncOutputAspect();
@@ -2187,7 +2213,8 @@ function routeChannelAudio(v: HTMLVideoElement, ch: Channel): void {
 }
 
 // Proxy master commands to slaves. Listener is on the active <video>; we duplicate the action
-// on all slave videos that have a src.
+// on all slave videos that have a src, except channels holding a paired tail's
+// last frame (heldTailChannels).
 //
 // videoAttachedFile is used for a fast attached-state check: WeakMap lookup is cheaper than
 // v.getAttribute/v.src (the latter returns an absolutized URL and has a side effect when src was set as relative).
@@ -2196,7 +2223,7 @@ function forEachSlave(fn: (v: HTMLVideoElement, ch: Channel) => void): void {
     for (const ch of ALL_CHANNELS) {
         const v = channelPlayers[ch];
         if (v === master) continue;
-        if (!videoAttachedFile.has(v)) continue;
+        if (!videoAttachedFile.has(v) || heldTailChannels.has(ch)) continue;
         fn(v, ch);
     }
 }
@@ -2529,7 +2556,7 @@ export function seekTripTime(targetSec: number, precision: SeekPrecision = "exac
         // Each backend buffers independently. Channels whose target is already
         // buffered need a direct seek even when another channel restarts its feed.
         for (const ch of ALL_CHANNELS) {
-            if (reattachedChannels.has(ch)) continue;
+            if (reattachedChannels.has(ch) || heldTailChannels.has(ch)) continue;
             const v = channelPlayers[ch];
             if (!v.getAttribute("src")) continue;
             if (v === activePlayer() || state.channelBackends[ch]) {

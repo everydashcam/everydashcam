@@ -11,7 +11,7 @@
 // tests can reach it.
 
 import type { Channel } from "../parsers/types.js";
-import { frameMediaOffset, type TripFrame, type VideoCandidate } from "../trips.js";
+import { frameChannels, frameMediaOffset, type TripFrame, type VideoCandidate } from "../trips.js";
 import { requiresMseBackend } from "./player-video-src.js";
 
 export interface SlaveTarget {
@@ -81,6 +81,41 @@ export function resolveSlaveTarget(
         }
     }
     return { cand, positionSec: inFrame };
+}
+
+// Paired intervals are cut at file ends with the same arithmetic that places
+// the next interval, so only float noise separates a file's end from it.
+const PAIRED_TAIL_JOIN_TOLERANCE_SEC = 0.001;
+
+/**
+ * The file whose last frame `channel` keeps on screen in frame `frameIndex`,
+ * or null. When paired channels end a moment apart, the trip plays the longer
+ * one's tail as an interval without the shorter channel (trips.ts). That
+ * channel holds its last frame there instead of disappearing for the tail.
+ * It holds only when the previous frame paired it, from the same media
+ * origin, with a sibling that plays on in this frame, and its file ends
+ * where this frame starts. A recording gap or an independently cut camera
+ * shows nothing, as before.
+ */
+export function pairedTailHoldCandidate(
+    frames: readonly TripFrame[],
+    frameIndex: number,
+    channel: Channel,
+): VideoCandidate | null {
+    const frame = frames[frameIndex];
+    const previous = frames[frameIndex - 1];
+    if (!frame || !previous || frame.channels[channel]) return null;
+    const cand = previous.channels[channel];
+    if (!cand) return null;
+    const mediaOffsetSec = frameMediaOffset(previous, channel);
+    const fileEndUtc = previous.startUtc - mediaOffsetSec + cand.durationSec;
+    if (Math.abs(fileEndUtc - frame.startUtc) > PAIRED_TAIL_JOIN_TOLERANCE_SEC) return null;
+    const hasContinuingSibling = frameChannels(frame).some(
+        (sibling) =>
+            previous.channels[sibling] === frame.channels[sibling] &&
+            Math.abs(frameMediaOffset(previous, sibling) - mediaOffsetSec) <= PAIRED_TAIL_JOIN_TOLERANCE_SEC,
+    );
+    return hasContinuingSibling ? cand : null;
 }
 
 function isNativeNeighbour(cand: VideoCandidate | undefined): cand is VideoCandidate {

@@ -358,6 +358,7 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
     // Each rear clip outlasts its front by 0.3 s, so the trip plays a rear-only
     // tail between the pairs. The rear element already plays that tail; a new
     // attachment there stalls the picture and drops the warm next rear clip.
+    // The front tile holds its last frame meanwhile instead of blinking out.
     const clips = await Promise.all([
         createMseFixture({ format: "mpegts", gopCount: 6 }),
         createMseFixture({ format: "mpegts", gopCount: 6, gopDurationSec: 1.05 }),
@@ -383,9 +384,36 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
             }),
         )
         .toEqual(["front+rear", "rear", "front+rear", "rear"]);
-    await expect
-        .poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame), { timeout: 20_000 })
-        .toBe(2);
+    // Record, every display frame of the rear-only tail, whether the front
+    // tile or the layout control disappeared.
+    const tail = page.evaluate(
+        () =>
+            new Promise<{ samples: number; frontHidden: number; viewModeHidden: number }>((resolve, reject) => {
+                const { state, dom } = window.__everydashcam;
+                const timeout = setTimeout(() => reject(new Error("second pair did not start")), 20_000);
+                const result = { samples: 0, frontHidden: 0, viewModeHidden: 0 };
+                const tick = (): void => {
+                    const frame = state.active?.frame ?? 0;
+                    if (frame === 1) {
+                        result.samples++;
+                        if (dom.videoTileFront.hidden) result.frontHidden++;
+                        if (dom.viewModeBtn.hidden) result.viewModeHidden++;
+                    }
+                    if (frame >= 2) {
+                        clearTimeout(timeout);
+                        resolve(result);
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+    );
+    expect((await tail).samples, "display frames in the tail").toBeGreaterThan(3);
+    expect(await tail, "front tile and layout control through the tail").toMatchObject({
+        frontHidden: 0,
+        viewModeHidden: 0,
+    });
     await expect
         .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
         .toBeGreaterThan(0.5);

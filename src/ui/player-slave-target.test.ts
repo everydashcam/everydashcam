@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveSlaveTarget } from "./player-slave-target.js";
-import type { TripFrame, VideoCandidate } from "../trips.js";
+import { pairedTailHoldCandidate, resolveSlaveTarget } from "./player-slave-target.js";
+import type { Channel } from "../parsers/types.js";
+import { groupTrips, type TripFrame, type VideoCandidate } from "../trips.js";
 
 function makeCandidate(opts: {
     name: string;
@@ -10,6 +11,7 @@ function makeCandidate(opts: {
     driftLeadSec?: number | null;
     canPlay?: boolean;
     isTransportStream?: boolean;
+    channel?: Channel;
 }): VideoCandidate {
     return {
         file: new File([new Uint8Array(16)], opts.name),
@@ -17,7 +19,7 @@ function makeCandidate(opts: {
         fingerprint: "fp:cam",
         appliedExtractors: [],
         classifierMatches: { time: null, channel: null, mode: null, sequence: null },
-        channel: null,
+        channel: opts.channel ?? null,
         channelConfident: true,
         sequence: null,
         recordingMode: null,
@@ -206,5 +208,51 @@ describe("resolveSlaveTarget", () => {
         const fromRear = resolveSlaveTarget(frames, 1, "rear", "front", 10 - lead);
         expect(fromFront?.positionSec).toBeCloseTo(10 - lead, 9);
         expect(fromRear?.positionSec).toBeCloseTo(10, 9);
+    });
+});
+
+describe("pairedTailHoldCandidate", () => {
+    function pair(startUtc: number, frontDur: number, rearDur: number): VideoCandidate[] {
+        return [
+            makeCandidate({ name: `${startUtc}F.ts`, startUtc, durationSec: frontDur, channel: "front" }),
+            makeCandidate({ name: `${startUtc}R.ts`, startUtc, durationSec: rearDur, channel: "rear" }),
+        ];
+    }
+
+    it("holds the shorter channel's last frame through its sibling's tail", () => {
+        const [front, rear] = pair(1000, 60.08, 60.091);
+        const frames = groupTrips([front!, rear!])[0]!.frames;
+        expect(frames.map((frame) => Object.keys(frame.channels))).toEqual([["front", "rear"], ["rear"]]);
+        expect(pairedTailHoldCandidate(frames, 1, "front")).toBe(front);
+        expect(pairedTailHoldCandidate(frames, 1, "rear"), "present channel").toBeNull();
+        expect(pairedTailHoldCandidate(frames, 0, "front"), "first frame").toBeNull();
+    });
+
+    it("holds each pair's shorter channel between sequential pairs", () => {
+        const first = pair(1000, 60, 60.5);
+        const second = pair(1060, 35.56, 35.2);
+        const frames = groupTrips([...first, ...second])[0]!.frames;
+        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual([
+            "front+rear",
+            "rear",
+            "front+rear",
+            "front",
+        ]);
+        expect(pairedTailHoldCandidate(frames, 1, "front")).toBe(first[0]);
+        expect(pairedTailHoldCandidate(frames, 2, "front"), "channel back in the next pair").toBeNull();
+        expect(pairedTailHoldCandidate(frames, 3, "rear")).toBe(second[1]);
+    });
+
+    it("shows nothing across a recording gap", () => {
+        const frames = makeFrames([{ startUtc: 0 }, { startUtc: 100, noRear: true }]);
+        frames[1]!.channels = { rear: frames[0]!.channels.rear! };
+        expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
+    });
+
+    it("shows nothing when the sibling does not play on from the pair", () => {
+        const frames = makeFrames([{ startUtc: 0 }, { startUtc: 60, noRear: true }]);
+        const nextRear = makeCandidate({ name: "t60R.mp4", startUtc: 60, durationSec: 60 });
+        frames[1]!.channels = { rear: nextRear };
+        expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
     });
 });
