@@ -16,7 +16,7 @@ import { syncCameraFlips } from "./player-camera-flip.js";
 // new file.
 //
 // Public "controller surface" - functions other modules in src/ui/* may call:
-//   - playFrame(tripIdx, frameIdx, startOffsetSec?, autoPlay?)
+//   - playFrame(tripIdx, frameIdx, startOffsetSec?, autoPlay?, intent?)
 //   - playTripEvent(tripIdx, eventIndex)
 //   - seekTripTime(sec)               // trip-relative
 //   - getTripCurrentTime()            // trip-relative
@@ -322,14 +322,19 @@ function clearAllPreloadSlots(): void {
 /**
  * playFrame invalidation. Native slots are always dropped: a natural advance
  * has already promoted its slot, anything else was warmed for another frame.
- * A prewarmed MSE backend survives only when it holds the file its channel is
- * about to attach - the natural-advance case, where attachCandidateToVideo
- * takes it a few lines later.
+ * A prewarmed MSE backend survives when it holds the file its channel is
+ * about to attach, where attachCandidateToVideo takes it a few lines later.
+ * On a natural advance it also survives as the channel's next file: a
+ * paired channel that outlasts its pair plays its tail first and attaches
+ * the warmed file only at the following frame.
  */
-function invalidateWarmSourcesFor(frame: TripFrame): void {
+function invalidateWarmSourcesFor(trip: Trip, frame: TripFrame, intent: PlayFrameIntent): void {
     for (const ch of ALL_CHANNELS) {
         clearVideoSrc(preloadPlayer(ch));
-        if (prewarmedBackends.get(ch)?.file !== frame.channels[ch]?.file) clearPrewarmedBackend(ch);
+        const warmFile = prewarmedBackends.get(ch)?.file;
+        if (!warmFile || warmFile === frame.channels[ch]?.file) continue;
+        if (intent === "continue" && warmFile === nextSlaveCandidate(trip, ch, frame)?.file) continue;
+        clearPrewarmedBackend(ch);
     }
 }
 
@@ -451,10 +456,13 @@ function schedulePreloadNext(): void {
     }
     const picked = pickFrameChannel(nextFrame, mainChannel());
     let isMasterSlotLoading = false;
+    // The channel whose slot the master branch below owns. When the next frame
+    // has another master, the current master is a slave there and warms its
+    // next file like one: a channel that outlasts its pair plays the tail
+    // as master and then joins the next pair.
+    let warmedMasterCh: Channel | null = masterCh;
     if (!picked || picked.channel !== masterCh) {
-        // Master channel absent in next-frame, or fallback resolves to a different
-        // channel - preloading into the current masterCh slot makes no sense.
-        clearPreloadSlot(masterCh);
+        warmedMasterCh = null;
     } else {
         const cand = picked.candidate;
         if (videoAttachedFile.get(activePlayer()) === cand.file) {
@@ -473,7 +481,7 @@ function schedulePreloadNext(): void {
         }
     }
     if (!isMasterSlotLoading) {
-        scheduleSlavePreloads(nextFrame, masterCh);
+        scheduleSlavePreloads(nextFrame, warmedMasterCh);
         return;
     }
     // Stagger the slaves behind the master's slot: every warm slot reads the
@@ -502,17 +510,18 @@ function schedulePreloadNext(): void {
 }
 
 /**
- * Warms the next clip of every slave channel into its preload slot, or clears
- * the slot where no warm file qualifies. The slot is positioned on promotion
+ * Warms the next clip of every channel except `warmedMasterCh` (whose slot
+ * the master path owns) into its preload slot, or clears the slot where no
+ * warm file qualifies. The slot is positioned on promotion
  * (promoteSlavePreload), so a per-channel media offset is fine here; a slave
  * that keeps its file across the boundary needs no slot.
  */
-function scheduleSlavePreloads(nextFrame: TripFrame, masterCh: Channel): void {
+function scheduleSlavePreloads(nextFrame: TripFrame, warmedMasterCh: Channel | null): void {
     const trip = activeTrip();
     if (!trip) return;
     const preloadSlaves = canPreloadSlaveChannels(frameChannels(nextFrame).length);
     for (const ch of ALL_CHANNELS) {
-        if (ch === masterCh) continue;
+        if (ch === warmedMasterCh) continue;
         const cand = nextSlaveCandidate(trip, ch, nextFrame);
         if (cand && isPrewarmableCandidate(cand)) {
             clearVideoSrc(preloadPlayer(ch));
@@ -675,6 +684,11 @@ function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
     return true;
 }
 
+/** Why playFrame switches frames. "continue" is playback reaching the next
+ *  frame on its own; it may keep warm sources and an element already at the
+ *  position. "jump" is any explicit move. */
+type PlayFrameIntent = "jump" | "continue";
+
 // Monotonic counter incremented on each playFrame entry. Async continuations
 // capture it (`const seqAtStart = playFrameSeq`) and re-check after an await;
 // if it changed the user has already switched trips, so they silently bail
@@ -701,6 +715,7 @@ export function playFrame(
     frameIdx: number,
     startOffsetSec: number = 0,
     autoPlay: boolean = true,
+    intent: PlayFrameIntent = "jump",
 ): void {
     // playFrame's own body is synchronous; the counter exists for the async
     // continuations (attach waiters, ended-handler chains) that capture
@@ -739,7 +754,7 @@ export function playFrame(
     // and a manual seek to another frame too - the preload may have been for the
     // frame after the previous active. New active loadedmetadata will re-kick
     // schedulePreloadNext. A prewarmed MSE backend for this very frame stays.
-    if (state.active) invalidateWarmSourcesFor(frame);
+    if (state.active) invalidateWarmSourcesFor(trip, frame, intent);
     state.active = { trip: tripIdx, frame: frameIdx };
 
     // Marker rAF loop stops when state is empty. Restart here - first playFrame
@@ -925,8 +940,7 @@ export function playFrame(
     const canReuseMasterSource =
         !requiresMseBackend(video) ||
         (masterBackend?.file === video.file &&
-            !masterBackend.isDone &&
-            !masterBackend.isFailed &&
+            canContinueMseSource(masterBackend, master, fileOffsetSec) &&
             isInVideoBuffer(master, fileOffsetSec));
     const isReusableMaster =
         canReuseMasterSource &&
@@ -948,7 +962,17 @@ export function playFrame(
             const segment = trip.timeline.segments[frameIdx];
             armResumeAfterSeek((segment?.contentStart ?? 0) + startOffsetSec);
         }
-        if (master.currentTime !== fileOffsetSec || master.ended) master.currentTime = fileOffsetSec;
+        // A natural advance onto an element that already plays this spot of
+        // the file (the paired channel that outlasts a pair, the same file
+        // in its next interval) keeps playing: even a tiny seek flushes the
+        // decoder back to the previous key frame and stalls the picture.
+        const isAlreadyInPlace =
+            intent === "continue" &&
+            !master.ended &&
+            Math.abs(master.currentTime - fileOffsetSec) <= SLAVE_DRIFT_MAX_SEC;
+        if (!isAlreadyInPlace && (master.currentTime !== fileOffsetSec || master.ended)) {
+            master.currentTime = fileOffsetSec;
+        }
         // Setting currentTime on an ended element starts a real media seek.
         // Resume only after it lands; an immediate play() can be interrupted by
         // the decoder's seek under load. A no-op seek has no event, so settle it
@@ -1311,12 +1335,12 @@ function attachCandidateToVideo(
     if (useMseBackend) {
         const existing = state.channelBackends[ch];
         if (existing) {
-            // EOF and failure still require a fresh attachment for replay.
+            // A failure, or EOF with the target no longer buffered, still
+            // requires a fresh attachment.
             if (
                 videoAttachedFile.get(v) === cand.file &&
                 existing.file === cand.file &&
-                !existing.isDone &&
-                !existing.isFailed &&
+                canContinueMseSource(existing, v, startSec) &&
                 !forceReseek
             ) {
                 // Grid synchronization has no seek intent. Its default offset
@@ -1456,6 +1480,18 @@ function attachCandidateToVideo(
     // called through reattachBackendsAtOffset (isInVideoBuffer for native is
     // always true - there is a moov sample-table); this return is a safe-default.
     return "full-attach";
+}
+
+/**
+ * Whether an attached MSE backend can keep serving its element at
+ * `positionSec`. A failed backend cannot. A fully fed one (endOfStream) can
+ * only while its element has not ended and the position is still buffered:
+ * a paired channel's tail plays from data already appended, while replay
+ * after the end needs a fresh attachment.
+ */
+function canContinueMseSource(backend: PerFileMseBackend, video: HTMLVideoElement, positionSec: number): boolean {
+    if (backend.isFailed) return false;
+    return !backend.isDone || (!video.ended && isInVideoBuffer(video, positionSec));
 }
 
 /**
@@ -1681,9 +1717,12 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
             }
         } else {
             // Release decoder and backend - canPlay=false or channel absent.
+            // A prewarmed next file stays: a channel absent only from a
+            // paired tail interval attaches it right after. playFrame and
+            // schedulePreloadNext drop it when it is no longer next.
             disposeChannelBackend(ch);
             clearVideoSrc(v);
-            clearPreloadSlot(ch);
+            clearVideoSrc(preloadPlayer(ch));
         }
     }
     // Hide the view-mode button on single-channel trips - layout choice is moot.
@@ -2207,7 +2246,7 @@ function advancePlaybackInterval(): boolean {
     if (range && contentSec >= range.endTripSec - 0.05) return false;
     const next = contentToFrame(af.trip.timeline, contentSec);
     if (next.index <= state.active.frame) return false;
-    playFrame(state.active.trip, next.index, next.offsetInFrame, true);
+    playFrame(state.active.trip, next.index, next.offsetInFrame, true, "continue");
     return true;
 }
 
@@ -2903,7 +2942,7 @@ function finishActiveClip(): void {
     // the file doesn't match, or the master channel for the next frame is different,
     // tryPromotePreloadAsActive returns false and we fall back to a normal playFrame (100-300ms decoder reload).
     if (tryPromotePreloadAsActive(nextFrameIdx)) return;
-    playFrame(state.active.trip, nextFrameIdx, 0, isPlaybackIntended);
+    playFrame(state.active.trip, nextFrameIdx, 0, isPlaybackIntended, "continue");
 }
 
 /** The trip is over and nothing follows: playback is no longer intended, so

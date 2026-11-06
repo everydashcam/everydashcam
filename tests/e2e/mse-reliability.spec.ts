@@ -354,6 +354,55 @@ test("warms the next MPEG-TS clip's worker before the clip boundary", async ({ p
     ).toEqual([]);
 });
 
+test("plays a paired MPEG-TS tail on the running channel and keeps the next pair warm", async ({ page }) => {
+    // Each rear clip outlasts its front by 0.3 s, so the trip plays a rear-only
+    // tail between the pairs. The rear element already plays that tail; a new
+    // attachment there stalls the picture and drops the warm next rear clip.
+    const clips = await Promise.all([
+        createMseFixture({ format: "mpegts", gopCount: 6 }),
+        createMseFixture({ format: "mpegts", gopCount: 6, gopDurationSec: 1.05 }),
+        createMseFixture({ format: "mpegts", gopCount: 7 }),
+        createMseFixture({ format: "mpegts", gopCount: 7, gopDurationSec: 1.05 }),
+    ]);
+    await page
+        .locator("#file-input")
+        .setInputFiles(
+            ["20260904_202849F.ts", "20260904_202849R.ts", "20260904_202855F.ts", "20260904_202855R.ts"].map(
+                (name, index) => ({ name, mimeType: "video/mp2t", buffer: Buffer.from(clips[index]!) }),
+            ),
+        );
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const { state } = window.__everydashcam;
+                const trip = state.active ? state.trips[state.active.trip] : undefined;
+                return trip?.frames.map((frame) => Object.keys(frame.channels).sort().join("+"));
+            }),
+        )
+        .toEqual(["front+rear", "rear", "front+rear", "rear"]);
+    await expect
+        .poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame), { timeout: 20_000 })
+        .toBe(2);
+    await expect
+        .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
+        .toBeGreaterThan(0.5);
+    const attaches = await page.evaluate(() =>
+        window.__everydashcam
+            .dumpLog()
+            .filter((entry) => entry.msg === "attach: mse start")
+            .map((entry) => ({ file: entry.ctx?.file, prewarmed: entry.ctx?.prewarmed })),
+    );
+    expect(attaches).toEqual([
+        { file: "20260904_202849F.ts", prewarmed: false },
+        { file: "20260904_202849R.ts", prewarmed: false },
+        { file: "20260904_202855F.ts", prewarmed: true },
+        { file: "20260904_202855R.ts", prewarmed: true },
+    ]);
+});
+
 test("retargets a prewarmed worker when the user seeks into the next clip", async ({ page }) => {
     const clips = await Promise.all([
         createMseFixture({ format: "mpegts", gopCount: 6, audioDurationSec: 6 }),
