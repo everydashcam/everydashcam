@@ -79,7 +79,7 @@ import {
 import { channelDisplayLabel, formatDuration, formatTime } from "./format.js";
 import { registerGpsSyncRefreshListener } from "./gps-sync-refresh.js";
 import { notify } from "./notifications.js";
-import { ensureMarkerLoop, refreshMap, resetFollowInteractionPause, smoothCameraToCurrentPosition } from "./map.js";
+import { ensureMarkerLoop, refreshMap, resetFollowInteractionPause, smoothCameraToActiveFrameOffset } from "./map.js";
 import { setDrawerOpen, syncBrowseState } from "./mobile-drawer.js";
 import { captureCurrentFrame, syncCaptureButton } from "./player-capture.js";
 import { hideLoadingOverlay, showLoadingOverlay } from "./player-loading-overlay.js";
@@ -651,7 +651,7 @@ function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
     if (state.videoZoom.scale > 1) applyVideoZoom();
 
     updateActiveFrameHighlight(state.active.trip, nextFrameIdx - 1, nextFrameIdx);
-    smoothCameraToCurrentPosition();
+    smoothCameraToActiveFrameOffset(0);
     updatePlayerProgressUi();
     syncCaptureButton();
 
@@ -859,12 +859,11 @@ export function playFrame(
         });
     } else {
         updateActiveFrameHighlight(tripIdx, prevFrameIdx, frameIdx);
-        // Intra-trip file change: nudge the camera to the new currentTime
-        // position. With chained per-tick easeTo running, this is mostly a
-        // belt-and-suspenders call (the next rAF would re-aim anyway), but
-        // its suspendFollowEase blocks that re-aim mid-flight - the 250 ms
-        // ease lands cleanly instead of being overwritten 16 ms in.
-        smoothCameraToCurrentPosition();
+        // Intra-trip file change: ease the camera to where playback starts.
+        // The master element still holds the previous file here (its ended
+        // time would aim one clip ahead), so the target comes from this call.
+        // The ease suspends the follow filter, which then reseeds from it.
+        smoothCameraToActiveFrameOffset(startOffsetSec);
     }
 
     // Codec check for the active channel: if canPlay=false (mediabunny.canDecodeVideo returned

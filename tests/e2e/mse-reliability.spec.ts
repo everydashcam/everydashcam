@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { createMseFixture } from "../helpers/mse-fixtures.js";
 import {
+    DESKTOP,
     expect,
     gotoApp,
     installExportCapture,
@@ -388,6 +389,164 @@ test("retargets a prewarmed worker when the user seeks into the next clip", asyn
     expect(
         await page.locator("#player").evaluate((video: HTMLVideoElement) => video.buffered.start(0)),
     ).toBeGreaterThan(1.5);
+});
+
+/** A GPX sidecar for one clip of a route that drives east at 15 m/s and
+ *  turns north `turnSec` after the route start. */
+function routeGpx(routeStartUnixSec: number, fromSec: number, toSec: number, turnSec: number): string {
+    const metersPerDegreeLat = 110_540;
+    const metersPerDegreeLon = 111_320 * Math.cos((50 * Math.PI) / 180);
+    const points: string[] = [];
+    for (let second = fromSec; second <= toSec; second++) {
+        const eastMeters = 15 * Math.min(second, turnSec);
+        const northMeters = 15 * Math.max(0, second - turnSec);
+        const lat = 50 + northMeters / metersPerDegreeLat;
+        const lon = 10 + eastMeters / metersPerDegreeLon;
+        const time = new Date((routeStartUnixSec + second) * 1000).toISOString().replace(".000", "");
+        points.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${time}</time></trkpt>`);
+    }
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="e2e" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>
+${points.join("\n")}
+</trkseg></trk></gpx>
+`;
+}
+
+/** Opens two consecutive MPEG-TS clips (6 s and 7 s) with GPX sidecars on
+ *  the large map in heading-up follow mode, playing in the first clip. The
+ *  route starts at 50 N 10 E, drives east and turns north 2 s into the second
+ *  clip. */
+async function openTwoClipRoute(page: Page): Promise<void> {
+    await page.setViewportSize(DESKTOP);
+    const clips = await Promise.all([
+        createMseFixture({ format: "mpegts", gopCount: 6 }),
+        createMseFixture({ format: "mpegts", gopCount: 7 }),
+    ]);
+    const routeStart = Date.UTC(2026, 8, 4, 20, 28, 49) / 1000;
+    await page.locator("#file-input").setInputFiles([
+        { name: "20260904_202849F.ts", mimeType: "video/mp2t", buffer: Buffer.from(clips[0]) },
+        {
+            name: "20260904_202849F.gpx",
+            mimeType: "application/gpx+xml",
+            buffer: Buffer.from(routeGpx(routeStart, 0, 6, 8)),
+        },
+        { name: "20260904_202855F.ts", mimeType: "video/mp2t", buffer: Buffer.from(clips[1]) },
+        {
+            name: "20260904_202855F.gpx",
+            mimeType: "application/gpx+xml",
+            buffer: Buffer.from(routeGpx(routeStart, 6, 13, 8)),
+        },
+    ]);
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await page.locator("#player-view-menu").click();
+    await page.locator('[data-map-mode="large"]').first().click();
+    await page.keyboard.press("Escape");
+    await page.locator('.map-follow-seg[data-follow-mode="rotate"]').click();
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const { state, dom } = window.__everydashcam;
+                return state.mapExpanded && state.followMode === "rotate" && dom.player.currentTime > 1;
+            }),
+        )
+        .toBe(true);
+}
+
+test.describe("map position across MSE clips", () => {
+    // The clip names carry local time; UTC makes them match the GPX timestamps.
+    test.use({ timezoneId: "UTC" });
+
+    test("keeps the heading-up camera on the car when the next MPEG-TS clip starts", async ({ page }) => {
+        // The camera must stay on the eastbound car at the boundary, not aim
+        // at the northbound end of the second clip, where the ended first
+        // clip's time points.
+        await openTwoClipRoute(page);
+        // Sample every display frame from just before the boundary until the
+        // second clip has played for a second.
+        const boundary = await page.evaluate(
+            () =>
+                new Promise<{ maxDistanceMeters: number; minBearingDeg: number; samples: number }>(
+                    (resolve, reject) => {
+                        const { state, dom } = window.__everydashcam;
+                        const timeout = setTimeout(() => reject(new Error("second clip did not play")), 20_000);
+                        let maxDistanceMeters = 0;
+                        let minBearingDeg = 360;
+                        let samples = 0;
+                        const tick = (): void => {
+                            const map = state.map;
+                            const marker = state.marker;
+                            if (state.active?.frame === 1 && map && marker) {
+                                const center = map.getCenter();
+                                const car = marker.getLngLat();
+                                const northMeters = (center.lat - car.lat) * 110_540;
+                                const eastMeters =
+                                    (center.lng - car.lng) * 111_320 * Math.cos((car.lat * Math.PI) / 180);
+                                maxDistanceMeters = Math.max(maxDistanceMeters, Math.hypot(northMeters, eastMeters));
+                                minBearingDeg = Math.min(minBearingDeg, (map.getBearing() + 360) % 360);
+                                samples++;
+                                if (dom.player.currentTime > 1) {
+                                    clearTimeout(timeout);
+                                    resolve({ maxDistanceMeters, minBearingDeg, samples });
+                                    return;
+                                }
+                            }
+                            requestAnimationFrame(tick);
+                        };
+                        requestAnimationFrame(tick);
+                    },
+                ),
+        );
+        expect(boundary.samples, "frames sampled in the second clip").toBeGreaterThan(5);
+        // A camera aimed at the second clip's end is about 70 m away and faces north.
+        expect(boundary.maxDistanceMeters, "camera distance from the car").toBeLessThan(30);
+        expect(boundary.minBearingDeg, "camera bearing while the car heads east").toBeGreaterThan(60);
+    });
+
+    test("holds the map marker on a seek target while the previous MPEG-TS clip loads", async ({ page }) => {
+        await openTwoClipRoute(page);
+        await expect
+            .poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame), { timeout: 20_000 })
+            .toBe(1);
+        // Digit 3 seeks to 30 % of the 13 s trip: 3.9 s into the first clip,
+        // about 58 m east of the route start. The first clip's feed restarts
+        // from that offset while its element sits at 0.
+        const markerPath = page.evaluate(
+            () =>
+                new Promise<{ minStartDistanceMeters: number; samples: number }>((resolve, reject) => {
+                    const { state, dom } = window.__everydashcam;
+                    const timeout = setTimeout(() => reject(new Error("seek did not land")), 20_000);
+                    let minStartDistanceMeters = Number.POSITIVE_INFINITY;
+                    let samples = 0;
+                    const tick = (): void => {
+                        const marker = state.marker;
+                        if (state.active?.frame === 0 && marker) {
+                            const car = marker.getLngLat();
+                            const northMeters = (car.lat - 50) * 110_540;
+                            const eastMeters = (car.lng - 10) * 111_320 * Math.cos((50 * Math.PI) / 180);
+                            minStartDistanceMeters = Math.min(
+                                minStartDistanceMeters,
+                                Math.hypot(northMeters, eastMeters),
+                            );
+                            samples++;
+                            if (dom.player.currentTime > 4.4) {
+                                clearTimeout(timeout);
+                                resolve({ minStartDistanceMeters, samples });
+                                return;
+                            }
+                        }
+                        requestAnimationFrame(tick);
+                    };
+                    requestAnimationFrame(tick);
+                }),
+        );
+        await page.keyboard.press("Digit3");
+        const path = await markerPath;
+        expect(path.samples, "frames sampled after the seek").toBeGreaterThan(5);
+        // The element's own time would put the marker at the clip start first.
+        expect(path.minStartDistanceMeters, "marker distance from the clip start").toBeGreaterThan(40);
+    });
 });
 
 test("seeks past a newly added clip's provisional duration after reopening its folder", async ({ page }) => {

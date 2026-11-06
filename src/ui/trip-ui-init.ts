@@ -80,6 +80,7 @@ async function runTripUiInit(): Promise<void> {
         onSeekTripTime: (sec) => seekTripTime(sec),
         onChartLayoutChange: () => applyChartLayout(),
         onHoverTripTime: setHoverCursorRelSec,
+        getTripCurrentTime,
     });
     applyMapLayout();
     // At startup hasTrack = false - applyChartLayout adds no-gps to player-wrap so the chart is not visible before a trip is selected.

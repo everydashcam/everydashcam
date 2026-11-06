@@ -38,7 +38,7 @@ import {
     prefersReducedMotion,
 } from "./media-queries.js";
 import type { GpsRecord } from "../parser.js";
-import { displayClockDate, frameMediaOffset, wallToContentSec, type Trip, type TripFrame } from "../trips.js";
+import { displayClockDate, wallToContentSec, type Trip } from "../trips.js";
 import {
     getViewPanels,
     getPreferredMapMode,
@@ -53,7 +53,7 @@ import {
 const log = createLogger("map");
 
 import { isOffline, subscribeConnectivity } from "./connectivity.js";
-import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
+import { dom, onActivePlayerEvent } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { formatDateTime } from "./date-format.js";
 import { formatNumber, formatTime } from "./format.js";
@@ -179,12 +179,16 @@ interface MapCallbacks {
     /** Map or mini-map hover moved the chart's hover cursor to `relSec` on the
      *  footage axis (state.chartHoverX already holds it); null hides it. */
     onHoverTripTime: (relSec: number | null) => void;
+    /** The player's position on the footage axis, the one the playhead shows.
+     *  While a seek loads it reports the seek target. */
+    getTripCurrentTime: () => number;
 }
 
 let callbacks: MapCallbacks = {
     onSeekTripTime: () => {},
     onChartLayoutChange: () => {},
     onHoverTripTime: () => {},
+    getTripCurrentTime: () => 0,
 };
 
 // 10 s timeout for style.json fetch. The file is same-origin (CF Pages) and
@@ -1780,13 +1784,22 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
  * backends present file-relative currentTime; an interval may start later
  * inside that file when the cameras cut at different times.
  */
-function currentRealUtc(frame: TripFrame): number {
-    const ct = dom.player.currentTime || 0;
-    return frame.startUtc + ct - frameMediaOffset(frame, effectiveMasterChannel());
+/**
+ * Wall-clock second of the playback position in the trip's `frameIndex`
+ * frame, or null when the frame or its timeline segment is missing. The
+ * position is the player's, not the media element's: a seek into another
+ * file or an MSE feed restart leaves the element at 0 until the new data
+ * lands, and reading it would show the start of the file before the target.
+ */
+function currentRealUtc(trip: Trip, frameIndex: number): number | null {
+    const frame = trip.frames[frameIndex];
+    const segment = trip.timeline.segments[frameIndex];
+    if (!frame || !segment) return null;
+    return frame.startUtc + callbacks.getTripCurrentTime() - segment.contentStart;
 }
 
 /**
- * Returns the interpolated position for the current player currentTime.
+ * Returns the interpolated position for the player's current position.
  * Shared by the rAF loop and the follow-mode switch so they get the same point.
  */
 function currentInterpolatedPosition(): {
@@ -1795,9 +1808,10 @@ function currentInterpolatedPosition(): {
     bearingDeg: number;
     speedMs: number;
 } | null {
-    const af = activeFrame();
-    if (!af || af.trip.records.length === 0) return null;
-    return mapPositionAt(af.trip.records, currentRealUtc(af.frame));
+    const trip = activeTrip();
+    if (!state.active || !trip || trip.records.length === 0) return null;
+    const targetUnix = currentRealUtc(trip, state.active.frame);
+    return targetUnix === null ? null : mapPositionAt(trip.records, targetUnix);
 }
 
 export function syncMapFollowButton(): void {
@@ -1816,14 +1830,20 @@ export function syncMapFollowButton(): void {
 }
 
 /**
- * Smoothly moves the camera to the current car position. Used on file boundary
- * within a trip to avoid a hard jump.
+ * Smoothly moves the camera to the car position `offsetInFrameSec` into the
+ * active frame. Used on a file change within a trip to avoid a hard jump. The
+ * caller passes the position playback starts from because the media element
+ * cannot tell it yet: an MSE source is swapped only after this call, so the
+ * element still reports the ended previous file's time, which points one clip
+ * ahead of the car.
  */
-export function smoothCameraToCurrentPosition(): void {
+export function smoothCameraToActiveFrameOffset(offsetInFrameSec: number): void {
     // Only animate when follow is on; in "off" mode the user controls the view
     // and an automatic camera move on file change would be intrusive.
     if (!state.map || state.followMode === "off") return;
-    const pos = currentInterpolatedPosition();
+    const af = activeFrame();
+    if (!af || af.trip.records.length === 0) return;
+    const pos = mapPositionAt(af.trip.records, af.frame.startUtc + offsetInFrameSec);
     if (!pos) return;
     const duration = 250;
     const opts: maplibregl.EaseToOptions = { center: [pos.lon, pos.lat], duration };
@@ -2752,13 +2772,12 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
         if (!mainMapVisible && !miniMapVisible) return false;
         const trip = state.trips[state.active.trip];
         if (!trip || trip.records.length === 0) return false;
-        // The marker always reflects the actual currentTime of the video.
+        // The marker follows the playback position (the playhead's).
         // chartHoverX is only for the chart cursor (cursorPlugin) - graph hover
         // must not move the marker, otherwise the user loses track of where the
         // car actually is during playback.
-        const frame = trip.frames[state.active.frame];
-        if (!frame) return false;
-        const targetUnix = currentRealUtc(frame);
+        const targetUnix = currentRealUtc(trip, state.active.frame);
+        if (targetUnix === null) return false;
         const pos = mapPositionAt(trip.records, targetUnix);
         syncGpsStatus(pos !== null);
         if (!pos) {
