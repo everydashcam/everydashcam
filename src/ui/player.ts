@@ -1569,8 +1569,10 @@ const heldTailChannels = new Map<Channel, VideoCandidate>();
 
 /**
  * Recomputes heldTailChannels for `frame`, which must be the active frame. A
- * channel holds only while its element still shows that file: a jump into a
- * tail interval has nothing on screen to hold, so the tile hides as before.
+ * channel holds only while its element shows the end of that file. A jump
+ * into a tail interval from elsewhere has nothing on screen to hold, and one
+ * from the middle of the pair would hold a frame from another moment that
+ * keeps playing, out of reach of pause; the tile hides in both cases.
  */
 function refreshHeldTailChannels(frame: TripFrame): void {
     heldTailChannels.clear();
@@ -1579,7 +1581,13 @@ function refreshHeldTailChannels(frame: TripFrame): void {
     for (const ch of ALL_CHANNELS) {
         const cand = pairedTailHoldCandidate(trip.frames, state.active.frame, ch);
         if (!cand || runtimePlaybackFailures.has(cand)) continue;
-        if (videoAttachedFile.get(channelPlayers[ch]) === cand.file) heldTailChannels.set(ch, cand);
+        const v = channelPlayers[ch];
+        if (videoAttachedFile.get(v) !== cand.file) continue;
+        // A slave is allowed to trail its master by up to SLAVE_DRIFT_MAX_SEC,
+        // so on a natural advance it may still be playing its last frames.
+        const isAtFileEnd =
+            v.ended || (Number.isFinite(v.duration) && v.duration - v.currentTime <= SLAVE_DRIFT_MAX_SEC);
+        if (isAtFileEnd) heldTailChannels.set(ch, cand);
     }
 }
 

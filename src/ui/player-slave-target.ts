@@ -87,15 +87,23 @@ export function resolveSlaveTarget(
 // the next interval, so only float noise separates a file's end from it.
 const PAIRED_TAIL_JOIN_TOLERANCE_SEC = 0.001;
 
+// Longest run of tails a camera's last frame stands in for. Paired cameras end
+// milliseconds to about a second apart. A longer run means that camera stopped
+// recording (power cut, truncated file), and a frozen frame there would read
+// as live footage of a standing car.
+const PAIRED_TAIL_HOLD_MAX_SEC = 2;
+
 /**
  * The file whose last frame `channel` keeps on screen in frame `frameIndex`,
  * or null. When paired channels end a moment apart, the trip plays the longer
- * one's tail as an interval without the shorter channel (trips.ts). That
- * channel holds its last frame there instead of disappearing for the tail.
- * It holds only when the previous frame paired it, from the same media
- * origin, with a sibling that plays on in this frame, and its file ends
- * where this frame starts. A recording gap or an independently cut camera
- * shows nothing, as before.
+ * ones' tails as intervals without the channels that already ended
+ * (trips.ts). Such a channel holds its last frame there instead of
+ * disappearing. It holds only when the frame that last carried it paired it,
+ * from the same media origin, with a sibling that plays on into the first
+ * tail; its file ends where that tail starts; each later tail plays on from
+ * the one before; and the tails up to the end of this frame last at most
+ * PAIRED_TAIL_HOLD_MAX_SEC. A recording gap, an independently cut camera or a
+ * camera that stopped long before its sibling shows nothing, as before.
  */
 export function pairedTailHoldCandidate(
     frames: readonly TripFrame[],
@@ -103,19 +111,41 @@ export function pairedTailHoldCandidate(
     channel: Channel,
 ): VideoCandidate | null {
     const frame = frames[frameIndex];
-    const previous = frames[frameIndex - 1];
-    if (!frame || !previous || frame.channels[channel]) return null;
-    const cand = previous.channels[channel];
-    if (!cand) return null;
-    const mediaOffsetSec = frameMediaOffset(previous, channel);
-    const fileEndUtc = previous.startUtc - mediaOffsetSec + cand.durationSec;
-    if (Math.abs(fileEndUtc - frame.startUtc) > PAIRED_TAIL_JOIN_TOLERANCE_SEC) return null;
-    const hasContinuingSibling = frameChannels(frame).some(
+    if (!frame || frame.channels[channel]) return null;
+    const holdEndUtc = frame.startUtc + frame.wallDurationSec;
+    // Walk back over the tails that already lack the channel to the frame
+    // that last carried it.
+    let firstTailIndex = frameIndex;
+    for (;;) {
+        const tail = frames[firstTailIndex]!;
+        if (holdEndUtc - tail.startUtc > PAIRED_TAIL_HOLD_MAX_SEC) return null;
+        const previous = frames[firstTailIndex - 1];
+        if (!previous) return null;
+        if (previous.channels[channel]) break;
+        if (!continuesInterval(previous, tail)) return null;
+        firstTailIndex--;
+    }
+    const firstTail = frames[firstTailIndex]!;
+    const paired = frames[firstTailIndex - 1]!;
+    const cand = paired.channels[channel]!;
+    const mediaOffsetSec = frameMediaOffset(paired, channel);
+    const fileEndUtc = paired.startUtc - mediaOffsetSec + cand.durationSec;
+    if (Math.abs(fileEndUtc - firstTail.startUtc) > PAIRED_TAIL_JOIN_TOLERANCE_SEC) return null;
+    const hasContinuingSibling = frameChannels(firstTail).some(
         (sibling) =>
-            previous.channels[sibling] === frame.channels[sibling] &&
-            Math.abs(frameMediaOffset(previous, sibling) - mediaOffsetSec) <= PAIRED_TAIL_JOIN_TOLERANCE_SEC,
+            paired.channels[sibling] === firstTail.channels[sibling] &&
+            Math.abs(frameMediaOffset(paired, sibling) - mediaOffsetSec) <= PAIRED_TAIL_JOIN_TOLERANCE_SEC,
     );
     return hasContinuingSibling ? cand : null;
+}
+
+/** Whether `next` plays on from `previous` without a break: it starts where
+ *  `previous` ends and keeps one of its files. */
+function continuesInterval(previous: TripFrame, next: TripFrame): boolean {
+    if (Math.abs(previous.startUtc + previous.wallDurationSec - next.startUtc) > PAIRED_TAIL_JOIN_TOLERANCE_SEC) {
+        return false;
+    }
+    return frameChannels(next).some((channel) => previous.channels[channel] === next.channels[channel]);
 }
 
 function isNativeNeighbour(cand: VideoCandidate | undefined): cand is VideoCandidate {

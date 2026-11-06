@@ -354,16 +354,16 @@ test("warms the next MPEG-TS clip's worker before the clip boundary", async ({ p
     ).toEqual([]);
 });
 
-test("plays a paired MPEG-TS tail on the running channel and keeps the next pair warm", async ({ page }) => {
-    // Each rear clip outlasts its front by 0.3 s, so the trip plays a rear-only
-    // tail between the pairs. The rear element already plays that tail; a new
-    // attachment there stalls the picture and drops the warm next rear clip.
-    // The front tile holds its last frame meanwhile instead of blinking out.
+/** Opens two MPEG-TS front+rear pairs (6 s and 7 s) whose rear clips use
+ *  `rearGopDurationSec` instead of 1 s GOPs and so outlast their fronts: the
+ *  trip plays a rear-only tail after each pair. Playback runs in the first
+ *  pair. */
+async function openPairedTailTrip(page: Page, rearGopDurationSec: number): Promise<void> {
     const clips = await Promise.all([
         createMseFixture({ format: "mpegts", gopCount: 6 }),
-        createMseFixture({ format: "mpegts", gopCount: 6, gopDurationSec: 1.05 }),
+        createMseFixture({ format: "mpegts", gopCount: 6, gopDurationSec: rearGopDurationSec }),
         createMseFixture({ format: "mpegts", gopCount: 7 }),
-        createMseFixture({ format: "mpegts", gopCount: 7, gopDurationSec: 1.05 }),
+        createMseFixture({ format: "mpegts", gopCount: 7, gopDurationSec: rearGopDurationSec }),
     ]);
     await page
         .locator("#file-input")
@@ -384,6 +384,14 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
             }),
         )
         .toEqual(["front+rear", "rear", "front+rear", "rear"]);
+}
+
+test("plays a paired MPEG-TS tail on the running channel and keeps the next pair warm", async ({ page }) => {
+    // The rear element already plays the rear-only tail; a new attachment
+    // there stalls the picture and drops the warm next rear clip. The front
+    // tile holds its last frame meanwhile instead of blinking out. The tail
+    // is 0.3 s, a real camera's order.
+    await openPairedTailTrip(page, 1.05);
     // Record, every display frame of the rear-only tail, whether the front
     // tile or the layout control disappeared.
     const tail = page.evaluate(
@@ -429,6 +437,48 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
         { file: "20260904_202855F.ts", prewarmed: true },
         { file: "20260904_202855R.ts", prewarmed: true },
     ]);
+});
+
+test("drops the shorter camera when a seek from the middle of its pair lands in the tail", async ({ page }) => {
+    // The front element is mid-clip, not at its end: holding it would show a
+    // frame from another moment that keeps playing, out of reach of pause.
+    // A 1.2 s tail leaves room for the seek to land well inside it.
+    await openPairedTailTrip(page, 1.2);
+    const tail = await page.evaluate(
+        () =>
+            new Promise<{ samples: number; frontVisible: number; frontPlaying: number }>((resolve, reject) => {
+                const { state, dom } = window.__everydashcam;
+                const trip = state.trips[state.active!.trip]!;
+                const segment = trip.timeline.segments[1]!;
+                // The arrow key seeks 5 s ahead; from here it lands mid-tail.
+                const seekFromSec = segment.contentStart + segment.durationSec / 2 - 5;
+                const timeout = setTimeout(() => reject(new Error("seek did not reach the tail")), 20_000);
+                const result = { samples: 0, frontVisible: 0, frontPlaying: 0 };
+                let hasSeeked = false;
+                const tick = (): void => {
+                    const frame = state.active?.frame ?? 0;
+                    if (!hasSeeked && frame === 0 && dom.player.currentTime >= seekFromSec) {
+                        hasSeeked = true;
+                        document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight" }));
+                    }
+                    if (hasSeeked && frame === 1) {
+                        result.samples++;
+                        if (!dom.videoTileFront.hidden) result.frontVisible++;
+                        const frontVideos = [...dom.videoTileFront.querySelectorAll("video")];
+                        if (frontVideos.some((video) => !video.paused)) result.frontPlaying++;
+                    }
+                    if (frame >= 2) {
+                        clearTimeout(timeout);
+                        resolve(result);
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+    );
+    expect(tail.samples, "display frames in the tail").toBeGreaterThan(0);
+    expect(tail, "front camera through the tail").toMatchObject({ frontVisible: 0, frontPlaying: 0 });
 });
 
 test("retargets a prewarmed worker when the user seeks into the next clip", async ({ page }) => {

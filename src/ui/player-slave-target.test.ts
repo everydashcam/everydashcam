@@ -243,16 +243,83 @@ describe("pairedTailHoldCandidate", () => {
         expect(pairedTailHoldCandidate(frames, 3, "rear")).toBe(second[1]);
     });
 
-    it("shows nothing across a recording gap", () => {
-        const frames = makeFrames([{ startUtc: 0 }, { startUtc: 100, noRear: true }]);
-        frames[1]!.channels = { rear: frames[0]!.channels.rear! };
-        expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
+    it("holds through consecutive tails of a three-camera set", () => {
+        const front = makeCandidate({ name: "1000F.ts", startUtc: 1000, durationSec: 60, channel: "front" });
+        const rear = makeCandidate({ name: "1000R.ts", startUtc: 1000, durationSec: 60.2, channel: "rear" });
+        const interior = makeCandidate({ name: "1000I.ts", startUtc: 1000, durationSec: 60.4, channel: "interior" });
+        const frames = groupTrips([front, rear, interior])[0]!.frames;
+        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual([
+            "front+interior+rear",
+            "interior+rear",
+            "interior",
+        ]);
+        expect(pairedTailHoldCandidate(frames, 1, "front")).toBe(front);
+        expect(pairedTailHoldCandidate(frames, 2, "front"), "second tail").toBe(front);
+        expect(pairedTailHoldCandidate(frames, 2, "rear")).toBe(rear);
     });
 
-    it("shows nothing when the sibling does not play on from the pair", () => {
-        const frames = makeFrames([{ startUtc: 0 }, { startUtc: 60, noRear: true }]);
-        const nextRear = makeCandidate({ name: "t60R.mp4", startUtc: 60, durationSec: 60 });
-        frames[1]!.channels = { rear: nextRear };
-        expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
+    it("stops holding once the tails outlast the hold limit", () => {
+        const front = makeCandidate({ name: "1000F.ts", startUtc: 1000, durationSec: 60, channel: "front" });
+        const rear = makeCandidate({ name: "1000R.ts", startUtc: 1000, durationSec: 61.5, channel: "rear" });
+        const interior = makeCandidate({ name: "1000I.ts", startUtc: 1000, durationSec: 62.5, channel: "interior" });
+        const frames = groupTrips([front, rear, interior])[0]!.frames;
+        expect(frames).toHaveLength(3);
+        expect(pairedTailHoldCandidate(frames, 1, "front"), "1.5 s tail").toBe(front);
+        expect(pairedTailHoldCandidate(frames, 2, "front"), "2.5 s of tails").toBeNull();
+        expect(pairedTailHoldCandidate(frames, 2, "rear"), "1 s tail").toBe(rear);
+    });
+
+    describe("against a front+rear pair whose rear outlasts the front", () => {
+        function pairWithTail(frontDurationSec: number, rearDurationSec: number) {
+            const front = makeCandidate({
+                name: "0F.mp4",
+                startUtc: 0,
+                durationSec: frontDurationSec,
+                channel: "front",
+            });
+            const rear = makeCandidate({ name: "0R.mp4", startUtc: 0, durationSec: rearDurationSec, channel: "rear" });
+            const tailSec = rearDurationSec - frontDurationSec;
+            const frames: TripFrame[] = [
+                {
+                    startUtc: 0,
+                    durationSec: frontDurationSec,
+                    wallDurationSec: frontDurationSec,
+                    channels: { front, rear },
+                    mediaOffsetSec: { front: 0, rear: 0 },
+                },
+                {
+                    startUtc: frontDurationSec,
+                    durationSec: tailSec,
+                    wallDurationSec: tailSec,
+                    channels: { rear },
+                    mediaOffsetSec: { rear: frontDurationSec },
+                },
+            ];
+            return { front, frames };
+        }
+
+        it("holds the front through a short tail", () => {
+            const { front, frames } = pairWithTail(60, 61);
+            expect(pairedTailHoldCandidate(frames, 1, "front")).toBe(front);
+        });
+
+        it("shows nothing for a camera that stopped long before its sibling", () => {
+            const { frames } = pairWithTail(30, 60);
+            expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
+        });
+
+        it("shows nothing across a recording gap", () => {
+            const { frames } = pairWithTail(60, 61);
+            frames[1]!.startUtc += 0.5;
+            expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
+        });
+
+        it("shows nothing when the sibling does not play on from the pair", () => {
+            const { frames } = pairWithTail(60, 61);
+            const nextRear = makeCandidate({ name: "60R.mp4", startUtc: 60, durationSec: 1, channel: "rear" });
+            frames[1]!.channels = { rear: nextRear };
+            frames[1]!.mediaOffsetSec = { rear: 0 };
+            expect(pairedTailHoldCandidate(frames, 1, "front")).toBeNull();
+        });
     });
 });
