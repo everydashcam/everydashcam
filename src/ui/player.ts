@@ -177,10 +177,19 @@ export function reconcileActiveTripAfterRegroup(): void {
           )
         : null;
     if (target) {
-        const frame = state.trips[target.trip]!.frames[target.frame]!;
-        const hasChangedMedia = ALL_CHANNELS.some(
-            (channel) => videoAttachedFile.get(channelPlayers[channel]) !== frame.channels[channel]?.file,
-        );
+        const frames = state.trips[target.trip]!.frames;
+        const frame = frames[target.frame]!;
+        const hasChangedMedia = ALL_CHANNELS.some((channel) => {
+            const attachedFile = videoAttachedFile.get(channelPlayers[channel]);
+            if (attachedFile === frame.channels[channel]?.file) return false;
+            // A channel holding a paired tail's last frame keeps its previous
+            // file attached; it changes only if the new grouping no longer
+            // holds that file there.
+            return !(
+                heldTailChannels.has(channel) &&
+                attachedFile === pairedTailHoldCandidate(frames, target.frame, channel)?.file
+            );
+        });
         if (target.trip !== state.active.trip || target.frame !== state.active.frame || hasChangedMedia) {
             playFrame(target.trip, target.frame, target.offsetInFrame, pendingPlay || !previousVideo.paused);
         }
@@ -2117,7 +2126,7 @@ function toggleViewMode(): void {
     const nextLayout = goingToSplit ? splitLayoutForSlots(slots) : focusLayoutForSlots(slots);
     setLayoutAndChannels({ layout: nextLayout });
     const af = activeFrame();
-    if (af) syncGridLayoutOnly(af.frame, mainChannel());
+    if (af) syncGridLayoutOnly(af.frame, effectiveMasterChannel());
     syncViewModeButton();
     syncTopPanel();
     // User changed focus<->split: remember it for this camera set.
@@ -2159,7 +2168,10 @@ function flashPlaybackToggle(forcePlaying?: boolean): void {
  * Cosmetic layout-only update for the current frame: grid dataset + per-tile
  * slot/tileRole/active, via applyTileLayoutRoles. Does NOT touch src/backends -
  * used by the focus<->split toggle and composition changes (see toggleViewMode /
- * applyComposition) where media must keep playing uninterrupted.
+ * applyComposition) where media must keep playing uninterrupted. `activeCh` is
+ * the channel that plays as master, as in syncFrameToGrid: in a frame without
+ * the main channel, passing the main one would leave no tile active and hide
+ * a main channel that holds a paired tail's last frame.
  */
 function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel): void {
     applyTileLayoutRoles(frame, activeCh);
@@ -2184,7 +2196,7 @@ function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel): void {
 export function applyComposition(): void {
     const af = activeFrame();
     if (af) {
-        syncGridLayoutOnly(af.frame, mainChannel());
+        syncGridLayoutOnly(af.frame, effectiveMasterChannel());
         syncAudioRouting();
     }
     syncViewModeButton();

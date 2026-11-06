@@ -389,11 +389,12 @@ async function openPairedTailTrip(page: Page, rearGopDurationSec: number): Promi
 test("plays a paired MPEG-TS tail on the running channel and keeps the next pair warm", async ({ page }) => {
     // The rear element already plays the rear-only tail; a new attachment
     // there stalls the picture and drops the warm next rear clip. The front
-    // tile holds its last frame meanwhile instead of blinking out. The tail
-    // is 0.3 s, a real camera's order.
+    // tile holds its last frame meanwhile instead of blinking out, also
+    // through a layout change. The tail is 0.3 s, a real camera's order.
     await openPairedTailTrip(page, 1.05);
     // Record, every display frame of the rear-only tail, whether the front
-    // tile or the layout control disappeared.
+    // tile or the layout control disappeared. The first tail frame switches
+    // the layout.
     const tail = page.evaluate(
         () =>
             new Promise<{ samples: number; frontHidden: number; viewModeHidden: number }>((resolve, reject) => {
@@ -403,6 +404,7 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
                 const tick = (): void => {
                     const frame = state.active?.frame ?? 0;
                     if (frame === 1) {
+                        if (result.samples === 0) dom.viewModeBtn.click();
                         result.samples++;
                         if (dom.videoTileFront.hidden) result.frontHidden++;
                         if (dom.viewModeBtn.hidden) result.viewModeHidden++;
