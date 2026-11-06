@@ -971,7 +971,29 @@ export function playFrame(
     isPlaybackIntended = autoPlay;
     pendingFileOffset = fileOffsetSec;
     syncFrameToGrid(frame, picked.channel, fileOffsetSec);
-    if (isReusableMaster) {
+    // The element has less than one video frame left after the interval's
+    // start: a paired tail can be that short, and a slave, allowed to run up
+    // to SLAVE_DRIFT_MAX_SEC ahead of its master, may even have finished its
+    // file before the master crosses into the tail it then leads. Seeking
+    // that close to the end makes Chromium report the end of the stream at
+    // once, and play() on an ended element restarts the file from its start.
+    const frameDurationSec = 1 / (video.fps && video.fps > 0 ? video.fps : 30);
+    const isPlayedThrough =
+        isReusableMaster &&
+        autoPlay &&
+        Number.isFinite(master.duration) &&
+        master.duration - fileOffsetSec < frameDurationSec;
+    if (isPlayedThrough) {
+        // Playback moves on to the next interval instead, once this call has
+        // switched to the current one. A task rather than a microtask: a trip
+        // of nothing but such intervals must not lock up the page on a loop.
+        pendingPlay = false;
+        pendingFileOffset = 0;
+        const seqAtStart = playFrameSeq;
+        setTimeout(() => {
+            if (playFrameSeq === seqAtStart) finishActiveClip();
+        }, 0);
+    } else if (isReusableMaster) {
         pendingPlay = false;
         pendingFileOffset = 0;
         if (!autoPlay) master.pause();

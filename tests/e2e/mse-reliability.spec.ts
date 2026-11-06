@@ -354,24 +354,30 @@ test("warms the next MPEG-TS clip's worker before the clip boundary", async ({ p
     ).toEqual([]);
 });
 
-/** Opens two MPEG-TS front+rear pairs (6 s and 7 s) whose rear clips use
+/** Opens two front+rear pairs (6 s and 7 s) whose rear clips use
  *  `rearGopDurationSec` instead of 1 s GOPs and so outlast their fronts: the
- *  trip plays a rear-only tail after each pair. Playback runs in the first
- *  pair. */
-async function openPairedTailTrip(page: Page, rearGopDurationSec: number): Promise<void> {
+ *  trip plays a rear-only tail after each pair. MPEG-TS plays through MSE,
+ *  MP4 natively. Playback runs in the first pair. */
+async function openPairedTailTrip(
+    page: Page,
+    rearGopDurationSec: number,
+    format: "mpegts" | "mp4" = "mpegts",
+): Promise<void> {
     const clips = await Promise.all([
-        createMseFixture({ format: "mpegts", gopCount: 6 }),
-        createMseFixture({ format: "mpegts", gopCount: 6, gopDurationSec: rearGopDurationSec }),
-        createMseFixture({ format: "mpegts", gopCount: 7 }),
-        createMseFixture({ format: "mpegts", gopCount: 7, gopDurationSec: rearGopDurationSec }),
+        createMseFixture({ format, gopCount: 6 }),
+        createMseFixture({ format, gopCount: 6, gopDurationSec: rearGopDurationSec }),
+        createMseFixture({ format, gopCount: 7 }),
+        createMseFixture({ format, gopCount: 7, gopDurationSec: rearGopDurationSec }),
     ]);
-    await page
-        .locator("#file-input")
-        .setInputFiles(
-            ["20260904_202849F.ts", "20260904_202849R.ts", "20260904_202855F.ts", "20260904_202855R.ts"].map(
-                (name, index) => ({ name, mimeType: "video/mp2t", buffer: Buffer.from(clips[index]!) }),
-            ),
-        );
+    const extension = format === "mpegts" ? "ts" : "MP4";
+    const mimeType = format === "mpegts" ? "video/mp2t" : "video/mp4";
+    await page.locator("#file-input").setInputFiles(
+        ["20260904_202849F", "20260904_202849R", "20260904_202855F", "20260904_202855R"].map((name, index) => ({
+            name: `${name}.${extension}`,
+            mimeType,
+            buffer: Buffer.from(clips[index]!),
+        })),
+    );
     const trips = page.locator("li.trip:not(.unindexed-note)");
     await expect(trips).toHaveCount(1);
     await trips.first().click();
@@ -439,6 +445,45 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
         { file: "20260904_202855F.ts", prewarmed: true },
         { file: "20260904_202855R.ts", prewarmed: true },
     ]);
+});
+
+test("moves past a paired tail that its camera already played as a slave", async ({ page }) => {
+    // A slave may run up to the drift tolerance ahead of its master. With a
+    // 12 ms tail the rear then ends before the front crosses into the tail
+    // it leads; seeking it back there and resuming restarted the whole rear
+    // clip inside the tail.
+    await openPairedTailTrip(page, 1.002, "mp4");
+    const tailMs = await page.evaluate(
+        () =>
+            new Promise<number>((resolve, reject) => {
+                const { state, dom } = window.__everydashcam;
+                const trip = state.trips[state.active!.trip]!;
+                const tailStartSec = trip.timeline.segments[1]!.contentStart;
+                const timeout = setTimeout(() => reject(new Error("second pair did not start")), 20_000);
+                let hasShifted = false;
+                let tailStartedAt = 0;
+                const tick = (): void => {
+                    const frame = state.active?.frame ?? 0;
+                    if (!hasShifted && frame === 0 && dom.player.currentTime >= tailStartSec - 1) {
+                        hasShifted = true;
+                        const rear = [
+                            ...dom.videoTileRear.querySelectorAll<HTMLVideoElement>('video[id^="player-rear"]'),
+                        ].find((video) => !video.classList.contains("preload-slot"))!;
+                        rear.currentTime = dom.player.currentTime + 0.1;
+                    }
+                    if (frame === 1 && !tailStartedAt) tailStartedAt = performance.now();
+                    if (frame >= 2) {
+                        clearTimeout(timeout);
+                        resolve(tailStartedAt ? performance.now() - tailStartedAt : 0);
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+    );
+    expect(tailMs, "time spent in the 12 ms tail").toBeLessThan(1000);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.dom.player.currentTime)).toBeGreaterThan(0.5);
 });
 
 test("drops the shorter camera when a seek from the middle of its pair lands in the tail", async ({ page }) => {
