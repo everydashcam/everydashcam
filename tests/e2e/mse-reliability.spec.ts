@@ -447,6 +447,50 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
     ]);
 });
 
+test("joins the next MP4 pair from warm slots after a paired tail", async ({ page }) => {
+    // The tail hands the master role to the rear and the next pair back to
+    // the front, so the boundary cannot promote the master's own slot. Both
+    // next files must still come from their warm preload slots: a cold
+    // native attach reloads the decoder at every clip boundary.
+    await openPairedTailTrip(page, 1.05, "mp4");
+    const tail = await page.evaluate(
+        () =>
+            new Promise<{ samples: number; frontHidden: number }>((resolve, reject) => {
+                const { state, dom } = window.__everydashcam;
+                const timeout = setTimeout(() => reject(new Error("second pair did not start")), 20_000);
+                const result = { samples: 0, frontHidden: 0 };
+                const tick = (): void => {
+                    const frame = state.active?.frame ?? 0;
+                    if (frame === 1) {
+                        result.samples++;
+                        if (dom.videoTileFront.hidden) result.frontHidden++;
+                    }
+                    if (frame >= 2) {
+                        clearTimeout(timeout);
+                        resolve(result);
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+    );
+    expect(tail.samples, "display frames in the tail").toBeGreaterThan(3);
+    expect(tail.frontHidden, "front tile through the tail").toBe(0);
+    // A promoted slot is the other physical element: read the active one.
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.dom.player.currentTime)).toBeGreaterThan(0.5);
+    const promoted = await page.evaluate(() =>
+        window.__everydashcam
+            .dumpLog()
+            .filter(
+                (entry) => /preload.*promoted/.test(entry.msg) && String(entry.ctx?.file).startsWith("20260904_202855"),
+            )
+            .map((entry) => entry.ctx?.file)
+            .sort(),
+    );
+    expect(promoted).toEqual(["20260904_202855F.MP4", "20260904_202855R.MP4"]);
+});
+
 test("moves past a paired tail that its camera already played as a slave", async ({ page }) => {
     // A slave may run up to the drift tolerance ahead of its master. With a
     // 12 ms tail the rear then ends before the front crosses into the tail
