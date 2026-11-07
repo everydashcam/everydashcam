@@ -61,6 +61,10 @@ function buildGroups(): HotkeyGroup[] {
                 { keys: ["S"], label: t("hotkeys.action.snapshot") },
                 { keys: ["R"], label: t("hotkeys.action.loop") },
                 { keys: ["+", "-"], label: t("hotkeys.action.zoomTimeline") },
+                {
+                    keys: [t("hotkeys.input.wheel"), t("hotkeys.input.pinch")],
+                    label: t("hotkeys.action.zoomVideo"),
+                },
                 { keys: ["Z"], label: t("hotkeys.action.zoomReset") },
                 { keys: ["?"], label: t("hotkeys.action.help") },
             ],
