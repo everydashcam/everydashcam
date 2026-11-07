@@ -143,6 +143,10 @@ export function syncBrowseState(): void {
 // classList.remove BEFORE the rAF adds .open, the 220ms check then sees
 // .open and never re-hides - a click-intercepting scrim over a closed drawer.
 let scrimShowRaf = 0;
+// Pending hide-side timer. The open path cancels it: after a close->open within
+// its 220ms it could fire between the reopen and the show rAF, hiding the scrim
+// under an open drawer so an outside click no longer closes it.
+let scrimHideTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function setDrawerOpen(open: boolean): void {
     // Read the prior state BEFORE mutating it: focus restore must fire only on a
@@ -159,6 +163,7 @@ export function setDrawerOpen(open: boolean): void {
         // would slide in an invisible sidebar until the FLIP timer fires. Clear
         // the override here so the opened drawer is visible immediately.
         dom.sidebar.style.visibility = "";
+        clearTimeout(scrimHideTimer);
         dom.drawerScrim.hidden = false;
         // rAF lets [hidden]→display:flex take effect before adding .open, so the opacity transition fires.
         if (scrimShowRaf) cancelAnimationFrame(scrimShowRaf);
@@ -174,7 +179,8 @@ export function setDrawerOpen(open: boolean): void {
         }
         dom.drawerScrim.classList.remove("open");
         // Hide after transition ends (200 ms). Without this the transparent scrim stays over the viewer and intercepts clicks.
-        setTimeout(() => {
+        clearTimeout(scrimHideTimer);
+        scrimHideTimer = setTimeout(() => {
             if (!dom.drawerScrim.classList.contains("open")) dom.drawerScrim.hidden = true;
         }, 220);
     }
