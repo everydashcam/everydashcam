@@ -613,6 +613,168 @@
     cursor: not-allowed;
 }
 
+/* "Cameras" menu (src/ui/cameras-menu.ts): a dialog with native controls in
+   the View menu's look - same headers, the map's segmented control for the
+   two modes, rows with the View rows' padding and hover. */
+.cameras-menu {
+    width: 280px;
+}
+.cameras-menu .cameras-menu__modes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0 var(--dc-space-2) var(--dc-space-1);
+}
+.cameras-menu__modes button {
+    line-height: 1.15;
+}
+.cameras-menu__row {
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-2);
+    padding: var(--dc-space-2);
+    border-radius: var(--dc-radius-sm);
+    min-height: 36px;
+    cursor: pointer;
+}
+.cameras-menu__row:hover {
+    background: var(--bg-elev-2);
+}
+.cameras-menu__row[hidden] {
+    display: none;
+}
+.cameras-menu__row--described {
+    align-items: flex-start;
+}
+.cameras-menu input[type="checkbox"] {
+    flex: 0 0 auto;
+}
+/* Above forms.css's margin reset: the box lines up with the title's first line. */
+.cameras-menu .cameras-menu__row--described input[type="checkbox"] {
+    margin-top: 2px;
+}
+.cameras-menu__cameras {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.cameras-menu__camera {
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+    min-height: 36px;
+    padding: 0 var(--dc-space-2) 0 0;
+    border-radius: var(--dc-radius-sm);
+}
+.cameras-menu__camera:hover {
+    background: var(--bg-elev-2);
+}
+.cameras-menu__camera.is-dragging {
+    opacity: 0.5;
+}
+.cameras-menu__camera.drop-target {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cameras-menu__handle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+    color: var(--fg-dim);
+    cursor: grab;
+    touch-action: none;
+}
+.cameras-menu__handle:hover,
+.cameras-menu__handle:focus-visible {
+    color: var(--fg);
+    outline: none;
+}
+.cameras-menu__handle:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cameras-menu__camera.is-dragging .cameras-menu__handle {
+    cursor: grabbing;
+}
+.cameras-menu__show {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-2);
+    min-width: 0;
+    min-height: 32px;
+    cursor: pointer;
+}
+.cameras-menu__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg);
+    font-family: var(--dc-font-ui);
+    font-size: var(--dc-text-md);
+}
+.cameras-menu__camera.is-hidden .cameras-menu__name {
+    color: var(--fg-dim);
+}
+/* "Main" marks the main camera; on the other rows it is a quiet button that
+   makes that camera the main one. */
+.cameras-menu__main {
+    flex: 0 0 auto;
+    padding: 3px var(--dc-space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+    color: var(--fg-mute);
+    font: 600 var(--dc-text-xs) / 1.2 var(--dc-font-ui);
+    cursor: pointer;
+    transition:
+        color var(--dc-dur-fast) var(--dc-ease),
+        background var(--dc-dur-fast) var(--dc-ease),
+        border-color var(--dc-dur-fast) var(--dc-ease);
+}
+.cameras-menu__main:hover,
+.cameras-menu__main:focus-visible {
+    color: var(--fg);
+    border-color: var(--accent);
+    outline: none;
+}
+.cameras-menu__main[aria-pressed="true"] {
+    color: var(--dc-black);
+    background: var(--accent);
+    border-color: var(--accent);
+    cursor: default;
+}
+.cameras-menu__main:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.cameras-menu__main:disabled:hover {
+    color: var(--fg-mute);
+    border-color: var(--border);
+}
+.cameras-menu__audio {
+    justify-content: space-between;
+    cursor: default;
+}
+.cameras-menu__audio:hover {
+    background: transparent;
+}
+.cameras-menu__audio .view-menu-row__label {
+    flex: 0 0 auto;
+}
+.cameras-menu__audio-select {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 65%;
+}
+
 /* Speed pill is also a button (click flips km/h <-> mph). Strip the default
    <button> chrome so it sits visually identical to the non-clickable pills
    beside it; the affordance is the cursor change on hover. */
@@ -704,6 +866,24 @@
     }
     .view-menu-map__modes button {
         min-height: 44px;
+    }
+    .cameras-menu__row,
+    .cameras-menu__camera {
+        min-height: 44px;
+    }
+    .cameras-menu__row {
+        padding: var(--dc-space-2) var(--dc-space-3);
+    }
+    .cameras-menu__handle {
+        width: 36px;
+        height: 44px;
+    }
+    .cameras-menu__show {
+        min-height: 44px;
+    }
+    .cameras-menu__main {
+        min-height: 32px;
+        padding: var(--dc-space-1) var(--dc-space-3);
     }
     .player-speed-menu li {
         min-height: 44px;
