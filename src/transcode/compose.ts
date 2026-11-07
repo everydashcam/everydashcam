@@ -18,11 +18,40 @@ import type { Channel } from "../parsers/types.js";
 import { roundRectPath } from "./canvas-draw.js";
 
 /**
+ * A decoded picture a composition draws. The export passes mediabunny's
+ * VideoSample, which already has this shape; the still capture wraps a playing
+ * <video>. Only what the drawing needs, so the composition does not depend on
+ * where the picture was decoded.
+ */
+export interface CompositionFrame {
+    readonly displayWidth: number;
+    readonly displayHeight: number;
+    /** Pixel format, or null when unknown. A format carrying alpha ("...A")
+     *  or an unknown one keeps the backdrop under the picture. */
+    readonly format: string | null;
+    draw(
+        context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+        sx: number,
+        sy: number,
+        sWidth: number,
+        sHeight: number,
+        dx: number,
+        dy: number,
+        dWidth: number,
+        dHeight: number,
+    ): void;
+}
+
+/**
  * Source for the blur backdrop - anything `drawImage` can handle, or a
- * VideoSample (uses its own draw API). The pipeline passes VideoSample;
+ * CompositionFrame (uses its own draw API). The pipeline passes VideoSample;
  * the UI preview passes ImageBitmap.
  */
-export type BlurSource = VideoSample | ImageBitmap | HTMLCanvasElement | HTMLVideoElement | OffscreenCanvas;
+export type BlurSource = CompositionFrame | ImageBitmap | HTMLCanvasElement | HTMLVideoElement | OffscreenCanvas;
+
+function isCompositionFrame(source: BlurSource): source is CompositionFrame {
+    return "displayWidth" in source && typeof (source as CompositionFrame).draw === "function";
+}
 
 /**
  * Pre-allocated canvases for the downscale-blur-upscale pipeline. Created
@@ -63,12 +92,12 @@ function drawBlurSource(
     dw: number,
     dh: number,
 ): void {
-    // VideoSample has its own draw API (handles rotation/PAR).
+    // A VideoSample draws itself (it handles rotation/PAR).
     // ImageBitmap / Canvas go through the standard drawImage.
-    if (typeof (source as VideoSample).draw === "function" && "displayWidth" in (source as object)) {
-        (source as VideoSample).draw(ctx, sx, sy, sw, sh, dx, dy, dw, dh);
+    if (isCompositionFrame(source)) {
+        source.draw(ctx, sx, sy, sw, sh, dx, dy, dw, dh);
     } else {
-        ctx.drawImage(source as Exclude<BlurSource, VideoSample>, sx, sy, sw, sh, dx, dy, dw, dh);
+        ctx.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
     }
 }
 
@@ -671,7 +700,7 @@ export const OVERLAY_CORNER_SHARE = 0.08;
 export interface CompositionCamera {
     /** The picture to show, or null for a black tile (no footage now, or no
      *  frame decoded yet). */
-    sample: VideoSample | null;
+    sample: CompositionFrame | null;
     crop: CropRect | null;
     flip?: Readonly<CameraFlip>;
     regionBlurs: readonly ResolvedRegionBlur[] | null;
