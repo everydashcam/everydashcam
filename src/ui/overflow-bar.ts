@@ -1,11 +1,14 @@
 // Reusable "priority+" toolbar: when the container shrinks, the
 // lowest-priority items are hidden and appear in the overflow popover (kebab).
-// Used by the topbar (see app.ts) - reusable by any horizontal toolbar with
-// variable width.
+// Used by the topbar (topbar-overflow.ts) and the player bar
+// (player-bar-overflow.ts).
 //
-// The measuring logic only works if the container is a flex with nowrap. On
-// flex-wrap items wrap to a new line and scrollWidth === clientWidth, so
-// overflow is not detected.
+// By default each group is checked on its own. The measuring logic only works
+// if the groups are flex rows with nowrap: on flex-wrap items wrap to a new
+// line and never reach past the edge. A toolbar whose groups trade width
+// between them (the player bar slides its centered transport) passes its own
+// whole-bar `fits` check instead, and the items then fold by one priority
+// order across every group.
 
 import { createLogger } from "../log.js";
 
@@ -23,8 +26,10 @@ export interface OverflowableItem {
      *  are hidden first. */
     priority: number;
 
-    /** Text for the row in the overflow menu. */
-    label: () => string;
+    /** Text for the row in the overflow menu. Absent for a step that only
+     *  sheds secondary content, such as a second value next to the first:
+     *  folding it adds no menu row and never shows the overflow button. */
+    label?: () => string;
 
     /** Icon clone for the menu row. Defaults to the element's first <svg>. */
     iconSource?: () => SVGElement | null;
@@ -63,6 +68,13 @@ export interface OverflowBarOptions {
 
     /** Items in their visual order in the bar. */
     items: OverflowableItem[];
+
+    /** Whether the whole toolbar fits in its current state (folded items,
+     *  overflow button). Replaces the per-group check; see the header. */
+    fits?: () => boolean;
+
+    /** Runs after every pass, once the folded set is final. */
+    onMeasured?: () => void;
 }
 
 export interface OverflowBarHandle {
@@ -76,6 +88,30 @@ export interface OverflowBarHandle {
     /** Close the overflow menu. Used from customMenuRow handlers. */
     close(): void;
     destroy(): void;
+}
+
+/**
+ * Right edge, in client pixels, that a toolbar group's controls must stay
+ * within: its content edge, or the visual viewport's edge when the group is
+ * wider than the screen.
+ *
+ * On mobile a flex container with nowrap + flex-shrink:0 children is allowed
+ * to grow WIDER than the screen to fit them, which expands the layout
+ * viewport - and body{overflow:hidden} does NOT prevent that on mobile (it
+ * only clips, the layout still widens and the page becomes pinch-zoomable with
+ * a dead strip on the right). Measured against the grown container's own
+ * right edge, every child would look like it "fits" and the bar would never
+ * collapse. The visual width is normalized by page scale: zoom changes the
+ * visible area, not the toolbar's CSS layout, and comparing against the
+ * zoomed width would hide every optional item while the flex spacer still
+ * fills the bar.
+ */
+export function visibleRightEdge(group: HTMLElement): number {
+    const rect = group.getBoundingClientRect();
+    const padR = Number.parseFloat(getComputedStyle(group).paddingRight) || 0;
+    const vp = window.visualViewport;
+    const viewportRight = vp ? vp.offsetLeft + vp.width * vp.scale : document.documentElement.clientWidth;
+    return Math.min(rect.right, viewportRight) - padR;
 }
 
 /** Initializes the overflow-bar. Idempotent across repeated DOM mutations -
@@ -139,7 +175,7 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
 
             const labelSpan = document.createElement("span");
             labelSpan.className = "overflow-menu-label";
-            labelSpan.textContent = item.label();
+            labelSpan.textContent = item.label?.() ?? "";
             btn.appendChild(labelSpan);
 
             if (item.isActive?.()) {
@@ -176,8 +212,9 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
         setMenuOpen(false);
     }
 
+    /** Folded items that have a row in the overflow menu. */
     function getHiddenItems(): OverflowableItem[] {
-        return items.filter((it) => it.el.dataset.overflowHidden === "true");
+        return items.filter((it) => it.el.dataset.overflowHidden === "true" && (it.label || it.customMenuRow));
     }
 
     /** Signature of the current hidden-set: "0010..." in items order.
@@ -199,24 +236,7 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
      *  precise: we look at where the last visible child physically ends and
      *  compare it with the right edge of the parent's content area. */
     function isOverflowing(group: HTMLElement): boolean {
-        const containerRect = group.getBoundingClientRect();
-        const cs = getComputedStyle(group);
-        const padR = Number.parseFloat(cs.paddingRight) || 0;
-        // Anchor the right edge to the VISUAL VIEWPORT, not the container's own
-        // rect. On mobile a flex container with nowrap + flex-shrink:0 children
-        // is allowed to grow WIDER than the screen to fit them, which expands the
-        // layout viewport - and body{overflow:hidden} does NOT prevent that on
-        // mobile (it only clips, the layout still widens and the page becomes
-        // pinch-zoomable with a dead strip on the right). If we measured against
-        // the grown container's own right edge, every child would look like it
-        // "fits" and we would never collapse - the bar stays inflated forever.
-        // Normalize visual width by page scale: zoom changes the visible area,
-        // not the toolbar's CSS layout. Comparing against zoomed width would
-        // hide every optional item while the flex spacer still fills the bar.
-        // min() makes this a no-op when the container fits the viewport.
-        const vp = window.visualViewport;
-        const viewportRight = vp ? vp.offsetLeft + vp.width * vp.scale : document.documentElement.clientWidth;
-        const limit = Math.min(containerRect.right, viewportRight) - padR;
+        const limit = visibleRightEdge(group);
 
         let maxRight = Number.NEGATIVE_INFINITY;
         for (const child of group.children) {
@@ -266,6 +286,21 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
         // too. If so - hide more items until it fits together with the kebab.
         if (!overflowButton.hidden) collapseOverflow();
 
+        // A menu of one entry only trades that entry for the overflow button.
+        // Keep the entry when it fits in the button's place: the kebab's own
+        // width can have shed content (a step without a menu row) that the
+        // first pass kept, so this state was never tried.
+        const folded = getHiddenItems();
+        if (folded.length === 1) {
+            const only = folded[0]!;
+            only.el.dataset.overflowHidden = "false";
+            overflowButton.hidden = true;
+            if (!fits()) {
+                only.el.dataset.overflowHidden = "true";
+                overflowButton.hidden = false;
+            }
+        }
+
         // Recompute the hidden set AFTER the final-check loop: that loop can
         // drop more items than the `hidden` snapshot above captured (e.g. the
         // lowest-priority item, dropped only once the kebab's own width pushed
@@ -286,19 +321,33 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
         if (overflowButton.hidden && menuOpen) {
             setMenuOpen(false);
         }
+        opts.onMeasured?.();
+    }
+
+    function fits(): boolean {
+        return opts.fits ? opts.fits() : !containers.some(isOverflowing);
+    }
+
+    function isFoldable(item: OverflowableItem): boolean {
+        return item.el.dataset.overflowHidden !== "true" && (item.isAvailable?.() ?? !item.el.hidden);
     }
 
     function collapseOverflow(): void {
+        if (opts.fits) {
+            while (!opts.fits()) {
+                const next = dropOrder.find(isFoldable);
+                if (!next) return;
+                next.el.dataset.overflowHidden = "true";
+            }
+            return;
+        }
         while (true) {
             const overflowing = containers.filter(isOverflowing);
             if (overflowing.length === 0) return;
             // Hiding a control in another group cannot resolve this collision.
             // Items can move between groups at layout breakpoints.
             const next = dropOrder.find(
-                (item) =>
-                    item.el.dataset.overflowHidden !== "true" &&
-                    (item.isAvailable?.() ?? !item.el.hidden) &&
-                    overflowing.some((group) => group.contains(item.el)),
+                (item) => isFoldable(item) && overflowing.some((group) => group.contains(item.el)),
             );
             if (!next) return;
             next.el.dataset.overflowHidden = "true";

@@ -1,64 +1,95 @@
-// Secondary player controls share one overflow row. The transport group stays
-// visible and gets its own row when the player is narrow.
+// Player bar layout: the info group (sidebar, sound, time, speed, loop), the
+// transport and the secondary actions share one row; on phones the transport
+// takes a row of its own. The transport sits under the video's center while
+// both side groups fit beside it, and slides toward the side with room when
+// one does not. Controls fold into the overflow menu only when the whole bar
+// cannot hold them, by one priority order across both groups. Both decisions
+// come from the same measurement, so a group never sheds a control while the
+// other one has room for it.
 
 import { t } from "../i18n/index.js";
 import { openCaptureMenuFromOverflow } from "./capture-menu.js";
 import { dom } from "./dom.js";
 import { isMobileLayout, MOBILE_LAYOUT_QUERY } from "./media-queries.js";
-import { type OverflowableItem, initOverflowBar } from "./overflow-bar.js";
+import { type OverflowableItem, initOverflowBar, visibleRightEdge } from "./overflow-bar.js";
 import { state } from "./state.js";
 import { applyVolumeLevel } from "./player-volume.js";
 import { initPlayerPopoverPosition } from "./player-popover.js";
+
+/**
+ * Width a group's controls take from its left content edge, as laid out now:
+ * they never shrink, so their positions hold even when the group's grid
+ * column is too narrow for them. A spacer only absorbs free room and is left
+ * out; controls that are not displayed take no room.
+ */
+function groupNeed(group: HTMLElement): number {
+    const rect = group.getBoundingClientRect();
+    const contentLeft = rect.left + (Number.parseFloat(getComputedStyle(group).paddingLeft) || 0);
+    let right = contentLeft;
+    let spacers = 0;
+    for (const child of group.children) {
+        const box = child.getBoundingClientRect();
+        if (child.classList.contains("player-spacer")) spacers += box.width;
+        else if (box.width > 0 || box.height > 0) right = Math.max(right, box.right);
+    }
+    return Math.max(0, right - contentLeft - spacers);
+}
 
 export function initPlayerBarOverflow() {
     const bar = document.getElementById("player-bar-secondary");
     const playerBar = document.getElementById("player-bar");
     const button = document.getElementById("player-overflow") as HTMLButtonElement | null;
     const menu = document.getElementById("player-overflow-menu") as HTMLUListElement | null;
-    if (!bar || !playerBar || !button || !menu) return;
-
-    const layout = playerBar.querySelector<HTMLElement>(".player-bar-layout");
-    const transport = playerBar.querySelector<HTMLElement>(".player-transport");
-    const info = playerBar.querySelector<HTMLElement>(".player-info");
+    const layout = playerBar?.querySelector<HTMLElement>(".player-bar-layout");
+    const transport = playerBar?.querySelector<HTMLElement>(".player-transport");
+    const info = playerBar?.querySelector<HTMLElement>(".player-info");
+    if (!bar || !playerBar || !button || !menu || !layout || !transport || !info) return;
     const video = dom.playerWrap.querySelector<HTMLElement>(".video-frame");
-    const syncLayout = (): void => {
-        dom.playerWrap.style.setProperty("--player-controls-measured-h", `${playerBar.offsetHeight}px`);
-        if (!layout || !transport || !info || !video) return;
+
+    /** The row the side groups share, with the room each one needs. On phones
+     *  the transport has its own row and does not compete for it. */
+    const measureRow = () => {
+        const isStacked = layout.dataset.transportStacked === "true";
         const bounds = layout.getBoundingClientRect();
-        if (!bounds.width) return;
-        const videoBounds = video.getBoundingClientRect();
-        const center = videoBounds.width > 0 ? videoBounds.x + videoBounds.width / 2 : bounds.x + bounds.width / 2;
-        const desiredLeft = Math.max(0, center - bounds.x - transport.offsetWidth / 2);
         const gap = Number.parseFloat(getComputedStyle(layout).columnGap) || 0;
-        const requiredInfoSpace = (): number => {
-            // Mute and loop can overflow; they must not move the center when
-            // an overflow pass temporarily restores every button.
-            const fixedItems = Array.from(info.children).filter(
-                (child) => child !== muteWrap && child !== loop && (child as HTMLElement).offsetWidth > 0,
-            );
-            return (
-                fixedItems.reduce((total, child) => total + (child as HTMLElement).offsetWidth, 0) +
-                gap * fixedItems.length
-            );
+        return {
+            isStacked,
+            left: bounds.left,
+            width: Math.min(visibleRightEdge(layout), visibleRightEdge(bar)) - bounds.left,
+            gap,
+            transportWidth: transport.offsetWidth,
+            infoNeed: groupNeed(info),
+            secondaryNeed: groupNeed(bar),
         };
-        const isStacked = isMobileLayout();
-        info.dataset.compactTime = "false";
-        info.dataset.compactTime = String(!isStacked && desiredLeft < requiredInfoSpace());
-        const left = isStacked ? desiredLeft : Math.max(desiredLeft, requiredInfoSpace());
-        layout.style.setProperty("--transport-left", `${left}px`);
-        layout.style.setProperty("--transport-left-space", `${Math.max(0, left - gap)}px`);
-        layout.dataset.transportStacked = String(isStacked);
     };
-    const sizeObserver = new ResizeObserver(syncLayout);
-    sizeObserver.observe(playerBar);
-    if (video) sizeObserver.observe(video);
-    if (transport) sizeObserver.observe(transport);
-    if (info) {
-        sizeObserver.observe(info);
-        // Intrinsic labels can grow inside a fixed-width grid column.
-        for (const child of info.children) sizeObserver.observe(child);
-    }
-    document.addEventListener("playerexpansionchange", syncLayout);
+    const fitsRow = (): boolean => {
+        const row = measureRow();
+        // A hidden player has nothing to fold.
+        if (row.width <= 0) return true;
+        const transportNeed = row.isStacked ? 0 : row.transportWidth + row.gap;
+        return row.infoNeed + row.gap + transportNeed + row.secondaryNeed <= row.width + 0.5;
+    };
+    /** Places the transport for the final folded state of a pass. */
+    const placeTransport = (): void => {
+        dom.playerWrap.style.setProperty("--player-controls-measured-h", `${playerBar.offsetHeight}px`);
+        const row = measureRow();
+        if (row.width <= 0) return;
+        const videoBounds = video?.getBoundingClientRect();
+        const center = videoBounds?.width ? videoBounds.x + videoBounds.width / 2 : row.left + row.width / 2;
+        let left = Math.max(0, center - row.left - row.transportWidth / 2);
+        if (!row.isStacked) {
+            // The info group's need wins when even the folded bar is too tight:
+            // the secondary group then runs past its edge, as it would anyway.
+            const maxLeft = row.width - row.transportWidth - row.gap - row.secondaryNeed;
+            left = Math.max(row.infoNeed + row.gap, Math.min(left, maxLeft));
+        }
+        layout.style.setProperty("--transport-left", `${left}px`);
+        layout.style.setProperty("--transport-left-space", `${Math.max(0, left - row.gap)}px`);
+    };
+    const syncStacked = (): void => {
+        layout.dataset.transportStacked = String(isMobileLayout());
+    };
+    syncStacked();
 
     const muteWrap = document.querySelector<HTMLElement>(".player-mute-wrap");
     const mute = document.getElementById("player-mute") as HTMLButtonElement | null;
@@ -72,7 +103,7 @@ export function initPlayerBarOverflow() {
     const exportBtn = document.getElementById("player-export") as HTMLButtonElement | null;
     const mobileLayout = window.matchMedia(MOBILE_LAYOUT_QUERY);
     const syncControlGroups = (): void => {
-        if (!info || !muteWrap || !loop) return;
+        if (!muteWrap || !loop) return;
         const parent = mobileLayout.matches ? bar : info;
         if (muteWrap.parentElement === parent && loop.parentElement === parent) return;
         muteWrap.dataset.overflowHidden = "false";
@@ -152,6 +183,14 @@ export function initPlayerBarOverflow() {
             isActive: () => loop.getAttribute("aria-pressed") === "true",
         });
     }
+    // The total duration next to the current time goes after the extras on
+    // the right and before loop: it is context, not a control. Phones never
+    // show it (player-bar.css), so it is not a step there.
+    items.push({
+        el: dom.playerBar.total,
+        priority: 8.5,
+        isAvailable: () => !isMobileLayout() && !dom.playerBar.total.hidden,
+    });
     // Mute (together with the volume popover wrap): collapse the whole wrap so the
     // volume range does not stay DOM-positioned against a hidden mute button. The
     // wrap holds the real slider, which goes display:none on collapse, so the
@@ -208,14 +247,23 @@ export function initPlayerBarOverflow() {
     initPlayerPopoverPosition(playerBar, menu);
     const handle = initOverflowBar({
         container: bar,
-        additionalContainers: info ? [info] : [],
+        additionalContainers: [info],
         overflowButton: button,
         overflowMenu: menu,
         items,
+        fits: fitsRow,
+        onMeasured: placeTransport,
     });
+    // The video's center moves with the map and the sidebar, and labels can
+    // change width (time, language) inside fixed grid columns.
+    const sizeObserver = new ResizeObserver(() => handle.remeasure());
+    for (const target of [playerBar, transport, ...info.children, ...bar.children]) {
+        if (!target.classList.contains("player-spacer")) sizeObserver.observe(target);
+    }
+    if (video) sizeObserver.observe(video);
     mobileLayout.addEventListener("change", () => {
         syncControlGroups();
-        syncLayout();
+        syncStacked();
         handle.remeasure({ immediate: true });
     });
     // Restore toolbar visibility before fullscreen returns keyboard focus.

@@ -96,6 +96,110 @@ test("transport follows the video center with expanded map and fullscreen", asyn
     await shot(page, "player-transport-centered-narrow");
 });
 
+// Controls fold in this order; one entry holds controls of equal priority.
+const BAR_DROP_ORDER = [
+    ["#player-help", "#player-marker-list"],
+    ["#player-capture-wrap", "#player-add-marker"],
+    ["#player-total"],
+    ["#player-loop"],
+    [".player-mute-wrap"],
+    ["#player-fullscreen"],
+    ["#player-map"],
+    ["#gps-sync-pill-mobile"],
+    ["#player-export"],
+];
+
+test("the player bar folds controls only when the whole bar is full, in one priority order", async ({ page }) => {
+    test.setTimeout(120_000);
+    // Wide seek labels make the transport wide enough for the sweep to reach
+    // widths where controls have to fold.
+    await page.addInitScript(() => localStorage.setItem("everydashcam:hotkeys:seekStepSec", "600"));
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    // With the map beside the video the bar spans both, and the transport
+    // under the video leaves the left group the narrower side.
+    await page.locator("#mini-map").click();
+    await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
+    await expect(page.locator("body")).not.toHaveClass(/map-morphing/);
+    let sawFolding = false;
+    let sawShift = false;
+    // Desktop widths, where the transport shares the row and slides, then
+    // phone widths, where it has a row of its own and controls fold.
+    for (let width = 1440; width >= 320; width -= 20) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        );
+        const bar = await page.evaluate((order) => {
+            const visibleChildren = (group: Element) =>
+                [...group.children].filter((child) => {
+                    const box = child.getBoundingClientRect();
+                    return !child.classList.contains("player-spacer") && (box.width > 0 || box.height > 0);
+                });
+            const info = document.querySelector(".player-info")!;
+            const secondary = document.querySelector("#player-bar-secondary")!;
+            const transport = document.querySelector(".player-transport")!.getBoundingClientRect();
+            const play = document.querySelector("#player-play")!.getBoundingClientRect();
+            const video = document.querySelector(".video-frame")!.getBoundingClientRect();
+            const gap = Number.parseFloat(getComputedStyle(document.querySelector(".player-bar-layout")!).columnGap);
+            const infoEnd = Math.max(...visibleChildren(info).map((child) => child.getBoundingClientRect().right));
+            const secondaryStart = Math.min(
+                ...visibleChildren(secondary).map((child) => child.getBoundingClientRect().left),
+            );
+            const spacer = secondary.querySelector(".player-spacer")!.getBoundingClientRect().width;
+            const stacked =
+                document.querySelector<HTMLElement>(".player-bar-layout")!.dataset.transportStacked === "true";
+            return {
+                folded: order.map((rank) =>
+                    rank.map((selector) => {
+                        const el = document.querySelector<HTMLElement>(selector);
+                        if (!el || el.hidden) return "unavailable";
+                        if (el.dataset.overflowHidden === "true") return "folded";
+                        // Hidden by the layout itself (phone-only or desktop-only).
+                        return getComputedStyle(el).display === "none" ? "unavailable" : "shown";
+                    }),
+                ),
+                isStacked: stacked,
+                menuEntries: document.querySelectorAll("#player-overflow-menu > li").length,
+                // Room the bar has beyond what its groups need; a stacked
+                // transport has a row of its own.
+                freeRoom: spacer + (stacked ? 0 : transport.left - gap - infoEnd),
+                gap,
+                infoGap: transport.left - infoEnd,
+                secondaryGap: secondaryStart - transport.right,
+                offCenter: play.left + play.width / 2 - (video.left + video.width / 2),
+            };
+        }, BAR_DROP_ORDER);
+        const label = `${width} px`;
+        const lastFolded = bar.folded.map((rank) => rank.includes("folded")).lastIndexOf(true);
+        for (let rank = 0; rank < lastFolded; rank++) {
+            expect(
+                bar.folded[rank],
+                `${label}: ${BAR_DROP_ORDER[lastFolded]} folded before ${BAR_DROP_ORDER[rank]}`,
+            ).not.toContain("shown");
+        }
+        if (lastFolded >= 0) {
+            sawFolding = true;
+            expect(bar.freeRoom, `${label}: a control folded while the bar had room`).toBeLessThan(60);
+        }
+        expect(bar.menuEntries, `${label}: a menu for one entry`).not.toBe(1);
+        if (bar.isStacked) continue;
+        expect(bar.infoGap, `${label}: the info group runs into the transport`).toBeGreaterThanOrEqual(bar.gap - 0.5);
+        expect(bar.secondaryGap, `${label}: the transport runs into the actions`).toBeGreaterThanOrEqual(bar.gap - 0.5);
+        if (Math.abs(bar.offCenter) > 1) {
+            sawShift = true;
+            // Off the video's center only as far as a side group pushes it.
+            const pushedBy = bar.offCenter > 0 ? bar.infoGap : bar.secondaryGap;
+            expect(pushedBy, `${label}: the transport left the video's center without being pushed`).toBeLessThan(
+                bar.gap + 1,
+            );
+        }
+    }
+    expect(sawShift, "the sweep reaches widths where the transport slides").toBe(true);
+    expect(sawFolding, "the sweep reaches widths where controls fold").toBe(true);
+});
+
 test("transport buttons match arrow seeks, repeat while held, and stop after leaving", async ({ page }) => {
     await page.clock.install();
     await gotoApp(page);

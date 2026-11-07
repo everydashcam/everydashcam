@@ -31,8 +31,9 @@
     gap: var(--dc-space-2);
     white-space: nowrap;
 }
-#player-bar .player-info[data-compact-time="true"] .player-time-sep,
-#player-bar .player-info[data-compact-time="true"] #player-total {
+/* The total duration folds as one step of the bar's overflow order
+   (player-bar-overflow.ts); its separator goes with it. */
+.player-time-sep:has(+ #player-total[data-overflow-hidden="true"]) {
     display: none;
 }
 .player-transport {
