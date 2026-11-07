@@ -26,7 +26,6 @@ import {
     syncMapFollowButton,
 } from "./map.js";
 import {
-    driftSyncSlaves,
     getTripCurrentTime,
     initPlayer,
     seekTripTime,
@@ -126,5 +125,5 @@ async function runTripUiInit(): Promise<void> {
     syncCaptureButton();
     updatePlayerProgressUi();
 
-    startMarkerLoop({ onAfterTick: driftSyncSlaves });
+    startMarkerLoop();
 }

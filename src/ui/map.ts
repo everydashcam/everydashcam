@@ -2494,12 +2494,12 @@ function initMiniMapHover(): void {
 // Following modes (follow / rotate / chase) sample presented video frames, so
 // the camera and marker move once per decoded frame rather than once per
 // display refresh; other visible motion uses rAF. Idle/hidden maps only need
-// the drift-sync cadence.
+// the slow-lane cadence.
 // Media events wake a sleeping loop immediately for playback and paused seeks.
 let markerRafHandle: number | null = null;
 let markerTimerHandle: ReturnType<typeof setTimeout> | null = null;
 
-const DRIFT_SYNC_INTERVAL_MS = 200;
+const SLOW_LANE_INTERVAL_MS = 200;
 let slowLaneLastMs = 0;
 // Previous fast-lane timestamp, for the filter's frame dt.
 let lastFrameMs = 0;
@@ -2734,8 +2734,6 @@ function noteUserMapInteraction(): void {
     followResumeRemainingMs = FOLLOW_RESUME_DELAY_MS;
 }
 
-let markerLoopOnAfterTick: (() => void) | undefined;
-
 /**
  * Restarts the rAF loop if it was stopped by the early-exit in tick. Safe to
  * call repeatedly - no-op if the loop is already running. Called from sites
@@ -2748,18 +2746,17 @@ export function ensureMarkerLoop(): void {
         markerTimerHandle = null;
     }
     if (!state.active) return;
-    startMarkerLoop({ onAfterTick: markerLoopOnAfterTick });
+    startMarkerLoop();
 }
 
-export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
-    if (opts.onAfterTick) markerLoopOnAfterTick = opts.onAfterTick;
+export function startMarkerLoop(): void {
     if (markerRafHandle !== null || markerTimerHandle !== null) return;
     let markerFrame: PlayerFrameObservation | null = null;
     let pendingFrameDtMs = 0;
 
     // Marker/camera work for one frame. Separate from the rAF tick so its
     // early-returns (no trip / no frame / GPS window ended) skip ONLY the map
-    // work - onAfterTick in the rAF tick below must still run.
+    // work - the slow lane in the rAF tick below must still run.
     const markerTick = (now: number, frameDtMs: number): boolean => {
         if (!state.active || !state.marker) return false;
         const mainMapVisible = state.hasTrack && state.mapExpanded && getViewPanels().map && !state.exportModeOpen;
@@ -2924,7 +2921,7 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
     const scheduleTick = (isAnimating: boolean): void => {
         // rAF also preserves the browser's background-tab suspension.
         if (isAnimating || document.hidden) markerRafHandle = requestAnimationFrame(tick);
-        else markerTimerHandle = setTimeout(tick, DRIFT_SYNC_INTERVAL_MS);
+        else markerTimerHandle = setTimeout(tick, SLOW_LANE_INTERVAL_MS);
     };
 
     const tick = (): void => {
@@ -2934,12 +2931,10 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
         // selection) - do not reschedule; ensureMarkerLoop() restarts when
         // state.active appears. Eliminates 60 Hz idle wake-ups.
         //
-        // Deliberately NOT gated on state.marker: a no-GPS trip never creates
-        // one (refreshMap bails before marker creation), and the old
-        // `!state.marker` exit killed the whole loop - including onAfterTick
-        // (driftSyncSlaves), the ONLY continuous master/slave resync during
-        // steady multichannel playback. The marker-specific work skips itself
-        // inside markerTick instead.
+        // Not gated on state.marker: a no-GPS trip never creates one (refreshMap
+        // bails before marker creation), and the marker-specific work skips
+        // itself inside markerTick instead. Playback synchronization does not
+        // run here; the player owns its own cadence.
         if (!state.active) {
             markerRafHandle = null;
             return;
@@ -2961,8 +2956,8 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
         const frameDtMs = Math.min(100, Math.max(1, now - lastFrameMs));
         lastFrameMs = now;
         pendingFrameDtMs += frameDtMs;
-        // Slow lane: drift sync + grace-window countdown at a fixed cadence.
-        if (now - slowLaneLastMs >= DRIFT_SYNC_INTERVAL_MS) {
+        // Slow lane: grace-window countdown at a fixed cadence.
+        if (now - slowLaneLastMs >= SLOW_LANE_INTERVAL_MS) {
             slowLaneLastMs = now;
             // Drain the post-interaction follow grace window, but ONLY while the
             // video is playing and the user is not mid-gesture - a paused
@@ -2973,10 +2968,6 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
                 followResumeRemainingMs = Math.max(0, followResumeRemainingMs - (now - followGraceLastTickMs));
             }
             followGraceLastTickMs = now;
-            // Player hook for master/slave drift sync in multi-channel trips.
-            // No-op on single-channel. Runs even when markerTick skips its map
-            // work (no GPS / GPS window ended) - drift sync needs no marker.
-            markerLoopOnAfterTick?.();
         }
         const frame = followVideoFrame(now);
         if (frame && frame === markerFrame) {

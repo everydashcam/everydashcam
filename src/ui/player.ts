@@ -16,11 +16,13 @@ import { syncCameraFlips } from "./player-camera-flip.js";
 // new file.
 //
 // Public "controller surface" - functions other modules in src/ui/* may call:
-//   - playFrame(tripIdx, frameIdx, startOffsetSec?, autoPlay?, intent?)
+//   - playFrame(tripIdx, frameIdx, startOffsetSec?, autoPlay?)
+//     (its intent argument is internal: natural advances pass "continue")
 //   - playTripEvent(tripIdx, eventIndex)
 //   - seekTripTime(sec)               // trip-relative
 //   - getTripCurrentTime()            // trip-relative
-//   - driftSyncSlaves()               // called by the marker rAF loop
+//   - pausePlayback() lives in playback-pause.ts so surfaces need not import
+//     this module; the player registers its deferred-resume canceller there
 //   - sync*Button() / updatePlayerProgressUi()   // one-shot DOM syncs
 //     (Play, Mute, Speed, Loop, Fullscreen, Capture, Export, plus the
 //     progress UI used by chart/sidebar lifecycle)
@@ -2268,7 +2270,29 @@ function advancePlaybackInterval(): boolean {
     return true;
 }
 
-export function driftSyncSlaves(): void {
+// Drift sync and interval advance run on a cadence of their own while the
+// master plays; a paused player needs neither, and its next 'play' restarts
+// the loop. Playback owns it, so no map state or GPS can stop it.
+const PLAYBACK_SYNC_INTERVAL_MS = 200;
+let playbackSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Starts the playback sync loop unless it runs. It stops itself once no
+ *  trip is active or the master is paused. */
+function ensurePlaybackSyncLoop(): void {
+    if (playbackSyncTimer !== null) return;
+    playbackSyncTimer = setTimeout(playbackSyncTick, PLAYBACK_SYNC_INTERVAL_MS);
+}
+
+function playbackSyncTick(): void {
+    playbackSyncTimer = null;
+    if (!state.active || activePlayer().paused) return;
+    // Export needs the main thread for its worker acks. A hidden tab throttles
+    // timers and media alike; the first tick after its return resyncs.
+    if (!state.transcodeInProgress && !document.hidden) driftSyncSlaves();
+    ensurePlaybackSyncLoop();
+}
+
+function driftSyncSlaves(): void {
     const master = activePlayer();
     if (master.paused || master.readyState < 2) return;
     if (advancePlaybackInterval()) return;
@@ -2712,6 +2736,7 @@ export function initPlayer(): void {
     onActivePlayerEvent("play", () => {
         isPlaybackIntended = true;
         syncPreviewThrottle();
+        ensurePlaybackSyncLoop();
         forEachAttachedSlave((s, ch) => {
             // A held camera still draining its last frames finishes them; one
             // that already ended stays on its last frame, as play() would
