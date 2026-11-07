@@ -319,8 +319,12 @@
 }
 
 /* UX-24: explicit user override. Beats prefers-color-scheme because
-   class specificity > media-query (given equal structure otherwise). */
+   class specificity > media-query (given equal structure otherwise).
+   color-scheme follows the chosen theme: the "light dark" meta in index.html
+   alone lets native checkboxes, selects and scrollbars follow the system
+   theme instead. */
 html.dc-light {
+    color-scheme: light;
     --bg: var(--dc-bone);
     --bg-elev: var(--dc-white);
     --bg-elev-2: var(--dc-bone-2);
@@ -345,6 +349,7 @@ html.dc-light {
 /* dc-dark - forced dark even on a light system theme. We set the vars
    from :root explicitly to beat the prefers-color-scheme: light above. */
 html.dc-dark {
+    color-scheme: dark;
     --bg: var(--dc-black);
     --bg-elev: var(--dc-ash-1);
     --bg-elev-2: var(--dc-ash-2);
