@@ -66,7 +66,8 @@ export interface CaptureClock {
     getTripStartUtcSec: () => number | null;
     getTripCurrentSec: () => number;
     /** Content second of the frame a camera presents; `mediaTime` is the
-     *  presentation time the compositor reported for it, when known. */
+     *  presentation time the compositor reported for it, when known. Called
+     *  when the camera's pixels are copied, so it describes those pixels. */
     getFrameContentSec: (channel: Channel, mediaTime?: number) => number | null;
 }
 
@@ -82,6 +83,15 @@ interface SettledFrame {
     src: string;
     /** Presentation time the compositor reported, when it did. */
     mediaTime: number | undefined;
+    /** Media position when the frame was confirmed. */
+    position: number;
+}
+
+/** One camera's pixels, copied together with the time of the frame they show. */
+interface FrameSnapshot {
+    pixels: HTMLCanvasElement;
+    /** Content second of the copied frame, or null when it is unknown. */
+    contentSec: number | null;
 }
 
 /** A rendered still and where it would be saved. */
@@ -189,32 +199,79 @@ async function renderStill(
         }
         frames.set(channel, frame);
     }
-    // A video may have been swapped during the waits (trip or channel switch,
-    // preload slot promotion). Drawing it would capture a black or wrong-trip
-    // frame under a filename resolved for the new state; capture is a manual
-    // action, the user can retry on the live elements.
-    if (activeTrip() !== trip || state.exportModeOpen !== isExportMode || ![...frames].every(isStillCurrent)) {
-        log.warn("capture skipped: active video changed during readiness wait", ctxLog);
+    // The waits above last as long as the slowest camera and the fonts, and a
+    // playing camera moves on meanwhile. The still is drawn from copies taken
+    // after them, each paired with the time of the frame it holds, so privacy
+    // zones and overlays describe the very pixels saved.
+    const copies = await Promise.all(candidates.map((channel) => snapshotFrame(channel, frames.get(channel)!, clock)));
+    const snapshots = new Map<Channel, FrameSnapshot>();
+    for (const [index, channel] of candidates.entries()) {
+        const snapshot = copies[index];
+        if (snapshot) snapshots.set(channel, snapshot);
+    }
+    let canvas: HTMLCanvasElement | null = null;
+    try {
+        if (snapshots.size < candidates.length) {
+            // A camera switched source or started seeking before its copy
+            // (trip or channel switch, preload slot promotion, a user seek).
+            // Capture is a manual action, the user can retry on the live elements.
+            log.warn("capture skipped: camera frame changed before it was copied", ctxLog);
+        } else if (activeTrip() !== trip || state.exportModeOpen !== isExportMode) {
+            log.warn("capture skipped: active video changed during readiness wait", ctxLog);
+        } else {
+            canvas = drawStill(content, trip, isExportMode, exportOverlays, snapshots, ctxLog);
+        }
+    } finally {
+        releaseSnapshots(snapshots.values());
+    }
+    if (!canvas) return null;
+
+    const filename = makeStillFilename(
+        clock.getTripStartUtcSec(),
+        clock.getTripCurrentSec(),
+        trip.cameraTzSec ?? null,
+        content.kind === "camera" ? content.channel : "frame",
+    );
+    const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, mime, mime === "image/jpeg" ? JPEG_QUALITY : undefined),
+    );
+    if (!blob) {
+        log.warn("capture skipped: toBlob returned null", { ...ctxLog, canvasW: canvas.width, canvasH: canvas.height });
         return null;
     }
+    return { blob, filename };
+}
+
+/**
+ * Composes the still from the camera copies on a new canvas. Returns null when
+ * nothing can be drawn (frame time unknown in export mode, nothing to lay out,
+ * no 2d context, drawing threw); each cause is logged.
+ */
+function drawStill(
+    content: StillContent,
+    trip: Trip,
+    isExportMode: boolean,
+    exportOverlays: ExportOverlays | null,
+    snapshots: ReadonlyMap<Channel, FrameSnapshot>,
+    ctxLog: Record<string, unknown>,
+): HTMLCanvasElement | null {
     const contentSecs = new Map<Channel, number>();
-    for (const [channel, frame] of frames) {
-        const sec = clock.getFrameContentSec(channel, frame.mediaTime);
-        if (sec !== null) contentSecs.set(channel, sec);
+    for (const [channel, snapshot] of snapshots) {
+        if (snapshot.contentSec !== null) contentSecs.set(channel, snapshot.contentSec);
     }
     // Privacy zones are placed by the content time of the frame each camera
     // shows. Without it the zones of export mode could miss the frame.
-    if (isExportMode && contentSecs.size < frames.size) {
+    if (isExportMode && contentSecs.size < snapshots.size) {
         log.warn("capture skipped: displayed frame time unavailable", ctxLog);
         return null;
     }
 
     const plan =
         content.kind === "camera"
-            ? cameraPlan(content.channel, frames)
+            ? cameraPlan(content.channel, snapshots)
             : isExportMode
-              ? exportFramePlan(trip, frames, contentSecs)
-              : viewerPlan(frames);
+              ? exportFramePlan(trip, snapshots, contentSecs)
+              : viewerPlan(snapshots);
     if (!plan) {
         log.warn("capture skipped: nothing to lay out", ctxLog);
         return null;
@@ -230,10 +287,10 @@ async function renderStill(
     }
     const cameras: Partial<Record<Channel, CompositionCamera>> = {};
     for (const tile of plan.layout.tiles) {
-        const frame = frames.get(tile.channel);
+        const snapshot = snapshots.get(tile.channel);
         const sec = contentSecs.get(tile.channel);
         cameras[tile.channel] = {
-            sample: frame && plan.presentChannels.has(tile.channel) ? videoElementFrame(frame.video) : null,
+            sample: snapshot && plan.presentChannels.has(tile.channel) ? copiedFrame(snapshot.pixels) : null,
             crop: plan.crops[tile.channel] ?? null,
             flip: cameraFlipForChannel(tile.channel, trip),
             // In export mode the tiles preview the redaction, so the still must
@@ -264,21 +321,7 @@ async function renderStill(
         log.error("capture failed: drawing threw", e);
         return null;
     }
-
-    const filename = makeStillFilename(
-        clock.getTripStartUtcSec(),
-        clock.getTripCurrentSec(),
-        trip.cameraTzSec ?? null,
-        content.kind === "camera" ? content.channel : "frame",
-    );
-    const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, mime, mime === "image/jpeg" ? JPEG_QUALITY : undefined),
-    );
-    if (!blob) {
-        log.warn("capture skipped: toBlob returned null", { ...ctxLog, canvasW: canvas.width, canvasH: canvas.height });
-        return null;
-    }
-    return { blob, filename };
+    return canvas;
 }
 
 /**
@@ -304,11 +347,11 @@ interface StillPlan {
     overlaySec: number | null;
 }
 
-function cameraPlan(channel: Channel, frames: ReadonlyMap<Channel, SettledFrame>): StillPlan | null {
-    const frame = frames.get(channel);
-    if (!frame) return null;
+function cameraPlan(channel: Channel, snapshots: ReadonlyMap<Channel, FrameSnapshot>): StillPlan | null {
+    const snapshot = snapshots.get(channel);
+    if (!snapshot) return null;
     return {
-        layout: singleCameraStill(channel, frame.video.videoWidth, frame.video.videoHeight),
+        layout: singleCameraStill(channel, snapshot.pixels.width, snapshot.pixels.height),
         presentChannels: new Set([channel]),
         crops: {},
         backdrop: null,
@@ -323,14 +366,14 @@ function cameraPlan(channel: Channel, frames: ReadonlyMap<Channel, SettledFrame>
  * pixels. Otherwise the cameras as arranged, the first one with a picture at
  * its own resolution.
  */
-function viewerPlan(frames: ReadonlyMap<Channel, SettledFrame>): StillPlan | null {
+function viewerPlan(snapshots: ReadonlyMap<Channel, FrameSnapshot>): StillPlan | null {
     const zoomed = zoomedCameraView();
     if (zoomed) {
-        const frame = frames.get(zoomed.channel);
-        if (!frame) return null;
+        const snapshot = snapshots.get(zoomed.channel);
+        if (!snapshot) return null;
         const { share } = zoomed;
         return {
-            layout: singleCameraStill(zoomed.channel, frame.video.videoWidth, frame.video.videoHeight, share),
+            layout: singleCameraStill(zoomed.channel, snapshot.pixels.width, snapshot.pixels.height, share),
             presentChannels: new Set([zoomed.channel]),
             crops: { [zoomed.channel]: { xPct: share.x, yPct: share.y, wPct: share.w, hPct: share.h } },
             backdrop: null,
@@ -342,14 +385,14 @@ function viewerPlan(frames: ReadonlyMap<Channel, SettledFrame>): StillPlan | nul
     if (!view) return null;
     // The frames were settled for a zoomed view that has been reset since:
     // the other cameras would come out black.
-    if (view.layout.tiles.some((tile) => isCameraOnGrid(tile.channel) && !frames.has(tile.channel))) return null;
-    const lead = view.layout.tiles.find((tile) => frames.has(tile.channel));
+    if (view.layout.tiles.some((tile) => isCameraOnGrid(tile.channel) && !snapshots.has(tile.channel))) return null;
+    const lead = view.layout.tiles.find((tile) => snapshots.has(tile.channel));
     if (!lead) return null;
-    const layout = viewerStill(view.request, view.layout, lead.channel, frames.get(lead.channel)!.video.videoWidth);
+    const layout = viewerStill(view.request, view.layout, lead.channel, snapshots.get(lead.channel)!.pixels.width);
     if (!layout) return null;
     return {
         layout,
-        presentChannels: new Set(frames.keys()),
+        presentChannels: new Set(snapshots.keys()),
         crops: {},
         backdrop: null,
         fill: "black",
@@ -365,7 +408,7 @@ function viewerPlan(frames: ReadonlyMap<Channel, SettledFrame>): StillPlan | nul
  */
 function exportFramePlan(
     trip: Trip,
-    frames: ReadonlyMap<Channel, SettledFrame>,
+    snapshots: ReadonlyMap<Channel, FrameSnapshot>,
     contentSecs: ReadonlyMap<Channel, number>,
 ): StillPlan | null {
     const master = effectiveMasterChannel();
@@ -395,7 +438,7 @@ function exportFramePlan(
     });
     if (!span) return null;
     const present = new Set<Channel>();
-    for (const channel of frames.keys()) {
+    for (const channel of snapshots.keys()) {
         if (span.presence[channel] !== "absent") present.add(channel);
     }
     return {
@@ -457,16 +500,76 @@ function drawExportOverlays(
     if (watermark) drawWatermark(ctx, width, height, watermark);
 }
 
-/** A playing <video> as a composition picture. Its pixels are opaque, but the
- *  format is unknown, so the backdrop is still painted under it (cheap for a
- *  single frame). */
-function videoElementFrame(video: HTMLVideoElement): CompositionFrame {
+/** A camera's copied frame as a composition picture. Its pixels are opaque,
+ *  but the format is unknown, so the backdrop is still painted under it
+ *  (cheap for a single frame). */
+function copiedFrame(pixels: HTMLCanvasElement): CompositionFrame {
     return {
-        displayWidth: video.videoWidth,
-        displayHeight: video.videoHeight,
+        displayWidth: pixels.width,
+        displayHeight: pixels.height,
         format: null,
-        draw: (context, sx, sy, sw, sh, dx, dy, dw, dh) => context.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh),
+        draw: (context, sx, sy, sw, sh, dx, dy, dw, dh) => context.drawImage(pixels, sx, sy, sw, sh, dx, dy, dw, dh),
     };
+}
+
+/**
+ * Copies the pixels a settled camera shows, together with the content second
+ * of that frame. A playing camera is copied inside a frame callback, from the
+ * frame the callback reports. The rVFC draft pairs a callback's drawing with
+ * its frame only as a best effort; drawing in the callback is the API's own
+ * per-frame use case, and no engine offers a stricter pairing for a <video>.
+ * A camera that presents no new frame within the wait (paused, stalled) keeps
+ * its pixels and is copied at once. Engines without frame callbacks report
+ * only the media clock, so there a playing camera's time is approximate.
+ * Resolves null when the camera no longer shows the settled source, is
+ * seeking, or has no decoded frame.
+ */
+function snapshotFrame(channel: Channel, frame: SettledFrame, clock: CaptureClock): Promise<FrameSnapshot | null> {
+    const { video } = frame;
+    const copy = (mediaTime: number | undefined): FrameSnapshot | null => {
+        // A seek in flight displays older pixels than its target.
+        if (video.seeking || video.readyState < 2 || !isStillCurrent([channel, frame])) return null;
+        const pixels = copyVideoPixels(video);
+        return pixels ? { pixels, contentSec: clock.getFrameContentSec(channel, mediaTime) } : null;
+    };
+    // The PTS confirmed while settling describes the pixels only while the
+    // camera stays where it was; after a move the compositor's latest frame does.
+    const heldFrameTime = (): number | undefined =>
+        video.currentTime === frame.position ? frame.mediaTime : undefined;
+    if (video.paused || typeof video.requestVideoFrameCallback !== "function") {
+        return Promise.resolve(copy(heldFrameTime()));
+    }
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            video.cancelVideoFrameCallback(callbackId);
+            resolve(copy(heldFrameTime()));
+        }, FRAME_CALLBACK_WAIT_MS);
+        const callbackId = video.requestVideoFrameCallback((_, metadata) => {
+            clearTimeout(timer);
+            resolve(copy(metadata.mediaTime));
+        });
+    });
+}
+
+/** Copies a video's current frame at its own resolution. */
+function copyVideoPixels(video: HTMLVideoElement): HTMLCanvasElement | null {
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas;
+}
+
+/** Frees the copies' pixel memory without waiting for garbage collection:
+ *  WebKit caps the total canvas memory of a page, and a still holds a
+ *  full-resolution copy of every camera. */
+function releaseSnapshots(snapshots: Iterable<FrameSnapshot>): void {
+    for (const { pixels } of snapshots) {
+        pixels.width = 0;
+        pixels.height = 0;
+    }
 }
 
 /** True when the camera still shows the element and file its frame was settled on. */
@@ -533,7 +636,7 @@ async function settleCurrentFrame(
     // new frame: the frame would then stay unconfirmed (player-frame-time
     // keeps it pending), and an export-mode still would have no frame time.
     if (video.paused && !video.seeking && isFrameSettled(channel)) {
-        return { video, file, src, mediaTime: undefined };
+        return { video, file, src, mediaTime: undefined, position: video.currentTime };
     }
 
     let mediaTime: number | undefined;
@@ -594,7 +697,7 @@ async function settleCurrentFrame(
         log.warn("capture: camera still seeking", ctxLog);
         return null;
     }
-    return { video, file, src, mediaTime };
+    return { video, file, src, mediaTime, position: video.currentTime };
 }
 
 /**

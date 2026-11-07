@@ -540,6 +540,27 @@ test.describe("player", () => {
         });
     });
 
+    test("S in export mode during playback saves the frame without stopping it", async ({ page }) => {
+        // Every camera plays on through the capture waits, so each one is
+        // copied from a presented frame together with that frame's time.
+        await openExport(page, false);
+        const master = page.locator(`.video-tile.active ${LIVE_VIDEO}`);
+        if (await master.evaluate((video: HTMLVideoElement) => video.paused))
+            await page.locator("#player-play").click();
+        await expect.poll(() => masterVideoTime(page)).toBeGreaterThan(0.05);
+        const [main] = await visibleCameraOrder(page);
+        const mainSize = await cameraVideoSize(page, main!);
+        const even = (n: number): number => n - (n % 2);
+
+        const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+        await page.keyboard.press("s");
+        expect(await jpegSize(await downloadPromise)).toEqual({
+            width: even(mainSize.width),
+            height: even(mainSize.height),
+        });
+        expect(await master.evaluate((video: HTMLVideoElement) => video.paused)).toBe(false);
+    });
+
     test("a click on a smaller camera makes it the main one and the sound follows it", async ({ page }) => {
         const front = page.locator('.video-tile[data-channel="front"]');
         const rear = page.locator('.video-tile[data-channel="rear"]');

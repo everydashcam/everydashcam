@@ -117,6 +117,7 @@ vi.mock("./state.js", () => ({
     visibleChannels: () => mocks.visible,
 }));
 
+import type { CompositionFrame } from "../transcode/compose.js";
 import { type CaptureClock, captureStill } from "./player-capture.js";
 
 const VIEW = { kind: "view" } as const;
@@ -125,41 +126,76 @@ function clock(tripSec: number, frameSec: CaptureClock["getFrameContentSec"]): C
     return { getTripStartUtcSec: () => 0, getTripCurrentSec: () => tripSec, getFrameContentSec: frameSec };
 }
 
-function stubCaptureCanvas(): { canvas: { width: number; height: number }; toBlobType: () => string | undefined } {
+interface StubCanvas {
+    width: number;
+    height: number;
+    /** What was drawn onto the canvas, and whether inside a frame callback. */
+    draws: { source: unknown; isInFrameCallback: boolean }[];
+}
+
+let isInFrameCallback = false;
+
+/** Canvases the capture creates: one copy per camera, then the still itself. */
+function stubCaptureCanvas(): {
+    output: () => StubCanvas;
+    copyOf: (video: FakeVideo) => StubCanvas | undefined;
+    toBlobType: () => string | undefined;
+} {
     let lastType: string | undefined;
-    const canvas = {
-        width: 0,
-        height: 0,
-        getContext: () => ({}),
-        toBlob: (callback: (blob: Blob) => void, type?: string) => {
-            lastType = type;
-            callback(new Blob(["image"], { type }));
-        },
-    };
+    const created: StubCanvas[] = [];
     vi.stubGlobal("document", {
         createElement: (tag: string) => {
             expect(tag).toBe("canvas");
+            const canvas = {
+                width: 0,
+                height: 0,
+                draws: [] as StubCanvas["draws"],
+                getContext: () => ({
+                    drawImage: (source: unknown) => canvas.draws.push({ source, isInFrameCallback }),
+                }),
+                toBlob: (callback: (blob: Blob) => void, type?: string) => {
+                    lastType = type;
+                    callback(new Blob(["image"], { type }));
+                },
+            };
+            created.push(canvas);
             return canvas;
         },
     });
-    return { canvas, toBlobType: () => lastType };
+    return {
+        output: () => created.at(-1)!,
+        copyOf: (video) => created.find((canvas) => canvas.draws[0]?.source === video),
+        toBlobType: () => lastType,
+    };
 }
 
-function acknowledgeFrame(video: FakeVideo, before?: () => void): void {
+/** Presents a frame for every frame callback request; `call` counts requests from 0. */
+function acknowledgeFrame(
+    video: FakeVideo,
+    before?: (call: number) => void,
+    mediaTimeOf: (call: number) => number = () => 1.25,
+): void {
+    let call = 0;
     video.requestVideoFrameCallback = (callback) => {
+        const current = call++;
         queueMicrotask(() => {
-            before?.();
-            callback(0, {
-                mediaTime: 1.25,
-                expectedDisplayTime: 0,
-                presentationTime: 0,
-                presentedFrames: 1,
-                width: 100,
-                height: 60,
-                processingDuration: 0,
-            });
+            before?.(current);
+            isInFrameCallback = true;
+            try {
+                callback(0, {
+                    mediaTime: mediaTimeOf(current),
+                    expectedDisplayTime: 0,
+                    presentationTime: 0,
+                    presentedFrames: current + 1,
+                    width: 100,
+                    height: 60,
+                    processingDuration: 0,
+                });
+            } finally {
+                isInFrameCallback = false;
+            }
         });
-        return 1;
+        return current + 1;
     };
 }
 
@@ -374,15 +410,19 @@ describe("captureStill privacy blur", () => {
         // A playing camera is always nudged to decode its current frame.
         mocks.players.front!.paused = false;
         vi.useFakeTimers();
-        stubCaptureCanvas();
+        const canvases = stubCaptureCanvas();
         const video = mocks.players.front!;
-        acknowledgeFrame(video, () => {
-            video.seeking = true;
-        });
+        acknowledgeFrame(
+            video,
+            (call) => {
+                if (call === 0) video.seeking = true;
+            },
+            (call) => (call === 0 ? 1.25 : 1.5),
+        );
         const effective = [{ id: "manual" }];
         mocks.activeEffectiveBlurRegions.mockReturnValue(effective);
         mocks.resolveRegionBlursAt.mockReturnValue([{ style: "fill" }]);
-        const contentTime = vi.fn((_channel: string, time?: number) => (time === undefined ? 3.25 : time + 2));
+        const contentTime = vi.fn((_channel: string, time?: number) => (time === undefined ? null : time + 2));
         const pending = captureStill(VIEW, "download", clock(40, contentTime));
         await Promise.resolve();
         await Promise.resolve();
@@ -391,34 +431,97 @@ describe("captureStill privacy blur", () => {
         video.dispatchEvent(new Event("seeked"));
         await pending;
 
-        expect(contentTime).toHaveBeenCalledWith("front", undefined);
-        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 3.25, -Infinity);
+        expect(contentTime, "the frame shown during the seek is not used").not.toHaveBeenCalledWith("front", 1.25);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith(effective, "front", 3.5, -Infinity);
+        expect(canvases.copyOf(video)?.draws[0]?.isInFrameCallback, "copied inside the frame callback").toBe(true);
         expect(mocks.downloadBlob).toHaveBeenCalledOnce();
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it("uses the latest presented frame when the same video advances before seeked", async () => {
-        // A playing camera is always nudged to decode its current frame.
-        mocks.players.front!.paused = false;
-        stubCaptureCanvas();
-        const video = mocks.players.front!;
-        acknowledgeFrame(video, () => {
-            video.seeking = true;
-        });
-        let currentFrameSec = 3.25;
-        const contentTime = vi.fn((_channel: string, time?: number) =>
-            time === undefined ? currentFrameSec : time + 2,
+    it("pairs a playing camera's pixels with their own PTS after waiting for a slower camera", async () => {
+        mocks.visible = ["front", "rear"];
+        const canvases = stubCaptureCanvas();
+        const front = mocks.players.front!;
+        const rear = mocks.players.rear!;
+        front.paused = false;
+        // The front camera confirms a frame at once and plays on while the
+        // rear camera loads, so the copy holds a later frame.
+        acknowledgeFrame(front, undefined, (call) => (call === 0 ? 1.25 : 2));
+        rear.readyState = 0;
+        const contentTime = vi.fn((channel: string, time?: number) =>
+            time === undefined ? (channel === "rear" ? 5 : null) : time + 2,
         );
         const pending = captureStill(VIEW, "download", clock(40, contentTime));
         await Promise.resolve();
         await Promise.resolve();
-        currentFrameSec = 4.5;
-        video.seeking = false;
-        video.dispatchEvent(new Event("seeked"));
+        rear.readyState = 2;
+        rear.dispatchEvent(new Event("loadeddata"));
         await pending;
 
-        expect(mocks.drawCameraComposition).toHaveBeenCalledOnce();
-        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 4.5, -Infinity);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 4, -Infinity);
+        expect(mocks.resolveRegionBlursAt).not.toHaveBeenCalledWith([], "front", 3.25, -Infinity);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "rear", 5, -Infinity);
+        const frontCopy = canvases.copyOf(front);
+        expect(frontCopy?.draws[0]?.isInFrameCallback, "copied inside the frame callback").toBe(true);
+        // The still is composed from the copy, never from the live element.
+        const target = { drawImage: vi.fn() };
+        (drawnCameras().front!.sample as CompositionFrame).draw(
+            target as unknown as CanvasRenderingContext2D,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            1,
+            1,
+        );
+        expect(target.drawImage.mock.calls[0]?.[0]).toBe(frontCopy);
+        expect(frontCopy, "the copy's memory is released").toMatchObject({ width: 0, height: 0 });
+        expect(mocks.downloadBlob).toHaveBeenCalledOnce();
+    });
+
+    it("drops a paused camera's confirmed PTS once it moved during the wait", async () => {
+        mocks.visible = ["front", "rear"];
+        stubCaptureCanvas();
+        const front = mocks.players.front!;
+        const rear = mocks.players.rear!;
+        acknowledgeFrame(front);
+        rear.readyState = 0;
+        let frontLiveSec: number | null = null;
+        const contentTime = vi.fn((channel: string, time?: number) =>
+            time === undefined ? (channel === "rear" ? 5 : frontLiveSec) : time + 2,
+        );
+        const pending = captureStill(VIEW, "download", clock(40, contentTime));
+        await Promise.resolve();
+        await Promise.resolve();
+        // A seek finished while the rear camera loaded.
+        front.currentTime = 3;
+        frontLiveSec = 9;
+        rear.readyState = 2;
+        rear.dispatchEvent(new Event("loadeddata"));
+        await pending;
+
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 9, -Infinity);
+        expect(mocks.downloadBlob).toHaveBeenCalledOnce();
+    });
+
+    it("copies a playing camera that presents no new frame within the wait with its confirmed PTS", async () => {
+        vi.useFakeTimers();
+        stubCaptureCanvas();
+        const front = mocks.players.front!;
+        front.paused = false;
+        acknowledgeFrame(front);
+        const request = front.requestVideoFrameCallback!;
+        // Only the decode nudge is acknowledged; playback then stalls.
+        front.requestVideoFrameCallback = vi.fn().mockImplementationOnce(request).mockReturnValue(7);
+        const contentTime = vi.fn((_channel: string, time?: number) => (time === undefined ? null : time + 2));
+        const pending = captureStill(VIEW, "download", clock(40, contentTime));
+        await vi.advanceTimersByTimeAsync(250);
+        await pending;
+
+        expect(front.cancelVideoFrameCallback).toHaveBeenCalledWith(7);
+        expect(mocks.resolveRegionBlursAt).toHaveBeenCalledWith([], "front", 3.25, -Infinity);
         expect(mocks.downloadBlob).toHaveBeenCalledOnce();
     });
 
@@ -428,8 +531,8 @@ describe("captureStill privacy blur", () => {
         vi.useFakeTimers();
         stubCaptureCanvas();
         const video = mocks.players.front!;
-        acknowledgeFrame(video, () => {
-            video.seeking = true;
+        acknowledgeFrame(video, (call) => {
+            if (call === 0) video.seeking = true;
         });
         const pending = captureStill(
             VIEW,
@@ -454,8 +557,8 @@ describe("captureStill privacy blur", () => {
         vi.useFakeTimers();
         stubCaptureCanvas();
         const video = mocks.players.front!;
-        acknowledgeFrame(video, () => {
-            video.seeking = true;
+        acknowledgeFrame(video, (call) => {
+            if (call === 0) video.seeking = true;
         });
         const pending = captureStill(
             VIEW,
@@ -477,8 +580,8 @@ describe("captureStill privacy blur", () => {
         mocks.players.front!.paused = false;
         vi.useFakeTimers();
         stubCaptureCanvas();
-        acknowledgeFrame(mocks.players.front!, () => {
-            mocks.players.front!.seeking = true;
+        acknowledgeFrame(mocks.players.front!, (call) => {
+            if (call === 0) mocks.players.front!.seeking = true;
         });
         const pending = captureStill(
             VIEW,
@@ -517,7 +620,7 @@ describe("captureStill content", () => {
             minThumbHeight: VIEWER_MIN_THUMB_HEIGHT_PX,
         };
         mocks.viewerCameraLayout.mockReturnValue({ request, layout: computeCameraLayout(request) });
-        const { canvas } = stubCaptureCanvas();
+        const canvases = stubCaptureCanvas();
 
         await captureStill(
             VIEW,
@@ -528,7 +631,7 @@ describe("captureStill content", () => {
         const tiles = mocks.drawCameraComposition.mock.lastCall![1] as { channel: string; w: number }[];
         expect(tiles.map((tile) => tile.channel)).toEqual(["front", "rear"]);
         expect(tiles[0]!.w).toBeCloseTo(100, 0);
-        expect(canvas.width).toBeGreaterThanOrEqual(100);
+        expect(canvases.output().width).toBeGreaterThanOrEqual(100);
         expect(drawnCameras().rear!.sample, "the smaller camera is drawn too").not.toBeNull();
         expect(drawnCameras().front!.regionBlurs, "viewing shows no privacy zones").toBeNull();
         expect(mocks.resolveRegionBlursAt).not.toHaveBeenCalled();
@@ -537,7 +640,7 @@ describe("captureStill content", () => {
     it("saves only the zoomed part of a zoomed camera, in its recorded pixels", async () => {
         mocks.visible = ["front", "rear"];
         mocks.zoomedCameraView.mockReturnValue({ channel: "front", share: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 } });
-        const { canvas } = stubCaptureCanvas();
+        const canvases = stubCaptureCanvas();
 
         await captureStill(
             VIEW,
@@ -545,7 +648,7 @@ describe("captureStill content", () => {
             clock(1, () => 3),
         );
 
-        expect(canvas).toMatchObject({ width: 50, height: 30 });
+        expect(canvases.output()).toMatchObject({ width: 50, height: 30 });
         expect(Object.keys(drawnCameras())).toEqual(["front"]);
         expect(drawnCameras().front!.crop).toEqual({ xPct: 0.25, yPct: 0.25, wPct: 0.5, hPct: 0.5 });
     });
@@ -602,7 +705,7 @@ describe("captureStill content", () => {
     it("saves one camera's whole picture at its own resolution", async () => {
         mocks.visible = ["front", "rear"];
         mocks.zoomedCameraView.mockReturnValue({ channel: "rear", share: { x: 0, y: 0, w: 0.5, h: 0.5 } });
-        const { canvas } = stubCaptureCanvas();
+        const canvases = stubCaptureCanvas();
 
         await captureStill(
             { kind: "camera", channel: "rear" },
@@ -610,7 +713,7 @@ describe("captureStill content", () => {
             clock(1, () => 3),
         );
 
-        expect(canvas).toMatchObject({ width: 50, height: 30 });
+        expect(canvases.output()).toMatchObject({ width: 50, height: 30 });
         expect(drawnCameras().rear!.crop, "the camera item ignores the zoom").toBeNull();
     });
 });
