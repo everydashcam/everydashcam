@@ -1780,15 +1780,17 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
 // directly without cycling.
 
 /**
- * Wall-clock second of the playback position in `trip`, or null for a trip
- * without footage. The position is the player's, not the media element's: a
+ * Wall-clock second of the playback position in `trip`, or null without a
+ * valid active frame. The position is the player's, not the media element's: a
  * seek into another file or an MSE feed restart leaves the element at 0
  * until the new data lands, and reading it would show the start of the file
  * before the target. The shared projection stretches a time-lapse clip over
  * the real time it covers, as the readouts and the chart do.
  */
 function currentRealUtc(trip: Trip): number | null {
-    if (trip.timeline.segments.length === 0) return null;
+    // A stale active frame (the trip list rebuilt under it) reports position
+    // 0; leave the marker where it is until the player settles.
+    if (!state.active || !trip.timeline.segments[state.active.frame]) return null;
     return contentToWallUtc(trip.timeline, callbacks.getTripCurrentTime());
 }
 
