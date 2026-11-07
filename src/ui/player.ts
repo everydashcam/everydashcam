@@ -754,20 +754,20 @@ export function playFrame(
     // choice is preserved - the next frame that has the channel restores it
     // automatically.
 
-    // Close the drawer in mobile mode - user picked a trip and wants to watch.
-    if (dom.sidebar.dataset.drawerOpen === "true") setDrawerOpen(false);
-
     const tripChanged = !state.active || state.active.trip !== tripIdx;
     const prevFrameIdx = state.active ? state.active.frame : -1;
     const prevActive = state.active ? { trip: state.active.trip, frame: state.active.frame } : null;
 
-    // Playback is taking over: clear the click "opening" spinner unconditionally.
-    // Must run for BOTH a trip change AND a re-activation of the already-open trip
-    // (clicking another clip row in it) - the latter takes the no-tripChanged
-    // path below and would otherwise leave the spinner stuck on the active card.
-    // clearOpeningTrip is global + idempotent; the trip-change highlight below
-    // then touches an already-spinner-free card.
-    clearOpeningTrip();
+    // An explicit move hands the screen to the viewer: the mobile drawer
+    // closes, and the click "opening" spinner clears for BOTH a trip change
+    // AND a re-activation of the already-open trip (clicking another clip row
+    // in it), whose no-tripChanged path below would otherwise leave it stuck.
+    // Playback reaching the next clip on its own leaves both alone: the user
+    // may be browsing the list, or opening another trip, while this one plays.
+    if (intent === "jump") {
+        if (dom.sidebar.dataset.drawerOpen === "true") setDrawerOpen(false);
+        clearOpeningTrip();
+    }
 
     // Any explicit playFrame invalidates the preload slot: a trip change certainly,
     // and a manual seek to another frame too - the preload may have been for the

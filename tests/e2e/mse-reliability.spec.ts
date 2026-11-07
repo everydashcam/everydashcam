@@ -9,6 +9,7 @@ import {
     gotoApp,
     installExportCapture,
     loadTrip,
+    MOBILE,
     mockDirectoryPicker,
     openExport,
     pausePlayback,
@@ -489,6 +490,20 @@ test("joins the next MP4 pair from warm slots after a paired tail", async ({ pag
             .sort(),
     );
     expect(promoted).toEqual(["20260904_202855F.MP4", "20260904_202855R.MP4"]);
+});
+
+test("keeps the mobile drawer open while playback crosses clip boundaries", async ({ page }) => {
+    // Every paired boundary goes through the frame transition. Only an
+    // explicit pick may close the drawer the user is browsing in.
+    await page.setViewportSize(MOBILE);
+    await openPairedTailTrip(page, 1.05, "mp4");
+    const sidebar = page.locator(".sidebar").first();
+    if ((await sidebar.getAttribute("data-drawer-open")) !== "true") await page.locator("#topbar-burger").click();
+    await expect(sidebar).toHaveAttribute("data-drawer-open", "true");
+    await expect
+        .poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame), { timeout: 20_000 })
+        .toBeGreaterThanOrEqual(2);
+    await expect(sidebar).toHaveAttribute("data-drawer-open", "true");
 });
 
 test("moves past a paired tail that its camera already played as a slave", async ({ page }) => {
