@@ -434,6 +434,11 @@
     position: relative;
     display: inline-flex;
 }
+/* The Cameras wrap is hidden on single-camera trips; the display above would
+   otherwise beat the hidden attribute. */
+.view-menu-wrap[hidden] {
+    display: none;
+}
 .view-menu-button {
     display: inline-flex;
     align-items: center;

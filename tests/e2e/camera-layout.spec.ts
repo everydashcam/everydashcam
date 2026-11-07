@@ -8,6 +8,7 @@ import {
     DESKTOP,
     MOBILE,
     SAMPLE_70MAI,
+    SAMPLE_NOGPS,
     boxOf,
     expect,
     gotoApp,
@@ -298,6 +299,24 @@ test("on a phone the video area is as tall as the cameras need", async ({ page }
         expectNoOverlap(await tileBoxes(page));
         await shot(page, `camera-layout-05-mobile-${mode}`);
     }
+});
+
+test("a single-camera trip offers no Cameras menu on a desktop or a phone", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_NOGPS);
+    await pausePlayback(page);
+    await expect(page.locator("#player-cameras-wrap")).toHaveAttribute("hidden", "");
+    await expect(page.locator("#player-cameras")).toBeHidden();
+
+    await page.setViewportSize(MOBILE);
+    await expect(page.locator("#player-cameras")).toBeHidden();
+    await page.locator("#player-overflow").click();
+    await expect(page.locator("#player-overflow-menu")).toBeVisible();
+    await expect(page.locator("#player-overflow-menu .overflow-menu-btn").filter({ hasText: "Cameras" })).toHaveCount(
+        0,
+    );
 });
 
 /** A front camera recording 6 s and a rear camera that stops after 2.4 s. */
