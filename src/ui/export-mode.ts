@@ -19,6 +19,7 @@ import { cancelActiveExport } from "./export-flow.js";
 import { closeExportMode, exportPanelState, subscribeExportState } from "./export-state.js";
 import { maybeRunExportTour } from "./onboarding.js";
 import { pausePlayback } from "./playback-pause.js";
+import { resetVideoZoom } from "./player-zoom.js";
 import { state } from "./state.js";
 
 /**
@@ -93,12 +94,11 @@ function syncExportModeChrome(): void {
     document.body.classList.toggle("export-mode", open);
 
     // On entering export mode, reset digital zoom: the crop preview owns the
-    // main-video transform here (player-crop), so a leftover zoom transform
-    // would fight it, and the zoom mini-preview is irrelevant while configuring
-    // the export. Only on the transition - not every subscriber tick.
+    // video transform here (player-crop), so a leftover zoom transform would
+    // fight it, and the zoom mini-preview is irrelevant while configuring the
+    // export. Only on the transition - not every subscriber tick.
     if (isOpening) {
-        state.videoZoom = { scale: 1, offsetX: 0, offsetY: 0 };
-        if (dom.videoMinimap) dom.videoMinimap.hidden = true;
+        resetVideoZoom();
         // First-run onboarding for the export panel. Self-guarded; deferred so
         // export-panel.ts has rendered the options by the time the tour points
         // at them.

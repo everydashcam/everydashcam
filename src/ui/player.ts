@@ -102,13 +102,7 @@ import {
     videoOwnedBlobUrl,
 } from "./player-video-src.js";
 import { nativeSlaveSyncStep, pairedTailHold, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
-import {
-    applyVideoZoom,
-    consumeDragClickSuppress,
-    initPlayerZoom,
-    reclampAndApplyZoom,
-    resetVideoZoom,
-} from "./player-zoom.js";
+import { applyVideoZoom, consumeDragClickSuppress, initPlayerZoom, resetVideoZoom } from "./player-zoom.js";
 import { initPlayerMetrics, refreshMetricsFromActiveFrame, resyncMetricsForTrip } from "./player-metrics.js";
 import { isPreloadReadyForPromotion } from "./player-preload.js";
 import { hasDroppedVideoTrack } from "./native-video-track.js";
@@ -599,8 +593,10 @@ function promotePreloadSlot(ch: Channel, cand: VideoCandidate, positionSec: numb
     // master that starts right after this swap brings the slave along through
     // the play proxy. A promoted master is paused here and stays so.
     if (!activePlayer().paused) preload.play().catch(() => {});
-    // The export crop preview is written onto the physical element.
+    // The export crop preview and the digital zoom are written onto the
+    // physical element, so both follow the camera to its new slot.
     syncCropPreviews();
+    if (state.videoZoom.channel === ch) applyVideoZoom();
     log.info("preload slot promoted", {
         channel: ch,
         file: cand.file.name,
@@ -880,9 +876,7 @@ export function playFrame(
     // whichever channel was master before: the same-source path below then
     // starts it without a load. This is how a natural clip change stays
     // seamless, and a jump that lands in a warm file takes it too.
-    if (!requiresMseBackend(video) && promotePreloadSlot(picked.channel, video, fileOffsetSec)) {
-        if (state.videoZoom.scale > 1) applyVideoZoom();
-    }
+    if (!requiresMseBackend(video)) promotePreloadSlot(picked.channel, video, fileOffsetSec);
 
     // Re-activating an already buffered file changes no src, so there will
     // be no loadedmetadata event to consume pendingPlay/pendingFileOffset below.
@@ -2078,8 +2072,8 @@ function focusLayoutForSlots(slots: number): Layout {
  * start. Native MP4 was unaffected (setVideoSrcFromFile is idempotent per File).
  */
 function toggleViewMode(): void {
-    // Layout changes radically (focus<->split) - zoom is meaningless here;
-    // in split mode tiles are small and zoom is intentionally disabled.
+    // Every tile changes size and place (focus<->split), so kept offsets
+    // would land on an arbitrary part of the frame.
     resetVideoZoom();
     // Pick a layout that matches the requested coarse view mode. Slot count
     // follows the current trip's channel count; setLayoutAndChannels resizes
@@ -2682,9 +2676,8 @@ export function initPlayer(): void {
     let wasExportModeOpen = state.exportModeOpen;
     subscribeExportState(() => {
         syncOutputAspect();
-        // Keep the digital-zoom badge in sync with export mode: it must hide while
-        // the crop editor owns the transform. applyVideoZoom updates the badge then
-        // bails early in export mode (cheap), and re-applies zoom on close.
+        // Keep digital zoom in sync with export mode: badge, preview and
+        // transform stay off while the crop editor is open.
         applyVideoZoom();
         // Warm slots hold decoder sessions the export pipeline needs for
         // itself; release them while export mode is open and warm up again
@@ -2904,10 +2897,6 @@ export function initPlayer(): void {
             dom.player.play().catch(() => {});
         }
         syncPlayButton();
-        // Zoom survives src changes within a trip, but the aspect/frame size
-        // may change on src swap (rare but possible) - clamp offsets to the
-        // new geometry and recompute the minimap frame.
-        reclampAndApplyZoom();
         // Active finished loading metadata - kick preload of the next file so we can swap without a micro-pause on 'ended'.
         // If there is no next frame or master doesn't match, schedulePreloadNext will clean the slot itself.
         schedulePreloadNext();

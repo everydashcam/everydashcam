@@ -120,6 +120,23 @@ export interface CompositionState {
     perSlotPipPositions: ({ xPct: number; yPct: number } | null)[];
 }
 
+/**
+ * Digital zoom of one camera tile. Only one camera is zoomed at a time, so a
+ * single minimap, badge and reset key always refer to the same view.
+ * scale is in [1, 8]; offsetX/offsetY are pixels relative to the tile
+ * (transform-origin = 0 0 on the video element). channel is null exactly when
+ * scale is 1.
+ */
+export interface VideoZoomState {
+    channel: Channel | null;
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+}
+
+/** Unzoomed state. Copy it: state.videoZoom is replaced, never mutated. */
+export const NO_VIDEO_ZOOM: Readonly<VideoZoomState> = { channel: null, scale: 1, offsetX: 0, offsetY: 0 };
+
 export interface AppState {
     gpsLog: ParsedLog | null;
     // Video timing from logs (openpilot qlog), kept across drops with each
@@ -182,13 +199,10 @@ export interface AppState {
     // zoom (wheel/pinch/keyboard/drag/zoom-to-event) is inspection: false, and the
     // window follows the playhead instead of trapping it. Reset with the zoom.
     isPreviewZoom: boolean;
-    // Digital zoom of the active video tile in focus-mode. scale is always in
-    // [1, 8]; offsetX/offsetY are pixel offsets relative to the tile
-    // (transform-origin = 0 0 on the video element). At scale === 1 the
-    // transform is removed entirely. Ephemeral: not persisted, reset on trip
-    // change, channel swap, and focus<->split toggle. Geometry and clamp
-    // details in src/ui/player.ts (computeZoomGeometry / clampZoomOffset).
-    videoZoom: { scale: number; offsetX: number; offsetY: number };
+    // Digital zoom of one camera tile. Ephemeral: not persisted, reset on trip
+    // change, channel reorder and focus<->split toggle. Owned by
+    // src/ui/player-zoom.ts.
+    videoZoom: VideoZoomState;
     followMode: FollowMode;
     // A non-null AbortController marks an active ingest and cancels it on a
     // Cancel click. Its signal is passed to
@@ -328,7 +342,7 @@ export function isPipLayout(layout: Layout): boolean {
 
 /** True for "focus" layouts: a single main tile owns the frame and any extra
  *  channels are pip overlays (single + pip2/pip3/pip4), as opposed to tiled
- *  split layouts (h2/v2/grid/...). Many call sites gate digital zoom, crop and
+ *  split layouts (h2/v2/grid/...). Many call sites gate tile roles, crop and
  *  audio routing on "is this focus or split" - keep that predicate here so it
  *  has one definition. */
 export function isFocusLayout(layout: Layout): boolean {
@@ -478,7 +492,7 @@ export const state: AppState = {
     chartHoverX: null,
     chartZoomed: false,
     isPreviewZoom: false,
-    videoZoom: { scale: 1, offsetX: 0, offsetY: 0 },
+    videoZoom: { ...NO_VIDEO_ZOOM },
     // Default to the 3D "chase" follow on the big map (tilt + buildings + speed-
     // adaptive zoom). The tilt/buildings are engaged when the big map is first
     // shown (see ensureChaseEngaged in map.ts), since the hot follow loop only

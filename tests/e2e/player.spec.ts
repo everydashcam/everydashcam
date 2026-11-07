@@ -99,6 +99,25 @@ async function wheelVideoZoom(page: Page, deltaY: number): Promise<void> {
     await page.mouse.wheel(0, deltaY);
 }
 
+const LIVE_VIDEO = "video:not(.preload-slot):not(.tile-blur-bg)";
+
+function zoomedChannel(page: Page): Promise<string | null> {
+    return page.evaluate(() => window.__everydashcam.state.videoZoom.channel);
+}
+
+/** Zoom transforms written on any camera element, keyed by channel. A slot
+ *  swap must leave exactly the camera's current element transformed. */
+function zoomTransforms(page: Page): Promise<{ channel: string; isLive: boolean }[]> {
+    return page.locator(".video-tile > video:not(.tile-blur-bg)").evaluateAll((videos: HTMLVideoElement[]) =>
+        videos
+            .filter((video) => video.style.getPropertyValue("--video-zoom-transform") !== "")
+            .map((video) => ({
+                channel: video.closest<HTMLElement>(".video-tile")!.dataset.channel!,
+                isLive: !video.classList.contains("preload-slot"),
+            })),
+    );
+}
+
 test.describe("player", () => {
     test.beforeEach(async ({ page }) => {
         await presetLocalStorage(page);
@@ -173,6 +192,100 @@ test.describe("player", () => {
         await expect(page.locator("#video-minimap")).toBeVisible();
         await expect.poll(() => minimapPainted(page)).toBe(true);
         expect(await page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(true);
+    });
+
+    test("a focus thumbnail zooms under the wheel and takes the zoom over from the primary", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        await wheelVideoZoom(page, -120);
+        await expect(page.locator("#video-minimap")).toBeVisible();
+
+        const thumb = page.locator('.video-tile[data-tile-role="thumb-0"]');
+        const thumbChannel = await thumb.getAttribute("data-channel");
+        await thumb.locator(LIVE_VIDEO).hover();
+        await page.mouse.wheel(0, -120);
+        await expect.poll(() => zoomedChannel(page)).toBe(thumbChannel);
+        await expect(thumb).toHaveClass(/\bzoomed\b/);
+        await expect(page.locator(".video-tile.zoomed"), "one camera is zoomed at a time").toHaveCount(1);
+        expect(await zoomTransforms(page)).toEqual([{ channel: thumbChannel, isLive: true }]);
+        await expect(page.locator("#video-minimap"), "a thumbnail is too small to share with the preview").toBeHidden();
+        expect(await minimapBackingWidth(page)).toBe(0);
+
+        await thumb.locator(".zoom-badge").click();
+        await expect.poll(() => zoomedChannel(page)).toBeNull();
+        await expect(page.locator(".zoom-badge")).toHaveCount(0);
+        expect(await zoomTransforms(page)).toEqual([]);
+    });
+
+    test("a split tile zooms, previews and pans the camera under the cursor", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        await page.locator('.top-panel__layout-btn[data-layout="left1right2"]').click();
+        await expect(page.locator("#video-grid")).toHaveAttribute("data-view-mode", "split");
+        const tile = page.locator('.video-tile[data-slot="1"]');
+        const channel = await tile.getAttribute("data-channel");
+        const audioChannel = await page.evaluate(() => window.__everydashcam.state.composition.audioChannel);
+        expect(audioChannel, "the zoomed tile is not the audio source").not.toBe(channel);
+
+        // One wheel event zooms by at most x1.15; four leave room to pan.
+        await tile.locator(LIVE_VIDEO).hover();
+        for (let notch = 0; notch < 4; notch++) await page.mouse.wheel(0, -240);
+        await expect.poll(() => zoomedChannel(page)).toBe(channel);
+        await expect(tile.locator(".zoom-badge")).toBeVisible();
+        const minimap = page.locator("#video-minimap");
+        await expect(minimap).toBeVisible();
+        await expect.poll(() => minimapPainted(page)).toBe(true);
+        const tileBox = await boxOf(page, '.video-tile[data-slot="1"]');
+        const minimapBox = await boxOf(page, "#video-minimap");
+        expect(minimapBox.x, "the preview sits in the zoomed tile").toBeGreaterThanOrEqual(tileBox.x);
+        expect(minimapBox.x + minimapBox.width).toBeLessThanOrEqual(tileBox.x + tileBox.width);
+        expect(minimapBox.y).toBeGreaterThanOrEqual(tileBox.y);
+        expect(minimapBox.y + minimapBox.height).toBeLessThanOrEqual(tileBox.y + tileBox.height);
+
+        const before = await page.evaluate(() => ({ ...window.__everydashcam.state.videoZoom }));
+        const startX = tileBox.x + tileBox.width / 2;
+        const startY = tileBox.y + tileBox.height * 0.7;
+        await page.mouse.move(startX, startY);
+        await page.mouse.down();
+        await page.mouse.move(startX - 40, startY - 20, { steps: 6 });
+        await page.mouse.up();
+        const after = await page.evaluate(() => ({ ...window.__everydashcam.state.videoZoom }));
+        expect(after.channel).toBe(channel);
+        expect(after.offsetX - before.offsetX, "the drag pans the zoomed tile").toBeCloseTo(-40, 0);
+        // A tile click swaps the audio after a double-click guard delay; the
+        // pan's release must not be read as that click.
+        await page.waitForTimeout(400);
+        expect(await page.evaluate(() => window.__everydashcam.state.composition.audioChannel)).toBe(audioChannel);
+    });
+
+    test("a zoomed slave camera keeps its zoom across a clip change", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        const thumb = page.locator('.video-tile[data-tile-role="thumb-0"]');
+        const channel = await thumb.getAttribute("data-channel");
+        const live = thumb.locator(LIVE_VIDEO);
+        const firstSource = await live.evaluate((video: HTMLVideoElement) => video.currentSrc);
+        await live.hover();
+        await page.mouse.wheel(0, -240);
+        await expect.poll(() => zoomedChannel(page)).toBe(channel);
+
+        await page.locator("#player-play").click();
+        await expect
+            .poll(
+                () =>
+                    live.evaluate(
+                        (video: HTMLVideoElement, source) => video.currentSrc !== source && video.readyState >= 2,
+                        firstSource,
+                    ),
+                { message: "the slave camera moves on to its next clip" },
+            )
+            .toBe(true);
+        await pausePlayback(page);
+        expect(await zoomedChannel(page)).toBe(channel);
+        expect(await zoomTransforms(page), "the zoom follows the camera to its current element").toEqual([
+            { channel, isLive: true },
+        ]);
+        await expect(thumb).toHaveClass(/\bzoomed\b/);
     });
 
     test("frame-step buttons step the paused player frame by frame, both ways", { tag: "@golden-playback" }, async ({

@@ -647,10 +647,11 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
     z-index: -1;
 }
 
-/* === Digital zoom on the active video ===
+/* === Digital zoom on a camera tile ===
    Tile state at scale > 1: grab/grabbing cursor, touch-action: none on the
    video so pointer events aren't handed to the browser as scroll/pinch.
-   The transform itself is applied inline via JS (see applyVideoZoom in player.ts). */
+   The transform itself is applied inline via JS (see applyVideoZoom in
+   player-zoom.ts). */
 .video-tile.zoomed video {
     cursor: grab;
     touch-action: none;
@@ -703,12 +704,13 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
         height: 18px;
     }
 }
-/* Pinch entry point: at 1x the active focus video must hand a two-finger pinch to
+/* Pinch entry point: at 1x every camera video must hand a two-finger pinch to
    our JS (player-zoom.ts) instead of letting the browser zoom the whole page.
    pan-y keeps single-finger vertical scroll of the mobile viewer working, while a
    two-finger pinch (not a pan-y gesture) is yielded to us. When zoomed, the
-   .zoomed rule above (touch-action:none) takes over so a single finger pans. */
-.video-grid[data-view-mode="focus"] .video-tile.active:not(.zoomed) video {
+   .zoomed rule above (touch-action:none) takes over so a single finger pans.
+   Export mode is excluded: its tiles carry crop and pip-drag gestures. */
+body:not(.export-mode) .video-tile:not(.zoomed) > video:not(.tile-blur-bg) {
     touch-action: pan-y;
 }
 
@@ -857,17 +859,22 @@ body.export-mode .tile-drag-handle {
     white-space: nowrap;
 }
 
-/* Birds-eye zoom preview: a canvas mirroring the active video + yellow viewport frame on top.
+/* Birds-eye zoom preview: a canvas mirroring the zoomed video + yellow viewport frame on top.
    Absolute inside .video-frame, TOP-RIGHT corner. The top-left is owned by
    the GPS mini-map (map.css .mini-map): its default anchor is baked into the
    drag/persistence math in ui/map.ts, so the zoom preview is the one that
-   yields the corner. In focus mode (the only layout where this shows) the
-   space above the right thumbnail column is empty, so nothing collides here.
-   aspect-ratio is set inline from JS = ${vW}/${vH} of the active video. */
+   yields the corner. For the focus primary the space above the right
+   thumbnail column is empty, so nothing collides here. A zoomed split tile
+   gets the preview in its own corner instead (data-placement="tile" below).
+   aspect-ratio is set inline from JS = ${vW}/${vH} of the zoomed video.
+   The --zoom-minimap-frame-* insets keep it clear of the frame edges and,
+   in fullscreen, of the exit/pin actions. */
 .video-minimap {
+    --zoom-minimap-frame-top: var(--dc-space-3);
+    --zoom-minimap-frame-right: var(--dc-space-3);
     position: absolute;
-    top: var(--dc-space-3);
-    right: var(--dc-space-3);
+    top: var(--zoom-minimap-frame-top);
+    right: var(--zoom-minimap-frame-right);
     z-index: 7;
     width: clamp(140px, 22%, 220px);
     background: rgba(0, 0, 0, 0.55);
@@ -881,6 +888,14 @@ body.export-mode .tile-drag-handle {
 }
 .video-minimap[hidden] {
     display: none;
+}
+/* Split tile: the zoomed tile's own top-right corner, below its 28px corner
+   buttons (camera settings, reorder grip) and never closer to the frame edges
+   than the insets above. JS passes the tile box in frame coordinates. */
+.video-minimap[data-placement="tile"] {
+    top: max(calc(var(--zoom-tile-top) + var(--dc-space-1) * 2 + 28px), var(--zoom-minimap-frame-top));
+    right: max(calc(var(--zoom-tile-right) + var(--dc-space-2)), var(--zoom-minimap-frame-right));
+    width: clamp(120px, calc(var(--zoom-tile-width) * 0.3), 200px);
 }
 .video-minimap-canvas {
     width: 100%;
@@ -1090,8 +1105,8 @@ body.has-expanded-player .viewer {
     display: block;
 }
 .player-wrap.player-expanded .video-minimap {
-    top: calc(var(--fullscreen-inset) + var(--fullscreen-action-size) + var(--dc-space-2));
-    right: var(--fullscreen-inset);
+    --zoom-minimap-frame-top: calc(var(--fullscreen-inset) + var(--fullscreen-action-size) + var(--dc-space-2));
+    --zoom-minimap-frame-right: var(--fullscreen-inset);
 }
 @media (min-width: 768px), (max-height: 500px) and (orientation: landscape) {
     .player-expanded.map-expanded {
@@ -1458,8 +1473,8 @@ body.has-expanded-player .viewer {
     cursor: auto;
 }
 .player-wrap.player-expanded.player-panels-below .video-minimap {
-    top: var(--dc-space-3);
-    right: var(--dc-space-3);
+    --zoom-minimap-frame-top: var(--dc-space-3);
+    --zoom-minimap-frame-right: var(--dc-space-3);
 }
 .player-wrap.player-expanded.player-panels-below .video-frame {
     container-type: size;
