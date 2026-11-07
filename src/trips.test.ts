@@ -821,6 +821,8 @@ describe("groupTrips: independent channel cuts", () => {
         expect(trip.frames[0]!.mediaOffsetSec).toEqual({ front: 0, rear: 0 });
         expect(trip.frames[1]!.channels).toEqual({ rear });
         expect(frameMediaOffset(trip.frames[1]!, "rear")).toBe(45);
+        expect(trip.frames[0]!.pairedTail, "the pair itself").toBeUndefined();
+        expect(trip.frames[1]!.pairedTail).toEqual({ pairOffsetSec: 45, endedChannels: { front } });
         expect(pickFrameChannel(trip.frames[1]!, "front")?.channel).toBe("rear");
         expect(trip.timeline.contentDurationSec).toBe(46);
         expect(trip.durationSec).toBe(46);
@@ -913,6 +915,8 @@ describe("groupTrips: independent channel cuts", () => {
         expect(trip.frames[1]!.channels).toEqual({ front, rear });
         expect(frameMediaOffset(trip.frames[1]!, "rear")).toBe(20);
         expect(trip.timeline.contentDurationSec).toBe(92);
+        // Independent cuts are not a pair that ended into its sibling's tail.
+        expect(trip.frames.map((frame) => frame.pairedTail)).toEqual([undefined, undefined, undefined]);
     });
 
     it("shares one timeline while preserving source positions, files and aggregates", () => {

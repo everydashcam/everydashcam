@@ -262,6 +262,18 @@ export interface TripFrame {
     wallDurationSec: number;
     channels: Partial<Record<Channel, VideoCandidate>>;
     mediaOffsetSec?: Partial<Record<Channel, number>>;
+    /** Set on the tail intervals of a split pair (splitPairedFrameIntervals):
+     *  the pair's channels whose files ended at or before this interval's
+     *  start, and the interval's offset from the pair's shared media origin.
+     *  The fact is recorded where the split knows it; the viewer decides
+     *  whether such a channel keeps its last frame on screen. */
+    pairedTail?: PairedTail;
+}
+
+export interface PairedTail {
+    /** Offset of the interval's start from the pair's media time zero. */
+    pairOffsetSec: number;
+    endedChannels: Partial<Record<Channel, VideoCandidate>>;
 }
 
 /** File-local position of a playback interval's first frame. */
@@ -1207,7 +1219,9 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
 }
 
 /** Paired channels share media time zero; each file end changes which channels
- *  remain playable without shifting the next pair on the footage axis. */
+ *  remain playable without shifting the next pair on the footage axis. Every
+ *  interval after the first records the channels that already ended
+ *  (TripFrame.pairedTail). */
 function splitPairedFrameIntervals(frame: TripFrame): TripFrame[] {
     const channels = frameChannels(frame);
     if (channels.length < 2) return [frame];
@@ -1223,12 +1237,17 @@ function splitPairedFrameIntervals(frame: TripFrame): TripFrame[] {
             channels: {},
             mediaOffsetSec: {},
         };
+        const endedChannels: Partial<Record<Channel, VideoCandidate>> = {};
         for (const channel of channels) {
             const candidate = frame.channels[channel]!;
-            if (candidate.durationSec <= offsetSec) continue;
+            if (candidate.durationSec <= offsetSec) {
+                endedChannels[channel] = candidate;
+                continue;
+            }
             interval.channels[channel] = candidate;
             interval.mediaOffsetSec![channel] = offsetSec;
         }
+        if (offsetSec > 0) interval.pairedTail = { pairOffsetSec: offsetSec, endedChannels };
         intervals.push(interval);
         offsetSec = endSec;
     }

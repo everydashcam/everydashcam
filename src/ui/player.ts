@@ -98,7 +98,7 @@ import {
     videoAttachedFile,
     videoOwnedBlobUrl,
 } from "./player-video-src.js";
-import { pairedTailHoldCandidate, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
+import { pairedTailHold, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
 import {
     applyVideoZoom,
     consumeDragClickSuppress,
@@ -177,18 +177,12 @@ export function reconcileActiveTripAfterRegroup(): void {
           )
         : null;
     if (target) {
-        const frames = state.trips[target.trip]!.frames;
-        const frame = frames[target.frame]!;
+        const frame = state.trips[target.trip]!.frames[target.frame]!;
+        // A channel holding a paired tail's last frame keeps the pair's file
+        // attached; it changes only if the new grouping no longer holds it.
         const hasChangedMedia = ALL_CHANNELS.some((channel) => {
             const attachedFile = videoAttachedFile.get(channelPlayers[channel]);
-            if (attachedFile === frame.channels[channel]?.file) return false;
-            // A channel holding a paired tail's last frame keeps its previous
-            // file attached; it changes only if the new grouping no longer
-            // holds that file there.
-            return !(
-                heldTailChannels.has(channel) &&
-                attachedFile === pairedTailHoldCandidate(frames, target.frame, channel)?.file
-            );
+            return attachedFile !== (frame.channels[channel] ?? heldTailCandidate(frame, channel))?.file;
         });
         if (target.trip !== state.active.trip || target.frame !== state.active.frame || hasChangedMedia) {
             playFrame(target.trip, target.frame, target.offsetInFrame, pendingPlay || !previousVideo.paused);
@@ -1527,33 +1521,29 @@ function reattachBackendsAtOffset(frame: TripFrame, offsetInFrame: number, wasPl
     return reattachedChannels;
 }
 
-// Channels absent from the active frame that keep their ended element on its
-// last frame (pairedTailHoldCandidate), with the file they hold. Slave sync
-// leaves them alone: play() would restart an ended element from its start.
-const heldTailChannels = new Map<Channel, VideoCandidate>();
-
 /**
- * Recomputes heldTailChannels for `frame`, which must be the active frame. A
- * channel holds only while its element shows the end of that file. A jump
- * into a tail interval from elsewhere has nothing on screen to hold, and one
- * from the middle of the pair would hold a frame from another moment that
- * keeps playing, out of reach of pause; the tile hides in both cases.
+ * The file whose last frame `ch` keeps on screen in `frame`, or null. The
+ * trip makes the channel eligible (pairedTailHold); its element must also
+ * show the end of that file: ended, or still draining its last frames, since
+ * a slave may trail its master by up to SLAVE_DRIFT_MAX_SEC on a natural
+ * advance. A jump into a tail from elsewhere has nothing on screen to hold,
+ * and one from the middle of the pair would hold a frame from another moment;
+ * the tile hides in both cases. Read from the element on every call instead
+ * of stored, so layout passes, regroups and transport commands agree.
  */
-function refreshHeldTailChannels(frame: TripFrame): void {
-    heldTailChannels.clear();
-    const trip = activeTrip();
-    if (!trip || !state.active || trip.frames[state.active.frame] !== frame) return;
-    for (const ch of ALL_CHANNELS) {
-        const cand = pairedTailHoldCandidate(trip.frames, state.active.frame, ch);
-        if (!cand || runtimePlaybackFailures.has(cand)) continue;
-        const v = channelPlayers[ch];
-        if (videoAttachedFile.get(v) !== cand.file) continue;
-        // A slave is allowed to trail its master by up to SLAVE_DRIFT_MAX_SEC,
-        // so on a natural advance it may still be playing its last frames.
-        const isAtFileEnd =
-            v.ended || (Number.isFinite(v.duration) && v.duration - v.currentTime <= SLAVE_DRIFT_MAX_SEC);
-        if (isAtFileEnd) heldTailChannels.set(ch, cand);
-    }
+function heldTailCandidate(frame: TripFrame, ch: Channel): VideoCandidate | null {
+    const cand = pairedTailHold(frame, ch);
+    if (!cand || runtimePlaybackFailures.has(cand)) return null;
+    const v = channelPlayers[ch];
+    if (videoAttachedFile.get(v) !== cand.file) return null;
+    const isAtFileEnd = v.ended || (Number.isFinite(v.duration) && v.duration - v.currentTime <= SLAVE_DRIFT_MAX_SEC);
+    return isAtFileEnd ? cand : null;
+}
+
+/** Whether `ch` holds a paired tail's last frame in the active frame. */
+function isHeldTailChannel(ch: Channel): boolean {
+    const af = activeFrame();
+    return !!af && heldTailCandidate(af.frame, ch) !== null;
 }
 
 /**
@@ -1571,7 +1561,7 @@ function refreshHeldTailChannels(frame: TripFrame): void {
  *
  * Owns tile VISIBILITY (tile.hidden) and the grid's data-channel-count: a tile
  * shows iff the frame has the channel (or the channel holds a paired tail's
- * last frame, heldTailChannels) AND the composition includes it, so a
+ * last frame, heldTailCandidate) AND the composition includes it, so a
  * camera toggled off in the top-panel disappears from the grid and the
  * data-channel-count shrinks (CSS templates key off it). Does NOT touch
  * <video>.src / backends - only syncFrameToGrid attaches/disposes media.
@@ -1596,7 +1586,9 @@ function applyTileLayoutRoles(frame: TripFrame, activeCh: Channel, masterOffsetS
         const slotIdx = channelOrder.indexOf(ch);
         const inComposition = slotIdx >= 0;
         const playbackCand =
-            ch === activeCh ? cand : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand ?? heldTailChannels.get(ch));
+            ch === activeCh
+                ? cand
+                : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand ?? heldTailCandidate(frame, ch) ?? undefined);
         const failed = !!playbackCand && runtimePlaybackFailures.has(playbackCand);
         const playable = !!playbackCand?.canPlay && !failed;
         // Three tile states (not a binary visible/hidden):
@@ -1656,7 +1648,6 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
     // is media only. Media is attached for every playable frame channel, even
     // ones excluded from the composition, so toggling a camera back on is
     // instant (no re-attach / MSE re-seek) - it only un-hides the tile.
-    refreshHeldTailChannels(frame);
     applyTileLayoutRoles(frame, activeCh, masterOffsetSec);
     for (const ch of ALL_CHANNELS) {
         let v = channelPlayers[ch];
@@ -1712,7 +1703,7 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
                 const positionSec = Math.min(Math.max(startSec, 0), duration);
                 if (Math.abs(v.currentTime - positionSec) > 0.01) v.currentTime = positionSec;
             }
-        } else if (!heldTailChannels.has(ch)) {
+        } else if (!heldTailCandidate(frame, ch)) {
             // Release decoder and backend - canPlay=false or channel absent.
             // A held tail channel keeps its ended element on the last frame
             // until its next file attaches. A warm next file stays too, in
@@ -1724,7 +1715,8 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
         }
     }
     // Hide the view-mode button on single-channel trips - layout choice is moot.
-    dom.viewModeBtn.hidden = frameChannels(frame).length + heldTailChannels.size <= 1;
+    const heldChannelCount = ALL_CHANNELS.filter((ch) => heldTailCandidate(frame, ch)).length;
+    dom.viewModeBtn.hidden = frameChannels(frame).length + heldChannelCount <= 1;
     syncViewModeButton();
     relabelChannelTiles();
     syncOutputAspect();
@@ -2188,19 +2180,29 @@ function routeChannelAudio(v: HTMLVideoElement, ch: Channel): void {
 }
 
 // Proxy master commands to slaves. Listener is on the active <video>; we duplicate the action
-// on all slave videos that have a src, except channels holding a paired tail's
-// last frame (heldTailChannels).
+// on the slave videos that have a src. Which slaves a command reaches depends on
+// what it does to a channel holding a paired tail's last frame (heldTailCandidate):
+// pause and rate reach it, so a camera still draining its last frames stays under
+// control; positioning skips it, since its element must stay at its file end.
 //
 // videoAttachedFile is used for a fast attached-state check: WeakMap lookup is cheaper than
 // v.getAttribute/v.src (the latter returns an absolutized URL and has a side effect when src was set as relative).
-function forEachSlave(fn: (v: HTMLVideoElement, ch: Channel) => void): void {
+function forEachAttachedSlave(fn: (v: HTMLVideoElement, ch: Channel) => void): void {
     const master = activePlayer();
     for (const ch of ALL_CHANNELS) {
         const v = channelPlayers[ch];
         if (v === master) continue;
-        if (!videoAttachedFile.has(v) || heldTailChannels.has(ch)) continue;
+        if (!videoAttachedFile.has(v)) continue;
         fn(v, ch);
     }
+}
+
+/** The attached slaves that follow the master's position: all but channels
+ *  holding a paired tail's last frame. */
+function forEachSlave(fn: (v: HTMLVideoElement, ch: Channel) => void): void {
+    forEachAttachedSlave((v, ch) => {
+        if (!isHeldTailChannel(ch)) fn(v, ch);
+    });
 }
 
 /**
@@ -2531,7 +2533,7 @@ export function seekTripTime(targetSec: number, precision: SeekPrecision = "exac
         // Each backend buffers independently. Channels whose target is already
         // buffered need a direct seek even when another channel restarts its feed.
         for (const ch of ALL_CHANNELS) {
-            if (reattachedChannels.has(ch) || heldTailChannels.has(ch)) continue;
+            if (reattachedChannels.has(ch) || isHeldTailChannel(ch)) continue;
             const v = channelPlayers[ch];
             if (!v.getAttribute("src")) continue;
             if (v === activePlayer() || state.channelBackends[ch]) {
@@ -2694,14 +2696,18 @@ export function initPlayer(): void {
     onActivePlayerEvent("play", () => {
         isPlaybackIntended = true;
         syncPreviewThrottle();
-        forEachSlave((s) => {
+        forEachAttachedSlave((s, ch) => {
+            // A held camera still draining its last frames finishes them; one
+            // that already ended stays on its last frame, as play() would
+            // restart its file from the start.
+            if (s.ended && isHeldTailChannel(ch)) return;
             s.play().catch(() => {});
         });
     });
     onActivePlayerEvent("pause", () => {
         if (!isInternalPause()) isPlaybackIntended = false;
         syncPreviewThrottle();
-        forEachSlave((s) => {
+        forEachAttachedSlave((s) => {
             s.pause();
         });
     });
@@ -2727,7 +2733,7 @@ export function initPlayer(): void {
     });
     onActivePlayerEvent("ratechange", () => {
         const master = activePlayer();
-        forEachSlave((s) => {
+        forEachAttachedSlave((s) => {
             s.playbackRate = master.playbackRate;
         });
     });

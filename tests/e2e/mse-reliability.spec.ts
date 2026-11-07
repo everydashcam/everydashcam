@@ -587,6 +587,46 @@ test("drops the shorter camera when a seek from the middle of its pair lands in 
     expect(tail, "front camera through the tail").toMatchObject({ frontVisible: 0, frontPlaying: 0 });
 });
 
+test("pauses a camera that is still finishing its last frames in a paired tail", async ({ page }) => {
+    // A slave may trail its master by the drift tolerance, so a camera that
+    // holds its last frame through its sibling's tail can still be playing
+    // its final frames there. Pause must stop it as well.
+    await openPairedTailTrip(page, 1.05, "mp4");
+    const front = await page.evaluate(
+        () =>
+            new Promise<{ visible: boolean; paused: boolean; remainingSec: number }>((resolve, reject) => {
+                const { state, dom } = window.__everydashcam;
+                const timeout = setTimeout(() => reject(new Error("tail did not start")), 20_000);
+                const tick = (): void => {
+                    if ((state.active?.frame ?? 0) !== 1) {
+                        requestAnimationFrame(tick);
+                        return;
+                    }
+                    clearTimeout(timeout);
+                    const video = dom.videoTileFront.querySelector<HTMLVideoElement>(
+                        "video:not(.preload-slot):not(.tile-blur-bg)",
+                    )!;
+                    // Stand in for a front that trails the rear into the tail.
+                    video.currentTime = video.duration - 0.1;
+                    video.play().catch(() => {});
+                    dom.playerBar.play.click();
+                    setTimeout(
+                        () =>
+                            resolve({
+                                visible: !dom.videoTileFront.hidden,
+                                paused: video.paused,
+                                remainingSec: video.duration - video.currentTime,
+                            }),
+                        500,
+                    );
+                };
+                requestAnimationFrame(tick);
+            }),
+    );
+    expect(front).toMatchObject({ visible: true, paused: true });
+    expect(front.remainingSec, "front stopped short of its end").toBeCloseTo(0.1, 2);
+});
+
 test("retargets a prewarmed worker when the user seeks into the next clip", async ({ page }) => {
     const clips = await Promise.all([
         createMseFixture({ format: "mpegts", gopCount: 6, audioDurationSec: 6 }),
