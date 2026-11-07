@@ -19,6 +19,7 @@ import {
     readTranscodeDoneFields,
     test,
 } from "./_fixtures.js";
+import { type CameraChannel, cameraFlipToggle, closeCamerasMenu, openCamerasMenu, setCameraFlip } from "./_cameras.js";
 
 test.use({ viewerMap: "route-only" });
 
@@ -36,10 +37,7 @@ function colorError(expected: number[], actual: number[]): number {
 }
 
 test.describe("camera reflection", () => {
-    test("camera menus work without Popover API on mobile and in fullscreen", { tag: "@webkit-ui" }, async ({
-        page,
-        browserName,
-    }) => {
+    test("the View menu reflects a camera in a browser without newer APIs", { tag: "@webkit-ui" }, async ({ page }) => {
         await omitModernBrowserApis(page);
         await presetLocalStorage(page);
         await page.setViewportSize(DESKTOP);
@@ -47,48 +45,16 @@ test.describe("camera reflection", () => {
         await loadTrip(page, SAMPLE_70MAI);
         await pausePlayback(page);
         const front = page.locator('.video-tile[data-channel="front"]');
-        const frontButton = front.locator(".camera-settings-button");
-        const rearButton = page.locator('.video-tile[data-channel="rear"] .camera-settings-button');
-        const menu = page.locator("#camera-settings-front");
-        await expect(menu).toBeHidden();
-        await frontButton.click();
-        await expect(menu).toBeVisible();
-        await expect(frontButton).toHaveAttribute("aria-expanded", "true");
-        await page.getByRole("menuitemcheckbox", { name: "Flip horizontally" }).click();
+        await openCamerasMenu(page);
+        const toggle = cameraFlipToggle(page, "front", "horizontal");
+        await toggle.focus();
+        await page.keyboard.press("Space");
         await expect(front).toHaveClass(/camera-flipped/);
-        await rearButton.click();
-        await expect(menu).toBeHidden();
-        await expect(frontButton).toHaveAttribute("aria-expanded", "false");
-        await expect(page.getByRole("menu")).toHaveCount(1);
+        await expect(toggle).toHaveAttribute("aria-pressed", "true");
+        await expect(toggle, "focus stays on the pressed toggle").toBeFocused();
         await page.keyboard.press("Escape");
-        await expect(rearButton).toBeFocused();
-        await frontButton.click();
-        await page.locator("#player-mini-progress").click();
-        await expect(menu).toBeHidden();
-        await page.setViewportSize(MOBILE);
-        await frontButton.click();
-        await expect(menu).toBeInViewport({ ratio: 1 });
-        await page.screenshot({ path: `${SCREENSHOT_DIR}/camera-flip-fallback-mobile.png` });
-        await page.keyboard.press("Escape");
-        await page.setViewportSize(DESKTOP);
-        await page.locator("#player-fullscreen").click();
-        await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
-        await frontButton.click();
-        await expect(page.locator("#player-wrap > #camera-settings-front")).toBeVisible();
-        await expect(menu).toBeInViewport({ ratio: 1 });
-        const isNativeFullscreen = await page.evaluate(() => document.fullscreenElement !== null);
-        await page.keyboard.press("Escape");
-        await expect(menu).toBeHidden();
-        if (browserName === "webkit" && isNativeFullscreen) {
-            // Native WebKit consumes Escape before DOM keydown and exits
-            // fullscreen. Its exit lifecycle owns the focus return instead.
-            await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
-            await expect(page.locator("#player-wrap")).not.toHaveClass(/player-expanded/);
-            await expect(page.locator("#player-fullscreen")).toBeFocused();
-        } else {
-            await expect(frontButton).toBeFocused();
-            await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
-        }
+        await expect(page.locator("#player-view-menu-popover")).toBeHidden();
+        await expect(page.locator("#player-view-menu")).toBeFocused();
     });
 
     test("composition reflects each video before overlays, crops and privacy masks", async ({ page }) => {
@@ -147,40 +113,38 @@ test.describe("camera reflection", () => {
         await pausePlayback(page);
         const front = page.locator('.video-tile[data-channel="front"]');
         const rear = page.locator('.video-tile[data-channel="rear"]');
-        await front.locator(".camera-settings-button").click();
-        await page.getByRole("menuitemcheckbox", { name: "Flip horizontally" }).click();
+        await setCameraFlip(page, "front", "horizontal", true);
         await expect(front).toHaveClass(/camera-flipped/);
         await expect(rear).not.toHaveClass(/camera-flipped/);
-        await page.keyboard.press("Escape");
-        await expect(front.locator(".camera-settings-button")).toBeFocused();
         await page.reload();
         await loadTrip(page, SAMPLE_70MAI);
         await expect(front).toHaveClass(/camera-flipped/);
         await expect(rear).not.toHaveClass(/camera-flipped/);
-        await front.locator(".camera-settings-button").click();
-        await expect(page.getByRole("menuitemcheckbox", { name: "Flip horizontally" })).toHaveAttribute(
-            "aria-checked",
-            "true",
-        );
+        await openCamerasMenu(page);
+        await expect(cameraFlipToggle(page, "front", "horizontal")).toHaveAttribute("aria-pressed", "true");
+        await expect(cameraFlipToggle(page, "rear", "horizontal")).toHaveAttribute("aria-pressed", "false");
         await page.screenshot({ path: `${SCREENSHOT_DIR}/camera-flip-desktop.png` });
-        await page.keyboard.press("Escape");
+        await closeCamerasMenu(page);
         await page.setViewportSize(MOBILE);
-        await front.locator(".camera-settings-button").click();
-        await expect(front.getByRole("menu")).toBeInViewport({ ratio: 1 });
-        await page.getByRole("menuitemcheckbox", { name: "Flip vertically" }).click();
+        await openCamerasMenu(page);
+        const vertical = cameraFlipToggle(page, "front", "vertical");
+        await vertical.scrollIntoViewIfNeeded();
+        await expect(vertical).toBeInViewport({ ratio: 1 });
+        await vertical.click();
+        await expect(vertical).toHaveAttribute("aria-pressed", "true");
         await page.screenshot({ path: `${SCREENSHOT_DIR}/camera-flip-mobile.png` });
-        await page.keyboard.press("Escape");
+        await closeCamerasMenu(page);
         await gotoApp(page, "ru");
         await loadTrip(page, SAMPLE_70MAI);
-        await front.locator(".camera-settings-button").click();
-        await expect(page.getByRole("menuitemcheckbox", { name: "Отразить по горизонтали" })).toHaveAttribute(
-            "aria-checked",
-            "true",
-        );
-        await expect(page.getByRole("menuitemcheckbox", { name: "Отразить по вертикали" })).toHaveAttribute(
-            "aria-checked",
-            "true",
-        );
+        await openCamerasMenu(page);
+        for (const [axis, label] of [
+            ["horizontal", "Отразить по горизонтали"],
+            ["vertical", "Отразить по вертикали"],
+        ] as const) {
+            const toggle = cameraFlipToggle(page, "front", axis);
+            await expect(toggle).toHaveAccessibleName(label);
+            await expect(toggle).toHaveAttribute("aria-pressed", "true");
+        }
         await page.screenshot({ path: `${SCREENSHOT_DIR}/camera-flip-ru.png` });
     });
 
@@ -224,10 +188,9 @@ test.describe("camera reflection", () => {
             },
         ];
         for (const flip of flips) {
-            await page.locator(`.video-tile[data-channel="${flip.channel}"] .camera-settings-button`).click();
-            if (flip.horizontal) await page.getByRole("menuitemcheckbox", { name: "Flip horizontally" }).click();
-            if (flip.vertical) await page.getByRole("menuitemcheckbox", { name: "Flip vertically" }).click();
-            await page.keyboard.press("Escape");
+            const channel = flip.channel as CameraChannel;
+            if (flip.horizontal) await setCameraFlip(page, channel, "horizontal", true);
+            if (flip.vertical) await setCameraFlip(page, channel, "vertical", true);
         }
         await openExport(page);
         await page.locator("#export-panel-watermark").uncheck();
@@ -355,9 +318,8 @@ test.describe("camera reflection", () => {
         await page.setViewportSize(DESKTOP);
         await gotoApp(page, "en");
         await loadTrip(page, SAMPLE_NOGPS);
-        await page.locator(".video-tile:not([hidden]) .camera-settings-button").click();
-        await page.getByRole("menuitemcheckbox", { name: "Flip horizontally" }).click();
-        await page.keyboard.press("Escape");
+        await setCameraFlip(page, "front", "horizontal", true);
+        await expect(page.locator(".video-tile:not([hidden])")).toHaveClass(/camera-flipped/);
         await openExport(page);
         await page.locator('input[name="export-panel-quality"][value="original"]').check();
         await page.locator("#export-panel-watermark").uncheck();

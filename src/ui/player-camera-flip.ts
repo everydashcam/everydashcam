@@ -1,29 +1,28 @@
-import { flipCropRect, hasCameraFlip } from "../camera-flip.js";
-import { t } from "../i18n/index.js";
+// Per-camera reflection applied to the tiles. The controls live in the
+// reflection block of the View menu's cameras section (cameras-menu.ts), not
+// on the tiles: the choice is remembered per camera and rarely changes, so a
+// button painted over every picture would cost more than it gives, most of
+// all on touch screens, where it cannot hide behind hover.
+
+import { type CameraFlip, flipCropRect, hasCameraFlip } from "../camera-flip.js";
+import type { Channel } from "../parsers/types.js";
 import { ALL_CHANNELS, channelTileFor } from "./dom.js";
 import { cameraFlipForChannel, saveCameraFlip } from "./camera-flip-pref.js";
-import { exportPanelState, notifyExportStateChanged, subscribeExportState } from "./export-state.js";
-import { channelDisplayLabel } from "./format.js";
-import { initMenuKeyboard } from "./menu-keyboard.js";
-import { createPopover } from "./popover-lifecycle.js";
+import { exportPanelState, notifyExportStateChanged } from "./export-state.js";
 import { exitCropEditIfOpen } from "./player-crop.js";
-import { activeTrip, state } from "./state.js";
+import { state } from "./state.js";
 
-interface CameraMenu {
-    menu: HTMLElement;
-    isOpen(): boolean;
-    close(): void;
-}
+/** Reflection axis of one camera. */
+export type CameraFlipAxis = keyof CameraFlip;
 
-const cameraMenus = new Map<HTMLElement, CameraMenu>();
-
-function isCameraFlipLocked(): boolean {
+/** Whether reflection is frozen: an export holds the configuration or is
+ *  being written, and the file must match what was set up. */
+export function isCameraFlipLocked(): boolean {
     return exportPanelState.configurationLocked || state.transcodeInProgress;
 }
 
+/** Applies every camera's remembered reflection of the open trip to its tile. */
 export function syncCameraFlips(): void {
-    const trip = activeTrip();
-    const isLocked = isCameraFlipLocked();
     for (const ch of ALL_CHANNELS) {
         const tile = channelTileFor(ch);
         const flip = cameraFlipForChannel(ch);
@@ -34,137 +33,30 @@ export function syncCameraFlips(): void {
         tile.style.setProperty("--camera-flip-x", flip.horizontal ? "-1" : "1");
         tile.style.setProperty("--camera-flip-y", flip.vertical ? "-1" : "1");
         tile.classList.toggle("camera-flipped", hasCameraFlip(flip));
-        const button = tile.querySelector<HTMLButtonElement>(".camera-settings-button");
-        if (button) {
-            button.disabled = isLocked;
-            button.title = t("player.camera.settings", {
-                camera: trip ? channelDisplayLabel(ch, trip) : "",
-            });
-            button.setAttribute("aria-label", button.title);
-        }
-        const entry = cameraMenus.get(tile);
-        if (entry?.isOpen() && (isLocked || entry.menu.getAttribute("aria-label") !== button?.title)) {
-            entry.close();
-        }
-        for (const axis of ["horizontal", "vertical"] as const) {
-            entry?.menu.querySelector(`[data-flip="${axis}"]`)?.setAttribute("aria-checked", String(flip[axis]));
-        }
     }
 }
 
-export function initPlayerCameraFlip(): void {
-    for (const ch of ALL_CHANNELS) {
-        const tile = channelTileFor(ch);
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "camera-settings-button";
-        button.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor"><circle cx="3" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="13" cy="8" r="1.25"/></svg>`;
-        button.setAttribute("aria-haspopup", "menu");
-        button.setAttribute("aria-expanded", "false");
-        const menu = document.createElement("div");
-        menu.id = `camera-settings-${ch}`;
-        menu.className = "camera-settings-menu";
-        // Older Safari can play recordings without Popover API. Do not even
-        // evaluate :popover-open there: an unknown selector throws during init.
-        const hasPopover = typeof menu.showPopover === "function" && typeof menu.hidePopover === "function";
-        if (hasPopover) menu.popover = "auto";
-        else {
-            menu.hidden = true;
-            menu.classList.add("camera-settings-menu--fallback");
-        }
-        menu.setAttribute("role", "menu");
-        button.setAttribute("aria-controls", menu.id);
-        if (hasPopover) button.setAttribute("popovertarget", menu.id);
-        for (const axis of ["horizontal", "vertical"] as const) {
-            const item = document.createElement("button");
-            item.type = "button";
-            item.tabIndex = -1;
-            item.dataset.flip = axis;
-            item.setAttribute("role", "menuitemcheckbox");
-            item.title = t(`player.camera.flip.${axis}`);
-            item.setAttribute("aria-label", item.title);
-            item.innerHTML = `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><g${axis === "vertical" ? ' transform="rotate(90 10 10)"' : ""}><path d="M10 2v16" stroke-dasharray="2 2"/><path d="M3 5v10l4-2V7z"/><path d="M17 5v10l-4-2V7z" fill="currentColor" fill-opacity=".25"/></g></svg>`;
-            item.addEventListener("click", () => {
-                if (isCameraFlipLocked()) return;
-                exitCropEditIfOpen();
-                const flip = cameraFlipForChannel(ch);
-                const crop = state.composition.crops[ch];
-                if (crop)
-                    state.composition.crops[ch] = flipCropRect(crop, {
-                        horizontal: axis === "horizontal",
-                        vertical: axis === "vertical",
-                    });
-                saveCameraFlip(ch, { ...flip, [axis]: !flip[axis] });
-                syncCameraFlips();
-                notifyExportStateChanged();
-            });
-            menu.append(item);
-        }
-        menu.setAttribute("aria-description", t("player.camera.flip.hint"));
-        tile.append(button, menu);
-        const isOpen = (): boolean => (hasPopover ? menu.matches(":popover-open") : !menu.hidden);
-        const popover = createPopover({
-            button,
-            panel: menu,
-            show: () => {
-                menu.setAttribute("aria-label", button.title);
-                if (hasPopover) menu.showPopover();
-                else {
-                    // Portal beyond tile transforms/clipping, inside fullscreen.
-                    const fullscreen = document.fullscreenElement ?? document.querySelector(".player-expanded");
-                    const host =
-                        fullscreen instanceof HTMLElement && !(fullscreen instanceof HTMLMediaElement)
-                            ? fullscreen
-                            : document.body;
-                    host.append(menu);
-                    menu.hidden = false;
-                }
-            },
-            hide: () => {
-                if (hasPopover) {
-                    if (isOpen()) menu.hidePopover();
-                } else {
-                    menu.hidden = true;
-                    tile.append(menu);
-                }
-            },
-            afterOpen: () => {
-                const anchor = button.getBoundingClientRect();
-                const rect = menu.getBoundingClientRect();
-                menu.style.left = `${Math.max(8, Math.min(anchor.right - rect.width, window.innerWidth - rect.width - 8))}px`;
-                menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 8))}px`;
-                menu.querySelector<HTMLButtonElement>("button")?.focus();
-            },
+/**
+ * Reflects `channel` along `axis`, or undoes it, and remembers the choice for
+ * the camera. Its crop is reflected too, so it keeps framing the same part of
+ * the picture. Does nothing while reflection is locked.
+ */
+export function toggleCameraFlip(channel: Channel, axis: CameraFlipAxis): void {
+    if (isCameraFlipLocked()) return;
+    exitCropEditIfOpen();
+    const flip = cameraFlipForChannel(channel);
+    const crop = state.composition.crops[channel];
+    if (crop) {
+        state.composition.crops[channel] = flipCropRect(crop, {
+            horizontal: axis === "horizontal",
+            vertical: axis === "vertical",
         });
-        const close = (): void => popover.close();
-        cameraMenus.set(tile, { menu, isOpen, close });
-        const open = (): void => {
-            if (!activeTrip() || isCameraFlipLocked()) return;
-            syncCameraFlips();
-            popover.open();
-        };
-        button.addEventListener("click", (event) => {
-            event.preventDefault();
-            if (isOpen()) close();
-            else open();
-        });
-        if (hasPopover) {
-            menu.addEventListener("toggle", () => {
-                if (!isOpen()) popover.close();
-            });
-        }
-        document.addEventListener("fullscreenchange", close);
-        document.addEventListener("playerexpansionchange", close);
-        for (const el of [button, menu]) {
-            for (const event of ["click", "dblclick", "pointerdown"])
-                el.addEventListener(event, (e) => e.stopPropagation());
-        }
-        initMenuKeyboard({ button, menu, itemSelector: "button", onOpen: open, onClose: close });
-        const observer = new MutationObserver(() => {
-            if (tile.hidden || isCameraFlipLocked()) close();
-        });
-        observer.observe(tile, { attributes: true, attributeFilter: ["hidden"] });
     }
-    subscribeExportState(syncCameraFlips);
+    saveCameraFlip(channel, { ...flip, [axis]: !flip[axis] });
+    syncCameraFlips();
+    notifyExportStateChanged();
+}
+
+export function initPlayerCameraFlip(): void {
     syncCameraFlips();
 }

@@ -27,10 +27,10 @@ export const ptDict = {
     "topbar.langMenu.title": "Idioma da interface",
     "topbar.more": "Mais",
     "topbar.more.title": "Mais ações",
-    "player.camera.settings": "Configurações de {camera}",
+    "player.camera.flip.title": "Espelhar",
     "player.camera.flip.horizontal": "Espelhar horizontalmente",
     "player.camera.flip.vertical": "Espelhar verticalmente",
-    "player.camera.flip.hint": "Aplica-se à reprodução e à exportação. Salvo para esta câmera neste navegador.",
+    "player.camera.flip.hint": "Aplica-se à reprodução e à exportação. Salvo para cada câmera neste navegador.",
 
     "player.more": "Mais controles",
 

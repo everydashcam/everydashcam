@@ -117,6 +117,27 @@ export async function setOverlayAllowed(page: Page, allowed: boolean): Promise<v
     await closeCamerasMenu(page);
 }
 
+/** The toggle in the open menu that reflects `channel` along `axis`. */
+export function cameraFlipToggle(page: Page, channel: CameraChannel, axis: "horizontal" | "vertical"): Locator {
+    return page.locator(
+        `#player-cameras-section .cameras-menu__flip[data-channel="${channel}"] .cameras-menu__flip-axis[data-flip="${axis}"]`,
+    );
+}
+
+/** Reflects `channel` along `axis`, or undoes it, through the View menu. */
+export async function setCameraFlip(
+    page: Page,
+    channel: CameraChannel,
+    axis: "horizontal" | "vertical",
+    flipped: boolean,
+): Promise<void> {
+    await openCamerasMenu(page);
+    const toggle = cameraFlipToggle(page, channel, axis);
+    if ((await toggle.getAttribute("aria-pressed")) !== String(flipped)) await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", String(flipped));
+    await closeCamerasMenu(page);
+}
+
 /** Visible cameras in layout order, the main one first. */
 export async function visibleCameraOrder(page: Page): Promise<CameraChannel[]> {
     return page.evaluate(() => {

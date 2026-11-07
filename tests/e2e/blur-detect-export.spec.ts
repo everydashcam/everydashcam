@@ -15,6 +15,7 @@ import {
     readTranscodeDoneFields,
     test,
 } from "./_fixtures.js";
+import { setCameraFlip } from "./_cameras.js";
 
 test("Save keeps an adopted detection pass when playback switches trips", async ({ page }) => {
     test.setTimeout(120_000);
@@ -52,9 +53,7 @@ test("Save keeps an adopted detection pass when playback switches trips", async 
     const trips = page.locator("li.trip:not(.unindexed-note)");
     await expect(trips).toHaveCount(2);
     await trips.first().locator(".trip-header").click();
-    await page.locator(".video-tile:not([hidden]) .camera-settings-button").click();
-    await page.getByRole("menuitemcheckbox", { name: "Flip horizontally" }).click();
-    await page.keyboard.press("Escape");
+    await setCameraFlip(page, "front", "horizontal", true);
     await openExport(page);
     await page.locator('input[name="export-panel-quality"][value="original"]').check();
     await page.locator("#export-panel-watermark").uncheck();

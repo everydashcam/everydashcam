@@ -391,8 +391,7 @@ function attachOverlayGestures(tile: HTMLElement, channel: Channel): void {
     attachPointerDrag(tile, {
         onStart: (e) => {
             const target = e.target;
-            if (target instanceof Element && target.closest(".pip-resize, .tile-drag-handle, .camera-settings-button"))
-                return false;
+            if (target instanceof Element && target.closest(".pip-resize, .tile-drag-handle")) return false;
             const overlay = overlayTile(channel);
             if (!overlay || tile.classList.contains("crop-editing")) return false;
             start = { x: overlay.x, y: overlay.y, px: e.clientX, py: e.clientY };

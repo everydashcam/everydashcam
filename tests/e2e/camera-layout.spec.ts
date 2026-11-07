@@ -362,7 +362,7 @@ test("the View menu starts with the cameras on a multi-camera trip", async ({ pa
     await expect(page.locator("#player-view-menu")).toBeFocused();
 });
 
-test("a single-camera trip has no cameras section in the View menu", async ({ page }) => {
+test("a single-camera trip has only the reflection in the View menu's cameras section", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
@@ -370,9 +370,12 @@ test("a single-camera trip has no cameras section in the View menu", async ({ pa
     await pausePlayback(page);
     await page.locator("#player-view-menu").click();
     await expect(page.getByRole("dialog", { name: "View" })).toBeVisible();
-    await expect(page.locator("#player-cameras-section")).toBeHidden();
-    await expect(page.locator("#player-cameras-section")).toBeEmpty();
-    await expect(page.locator('.view-menu-row[data-panel="chart"]')).toBeFocused();
+    const section = page.locator("#player-cameras-section");
+    await expect(section).toBeVisible();
+    await expect(section.locator("[data-camera-mode], .cameras-menu__camera, .cameras-menu__audio")).toHaveCount(0);
+    await expect(section.locator(".cameras-menu__flip")).toHaveCount(1);
+    await expect(section.getByRole("group", { name: "Flip" })).toBeVisible();
+    await expect(section.locator(".cameras-menu__flip-axis").first()).toBeFocused();
 });
 
 /** A front camera recording 6 s and a rear camera that stops after 2.4 s. */

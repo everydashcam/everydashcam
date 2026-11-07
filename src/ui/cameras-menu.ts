@@ -1,9 +1,11 @@
 // Cameras section of the View menu: arrangement mode, overlay permission,
-// which cameras show and in what order, the main camera and the sound source.
-// Shown on trips with several cameras, in viewing and export alike - the
-// arrangement is shared, so this is the one place to set it. Every change goes
-// through camera-arrangement.ts. The View menu (view-menu.ts) owns the dialog
-// and its lifecycle; the orchestrator renders this section when it opens.
+// which cameras show and in what order, the main camera and the sound source
+// on trips with several cameras, then the reflection of each shown camera on
+// every trip. Viewing and export share the arrangement and the reflection, so
+// this is the one place to set them. Arrangement changes go through
+// camera-arrangement.ts, reflection through player-camera-flip.ts. The View
+// menu (view-menu.ts) owns the dialog and its lifecycle; the orchestrator
+// renders this section when it opens.
 //
 // Native controls rather than menu items: the section mixes radios,
 // checkboxes, a select and drag handles, which menu semantics cannot express.
@@ -19,26 +21,34 @@ import {
     setAudioSource,
     setCameraHidden,
 } from "./camera-arrangement.js";
+import { cameraFlipForChannel } from "./camera-flip-pref.js";
 import { dom } from "./dom.js";
+import { subscribeExportState } from "./export-state.js";
 import { channelDisplayLabel } from "./format.js";
+import { type CameraFlipAxis, isCameraFlipLocked, toggleCameraFlip } from "./player-camera-flip.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeTrip, mainChannel, state, visibleChannels } from "./state.js";
 
 // Row under the pointer while a camera is dragged by its handle.
 let drag: { channel: Channel; target: Channel | null; ghost: HTMLElement | null } | null = null;
 
+/** Whether a trip is open: every camera can be reflected. */
+function hasCameras(): boolean {
+    return !!activeTrip() && state.composition.order.length > 0;
+}
+
 /** Whether the open trip has cameras to arrange. */
 function hasSeveralCameras(): boolean {
-    return !!activeTrip() && state.composition.order.length > 1;
+    return hasCameras() && state.composition.order.length > 1;
 }
 
 /**
- * Shows the section on multi-camera trips and refreshes it while the View
+ * Shows the section while a trip is open and refreshes it while the View
  * menu is open. Called after every arrangement change and trip switch.
  */
 export function syncCamerasMenu(): void {
     const section = dom.camerasSection;
-    const available = hasSeveralCameras();
+    const available = hasCameras();
     section.hidden = !available;
     if (!available) {
         cancelCameraDrag();
@@ -201,24 +211,101 @@ function renderAudio(): HTMLElement {
     return label;
 }
 
+const FLIP_AXES: readonly CameraFlipAxis[] = ["horizontal", "vertical"];
+
+function flipIcon(axis: CameraFlipAxis): string {
+    return `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><g${axis === "vertical" ? ' transform="rotate(90 10 10)"' : ""}><path d="M10 2v16" stroke-dasharray="2 2"/><path d="M3 5v10l4-2V7z"/><path d="M17 5v10l-4-2V7z" fill="currentColor" fill-opacity=".25"/></g></svg>`;
+}
+
+/** The reflection block: one row per shown camera with a toggle per axis.
+ *  Each row is a group named after its camera, so the toggles can keep the
+ *  short axis names. */
+function renderFlips(): HTMLElement {
+    const trip = activeTrip();
+    const block = document.createElement("div");
+    block.className = "cameras-menu__flips";
+    block.setAttribute("role", "group");
+    const title = header("player.camera.flip.title");
+    title.id = "cameras-menu-flip-title";
+    const hint = document.createElement("div");
+    hint.id = "cameras-menu-flip-hint";
+    hint.className = "view-menu-row__description cameras-menu__flip-hint";
+    hint.textContent = t("player.camera.flip.hint");
+    block.setAttribute("aria-labelledby", title.id);
+    block.setAttribute("aria-describedby", hint.id);
+    block.append(title, hint);
+    for (const channel of visibleChannels()) {
+        const row = document.createElement("div");
+        row.className = "cameras-menu__flip";
+        row.dataset.channel = channel;
+        row.setAttribute("role", "group");
+        const name = document.createElement("span");
+        name.id = `cameras-menu-flip-${channel}`;
+        name.className = "cameras-menu__name";
+        name.textContent = trip ? channelDisplayLabel(channel, trip) : channel;
+        row.setAttribute("aria-labelledby", name.id);
+        row.append(name);
+        for (const axis of FLIP_AXES) {
+            const toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "cameras-menu__flip-axis";
+            toggle.dataset.flip = axis;
+            toggle.dataset.focusKey = `flip:${channel}:${axis}`;
+            toggle.title = t(`player.camera.flip.${axis}`);
+            toggle.setAttribute("aria-label", toggle.title);
+            toggle.innerHTML = flipIcon(axis);
+            toggle.addEventListener("click", () => toggleCameraFlip(channel, axis));
+            row.append(toggle);
+        }
+        block.append(row);
+    }
+    syncFlipToggles(block);
+    return block;
+}
+
+/** Brings the reflection toggles in `root` to the remembered reflection and
+ *  the export lock, in place, so focus stays on the toggle just pressed. */
+function syncFlipToggles(root: ParentNode = dom.camerasSection): void {
+    const isLocked = isCameraFlipLocked();
+    for (const toggle of root.querySelectorAll<HTMLButtonElement>(".cameras-menu__flip-axis")) {
+        const channel = toggle.closest<HTMLElement>(".cameras-menu__flip")?.dataset.channel as Channel | undefined;
+        const axis = toggle.dataset.flip as CameraFlipAxis | undefined;
+        if (!channel || !axis) continue;
+        toggle.setAttribute("aria-pressed", String(cameraFlipForChannel(channel)[axis]));
+        toggle.disabled = isLocked;
+    }
+}
+
 /**
  * Rebuilds the section from state, keeping keyboard focus on the same
- * control. The View menu calls it before it opens; no-op on a single-camera
+ * control. The View menu calls it before it opens; no-op without an open
  * trip and while a camera is being dragged.
  */
 export function renderCamerasMenu(): void {
     const section = dom.camerasSection;
-    if (drag || !hasSeveralCameras()) return;
+    if (drag || !hasCameras()) return;
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.focusKey;
     section.replaceChildren();
-    // The segmented control explains itself; its group carries the "Layout"
-    // name for screen readers, and the menu stays one header shorter.
-    section.append(header("player.cameras.title"), renderModes(), renderOverlayToggle());
-    const list = document.createElement("ul");
-    list.className = "cameras-menu__cameras";
-    for (const channel of state.composition.order) list.append(renderCameraRow(channel));
-    section.append(list, renderAudio());
+    if (hasSeveralCameras()) {
+        // The segmented control explains itself; its group carries the
+        // "Layout" name for screen readers, and the menu stays one header
+        // shorter.
+        section.append(header("player.cameras.title"), renderModes(), renderOverlayToggle());
+        const list = document.createElement("ul");
+        list.className = "cameras-menu__cameras";
+        for (const channel of state.composition.order) list.append(renderCameraRow(channel));
+        section.append(list, renderAudio());
+    }
+    section.append(renderFlips());
     if (focused) section.querySelector<HTMLElement>(`[data-focus-key="${focused}"]`)?.focus();
+}
+
+/** Keeps the reflection toggles of an open menu current: a toggle press and
+ *  the export lock both arrive as export-state changes. */
+export function initCamerasMenu(): void {
+    subscribeExportState(() => {
+        if (!dom.viewMenuPopover.hidden) syncFlipToggles();
+    });
 }
 
 /* -------------------------------- reordering ------------------------------- */

@@ -36,10 +36,10 @@ export const koDict = {
     "topbar.langMenu.title": "인터페이스 언어",
     "topbar.more": "더보기",
     "topbar.more.title": "추가 작업",
-    "player.camera.settings": "{camera} 설정",
+    "player.camera.flip.title": "반전",
     "player.camera.flip.horizontal": "좌우 반전",
     "player.camera.flip.vertical": "상하 반전",
-    "player.camera.flip.hint": "재생과 내보내기에 적용됩니다. 이 브라우저에서 이 카메라의 설정을 기억합니다.",
+    "player.camera.flip.hint": "재생과 내보내기에 적용됩니다. 이 브라우저에서 카메라별로 설정을 기억합니다.",
 
     "player.more": "추가 조작",
 

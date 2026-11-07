@@ -633,8 +633,9 @@
     display: none;
 }
 /* A camera row holds a handle, a name and a Main button: the panel rows'
-   width cuts longer names, on a phone too. */
-.view-menu-popover:has(> .cameras-menu:not([hidden])) {
+   width cuts longer names, on a phone too. A single-camera trip has only the
+   reflection block, which fits the panel rows' width. */
+.view-menu-popover:has(> .cameras-menu:not([hidden]) .cameras-menu__cameras) {
     width: 300px;
 }
 .cameras-menu .cameras-menu__modes {
@@ -792,6 +793,56 @@
     min-width: 0;
     max-width: 65%;
 }
+/* Reflection: a row per shown camera with its name and a toggle per axis. */
+.cameras-menu__flips {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.cameras-menu__flip-hint {
+    padding: 0 var(--dc-space-2) var(--dc-space-1);
+}
+.cameras-menu__flip {
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-1);
+    min-height: 36px;
+    padding-left: var(--dc-space-2);
+}
+.cameras-menu__flip .cameras-menu__name {
+    flex: 1 1 auto;
+}
+.cameras-menu__flip-axis {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+    color: var(--fg-dim);
+    cursor: pointer;
+}
+.cameras-menu__flip-axis:hover,
+.cameras-menu__flip-axis:focus-visible {
+    color: var(--fg);
+    background: var(--bg-elev-2);
+    outline: none;
+}
+.cameras-menu__flip-axis:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cameras-menu__flip-axis[aria-pressed="true"] {
+    color: var(--accent-ink);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.cameras-menu__flip-axis:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 
 /* Speed pill is also a button (click flips km/h <-> mph). Strip the default
    <button> chrome so it sits visually identical to the non-clickable pills
@@ -886,11 +937,19 @@
         min-height: 44px;
     }
     .cameras-menu__row,
-    .cameras-menu__camera {
+    .cameras-menu__camera,
+    .cameras-menu__flip {
         min-height: 44px;
+    }
+    .cameras-menu__flip-axis {
+        width: 44px;
+        height: 44px;
     }
     .cameras-menu__row {
         padding: var(--dc-space-2) var(--dc-space-3);
+    }
+    .cameras-menu__flip {
+        padding-left: var(--dc-space-3);
     }
     .cameras-menu__handle {
         width: 36px;

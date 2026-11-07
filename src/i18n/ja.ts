@@ -37,10 +37,10 @@ export const jaDict = {
     "topbar.langMenu.title": "表示言語",
     "topbar.more": "その他",
     "topbar.more.title": "その他の操作",
-    "player.camera.settings": "{camera}の設定",
+    "player.camera.flip.title": "反転",
     "player.camera.flip.horizontal": "左右反転",
     "player.camera.flip.vertical": "上下反転",
-    "player.camera.flip.hint": "再生と書き出しに適用。このブラウザーで、このカメラの設定を保存します。",
+    "player.camera.flip.hint": "再生と書き出しに適用。このブラウザーで、カメラごとに設定を保存します。",
 
     "player.more": "その他の操作",
 

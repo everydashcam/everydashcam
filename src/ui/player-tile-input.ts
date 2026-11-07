@@ -28,7 +28,7 @@ let pendingSingleClick: ReturnType<typeof setTimeout> | null = null;
 const DBLCLICK_THRESHOLD_MS = 250;
 
 // Controls painted inside a tile own their clicks.
-const TILE_CONTROLS = "button, a, input, select, .crop-editor, .blur-draw-layer, .camera-settings-menu";
+const TILE_CONTROLS = "button, a, input, select, .crop-editor, .blur-draw-layer";
 
 function cancelSingleClick(): void {
     if (pendingSingleClick !== null) clearTimeout(pendingSingleClick);

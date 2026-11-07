@@ -25,10 +25,10 @@ export const deDict = {
     "topbar.langMenu.title": "Sprache",
     "topbar.more": "Mehr",
     "topbar.more.title": "Weitere Aktionen",
-    "player.camera.settings": "Einstellungen: {camera}",
+    "player.camera.flip.title": "Spiegeln",
     "player.camera.flip.horizontal": "Horizontal spiegeln",
     "player.camera.flip.vertical": "Vertikal spiegeln",
-    "player.camera.flip.hint": "Gilt für Wiedergabe und Export. Wird für diese Kamera in diesem Browser gespeichert.",
+    "player.camera.flip.hint": "Gilt für Wiedergabe und Export. Wird für jede Kamera in diesem Browser gespeichert.",
 
     "player.more": "Weitere Steuerungen",
 

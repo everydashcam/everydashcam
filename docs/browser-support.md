@@ -44,8 +44,6 @@ Keep fallbacks at their call sites:
   fallback that preserves the first reason and releases subscriptions.
 - [MSE runtime](../src/per-file-mse.ts): `MediaSource` or
   `ManagedMediaSource`, with the required remote-playback handling.
-- [Camera menu](../src/ui/player-camera-flip.ts): native Popover API or a
-  menu with keyboard/outside-pointer dismissal and fullscreen support.
 - [Browser identification](../src/capabilities.ts): preserve branded WebKit
   names while applying engine-specific file-read workarounds. Feature
   availability still comes from probes.

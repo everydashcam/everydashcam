@@ -25,10 +25,10 @@ export const enDict = {
     "topbar.langMenu.title": "Interface language",
     "topbar.more": "More",
     "topbar.more.title": "More actions",
-    "player.camera.settings": "{camera} settings",
+    "player.camera.flip.title": "Flip",
     "player.camera.flip.horizontal": "Flip horizontally",
     "player.camera.flip.vertical": "Flip vertically",
-    "player.camera.flip.hint": "Applies to playback and export. Remembered for this camera in this browser.",
+    "player.camera.flip.hint": "Applies to playback and export. Remembered for each camera in this browser.",
 
     "player.more": "More controls",
 

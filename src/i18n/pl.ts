@@ -27,10 +27,10 @@ export const plDict = {
     "topbar.langMenu.title": "Język interfejsu",
     "topbar.more": "Więcej",
     "topbar.more.title": "Więcej akcji",
-    "player.camera.settings": "Ustawienia: {camera}",
+    "player.camera.flip.title": "Odbicie",
     "player.camera.flip.horizontal": "Odbij w poziomie",
     "player.camera.flip.vertical": "Odbij w pionie",
-    "player.camera.flip.hint": "Dotyczy odtwarzania i eksportu. Zapamiętane dla tej kamery w tej przeglądarce.",
+    "player.camera.flip.hint": "Dotyczy odtwarzania i eksportu. Zapamiętane dla każdej kamery w tej przeglądarce.",
 
     "player.more": "Więcej elementów sterujących",
 

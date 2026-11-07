@@ -6,8 +6,8 @@
  *     video grid maintains that aspect inside the .video-frame, with black
  *     letterbox bars filling the remainder. In casual mode the aspect var
  *     is unset; the grid fills the entire video-frame naturally.
- *  2) Editors and overlays drawn inside the tiles (crop, PiP resize grip,
- *     camera settings). Tile geometry itself comes from the layout engine
+ *  2) Editors and overlays drawn inside the tiles (crop, PiP resize grip).
+ *     Tile geometry itself comes from the layout engine
  *     (src/ui/player-layout.ts), not from CSS.
  */
 
@@ -20,98 +20,6 @@
     transform-origin: 0 0;
     transform: var(--video-zoom-transform, translate(0)) var(--video-crop-transform, translate(0))
         var(--camera-flip, translate(0));
-}
-
-/* The tile only exposes a small overflow affordance; its popover is a pair
-   of axis buttons, so camera setup never competes with playback controls. */
-.camera-settings-button {
-    position: absolute;
-    top: var(--dc-space-1);
-    right: 34px;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--dc-radius-sm);
-    background: var(--bg-elev);
-    color: var(--fg-dim);
-    cursor: pointer;
-    opacity: 0;
-}
-
-.video-tile:hover .camera-settings-button,
-.video-tile:focus-within .camera-settings-button,
-.camera-flipped .camera-settings-button {
-    opacity: 0.85;
-}
-
-.camera-flipped .camera-settings-button {
-    color: var(--accent-ink);
-}
-
-.video-grid[data-channel-count="1"] .camera-settings-button,
-body.export-mode .camera-settings-button {
-    right: var(--dc-space-1);
-}
-
-@media (hover: none) {
-    .camera-settings-button {
-        opacity: 0.85;
-        width: 28px;
-        height: 28px;
-    }
-}
-
-.camera-settings-menu {
-    display: none;
-    gap: 2px;
-    position: fixed;
-    inset: auto;
-    margin: 0;
-    padding: 3px;
-    border: 1px solid var(--border);
-    border-radius: var(--dc-radius-md);
-    background: var(--bg-elev);
-    color: var(--fg-dim);
-    box-shadow: var(--dc-shadow-popup);
-}
-
-.camera-settings-menu:popover-open {
-    display: flex;
-}
-
-/* Keep separate from :popover-open: unsupported selectors invalidate a list. */
-.camera-settings-menu--fallback:not([hidden]) {
-    display: flex;
-    z-index: var(--dc-z-menu);
-}
-
-.camera-settings-menu button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 30px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--dc-radius-sm);
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-}
-
-.camera-settings-menu button[aria-checked="true"] {
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
-    color: var(--accent-ink);
-}
-
-.camera-settings-menu button:hover,
-.camera-settings-menu button:focus-visible {
-    background: var(--bg-hover);
 }
 
 body.export-mode .video-frame {
