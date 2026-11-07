@@ -7,6 +7,7 @@ import { createMseFixture } from "../helpers/mse-fixtures.js";
 import {
     DESKTOP,
     MOBILE,
+    MOBILE_LANDSCAPE,
     SAMPLE_70MAI,
     SAMPLE_NOGPS,
     boxOf,
@@ -20,6 +21,7 @@ import {
 } from "./_fixtures.js";
 import {
     chooseArrangementMode,
+    closeCamerasMenu,
     makeMainFromMenu,
     setOverlayAllowed,
     settleCameraLayout,
@@ -298,6 +300,27 @@ test("on a phone the video area is as tall as the cameras need", async ({ page }
             .toBeLessThanOrEqual(2);
         expectNoOverlap(await tileBoxes(page));
         await shot(page, `camera-layout-05-mobile-${mode}`);
+    }
+});
+
+test("in a short landscape the cameras stay above the controls on the first screen", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(MOBILE_LANDSCAPE);
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    for (const mode of ["main", "equal"] as const) {
+        if (mode === "equal") {
+            await chooseArrangementMode(page, "equal");
+            await closeCamerasMenu(page);
+        }
+        const boxes = await tileBoxes(page);
+        const grid = await boxOf(page, "#video-grid");
+        const bar = await boxOf(page, ".player-bar");
+        const bottom = grid.y + Math.max(...boxes.map((b) => b.y + b.h));
+        expect(bottom, `${mode}: the cameras end above the controls`).toBeLessThanOrEqual(bar.y + 0.5);
+        expectNoOverlap(boxes);
+        await shot(page, `camera-layout-08-landscape-${mode}`);
     }
 });
 

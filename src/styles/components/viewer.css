@@ -1086,11 +1086,11 @@ body.has-expanded-player .viewer {
        stick at whatever a smaller box once chose) and writes the composition
        height to --video-content-height. Until it does, the 16:9 box is the
        fallback.
-       The ceiling subtracts BOTH the sticky bar AND the in-flow topbar: the
-       scroll content only has 100svh - topbar to live in, so without the
-       topbar term the frame's bottom slice hides behind the opaque sticky
-       bar on the first screen. --mobile-bar-h keeps the bar term in
-       lock-step with player-bar.css.
+       The ceiling subtracts the sticky bar, the in-flow topbar and the
+       Video/Map/Events nav above the player: the scroll content only has
+       100svh - topbar - nav to live in, so without those terms the frame's
+       bottom slice hides behind the opaque sticky bar on the first screen.
+       --mobile-bar-h keeps the bar term in lock-step with player-bar.css.
        svh, not dvh: dvh changes as iOS Safari shows/hides the URL bar on
        scroll, which would cause visible wobble in the video frame. svh
        locks to the smallest (URL-bar visible) layout - costs ~50-80px of
@@ -1104,7 +1104,12 @@ body.has-expanded-player .viewer {
         display: block;
         aspect-ratio: 16 / 9;
         width: 100%;
-        max-height: calc(100svh - var(--mobile-bar-h, 60px) - var(--dc-topbar-h-mobile));
+        max-height: calc(
+            100svh -
+            var(--mobile-bar-h, 60px) -
+            var(--dc-topbar-h-mobile) -
+            var(--mobile-view-nav-h, 0px)
+        );
         min-height: 0;
     }
     .player-wrap:not(.player-expanded) .video-frame[style*="--video-content-height"] {
@@ -1114,7 +1119,10 @@ body.has-expanded-player .viewer {
     /* With the map open below, the cameras share the 16:9 box of the frame
        width: a taller composition would push the map under the sticky bar. */
     .player-wrap:not(.player-expanded).map-expanded .video-frame {
-        max-height: min(calc(100svh - var(--mobile-bar-h, 60px) - var(--dc-topbar-h-mobile)), calc(100cqw * 9 / 16));
+        max-height: min(
+            calc(100svh - var(--mobile-bar-h, 60px) - var(--dc-topbar-h-mobile) - var(--mobile-view-nav-h, 0px)),
+            calc(100cqw * 9 / 16)
+        );
     }
     /* The mobile default above comes later than the desktop overrides with the
        same specificity, so the hidden-canvas and no-GPS heights repeat here. */
@@ -1391,9 +1399,15 @@ body.export-mode .player-wrap.player-expanded.player-panels-below .video-frame {
     display: none;
 }
 @media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+    /* The nav's height, which the video frame's first-screen ceiling subtracts. */
+    .viewer:has(> .mobile-view-nav:not([hidden])) {
+        --mobile-view-nav-h: 45px;
+    }
     .mobile-view-nav:not([hidden]) {
         display: flex;
         flex: none;
+        box-sizing: border-box;
+        height: var(--mobile-view-nav-h);
         position: sticky;
         top: 0;
         z-index: 5;

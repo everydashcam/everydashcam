@@ -50,6 +50,8 @@ async function zoomVideo(page: Page): Promise<void> {
     await expectResetHitArea(page.locator(".zoom-badge"));
     // Wait for the preview's first mirrored frame before reviewing another
     // zoom screenshot, especially with WebKit's async frame presentation.
+    // A tile too small to share with the preview shows the badge alone.
+    if (await page.locator("#video-minimap").isHidden()) return;
     await expect
         .poll(() =>
             page.locator("#video-minimap-canvas").evaluate((canvas: HTMLCanvasElement) => {
