@@ -2744,11 +2744,22 @@ export function initPlayer(): void {
         isPlaybackIntended = true;
         syncPreviewThrottle();
         ensurePlaybackSyncLoop();
+        const master = activePlayer();
         forEachAttachedSlave((s, ch) => {
-            // A held camera still draining its last frames finishes them; one
-            // that already ended stays on its last frame, as play() would
-            // restart its file from the start.
+            // play() restarts an ended element's file from the start. A held
+            // camera still draining its last frames finishes them; one that
+            // already ended stays on its last frame. An ended native slave
+            // follows the drift-sync rule: it stays put when it only ran
+            // ahead of its master, and seeks first when its moment moved.
             if (s.ended && isHeldTailChannel(ch)) return;
+            if (s.ended && !state.channelBackends[ch]) {
+                const target = activeSlaveTarget(ch, master.currentTime);
+                if (target && videoAttachedFile.get(s) === target.cand.file) {
+                    const step = nativeSlaveSyncStep(target.positionSec, s, SLAVE_DRIFT_MAX_SEC);
+                    if (step.seekSec !== null) s.currentTime = step.seekSec;
+                    if (!step.shouldResume) return;
+                }
+            }
             s.play().catch(() => {});
         });
     });

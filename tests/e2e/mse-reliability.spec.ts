@@ -356,9 +356,10 @@ test("warms the next MPEG-TS clip's worker before the clip boundary", async ({ p
 });
 
 /** Opens two front+rear pairs (6 s and 7 s) whose rear clips use
- *  `rearGopDurationSec` instead of 1 s GOPs and so outlast their fronts: the
- *  trip plays a rear-only tail after each pair. MPEG-TS plays through MSE,
- *  MP4 natively. Playback runs in the first pair. */
+ *  `rearGopDurationSec` instead of 1 s GOPs: above 1 s the rear outlasts the
+ *  front and the trip plays a rear-only tail after each pair, below it a
+ *  front-only one. MPEG-TS plays through MSE, MP4 natively. Playback runs in
+ *  the first pair. */
 async function openPairedTailTrip(
     page: Page,
     rearGopDurationSec: number,
@@ -390,7 +391,11 @@ async function openPairedTailTrip(
                 return trip?.frames.map((frame) => Object.keys(frame.channels).sort().join("+"));
             }),
         )
-        .toEqual(["front+rear", "rear", "front+rear", "rear"]);
+        .toEqual(
+            rearGopDurationSec > 1
+                ? ["front+rear", "rear", "front+rear", "rear"]
+                : ["front+rear", "front", "front+rear", "front"],
+        );
 }
 
 test("plays a paired MPEG-TS tail on the running channel and keeps the next pair warm", async ({ page }) => {
@@ -585,6 +590,38 @@ test("drops the shorter camera when a seek from the middle of its pair lands in 
     );
     expect(tail.samples, "display frames in the tail").toBeGreaterThan(0);
     expect(tail, "front camera through the tail").toMatchObject({ frontVisible: 0, frontPlaying: 0 });
+});
+
+test("resumes without restarting a slave that already finished its clip", async ({ page }) => {
+    // A slave may run up to the drift tolerance ahead of its master, so it
+    // can finish its file just before the master does. play() on an ended
+    // element restarts its file from the start; a resume there must leave it
+    // on its last frame.
+    await openPairedTailTrip(page, 0.95, "mp4");
+    await pausePlayback(page);
+    const rear = page.locator('.video-tile[data-channel="rear"] > video:not(.preload-slot):not(.tile-blur-bg)');
+    const rearEndSec = await rear.evaluate((video: HTMLVideoElement) => video.duration);
+    // Master 0.1 s before the rear's end: still inside the pair.
+    await page.evaluate((atSec) => {
+        window.__everydashcam.dom.player.currentTime = atSec;
+    }, rearEndSec - 0.1);
+    // The master's landing seek moves the rear along; end the rear after it.
+    await expect
+        .poll(() => rear.evaluate((video: HTMLVideoElement) => !video.seeking && video.currentTime))
+        .toBeCloseTo(rearEndSec - 0.1, 1);
+    await rear.evaluate((video: HTMLVideoElement) => {
+        video.currentTime = video.duration;
+    });
+    await expect(rear).toHaveJSProperty("ended", true);
+    expect(await page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(0);
+    const restartedAtSec = await rear.evaluate(
+        (video: HTMLVideoElement) =>
+            new Promise<number>((resolve) => {
+                document.getElementById("player-play")!.click();
+                setTimeout(() => resolve(video.currentTime), 50);
+            }),
+    );
+    expect(restartedAtSec, "rear stays at its end").toBeCloseTo(rearEndSec, 1);
 });
 
 test("pauses a camera that is still finishing its last frames in a paired tail", async ({ page }) => {
