@@ -1,12 +1,15 @@
 // Player controls and timeline interactions on a loaded multichannel trip.
 // Fail-loud, web-first assertions so a regression turns the test red.
 
-import type { Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+
+import type { Download, Page } from "@playwright/test";
 
 import {
     DESKTOP,
     MOBILE,
     SAMPLE_70MAI,
+    SAMPLE_GOPRO,
     SAMPLE_NOGPS,
     boxOf,
     expect,
@@ -101,6 +104,30 @@ async function wheelVideoZoom(page: Page, deltaY: number): Promise<void> {
 }
 
 const LIVE_VIDEO = "video:not(.preload-slot)";
+
+/** Pixel size of a downloaded JPEG, read from its start-of-frame marker. */
+async function jpegSize(download: Download): Promise<{ width: number; height: number }> {
+    const bytes = await readFile(await download.path());
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+        if (bytes[offset] !== 0xff) throw new Error(`no JPEG marker at ${offset}`);
+        const marker = bytes[offset + 1]!;
+        const length = bytes.readUInt16BE(offset + 2);
+        // SOF0..SOF15 except DHT (C4), JPG (C8) and DAC (CC) carry the size.
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+            return { height: bytes.readUInt16BE(offset + 5), width: bytes.readUInt16BE(offset + 7) };
+        }
+        offset += 2 + length;
+    }
+    throw new Error("JPEG has no frame header");
+}
+
+/** Recorded size of a camera's live video. */
+function cameraVideoSize(page: Page, channel: string): Promise<{ width: number; height: number }> {
+    return page
+        .locator(`.video-tile[data-channel="${channel}"] ${LIVE_VIDEO}`)
+        .evaluate((video: HTMLVideoElement) => ({ width: video.videoWidth, height: video.videoHeight }));
+}
 
 function zoomedChannel(page: Page): Promise<string | null> {
     return page.evaluate(() => window.__everydashcam.state.videoZoom.channel);
@@ -426,16 +453,91 @@ test.describe("player", () => {
         await expect(loop).not.toHaveAttribute("aria-pressed", before ?? "");
     });
 
-    test("capture button downloads a JPEG frame", async ({ page }) => {
+    test("the still-image menu saves every camera as arranged in one JPEG", async ({ page }) => {
         // The viewer can appear before the initial video attachment settles.
         // Capture a paused, playable frame outside any source/seek transition.
         await pausePlayback(page);
         await seekToTripStart(page);
+        const [main] = await visibleCameraOrder(page);
+        const mainSize = await cameraVideoSize(page, main!);
+
+        await page.locator("#player-capture").click();
+        const menu = page.locator("#player-capture-menu");
+        await expect(menu).toBeVisible();
+        const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+        await menu.getByRole("menuitem").first().click();
+        const dl = await downloadPromise;
+        expect(dl.suggestedFilename()).toMatch(/^everydashcam_\d{8}_\d{6}_frame\.jpg$/);
+        const size = await jpegSize(dl);
+        // The main camera keeps its recorded width; the smaller cameras add
+        // a strip beside or below it.
+        expect(size.width, "main camera at its own width or wider").toBeGreaterThanOrEqual(mainSize.width - 1);
+        expect(size.height, "main camera at its own height or taller").toBeGreaterThanOrEqual(mainSize.height - 1);
+        expect(size.width * size.height, "the smaller cameras are in the still").toBeGreaterThan(
+            mainSize.width * mainSize.height * 1.05,
+        );
+    });
+
+    test("the still-image menu saves one camera at its own resolution", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        await page.locator("#player-capture").click();
+        const menu = page.locator("#player-capture-menu");
+        await expect(menu).toBeVisible();
+        // The last row is the last camera of the arrangement.
+        const order = await visibleCameraOrder(page);
+        const last = order.at(-1)!;
+        const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+        await menu.getByRole("menuitem").last().click();
+        const dl = await downloadPromise;
+        expect(dl.suggestedFilename()).toMatch(new RegExp(`_${last}\\.jpg$`));
+        expect(await jpegSize(dl)).toEqual(await cameraVideoSize(page, last));
+        await expect(menu).toBeHidden();
+    });
+
+    test("S on a zoomed camera saves only the zoomed part", async ({ page }) => {
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        // One wheel event zooms a capped step; a few make a clear zoom.
+        for (let step = 0; step < 4; step++) await wheelVideoZoom(page, -120);
+        await expect.poll(() => page.evaluate(() => window.__everydashcam.state.videoZoom.scale)).toBeGreaterThan(1.3);
+        const channel = (await zoomedChannel(page))!;
+        const recorded = await cameraVideoSize(page, channel);
 
         const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
-        await page.locator("#player-capture").click();
-        const dl = await downloadPromise;
-        expect(dl.suggestedFilename()).toMatch(/\.(jpe?g|png)$/i);
+        await page.keyboard.press("s");
+        const size = await jpegSize(await downloadPromise);
+        expect(size.width).toBeLessThan(recorded.width);
+        expect(size.height).toBeLessThan(recorded.height);
+    });
+
+    test("S in export mode saves the frame the export would write", async ({ page }) => {
+        // Paused mid-playback: the media clock sits between two frames, so a
+        // seek to it cannot be confirmed by the clock alone.
+        const master = page.locator(`.video-tile.active ${LIVE_VIDEO}`);
+        if (await master.evaluate((video: HTMLVideoElement) => video.paused))
+            await page.locator("#player-play").click();
+        await expect.poll(() => masterVideoTime(page)).toBeGreaterThan(0.05);
+        await pausePlayback(page);
+        // Earlier stills of the same paused frame must not leave it without a
+        // confirmed time, which export-mode privacy zones require.
+        for (let still = 0; still < 2; still++) {
+            const earlier = page.waitForEvent("download", { timeout: 10_000 });
+            await page.keyboard.press("s");
+            await earlier;
+        }
+        await openExport(page, false);
+        // The default output size is the main camera's own size.
+        const [main] = await visibleCameraOrder(page);
+        const mainSize = await cameraVideoSize(page, main!);
+        const even = (n: number): number => n - (n % 2);
+
+        const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+        await page.keyboard.press("s");
+        expect(await jpegSize(await downloadPromise)).toEqual({
+            width: even(mainSize.width),
+            height: even(mainSize.height),
+        });
     });
 
     test("a click on a smaller camera makes it the main one and the sound follows it", async ({ page }) => {
@@ -2345,4 +2447,23 @@ test.describe("chart hover preview", () => {
             hoverCursorShown: true,
         });
     });
+});
+
+test("the capture button saves at once when saving is the only choice", async ({ page }) => {
+    // Without the Clipboard API (plain-http self-hosting) a single-camera
+    // trip has nothing else to offer, so a one-row menu would only add a click.
+    await page.addInitScript(() => {
+        Reflect.deleteProperty(window, "ClipboardItem");
+    });
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page, "en");
+    await loadTrip(page, SAMPLE_GOPRO);
+    await pausePlayback(page);
+
+    const downloadPromise = page.waitForEvent("download", { timeout: 10_000 });
+    await page.locator("#player-capture").click();
+    const dl = await downloadPromise;
+    expect(dl.suggestedFilename()).toMatch(/_frame\.jpg$/);
+    await expect(page.locator("#player-capture-menu")).toBeHidden();
 });

@@ -686,6 +686,15 @@ let mapSnapshotterProvider: typeof exportPanelState.overlayMap.provider | null =
 let mapSnapshotterLabelScalePct: number | null = null;
 let mapSnapshotterLabelDensity: string | null = null;
 let mapLastRequestKey = "";
+// True while the preview map canvas holds a snapshot of the current snapshotter
+// (trip, style, provider). A still image of the export frame draws that canvas.
+let hasMapCanvasSnapshot = false;
+
+/** Canvas with the map the export preview shows now, or null before the
+ *  preview has painted one for the current trip and style. */
+export function previewMapCanvas(): HTMLCanvasElement | null {
+    return hasMapCanvasSnapshot ? (dom.playerMapOverlayCanvas ?? null) : null;
+}
 // Monotonic gate: a burst of frames/drag launches several snapshot promises;
 // only the latest result is allowed to paint (else a slow earlier frame
 // overwrites a fresh later one).
@@ -815,6 +824,7 @@ async function refreshMapSnapshot(
             if (!ctx) return;
             ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
             ctx.drawImage(bitmap, 0, 0);
+            hasMapCanvasSnapshot = true;
         } catch (err) {
             // Reset the dedup key so the SAME position can be retried on the
             // next tick - a failed snapshot otherwise left the canvas
@@ -848,6 +858,7 @@ function disposeMapSnapshotter(): void {
     mapSnapshotterLabelScalePct = null;
     mapSnapshotterLabelDensity = null;
     mapLastRequestKey = "";
+    hasMapCanvasSnapshot = false;
     if (snap) {
         // Defer map.remove() behind any snapshot still mid-await on this instance
         // (snapshot() takes no signal and runs to completion); removing the

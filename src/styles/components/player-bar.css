@@ -457,6 +457,12 @@
     color: var(--fg-dim);
     line-height: 1;
 }
+/* The capture button opens the still-image menu; it shows the open state
+   like the other menu buttons. */
+#player-capture.is-open {
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+    color: var(--accent-ink);
+}
 .view-menu-popover {
     position: absolute;
     right: 0;

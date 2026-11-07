@@ -83,7 +83,8 @@ import { notify } from "./notifications.js";
 import { pausePlayback, registerPauseIntent } from "./playback-pause.js";
 import { ensureMarkerLoop, refreshMap, resetFollowInteractionPause, smoothCameraToActiveFrameOffset } from "./map.js";
 import { setDrawerOpen, syncBrowseState } from "./mobile-drawer.js";
-import { captureCurrentFrame, syncCaptureButton } from "./player-capture.js";
+import { type CaptureClock, captureStill, type StillContent, syncCaptureButton } from "./player-capture.js";
+import { initCaptureMenu } from "./capture-menu.js";
 import { hideLoadingOverlay, showLoadingOverlay } from "./player-loading-overlay.js";
 import { initFrameStep } from "./player-frame-step.js";
 import { initSeekButtons } from "./player-seek-buttons.js";
@@ -204,21 +205,28 @@ export function reconcileActiveTripAfterRegroup(): void {
 }
 
 /**
- * Adapter: capture wants (tripStartUtcSec, tripCurrentSec); the playback core
- * exports getTripCurrentTime() and holds the trip list. Encapsulated here so
- * call sites in player.ts (hotkey, button click, etc.) read as one line.
+ * The playback core's clock for still images. BOTH the trip anchor and the
+ * trip-relative seconds resolve AFTER the readiness awaits inside captureStill
+ * - at the instant the frame is actually drawn. A click-time startUtc snapshot
+ * combined with the post-await seconds produced a nonsense timestamp when the
+ * user switched trips during the readiness wait.
  */
+const captureClock: CaptureClock = {
+    getTripStartUtcSec: () => activeTrip()?.startUtc ?? null,
+    getTripCurrentSec: getTripCurrentTime,
+    getFrameContentSec: (channel, mediaTime) => channelPresentedFrame(channel, true, mediaTime)?.contentSec ?? null,
+};
+
+const VIEW_STILL: StillContent = { kind: "view" };
+
+/** Saves what the player shows (S; the button opens the still-image menu). */
 function captureFrameNow(): void {
-    // BOTH the trip anchor and the trip-relative seconds resolve AFTER the
-    // readiness awaits inside captureCurrentFrame - at the instant the frame
-    // is actually drawn. A click-time startUtc snapshot combined with the
-    // post-await seconds produced a nonsense timestamp when the user switched
-    // trips during the ≤1.75 s readiness wait.
-    void captureCurrentFrame(
-        () => activeTrip()?.startUtc ?? null,
-        getTripCurrentTime,
-        (channel, mediaTime) => channelPresentedFrame(channel, true, mediaTime)?.contentSec ?? null,
-    );
+    void captureStill(VIEW_STILL, "download", captureClock);
+}
+
+/** Copies what the player shows to the clipboard (Shift+S). */
+function copyFrameNow(): void {
+    void captureStill(VIEW_STILL, "clipboard", captureClock);
 }
 
 /** Whether playback was active before a src change - auto-resumes after load. */
@@ -2728,6 +2736,7 @@ function initPlayerControls(): void {
         zoomTimeline: zoomTimelineStep,
         cyclePlaybackRate,
         captureFrame: captureFrameNow,
+        copyFrame: copyFrameNow,
         resetVideoZoom,
         panTimelineToInclude,
         isSpeedMenuOpen,
@@ -2741,7 +2750,7 @@ function initPlayerControls(): void {
     onActivePlayerEvent("ratechange", syncSpeedButton);
 
     initPlayerFullscreen();
-    dom.playerBar.capture.addEventListener("click", captureFrameNow);
+    initCaptureMenu((content, delivery) => void captureStill(content, delivery, captureClock));
 
     // Sync capture button on frame readiness / src change. loadeddata fires when readyState >= HAVE_CURRENT_DATA, which is what drawImage requires.
     onActivePlayerEvent("loadeddata", syncCaptureButton);

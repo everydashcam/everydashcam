@@ -61,6 +61,7 @@ function buildGroups(): HotkeyGroup[] {
             title: t("hotkeys.group.misc"),
             rows: [
                 { keys: ["S"], label: t("hotkeys.action.snapshot") },
+                { keys: ["Shift+S"], label: t("hotkeys.action.snapshotCopy") },
                 { keys: ["R"], label: t("hotkeys.action.loop") },
                 { keys: ["+", "-"], label: t("hotkeys.action.zoomTimeline") },
                 {

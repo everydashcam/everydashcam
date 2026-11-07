@@ -131,10 +131,13 @@ function featherEdges(sctx: OffscreenCanvasRenderingContext2D, w: number, h: num
  *
  * Position is clamped so the slot stays inside the frame even when the user
  * dragged the preview close to the edge and bumped the scale slider up.
+ *
+ * The export passes a fresh snapshot; a still image of the export frame
+ * passes the canvas the preview last painted.
  */
 export function drawMapOverlay(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-    bitmap: ImageBitmap,
+    bitmap: ImageBitmap | HTMLCanvasElement,
     frameWidth: number,
     frameHeight: number,
     opts: MapOverlayDrawOpts,

@@ -206,7 +206,7 @@ function resolveReencodeBitrate(trip: Trip, dims: OutputDims): number {
 /** Corner the mark is burned into, or null when the user opted out. Never gates
  *  stream-copy: that path leaves the frames untouched and so carries no mark
  *  either way, which is exactly what the opt-out asks for. */
-function watermarkAnchorForExport(): WatermarkAnchor | null {
+export function watermarkAnchorForExport(): WatermarkAnchor | null {
     return exportPanelState.withWatermark ? exportPanelState.watermarkAnchor : null;
 }
 

@@ -331,6 +331,8 @@ export const dom = {
         speed: $id<HTMLButtonElement>("player-speed"),
         speedMenu: $id<HTMLUListElement>("player-speed-menu"),
         capture: $id<HTMLButtonElement>("player-capture"),
+        captureWrap: $id<HTMLElement>("player-capture-wrap"),
+        captureMenu: $id<HTMLElement>("player-capture-menu"),
         loop: $id<HTMLButtonElement>("player-loop"),
         fullscreen: $id<HTMLButtonElement>("player-fullscreen"),
         fullscreenExit: $id<HTMLButtonElement>("player-fullscreen-exit"),

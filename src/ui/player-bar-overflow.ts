@@ -3,6 +3,7 @@
 
 import { t } from "../i18n/index.js";
 import { openCamerasMenuFromOverflow } from "./cameras-menu.js";
+import { openCaptureMenuFromOverflow } from "./capture-menu.js";
 import { dom } from "./dom.js";
 import { isMobileLayout, MOBILE_LAYOUT_QUERY } from "./media-queries.js";
 import { type OverflowableItem, initOverflowBar } from "./overflow-bar.js";
@@ -109,12 +110,15 @@ export function initPlayerBarOverflow() {
             isAvailable: () => !help.hidden,
         });
     }
+    // Still image: the button and its menu fold together; the entry opens the
+    // menu next to the overflow button (or saves when that is the only choice).
     if (capture) {
         items.push({
-            el: capture,
+            el: dom.playerBar.captureWrap,
             priority: 9,
-            label: () => t("player.capture"),
-            isAvailable: () => !capture.hidden,
+            label: () => t("player.captureMenu.title"),
+            isAvailable: () => !dom.playerBar.captureWrap.hidden && !capture.hidden,
+            onActivate: openCaptureMenuFromOverflow,
         });
     }
     // Marker drop: secondary on narrow bars - every un-collapsible control

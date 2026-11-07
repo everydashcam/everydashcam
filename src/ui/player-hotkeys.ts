@@ -3,7 +3,8 @@
 // Skipped when focus is in an editable control (input/select/textarea/
 // [contenteditable]) so shortcuts don't break text input. Modifier combos
 // (Cmd/Ctrl/Alt) are not intercepted - Shift is the only modifier we use
-// (Shift+arrow = long seek step, Shift+. = >, Shift+I/O = jump to clip edge).
+// (Shift+arrow = long seek step, Shift+. = >, Shift+I/O = jump to clip edge,
+// Shift+S = copy a still image).
 // Arrow seek steps are user-configurable in settings; defaults 5s / 30s.
 
 import { cycleMainCamera, toggleArrangementMode } from "./camera-arrangement.js";
@@ -33,6 +34,8 @@ interface HotkeyDeps {
     zoomTimeline: (dir: 1 | -1) => void;
     cyclePlaybackRate: (dir: 1 | -1) => void;
     captureFrame: () => void;
+    /** Copies the same still image to the clipboard (Shift+S). */
+    copyFrame: () => void;
     resetVideoZoom: () => void;
     /** Pans a zoomed timeline window so `sec` is inside it (no-op otherwise).
      *  Pre-step for the Shift+I/O jumps: seeks clamp to the zoom window, so a
@@ -244,14 +247,17 @@ export function initPlayerHotkeys(deps: HotkeyDeps): void {
             return;
         }
 
-        // S: save the current frame as JPG. Only fires when there is a
-        // playable active file (same logic as the player-bar button).
+        // S: save a still image of the player as JPG; Shift+S: copy it.
+        // Only fires when there is a playable active file (same logic as the
+        // player-bar button).
         if (code === "KeyS") {
             if (!state.active) return;
             const video = activeCandidate();
             if (!video?.canPlay) return;
             e.preventDefault();
-            deps.captureFrame();
+            if (e.repeat) return;
+            if (e.shiftKey) deps.copyFrame();
+            else deps.captureFrame();
             return;
         }
 

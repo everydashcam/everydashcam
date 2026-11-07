@@ -18,7 +18,7 @@
 
 import type { Channel } from "../parsers/types.js";
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
-import { containRect } from "./video-geometry.js";
+import { containRect, type Rect, zoomedVisibleShare } from "./video-geometry.js";
 import { ALL_CHANNELS, channelPlayers, channelTileFor, dom, forEachVideoSlot } from "./dom.js";
 import { t } from "../i18n/index.js";
 import { formatNumber } from "./format.js";
@@ -90,7 +90,7 @@ function canZoom(): boolean {
 
 /** True while the camera's tile is part of the grid and can show video. A
  *  camera that is excluded, absent from the current clip or unplayable is not. */
-function isCameraOnGrid(channel: Channel): boolean {
+export function isCameraOnGrid(channel: Channel): boolean {
     const tile = channelTileFor(channel);
     return (
         visibleChannels().includes(channel) &&
@@ -613,6 +613,21 @@ function endPinch(): void {
         wasDragging = false;
         pinchClickSuppressTimer = 0;
     }, 400);
+}
+
+/**
+ * The zoomed camera and the part of its picture the tile shows, as fractions
+ * of the visible (reflected) image, or null when nothing is zoomed. A still
+ * image of the zoomed view saves exactly this part.
+ */
+export function zoomedCameraView(): { channel: Channel; share: Rect } | null {
+    const z = state.videoZoom;
+    if (z.channel === null) return null;
+    const g = computeZoomGeometry(z.channel);
+    if (!g) return null;
+    const displayed = { x: g.padX, y: g.padY, w: g.dispW, h: g.dispH };
+    const share = zoomedVisibleShare(displayed, g.tileW, g.tileH, z.scale, z.offsetX, z.offsetY);
+    return share ? { channel: z.channel, share } : null;
 }
 
 /** Geometry of the zoomed camera, or null when nothing is zoomed. */

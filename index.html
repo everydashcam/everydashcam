@@ -1926,12 +1926,19 @@
                                 <span id="gps-sync-pill-mobile-label"></span>
                             </button>
 
-                            <button id="player-capture" class="player-btn" type="button" aria-keyshortcuts="S"
-                                    data-i18n-attr="aria-label:player.capture,title:player.capture"
-                                    aria-label="Save still image (S)" title="Save still image (S)">
-                                <!-- camera (lucide) -->
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                            </button>
+                            <!-- Still image: the button opens the menu (save, copy, one
+                                 camera); S saves directly. Filled in by src/ui/capture-menu.ts. -->
+                            <div class="view-menu-wrap capture-wrap" id="player-capture-wrap">
+                                <button id="player-capture" class="player-btn" type="button" aria-keyshortcuts="S"
+                                        aria-haspopup="menu" aria-expanded="false" aria-controls="player-capture-menu"
+                                        data-i18n-attr="aria-label:player.capture,title:player.capture"
+                                        aria-label="Save still image (S)" title="Save still image (S)">
+                                    <!-- camera (lucide) -->
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                                </button>
+                                <div id="player-capture-menu" class="view-menu-popover capture-menu" role="menu"
+                                     data-i18n-attr="aria-label:player.captureMenu.title" aria-label="Still image" hidden></div>
+                            </div>
                             <!-- Camera arrangement menu, shown on trips with several
                                  cameras. Filled in by src/ui/cameras-menu.ts. -->
                             <div class="view-menu-wrap cameras-menu-wrap" id="player-cameras-wrap" hidden>

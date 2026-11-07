@@ -170,6 +170,16 @@ export function applyCameraLayout(order: readonly Channel[], opts: { animate?: b
     if (before) animateFromBoxes(before);
 }
 
+/**
+ * The viewer's current arrangement in screen pixels: the request it was laid
+ * out with and the result. null before the first layout and in export mode,
+ * where the preview shows the output frame instead (see computePlacement).
+ */
+export function viewerCameraLayout(): { request: CameraLayoutRequest; layout: CameraLayout } | null {
+    if (!placed || state.exportModeOpen) return null;
+    return { request: placed.request, layout: placed.layout };
+}
+
 /** Camera the export preview blurs behind the cameras: the main place's,
  *  or the first one with a picture (the file's rule, camera-composition.ts). */
 export function backdropChannel(): Channel | null {
