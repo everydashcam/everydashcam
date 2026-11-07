@@ -1587,21 +1587,32 @@ body.export-mode .sidebar-toggle,
     display: none;
 }
 
-/* The expanded map borrows the sidebar column on a narrow desktop window.
-   With the sidebar in place the player drops below 768 and the pwrap
+/* The expanded map keeps the player at desktop width. Below 768 the pwrap
    container takeover (viewer.css) swallows the video and the chart - on
-   foldables and portrait tablets that is the default state, not a squeezed
-   edge case. Freeing the column keeps the player at desktop width, so the
-   normal side-by-side map grid applies and the video stays visible. 1088 =
-   768 (player minimum) + 320 (the sidebar clamp ceiling); wider windows fit
-   both. Same 0-track + visibility mechanics as body.sidebar-collapsed above.
-   The list toggle stays hidden for the duration - restoring the sidebar
-   mid-map would just re-trigger the takeover; the sidebar returns when the
-   map collapses (the ✕ on the map). Export mode never coexists
-   (applyMapLayout drops .map-expanded there). :not(.map-unavailable): the
-   no-WebGL notice pane reuses .map-expanded and must not cost the user the
-   trip list. */
-@media (min-width: 768px) and (max-width: 1088px) and (min-height: 501px) {
+   foldables and portrait tablets that would be the default state, not a
+   squeezed edge case. So the sidebar narrows to leave the viewer 772 (768
+   player + the 4px resize track) and keeps the user's own width whenever
+   that already fits. Export mode never coexists (applyMapLayout drops
+   .map-expanded there). :not(.map-unavailable): the no-WebGL notice pane
+   reuses .map-expanded and must not cost the user the trip list. */
+@media (min-width: 768px) and (min-height: 501px) {
+    body:not(.map-unavailable):has(
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        main.layout {
+        --viewer-reserve: 772px;
+    }
+}
+/* Where even the narrowest list (200, the drag minimum in sidebar-resize.ts)
+   does not fit beside 772, the column yields entirely: 972 = 772 + 200.
+   Same 0-track + visibility mechanics as body.sidebar-collapsed above.
+   The list is still one click away: the player-bar toggle opens it over the
+   player as the drawer (mobile-drawer.ts reads --sidebar-yielded), and the
+   scrim, Escape or a picked trip close it. The sidebar stays a grid item that
+   overflows its 0-width track - taking it out of flow (fixed/absolute) would
+   auto-place the viewer into that track. No resize handle: the overlay width
+   is fixed like the phone drawer's. */
+@media (768px <= width < 972px) and (min-height: 501px) {
     body:not(.map-unavailable):has(
             .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
         )
@@ -1611,15 +1622,33 @@ body.export-mode .sidebar-toggle,
     body:not(.map-unavailable):has(
             .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
         )
-        .sidebar,
-    body:not(.map-unavailable):has(
-            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
-        )
         .sidebar-resize {
         visibility: hidden;
     }
-    body:not(.map-unavailable):has(.player-wrap.map-expanded) .sidebar-toggle {
-        display: none;
+    body:not(.map-unavailable):has(
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        .sidebar {
+        --sidebar-yielded: 1;
+        visibility: hidden;
+        justify-self: start;
+        width: min(320px, 85vw);
+        position: relative;
+        z-index: var(--dc-z-drawer);
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+        overscroll-behavior: contain;
+    }
+    body:not(.map-unavailable):has(
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        .sidebar[data-drawer-open="true"] {
+        visibility: visible;
+    }
+    /* The phone inset is the taller mobile topbar; this is the desktop one. */
+    body:not(.map-unavailable):has(
+        .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+    ) .drawer-scrim {
+        top: max(env(titlebar-area-height, 44px), var(--dc-topbar-h));
     }
 }
 

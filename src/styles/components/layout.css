@@ -10,13 +10,15 @@ main.layout {
        1280 screen took a third of the viewer's width and the video shrank
        to ~600px with the map open.
 
-       calc(100vw - 320px) is a hard-cap, guarding against a user who
-       manually dragged the resize value stored in LS to huge values (the
+       calc(100vw - --viewer-reserve) is a hard-cap, guarding against a user
+       who manually dragged the resize value stored in LS to huge values (the
        sidebar would eat almost everything, the viewer would collapse to
        zero - body overflow:hidden masks this, the user sees "nothing
-       shrinks"). minmax(0, 1fr) protects the viewer from other overflow sources. */
+       shrinks"). The expanded map raises the reserve (sidebar.css).
+       minmax(0, 1fr) protects the viewer from other overflow sources. */
+    --viewer-reserve: 320px;
     grid-template-columns:
-        min(var(--sidebar-width, clamp(220px, 22vw, 320px)), calc(100vw - 320px))
+        min(var(--sidebar-width, clamp(220px, 22vw, 320px)), calc(100vw - var(--viewer-reserve)))
         4px
         minmax(0, 1fr);
     min-height: 0;

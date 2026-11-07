@@ -414,22 +414,24 @@ test.describe("touch player toolbar", () => {
     });
 });
 
-test("expanded map fills a narrow desktop viewer after sidebar resizing", async ({ page }) => {
-    await page.setViewportSize({ width: 1200, height: 900 });
+test("expanded map narrows a hand-widened sidebar instead of hiding the video", async ({ page }) => {
+    const viewportWidth = 1200;
+    await page.setViewportSize({ width: viewportWidth, height: 900 });
     await page.addInitScript(() => localStorage.setItem("everydashcam:sidebar-width", "600"));
     await gotoApp(page);
     await loadTrip(page, SAMPLE_70MAI);
+    expect((await boxOf(page, "#sidebar")).width).toBeCloseTo(600, 0);
     await page.locator("#mini-map").click();
     await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
     await expect(page.locator("body")).not.toHaveClass(/map-morphing/);
-    const viewer = await boxOf(page, ".viewer");
-    expect(viewer.width).toBeLessThan(768);
-    const map = await boxOf(page, ".map-wrap");
-    expect(map.x).toBeCloseTo(viewer.x, 0);
-    expect(map.width).toBeCloseTo(viewer.width, 0);
-    await expect(page.locator(".video-frame")).toBeHidden();
-    await page.locator("#map-collapse").click();
+    // The list gives up only what keeps the player at desktop width, so the
+    // pwrap takeover never swallows the video (sidebar.css).
+    await expect.poll(async () => (await boxOf(page, "#sidebar")).width).toBeCloseTo(viewportWidth - 772, 0);
+    expect((await boxOf(page, ".viewer")).width).toBeGreaterThanOrEqual(767.5);
     await expect(page.locator(".video-frame")).toBeVisible();
+    await expect(page.locator(".map-wrap")).toBeVisible();
+    await page.locator("#map-collapse").click();
+    await expect.poll(async () => (await boxOf(page, "#sidebar")).width, "dragged width returns").toBeCloseTo(600, 0);
 });
 
 test("fullscreen controls remain available while hovered or keyboard focused", async ({ page }) => {

@@ -1,12 +1,14 @@
 // Drag handle between sidebar and main area. Width stored in --sidebar-width on :root and persisted to localStorage.
 // Pointer capture keeps touch, pen and mouse drags attached to the handle.
 // Also owns the collapse toggle (body.sidebar-collapsed + the player-bar toggle) -
-// collapse is the other way the user manages the same column's width.
+// collapse is the other way the user manages the same column's width. When the
+// expanded map takes the whole column, the same toggle opens the list as the drawer.
 
 import { t } from "../i18n/index.js";
 import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { dom } from "./dom.js";
 import { isMobileLayout } from "./media-queries.js";
+import { closeStrandedDrawer, isSidebarYieldedToMap, setDrawerOpen } from "./mobile-drawer.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 
 const SIDEBAR_WIDTH_KEY = "everydashcam:sidebar-width";
@@ -43,18 +45,45 @@ function restoreSidebarWidth(): void {
     }
 }
 
-/** Applies the collapsed state to the DOM: the body class drives the CSS
- *  (0-track column), and the one toggle in the player bar mirrors it in its
- *  icon, label and aria-expanded. */
-function applySidebarCollapsed(collapsed: boolean): void {
-    document.body.classList.toggle("sidebar-collapsed", collapsed);
+/** Mirrors whether the list is on screen in the one toggle in the player bar:
+ *  icon, label and aria-expanded. While the map holds the column the list
+ *  shows only as the drawer, so the drawer state decides; otherwise the
+ *  collapsed choice does. */
+function syncSidebarToggle(): void {
+    const listShown = isSidebarYieldedToMap()
+        ? dom.sidebar.dataset.drawerOpen === "true"
+        : !document.body.classList.contains("sidebar-collapsed");
     const toggle = dom.sidebarToggle;
-    const label = t(collapsed ? "sidebar.expand" : "sidebar.collapse");
-    toggle.setAttribute("aria-expanded", String(!collapsed));
+    const label = t(listShown ? "sidebar.collapse" : "sidebar.expand");
+    toggle.setAttribute("aria-expanded", String(listShown));
     toggle.setAttribute("aria-label", label);
     toggle.title = label;
-    toggle.querySelector<SVGElement>(".i-panel-close")?.toggleAttribute("hidden", collapsed);
-    toggle.querySelector<SVGElement>(".i-panel-open")?.toggleAttribute("hidden", !collapsed);
+    toggle.querySelector<SVGElement>(".i-panel-close")?.toggleAttribute("hidden", !listShown);
+    toggle.querySelector<SVGElement>(".i-panel-open")?.toggleAttribute("hidden", listShown);
+}
+
+/** Applies the collapsed state to the DOM: the body class drives the CSS
+ *  (0-track column), and the toggle mirrors it. */
+function applySidebarCollapsed(collapsed: boolean): void {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    syncSidebarToggle();
+}
+
+/** Follows the CSS yield of the column to the expanded map. Its inputs are
+ *  classes owned by several features (map layout, viewer placeholders, export,
+ *  no-WebGL) plus the window width, so observing them here replaces a call at
+ *  every site that flips one of them. */
+function observeSidebarYield(): void {
+    const reconcile = (): void => {
+        closeStrandedDrawer();
+        syncSidebarToggle();
+    };
+    const observer = new MutationObserver(reconcile);
+    for (const el of [document.body, dom.viewer, dom.playerWrap]) {
+        observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+    }
+    observer.observe(dom.sidebar, { attributes: true, attributeFilter: ["data-drawer-open"] });
+    window.addEventListener("resize", reconcile);
 }
 
 export function initSidebarResize(): void {
@@ -67,9 +96,16 @@ export function initSidebarResize(): void {
     // list - it is the only way to pick a trip to watch.
     // The toggle keeps focus across the change: it stays where it was.
     applySidebarCollapsed(document.body.classList.contains("sidebar-collapsed"));
-    dom.sidebarToggle.addEventListener("click", () =>
-        applySidebarCollapsed(!document.body.classList.contains("sidebar-collapsed")),
-    );
+    observeSidebarYield();
+    dom.sidebarToggle.addEventListener("click", () => {
+        // No column to restore while the map holds it: show the list over the
+        // player instead of leaving the toggle without an effect.
+        if (isSidebarYieldedToMap()) {
+            setDrawerOpen(dom.sidebar.dataset.drawerOpen !== "true");
+            return;
+        }
+        applySidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
+    });
 
     attachPointerDrag(dom.sidebarResize, {
         onStart: (e) => {

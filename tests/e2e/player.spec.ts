@@ -1866,11 +1866,71 @@ test.describe("player", () => {
         await expect(page.locator("#player-chart-canvas")).toBeVisible();
         await expect(page.locator("#sidebar")).toBeHidden();
 
+        // The list stays reachable: the toggle opens it over the player.
+        const toggle = page.locator("#sidebar-toggle");
+        await expect(toggle).toBeVisible();
+        await expect(toggle).toHaveAccessibleName("Show the trip list");
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        await toggle.click();
+        await expect(page.locator("#sidebar")).toBeVisible();
+        await expect(page.locator("#sidebar")).toHaveAttribute("data-drawer-open", "true");
+        await expect(toggle).toHaveAttribute("aria-expanded", "true");
+        const overlay = await boxOf(page, "#sidebar");
+        const video = await boxOf(page, ".video-frame");
+        expect(overlay.x + overlay.width, "the list covers part of the player").toBeGreaterThan(video.x + 100);
+        expect(video.width, "the player keeps its desktop column under the list").toBeGreaterThan(400);
+        await page.keyboard.press("Escape");
+        await expect(page.locator("#sidebar")).toBeHidden();
+        await expect(toggle, "focus returns to the toggle").toBeFocused();
+
+        // The scrim closes it too.
+        await toggle.click();
+        await expect(page.locator("#sidebar")).toBeVisible();
+        await page.mouse.click(860, 400);
+        await expect(page.locator("#sidebar")).toBeHidden();
+        await expect(page.locator("#drawer-scrim")).toBeHidden();
+
+        // A window wide enough for the column puts the list back in it and
+        // leaves no scrim over the viewer.
+        await toggle.click();
+        await expect(page.locator("#sidebar")).toHaveAttribute("data-drawer-open", "true");
+        await page.setViewportSize({ width: 1100, height: 760 });
+        await expect(page.locator("#sidebar")).not.toHaveAttribute("data-drawer-open", "true");
+        await expect(page.locator("#drawer-scrim")).toBeHidden();
+        await expect(page.locator("#sidebar")).toBeVisible();
+        await expect(toggle).toHaveAccessibleName("Hide the trip list");
+        await page.setViewportSize({ width: 900, height: 760 });
+        await expect(page.locator("#sidebar")).toBeHidden();
+
         // Collapsing the map hands the column back to the trip list.
         await page.locator("#map-collapse").click();
         await expect(page.locator("#player-wrap")).not.toHaveClass(/map-expanded/);
         await expect(page.locator("#sidebar")).toBeVisible();
         await expect(page.locator("#mini-map")).toBeVisible();
+    });
+
+    test("expanded map on a mid-width window keeps the trip list beside the video", async ({ page }) => {
+        // 1075 fits the default list (22vw) beside a desktop-width player, so
+        // the list and its toggle stay (sidebar.css). A hand-widened list is
+        // covered in player-review.spec.ts.
+        const viewportWidth = 1075;
+        await page.setViewportSize({ width: viewportWidth, height: 760 });
+        await page.locator("#mini-map").click();
+        await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
+        await expect(page.locator("#sidebar")).toBeVisible();
+        await expect(page.locator("#sidebar-toggle")).toBeVisible();
+        await expect(page.locator(".video-frame")).toBeVisible();
+        await expect(page.locator(".map-wrap")).toBeVisible();
+        expect((await boxOf(page, "#sidebar")).width, "default list width is kept").toBeCloseTo(
+            viewportWidth * 0.22,
+            0,
+        );
+
+        // The toggle still frees the column while the map is open.
+        await page.locator("#sidebar-toggle").click();
+        await expect(page.locator("#sidebar")).toBeHidden();
+        await page.locator("#sidebar-toggle").click();
+        await expect(page.locator("#sidebar")).toBeVisible();
     });
 
     test("settings: switching units updates the speed unit label", async ({ page }) => {

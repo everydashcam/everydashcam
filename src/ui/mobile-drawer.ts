@@ -1,6 +1,8 @@
-// Mobile drawer (< 768px). Sidebar slides out via translateX(-100%); burger opens it,
-// scrim/Escape/resize close it. Drawer state is not persisted - reload and cross-boundary
-// resize always start with a closed drawer.
+// Trip-list drawer. On phones (< 768px) the sidebar slides out via translateX(-100%) and
+// the burger opens it. On a narrow desktop window the expanded map can take the whole
+// sidebar column (sidebar.css); the same drawer then opens over the player from the
+// player-bar list toggle. Scrim/Escape/resize close it. Drawer state is not persisted -
+// reload and cross-boundary resize always start with a closed drawer.
 //
 // Browse state (body.browsing): trips are loaded but none is active yet. On
 // mobile the trip list then fills the whole screen instead of hiding behind the
@@ -27,6 +29,31 @@ function isMobileViewport(): boolean {
     return window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
 }
 
+/**
+ * True while the expanded map holds the whole sidebar column on a desktop
+ * window, so the list can only be shown as the overlay drawer. sidebar.css owns
+ * the breakpoint and the conditions and publishes the verdict as
+ * --sidebar-yielded; reading it back keeps them in one place.
+ */
+export function isSidebarYieldedToMap(): boolean {
+    // Without an expanded map there is nothing to yield to; this also skips the
+    // style read on the frequent player class flips (controls, morphing).
+    if (!dom.playerWrap.classList.contains("map-expanded") || isMobileViewport()) return false;
+    return getComputedStyle(dom.sidebar).getPropertyValue("--sidebar-yielded").trim() === "1";
+}
+
+/**
+ * Closes a drawer that its layout no longer overlays. The desktop overlay
+ * exists only while the map holds the column: collapsing the map, opening
+ * export or widening the window puts the list back in its column, and a scrim
+ * left open would block the whole viewer.
+ */
+export function closeStrandedDrawer(): void {
+    if (dom.sidebar.dataset.drawerOpen !== "true") return;
+    if (isMobileViewport() || isSidebarYieldedToMap()) return;
+    setDrawerOpen(false);
+}
+
 // Toggle the standard `inert` attribute (removes from tab order + a11y tree).
 // Set via attribute, not the HTMLElement.inert property, to stay independent of
 // the TS lib version.
@@ -44,9 +71,10 @@ function setInert(el: HTMLElement, on: boolean): void {
  *
  *   - closed off-canvas drawer (mobile, not browsing): inert the sidebar so a
  *     keyboard / screen-reader user cannot land on the off-screen trip list.
- *   - open drawer (mobile): inert the scrim-covered viewer so Tab cannot escape
- *     behind the drawer (the scrim only blocks pointer events). The topbar
- *     (burger) stays live - it sits above the drawer and closes it.
+ *   - open drawer (mobile, or over the map on desktop): inert the
+ *     scrim-covered viewer so Tab cannot escape behind the drawer (the scrim
+ *     only blocks pointer events). The topbar (burger) stays live - it sits
+ *     above the drawer and closes it.
  *   - desktop export: inert the sidebar while it is visually hidden.
  *   - browse full-screen list and ordinary desktop: everything live.
  */
@@ -56,7 +84,7 @@ export function syncDrawerA11y(): void {
         document.body.classList.contains("browsing") && !document.body.classList.contains("preparing-trip");
     const open = dom.sidebar.dataset.drawerOpen === "true";
     setInert(dom.sidebar, mobile ? !browsing && !open : state.exportModeOpen);
-    setInert(dom.viewer, mobile && open);
+    setInert(dom.viewer, open && (mobile || isSidebarYieldedToMap()));
 }
 
 /**
@@ -153,13 +181,15 @@ export function setDrawerOpen(open: boolean): void {
     dom.topbarBurger.setAttribute("aria-expanded", String(open));
     syncDrawerA11y();
     // Focus management: move into the drawer on open (first control, else the
-    // sidebar root), return to the burger on close. Restore only when this was a
-    // genuine close of an open drawer, we are still on mobile, and focus is still
-    // inside the drawer (don't steal it if the user moved on).
+    // sidebar root), return to the control that opens it on close. Restore only
+    // when this was a genuine close of an open drawer that is now off screen,
+    // and focus is still inside the drawer (don't steal it if the user moved
+    // on). A list back in its desktop column keeps focus where it is.
     if (open && !wasOpen) {
         (focusableWithin(dom.sidebar)[0] ?? dom.sidebar).focus({ preventScroll: true });
-    } else if (!open && wasOpen && isMobileViewport() && dom.sidebar.contains(document.activeElement)) {
-        dom.topbarBurger.focus();
+    } else if (!open && wasOpen && dom.sidebar.contains(document.activeElement)) {
+        if (isMobileViewport()) dom.topbarBurger.focus();
+        else if (isSidebarYieldedToMap()) dom.sidebarToggle.focus();
     }
 }
 
