@@ -218,6 +218,35 @@ test("keeps the interior master playing while the exterior changes files", async
     await expectSourceUnchanged(page, "interior", interiorSource);
 });
 
+test("keeps the continuing interior camera in place while the exterior master changes files", async ({ page }) => {
+    // The interior file runs on through the exterior's 26-second cut. Even a
+    // tiny seek of a camera that keeps its file flushes its decoder back to
+    // the previous key frame and stalls its picture.
+    await seekTo(page, 22);
+    await page.locator("#player-play").click();
+    const interior = channelVideo(page, "interior");
+    // Count from steady playback on: starting playback may correct drift.
+    await expect.poll(() => interior.evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(24);
+    await interior.evaluate((video: HTMLVideoElement) => {
+        video.dataset.boundarySeeks = "0";
+        video.addEventListener("seeking", () => {
+            video.dataset.boundarySeeks = String(Number(video.dataset.boundarySeeks) + 1);
+        });
+    });
+    await expect
+        .poll(
+            async () => {
+                const channels = await readChannels(page);
+                const front = channels.find((channel) => channel.channel === "front");
+                return front !== undefined && !front.paused && front.time > 1 && front.time < 8;
+            },
+            { message: "the exterior rolls over at 26 seconds" },
+        )
+        .toBe(true);
+    await pausePlayback(page);
+    await expect(interior).toHaveAttribute("data-boundary-seeks", "0");
+});
+
 test("opens the interior file from its sidebar row at its own start", async ({ page }) => {
     await page.getByRole("button", { name: "Expand file list" }).click();
     await page.locator(".trip-files > li .file-name").filter({ hasText: "120132_123_011_D.mp4" }).click();

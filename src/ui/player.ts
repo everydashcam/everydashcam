@@ -612,6 +612,20 @@ function promotePreloadSlot(ch: Channel, cand: VideoCandidate, positionSec: numb
  *  position. "jump" is any explicit move. */
 type PlayFrameIntent = "jump" | "continue";
 
+/**
+ * How far an element that keeps its file across a frame change may sit from
+ * its target before the change seeks it. A natural advance leaves an element
+ * that already plays this spot of its file (the paired channel that outlasts
+ * a pair, a camera whose file runs on into the next interval) alone within
+ * SLAVE_DRIFT_MAX_SEC, the range drift sync holds slaves in anyway: even a
+ * tiny seek flushes the decoder back to the previous key frame and stalls the
+ * picture. A jump lands within `exactToleranceSec`. Master and slaves share
+ * this rule.
+ */
+function frameChangeSeekToleranceSec(intent: PlayFrameIntent, exactToleranceSec: number): number {
+    return intent === "continue" ? SLAVE_DRIFT_MAX_SEC : exactToleranceSec;
+}
+
 // Monotonic counter incremented on each playFrame entry. Async continuations
 // capture it (`const seqAtStart = playFrameSeq`) and re-check after an await;
 // if it changed the user has already switched trips, so they silently bail
@@ -890,7 +904,7 @@ export function playFrame(
     pendingPlay = autoPlay;
     isPlaybackIntended = autoPlay;
     pendingFileOffset = fileOffsetSec;
-    syncFrameToGrid(frame, picked.channel, fileOffsetSec);
+    syncFrameToGrid(frame, picked.channel, fileOffsetSec, intent);
     // The element has less than one video frame left after the interval's
     // start: a paired tail can be that short, and a slave, allowed to run up
     // to SLAVE_DRIFT_MAX_SEC ahead of its master, may even have finished its
@@ -921,15 +935,7 @@ export function playFrame(
             const segment = trip.timeline.segments[frameIdx];
             armResumeAfterSeek((segment?.contentStart ?? 0) + startOffsetSec);
         }
-        // A natural advance onto an element that already plays this spot of
-        // the file (the paired channel that outlasts a pair, the same file
-        // in its next interval) keeps playing: even a tiny seek flushes the
-        // decoder back to the previous key frame and stalls the picture.
-        const isAlreadyInPlace =
-            intent === "continue" &&
-            !master.ended &&
-            Math.abs(master.currentTime - fileOffsetSec) <= SLAVE_DRIFT_MAX_SEC;
-        if (!isAlreadyInPlace && (master.currentTime !== fileOffsetSec || master.ended)) {
+        if (master.ended || Math.abs(master.currentTime - fileOffsetSec) > frameChangeSeekToleranceSec(intent, 0)) {
             master.currentTime = fileOffsetSec;
         }
         // Setting currentTime on an ended element starts a real media seek.
@@ -1643,7 +1649,12 @@ function applyTileLayoutRoles(frame: TripFrame, activeCh: Channel, masterOffsetS
  * Idempotent: attachCandidateToVideo skips a re-attach when src is already
  * correct, so a channel swap within one frame does not interrupt playback.
  */
-function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 0): void {
+function syncFrameToGrid(
+    frame: TripFrame,
+    activeCh: Channel,
+    masterOffsetSec = 0,
+    intent: PlayFrameIntent = "jump",
+): void {
     // applyTileLayoutRoles owns visibility (tile.hidden) + slot roles; this pass
     // is media only. Media is attached for every playable frame channel, even
     // ones excluded from the composition, so toggling a camera back on is
@@ -1701,7 +1712,9 @@ function syncFrameToGrid(frame: TripFrame, activeCh: Channel, masterOffsetSec = 
             ) {
                 const duration = Number.isFinite(v.duration) ? v.duration : Number.POSITIVE_INFINITY;
                 const positionSec = Math.min(Math.max(startSec, 0), duration);
-                if (Math.abs(v.currentTime - positionSec) > 0.01) v.currentTime = positionSec;
+                if (Math.abs(v.currentTime - positionSec) > frameChangeSeekToleranceSec(intent, 0.01)) {
+                    v.currentTime = positionSec;
+                }
             }
         } else if (!heldTailCandidate(frame, ch)) {
             // Release decoder and backend - canPlay=false or channel absent.
