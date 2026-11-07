@@ -56,9 +56,13 @@ function revealControls(): void {
     scheduleHideControls();
 }
 
+// Idle controls hide on a paused recording too: they float over the bottom of
+// the frame, where the strip of smaller cameras sits, and a paused frame is
+// when those cameras get studied. The pin keeps them; an ended trip keeps them
+// for the next step.
 function scheduleHideControls(): void {
     if (hideTimer !== null) return;
-    if (!isExpanded() || hasPanelsBelow || isPinned || dom.player.paused || dom.player.ended) return;
+    if (!isExpanded() || hasPanelsBelow || isPinned || dom.player.ended) return;
     hideTimer = setTimeout(() => {
         hideTimer = null;
         if (!isExpanded()) return;
@@ -68,7 +72,6 @@ function scheduleHideControls(): void {
         if (
             hasPanelsBelow ||
             isPinned ||
-            dom.player.paused ||
             dom.player.ended ||
             hoveredControls.size ||
             activePointers.size ||

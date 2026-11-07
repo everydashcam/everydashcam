@@ -280,16 +280,25 @@ test("fullscreen keeps a separate detail view and restores the paused recording"
     await expect(page.locator("#player-readout")).toBeVisible();
 });
 
-test("paused fullscreen keeps controls visible beyond the idle deadline", async ({ page }) => {
+test("paused fullscreen hides idle controls off the smaller cameras unless pinned", async ({ page }) => {
     await page.clock.install();
     await gotoApp(page);
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
     await enterFullscreen(page);
+    const player = page.locator("#player-wrap");
     await moveAwayFromControls(page);
     // The idle deadline itself is under test.
     await page.clock.fastForward(1300);
-    await expect(page.locator("#player-wrap")).toHaveClass(/controls-visible/);
+    await expect(player).not.toHaveClass(/controls-visible/);
+    await expect(page.locator("#player-play")).toHaveAttribute("data-paused", "true");
+    // Mouse movement brings them back; the pin keeps them while paused.
+    await page.mouse.move(200, 200);
+    await expect(player).toHaveClass(/controls-visible/);
+    await page.locator("#player-controls-pin").click();
+    await moveAwayFromControls(page);
+    await page.clock.fastForward(1300);
+    await expect(player).toHaveClass(/controls-visible/);
     await expect(page.locator("#player-play")).toHaveAttribute("data-paused", "true");
 });
 
