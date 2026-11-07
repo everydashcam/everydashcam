@@ -4,7 +4,7 @@
 
 import type { Page } from "@playwright/test";
 import { createMseFixture } from "../helpers/mse-fixtures.js";
-import { chooseArrangementMode, setCameraShown, settleCameraLayout } from "./_cameras.js";
+import { chooseArrangementMode, makeMainFromMenu, setCameraShown, settleCameraLayout } from "./_cameras.js";
 import {
     DESKTOP,
     SAMPLE_70MAI,
@@ -199,4 +199,38 @@ test("a camera without footage exports as a black tile beside a playing one", as
     const [front, rear] = await exportedFirstFrameColors(page, [middle(tiles.front!), middle(tiles.rear!)]);
     expect(brightness(front!), "the front camera has its picture").toBeGreaterThan(30);
     expect(brightness(rear!), "the rear camera without footage is black").toBeLessThan(8);
+});
+
+test("a main camera without footage in the whole range exports with the next camera in its place", async ({ page }) => {
+    test.setTimeout(120_000);
+    await openShortRearTrip(page);
+    test.skip(!(await canEncodeHighProfileH264(page)), "WebCodecs High-profile H.264 encode not available");
+    await openExport(page);
+    await makeMainFromMenu(page, "rear");
+    for (const [edge, seconds] of [
+        ["end", "5"],
+        ["start", "3"],
+    ] as const) {
+        const input = page.locator(`.export-trim-bar__input[data-range-edge="${edge}"]`);
+        await input.fill(seconds);
+        await input.press("Enter");
+    }
+    // Inside the range the rear camera has no footage: the front camera
+    // stands in for it in the main place and the rear one is a black tile.
+    const bar = await boxOf(page, "#player-mini-progress");
+    await page.mouse.click(bar.x + (bar.width * 4) / 6, bar.y + bar.height / 2);
+    const front = page.locator('.video-tile[data-channel="front"]');
+    const rear = page.locator('.video-tile[data-channel="rear"]');
+    await expect(rear).toHaveClass(/\btile-absent\b/);
+    await expect(front).toHaveAttribute("data-role", "main");
+    const tiles = await previewTiles(page);
+    expect(tiles.front!.w * tiles.front!.h, "the stand-in gets the main place").toBeGreaterThan(
+        tiles.rear!.w * tiles.rear!.h,
+    );
+    await shot(page, "camera-export-03-stand-in-preview");
+
+    await saveExport(page);
+    const [main, absent] = await exportedFirstFrameColors(page, [middle(tiles.front!), middle(tiles.rear!)]);
+    expect(brightness(main!), "the stand-in fills the main place").toBeGreaterThan(30);
+    expect(brightness(absent!), "the main camera without footage is black").toBeLessThan(8);
 });
