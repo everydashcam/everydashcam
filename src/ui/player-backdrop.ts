@@ -8,7 +8,9 @@
 import { resolveRegionBlursAt } from "../blur-regions.js";
 import { applyCanvasFlip } from "../camera-flip.js";
 import { type BlurHelper, createBlurHelper, fillBlurredCover } from "../transcode/compose.js";
+import { subscribeBlurDetect } from "./blur-detect.js";
 import { activeEffectiveBlurRegions, previewExportStartSec } from "./blur-effective.js";
+import { subscribeBlurRegions } from "./blur-regions-state.js";
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
 import { channelPlayers, dom } from "./dom.js";
 import { exportPanelState } from "./export-state.js";
@@ -22,6 +24,10 @@ let helper: BlurHelper | null = null;
 let frameRequest = 0;
 // What the canvas shows now; a frame with the same key needs no repaint.
 let paintedKey = "";
+// Bumped by every privacy-zone change (edits notify on each drag move, a
+// detection pass when its results change): zones censored out of the blur can
+// change under a paused frame.
+let regionsEpoch = 0;
 
 function isActive(): boolean {
     return state.exportModeOpen && exportPanelState.letterboxFill === "blur";
@@ -36,6 +42,11 @@ function ensureCanvas(): HTMLCanvasElement {
     // First in the grid, so every tile paints over it.
     dom.videoGrid.prepend(canvas);
     context = canvas.getContext("2d");
+    const bump = (): void => {
+        regionsEpoch++;
+    };
+    subscribeBlurRegions(bump);
+    if (!__PORTABLE__) subscribeBlurDetect(bump);
     return canvas;
 }
 
@@ -77,12 +88,10 @@ function paint(): void {
         return;
     }
     const frame = channelPresentedFrame(channel);
-    const regions = activeEffectiveBlurRegions();
-    const key = `${channel}|${frame?.contentSec ?? video.currentTime}|${width}x${height}@${dpr}`;
-    // Zones move under an unchanged frame while being edited: with any zone
-    // on the trip, repaint every frame.
-    if (key === paintedKey && regions.length === 0) return;
+    const key = `${channel}|${frame?.contentSec ?? video.currentTime}|${width}x${height}@${dpr}|${regionsEpoch}`;
+    if (key === paintedKey) return;
     paintedKey = key;
+    const regions = activeEffectiveBlurRegions();
     const w = Math.max(1, Math.round(width * dpr));
     const h = Math.max(1, Math.round(height * dpr));
     if (el.width !== w || el.height !== h) {
