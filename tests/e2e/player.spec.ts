@@ -288,6 +288,38 @@ test.describe("player", () => {
         await expect(thumb).toHaveClass(/\bzoomed\b/);
     });
 
+    test("a preview loop across a clip boundary leaves the mobile drawer open", async ({ page }) => {
+        // A Play clip window outlives the export panel, so its loop also runs
+        // during ordinary viewing. Looping back over a clip boundary is
+        // playback moving itself; only the user's move closes the drawer.
+        await pausePlayback(page);
+        await seekToTripStart(page);
+        await page.setViewportSize(MOBILE);
+        // Seed the state Play clip leaves behind (as the navigator test above
+        // does): a bounded window around the first clip boundary, in loop mode.
+        await page.evaluate(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const st = (window as any).__everydashcam.state;
+            const trip = st.trips[st.active.trip];
+            const boundarySec = trip.timeline.segments[1].contentStart as number;
+            st.chart.options.scales.x.min = boundarySec - 0.8;
+            st.chart.options.scales.x.max = boundarySec + 0.8;
+            st.chart.update("none");
+            st.chartZoomed = true;
+            st.isPreviewZoom = true;
+            st.tripEndBehavior = "loop";
+        });
+        const activeFrame = () => page.evaluate(() => window.__everydashcam.state.active?.frame);
+
+        await page.locator("#player-play").click();
+        const sidebar = page.locator(".sidebar").first();
+        await page.locator("#topbar-burger").click();
+        await expect(sidebar).toHaveAttribute("data-drawer-open", "true");
+        await expect.poll(activeFrame, { message: "playback crosses into the second clip" }).toBe(1);
+        await expect.poll(activeFrame, { message: "the loop returns to the first clip" }).toBe(0);
+        await expect(sidebar).toHaveAttribute("data-drawer-open", "true");
+    });
+
     test("frame-step buttons step the paused player frame by frame, both ways", { tag: "@golden-playback" }, async ({
         page,
     }) => {

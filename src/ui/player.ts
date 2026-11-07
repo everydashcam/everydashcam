@@ -2502,9 +2502,16 @@ export function playTripEvent(tripIdx: number, eventIndex: number): void {
  * and applies the offset via pendingFileOffset. In MSE mode each channel seeks in its own
  * SourceBuffer within the unified trip timeline - frame transitions are transparent.
  * "keyframe" precision only changes a same-file native seek (see SeekPrecision).
+ * `intent` reaches playFrame on a cross-file seek: the default "jump" is the
+ * user's move; playback moving itself (the preview-range loop) passes
+ * "reload" so it leaves the drawer and the opening spinner alone.
  * @param targetSec seconds from the start of the trip.
  */
-export function seekTripTime(targetSec: number, precision: SeekPrecision = "exact"): void {
+export function seekTripTime(
+    targetSec: number,
+    precision: SeekPrecision = "exact",
+    intent: PlayFrameIntent = "jump",
+): void {
     if (!state.active) return;
     const trip = state.trips[state.active.trip];
     if (!trip || trip.frames.length === 0) return;
@@ -2547,7 +2554,7 @@ export function seekTripTime(targetSec: number, precision: SeekPrecision = "exac
         // Pin the playhead to the target so it lands on the click immediately
         // instead of bouncing to the new file's start (currentTime=0) first.
         setPendingSeek(target);
-        playFrame(state.active.trip, frameIdx, offsetInFrame, shouldPlay);
+        playFrame(state.active.trip, frameIdx, offsetInFrame, shouldPlay, intent);
         return;
     }
     // Same frame. If an active MSE backend exists and the target is outside its buffered range,
@@ -3099,15 +3106,17 @@ function initPlayerControls(): void {
         if (state.isPreviewZoom) {
             const range = getSelectedRange();
             if (range && getTripCurrentTime() >= range.endTripSec - 0.05) {
+                // Both branches are playback moving itself, not the user: a
+                // loop across a file boundary must not close the mobile drawer.
                 if (state.tripEndBehavior === "loop") {
-                    seekTripTime(range.startTripSec);
+                    seekTripTime(range.startTripSec, "exact", "reload");
                 } else if (!dom.player.paused) {
                     // Stop mode: single pause + snap to the exact endTripSec.
                     // !paused guard prevents re-entry: after the first pause the browser may
                     // still emit timeupdate (async pause), and without the guard
                     // seekTripTime(endTripSec) would fire again, triggering an MSE backend re-attach loop.
                     dom.player.pause();
-                    seekTripTime(range.endTripSec);
+                    seekTripTime(range.endTripSec, "exact", "reload");
                 }
             }
         } else {
