@@ -38,7 +38,7 @@ import {
     prefersReducedMotion,
 } from "./media-queries.js";
 import type { GpsRecord } from "../parser.js";
-import { displayClockDate, wallToContentSec, type Trip } from "../trips.js";
+import { contentToWallUtc, displayClockDate, wallToContentSec, type Trip } from "../trips.js";
 import {
     getViewPanels,
     getPreferredMapMode,
@@ -58,7 +58,7 @@ import { subscribeExportState } from "./export-state.js";
 import { formatDateTime } from "./date-format.js";
 import { formatNumber, formatTime } from "./format.js";
 import { attachPointerDrag } from "./pointer-drag.js";
-import { activeFrame, activeTrip, state } from "./state.js";
+import { activeTrip, state } from "./state.js";
 import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
@@ -1780,17 +1780,16 @@ export function buildRecordPopupHtml(rec: GpsRecord, trip: Trip): string {
 // directly without cycling.
 
 /**
- * Wall-clock second of the playback position in the trip's `frameIndex`
- * frame, or null when the frame or its timeline segment is missing. The
- * position is the player's, not the media element's: a seek into another
- * file or an MSE feed restart leaves the element at 0 until the new data
- * lands, and reading it would show the start of the file before the target.
+ * Wall-clock second of the playback position in `trip`, or null for a trip
+ * without footage. The position is the player's, not the media element's: a
+ * seek into another file or an MSE feed restart leaves the element at 0
+ * until the new data lands, and reading it would show the start of the file
+ * before the target. The shared projection stretches a time-lapse clip over
+ * the real time it covers, as the readouts and the chart do.
  */
-function currentRealUtc(trip: Trip, frameIndex: number): number | null {
-    const frame = trip.frames[frameIndex];
-    const segment = trip.timeline.segments[frameIndex];
-    if (!frame || !segment) return null;
-    return frame.startUtc + callbacks.getTripCurrentTime() - segment.contentStart;
+function currentRealUtc(trip: Trip): number | null {
+    if (trip.timeline.segments.length === 0) return null;
+    return contentToWallUtc(trip.timeline, callbacks.getTripCurrentTime());
 }
 
 /**
@@ -1805,7 +1804,7 @@ function currentInterpolatedPosition(): {
 } | null {
     const trip = activeTrip();
     if (!state.active || !trip || trip.records.length === 0) return null;
-    const targetUnix = currentRealUtc(trip, state.active.frame);
+    const targetUnix = currentRealUtc(trip);
     return targetUnix === null ? null : mapPositionAt(trip.records, targetUnix);
 }
 
@@ -1836,9 +1835,10 @@ export function smoothCameraToActiveFrameOffset(offsetInFrameSec: number): void 
     // Only animate when follow is on; in "off" mode the user controls the view
     // and an automatic camera move on file change would be intrusive.
     if (!state.map || state.followMode === "off") return;
-    const af = activeFrame();
-    if (!af || af.trip.records.length === 0) return;
-    const pos = mapPositionAt(af.trip.records, af.frame.startUtc + offsetInFrameSec);
+    const trip = activeTrip();
+    const segment = state.active ? trip?.timeline.segments[state.active.frame] : undefined;
+    if (!trip || !segment || trip.records.length === 0) return;
+    const pos = mapPositionAt(trip.records, contentToWallUtc(trip.timeline, segment.contentStart + offsetInFrameSec));
     if (!pos) return;
     const duration = 250;
     const opts: maplibregl.EaseToOptions = { center: [pos.lon, pos.lat], duration };
@@ -2771,7 +2771,7 @@ export function startMarkerLoop(opts: { onAfterTick?: () => void } = {}): void {
         // chartHoverX is only for the chart cursor (cursorPlugin) - graph hover
         // must not move the marker, otherwise the user loses track of where the
         // car actually is during playback.
-        const targetUnix = currentRealUtc(trip, state.active.frame);
+        const targetUnix = currentRealUtc(trip);
         if (targetUnix === null) return false;
         const pos = mapPositionAt(trip.records, targetUnix);
         syncGpsStatus(pos !== null);
