@@ -397,10 +397,17 @@ test("a camera without footage keeps its place with a placeholder and lends out 
     await expect(front).toHaveAttribute("data-role", "main");
     await expect(rear).toHaveAttribute("data-role", "thumb");
     await expect(page.locator(".video-tile.active")).toHaveAttribute("data-channel", "front");
-    // A click on the placeholder does not hand it the main place.
+    // A click on the placeholder neither hands it the main place nor
+    // toggles playback.
+    const paused = () =>
+        page.evaluate(
+            () => document.querySelector<HTMLVideoElement>(".video-tile.active video:not(.preload-slot)")!.paused,
+        );
+    expect(await paused()).toBe(true);
     await rear.click();
     await page.waitForTimeout(350);
     await expect(front).toHaveAttribute("data-role", "main");
+    expect(await paused(), "the placeholder click leaves playback alone").toBe(true);
 
     // Back where the rear camera records, it takes its main place again.
     await seekTripTo(page, 1, 6);

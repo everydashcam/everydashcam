@@ -44,15 +44,17 @@ function scheduleSingleClick(action: () => void): void {
     }, DBLCLICK_THRESHOLD_MS);
 }
 
-/** Whether a click on `tile` hands it the main place rather than toggling
- *  playback: a smaller camera, or any camera of the equal grid. A tile
- *  without a picture (no recording now, or unplayable) stays where it is -
- *  swapping it in would leave the main place without a picture. */
-function clickMakesMain(tile: HTMLElement): boolean {
+/** Whether a click on `tile` arranges the cameras rather than toggling
+ *  playback: a smaller camera, or any camera of the equal grid. */
+function clickArranges(tile: HTMLElement): boolean {
     if (visibleChannels().length <= 1) return false;
     const role = tile.dataset.role;
-    if (role !== "thumb" && role !== "equal") return false;
-    return !tile.classList.contains("tile-absent") && !tile.classList.contains("tile-unplayable");
+    return role === "thumb" || role === "equal";
+}
+
+/** A tile without a picture (no recording now, or unplayable). */
+function lacksPicture(tile: HTMLElement): boolean {
+    return tile.classList.contains("tile-absent") || tile.classList.contains("tile-unplayable");
 }
 
 export function initPlayerTileInput(deps: TileInputDeps): void {
@@ -69,7 +71,11 @@ export function initPlayerTileInput(deps: TileInputDeps): void {
         if (!tile || tile.hidden) return;
         const ch = tile.dataset.channel as Channel | undefined;
         if (!ch) return;
-        if (clickMakesMain(tile)) {
+        if (clickArranges(tile)) {
+            // A camera without a picture stays where it is - swapping it in
+            // would leave the main place without a picture - and the click
+            // does nothing else either: it is not aimed at playback.
+            if (lacksPicture(tile)) return;
             scheduleSingleClick(() => {
                 if (!tile.hidden && visibleChannels().includes(ch)) makeMainCamera(ch);
             });
