@@ -115,15 +115,18 @@ export function initPlayerCrop(): void {
     });
 
     // The crop preview transform + the editor rect are computed in tile px, so
-    // they must be recomputed when the tile resizes (sidebar drag, chart toggle,
-    // fullscreen, window resize). No-op outside export-mode (syncCropPreviews
-    // clears, layoutEditor bails without an open editor).
+    // they must be recomputed when a tile resizes: with the grid (sidebar drag,
+    // chart toggle, fullscreen, window resize) and on its own (the camera
+    // divider, an arrangement change that keeps the grid size). No-op outside
+    // export-mode (syncCropPreviews clears, layoutEditor bails without an open
+    // editor).
     if (typeof ResizeObserver !== "undefined" && dom.videoGrid) {
         const ro = new ResizeObserver(() => {
             syncCropPreviews();
             layoutEditor();
         });
         ro.observe(dom.videoGrid);
+        for (const ch of ALL_CHANNELS) ro.observe(channelTileFor(ch));
     }
 }
 
