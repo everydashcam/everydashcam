@@ -351,7 +351,7 @@ test("moves on to the next clip when the decoder fails in the current clip's tai
     await loadTrip(page, SAMPLE_70MAI);
     await expect.poll(() => page.evaluate(() => window.__everydashcam.state.trips[0]?.frames.length ?? 0)).toBe(2);
     await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame ?? -1)).toBe(0);
-    const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const master = page.locator(".video-tile.active video:not(.preload-slot)");
     await expect.poll(() => master.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime)).toBeGreaterThan(0.1);
     // Paused, so the 2 s fixture clip cannot reach its natural end during the
     // check: only the injected failure can move the player to the next clip.

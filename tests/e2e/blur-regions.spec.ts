@@ -388,9 +388,7 @@ test.describe("blur regions", () => {
         const canvas = page.locator('.video-tile[data-channel="front"] .blur-preview-canvas');
         await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toBeVisible();
         const work = await canvas.evaluate(async (el: HTMLCanvasElement) => {
-            const video = el.parentElement?.querySelector<HTMLVideoElement>(
-                "video:not(.preload-slot):not(.tile-blur-bg)",
-            );
+            const video = el.parentElement?.querySelector<HTMLVideoElement>("video:not(.preload-slot)");
             const ctx = el.getContext("2d");
             const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
             if (!video || !ctx || !descriptor?.get || !descriptor.set) throw new Error("preview unavailable");

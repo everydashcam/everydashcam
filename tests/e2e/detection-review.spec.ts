@@ -94,18 +94,16 @@ for (const locale of ["en", "ru"] as const)
             await pausePlayback(page);
             // Observe real compositor submissions on both physical video slots,
             // including promotion when review crosses a source-file boundary.
-            await page
-                .locator('.video-tile[data-channel="front"] video:not(.tile-blur-bg)')
-                .evaluateAll((videos: HTMLVideoElement[]) => {
-                    for (const video of videos) {
-                        const observe: VideoFrameRequestCallback = (_, metadata) => {
-                            video.dataset.reviewPresentedTime = String(metadata.mediaTime);
-                            video.dataset.reviewPresentedSrc = video.currentSrc;
-                            video.requestVideoFrameCallback(observe);
-                        };
+            await page.locator('.video-tile[data-channel="front"] video').evaluateAll((videos: HTMLVideoElement[]) => {
+                for (const video of videos) {
+                    const observe: VideoFrameRequestCallback = (_, metadata) => {
+                        video.dataset.reviewPresentedTime = String(metadata.mediaTime);
+                        video.dataset.reviewPresentedSrc = video.currentSrc;
                         video.requestVideoFrameCallback(observe);
-                    }
-                });
+                    };
+                    video.requestVideoFrameCallback(observe);
+                }
+            });
             await openExport(page);
             await page.locator("#export-panel-blur-plates").check();
             const status = page.locator(".export-panel__blur-detect-status");
@@ -118,7 +116,7 @@ for (const locale of ["en", "ru"] as const)
             });
             for (const sec of [...frames, frames[0]!]) {
                 await page
-                    .locator('.video-tile[data-channel="front"] video:not(.tile-blur-bg)')
+                    .locator('.video-tile[data-channel="front"] video')
                     .evaluateAll((videos: HTMLVideoElement[]) => {
                         for (const video of videos) delete video.dataset.reviewPresentedTime;
                     });

@@ -234,7 +234,7 @@ test.describe("camera reflection", () => {
         await expect
             .poll(() =>
                 page
-                    .locator(".video-tile:not([hidden]) video:not(.preload-slot):not(.tile-blur-bg)")
+                    .locator(".video-tile:not([hidden]) video:not(.preload-slot)")
                     .evaluateAll((videos) =>
                         videos.every(
                             (v) =>
@@ -248,7 +248,7 @@ test.describe("camera reflection", () => {
             return flips.flatMap((flip) => {
                 const tile = document.querySelector(`.video-tile[data-channel="${flip.channel}"]`)!;
                 const rect = tile.getBoundingClientRect();
-                const video = tile.querySelector<HTMLVideoElement>("video:not(.preload-slot):not(.tile-blur-bg)")!;
+                const video = tile.querySelector<HTMLVideoElement>("video:not(.preload-slot)")!;
                 const canvas = document.createElement("canvas");
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;

@@ -12,7 +12,7 @@ test.beforeAll(async () => {
 
 function readChannels(page: Page) {
     return page
-        .locator(".video-tile:not([hidden]) > video:not(.preload-slot):not(.tile-blur-bg)")
+        .locator(".video-tile:not([hidden]) > video:not(.preload-slot)")
         .evaluateAll((videos: HTMLVideoElement[]) =>
             videos.map((video) => ({
                 channel: video.closest<HTMLElement>(".video-tile")!.dataset.channel,

@@ -1,7 +1,7 @@
 // Per-trip store of privacy blur regions (src/blur-regions.ts model).
 //
 // Keyed by Trip object identity in a WeakMap - deliberately NOT reset on trip
-// change (unlike perSlotCrops): marking regions is labor, and switching trips
+// change (unlike the export crops): marking regions is labor, and switching trips
 // back and forth must not discard it. A re-ingest that rebuilds Trip objects
 // simply orphans the old entries for GC - annotations are in-memory-only, like
 // every other session state. Regions store rects in normalized source coords

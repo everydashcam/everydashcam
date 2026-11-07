@@ -156,7 +156,8 @@ function tripCameraSet(trip: Trip): { fingerprints: string[]; channels: Channel[
 
 /**
  * Restores a stored arrangement for a trip, or null to use the default. The
- * caller (playFrame) feeds the result into updateComposition.
+ * caller (playFrame) merges the result over the trip's default composition;
+ * reconcileStoredArrangement has already fitted it to the trip's cameras.
  */
 export function restoreArrangementForTrip(trip: Trip, playableChannels: Channel[]): StoredArrangement | null {
     if (playableChannels.length <= 1) return null;

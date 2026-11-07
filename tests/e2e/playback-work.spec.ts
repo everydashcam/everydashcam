@@ -5,16 +5,14 @@ test.beforeEach(async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await gotoApp(page, "en");
     await loadTrip(page, SAMPLE_70MAI);
-    const video = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const video = page.locator(".video-tile.active video:not(.preload-slot)");
     await video.evaluate((el: HTMLVideoElement) => el.pause());
     await expect.poll(() => video.evaluate((el: HTMLVideoElement) => !el.seeking && el.readyState >= 2)).toBe(true);
 });
 
 test("unchanged playback samples preserve readout and progress text", async ({ page }, testInfo) => {
     const result = await page.evaluate(() => {
-        const video = document.querySelector<HTMLVideoElement>(
-            ".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)",
-        );
+        const video = document.querySelector<HTMLVideoElement>(".video-tile.active video:not(.preload-slot)");
         const speed = document.getElementById("pm-speed");
         const coords = document.getElementById("pm-coords");
         const clock = document.getElementById("pm-time");
@@ -130,9 +128,7 @@ test("in-place GPS corrections refresh readouts and then stay idle", async ({ pa
 
 test("paused map checks the playhead at idle cadence", async ({ page }, testInfo) => {
     const currentTimeReads = await page.evaluate(async () => {
-        const video = document.querySelector<HTMLVideoElement>(
-            ".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)",
-        );
+        const video = document.querySelector<HTMLVideoElement>(".video-tile.active video:not(.preload-slot)");
         const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
         if (!video || !descriptor?.get || !descriptor.set) throw new Error("media clock unavailable");
         const read = descriptor.get;

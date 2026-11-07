@@ -20,7 +20,7 @@ test("plays and seeks a preallocated TS recording with GPS from a file URL", asy
     await expect(page.locator(".player-no-gps")).toBeHidden();
     await expect(page.locator("#player-chart-canvas")).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__everydashcam.state.trips[0]!.records.length)).toBe(60);
-    const video = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const video = page.locator(".video-tile.active video:not(.preload-slot)");
     await expect
         .poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState))
         .toBeGreaterThanOrEqual(2);

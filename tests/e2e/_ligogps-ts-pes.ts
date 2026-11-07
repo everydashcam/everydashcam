@@ -78,7 +78,7 @@ export async function checkLigoGpsTsPes(page: Page, withTxt: boolean): Promise<v
     // decode the recording. Exercise that worker and a seek before playback.
     await expect(page.locator('#video-grid .video-tile[data-channel="front"]')).toBeVisible();
     await pausePlayback(page);
-    const video = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const video = page.locator(".video-tile.active video:not(.preload-slot)");
     expect(await video.evaluate((element: HTMLVideoElement) => [element.videoWidth, element.videoHeight])).toEqual([
         320, 180,
     ]);

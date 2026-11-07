@@ -69,7 +69,7 @@ async function plotBox(page: Page): Promise<{ x: number; width: number; bottom: 
 async function seekToTripStart(page: Page): Promise<void> {
     await page.locator("#player-mini-progress").focus();
     await page.keyboard.press("Home");
-    const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const master = page.locator(".video-tile.active video:not(.preload-slot)");
     await expect
         .poll(
             () =>
@@ -96,11 +96,11 @@ async function minimapBackingWidth(page: Page): Promise<number> {
 }
 
 async function wheelVideoZoom(page: Page, deltaY: number): Promise<void> {
-    await page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)").hover();
+    await page.locator(".video-tile.active video:not(.preload-slot)").hover();
     await page.mouse.wheel(0, deltaY);
 }
 
-const LIVE_VIDEO = "video:not(.preload-slot):not(.tile-blur-bg)";
+const LIVE_VIDEO = "video:not(.preload-slot)";
 
 function zoomedChannel(page: Page): Promise<string | null> {
     return page.evaluate(() => window.__everydashcam.state.videoZoom.channel);
@@ -109,7 +109,7 @@ function zoomedChannel(page: Page): Promise<string | null> {
 /** Zoom transforms written on any camera element, keyed by channel. A slot
  *  swap must leave exactly the camera's current element transformed. */
 function zoomTransforms(page: Page): Promise<{ channel: string; isLive: boolean }[]> {
-    return page.locator(".video-tile > video:not(.tile-blur-bg)").evaluateAll((videos: HTMLVideoElement[]) =>
+    return page.locator(".video-tile > video").evaluateAll((videos: HTMLVideoElement[]) =>
         videos
             .filter((video) => video.style.getPropertyValue("--video-zoom-transform") !== "")
             .map((video) => ({
@@ -147,7 +147,7 @@ test.describe("player", () => {
     test("wheel zoom-out releases the zoom preview and zoom-in mirrors the video again", async ({ page }) => {
         await pausePlayback(page);
         await seekToTripStart(page);
-        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
         // Keep the short fixture away from a file boundary during UI assertions.
         await master.evaluate(async (video: HTMLVideoElement) => {
             video.playbackRate = 0.25;
@@ -2090,7 +2090,7 @@ test.describe("single-clip playback endings", () => {
     async function parkNearEnd(page: Page): Promise<void> {
         await pausePlayback(page);
 
-        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
         const target = await master.evaluate((video: HTMLVideoElement) => {
             video.playbackRate = 8;
             const next = Math.max(0, video.duration - Math.min(1, video.duration / 2));
@@ -2114,7 +2114,7 @@ test.describe("single-clip playback endings", () => {
         await loop.click();
         await expect(loop).toHaveAttribute("aria-pressed", "true");
 
-        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
         await master.evaluate((video: HTMLVideoElement) => {
             delete document.body.dataset.loopEnded;
             delete document.body.dataset.loopRestartTime;
@@ -2138,7 +2138,7 @@ test.describe("single-clip playback endings", () => {
     test("Play restarts a finished single native clip", async ({ page }) => {
         await parkNearEnd(page);
         const play = page.locator("#player-play");
-        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
 
         await master.evaluate((video: HTMLVideoElement) => {
             delete document.body.dataset.nativeEnded;
@@ -2185,7 +2185,7 @@ test.describe("player scrub seeks", () => {
 
     test("drag moves seek to key frames and the release lands exactly", async ({ page }) => {
         await pausePlayback(page);
-        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
         const bar = await boxOf(page, "#player-mini-progress");
         const y = bar.y + bar.height / 2;
         await page.mouse.move(bar.x + bar.width * 0.1, y);

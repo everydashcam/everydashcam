@@ -4,7 +4,7 @@
 
 import { DESKTOP, boxOf, expect, gotoApp, loadTrip, pausePlayback, presetLocalStorage, test } from "./_fixtures.js";
 
-const MASTER_VIDEO = ".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)";
+const MASTER_VIDEO = ".video-tile.active video:not(.preload-slot)";
 
 /** Drops a marker and explicitly keeps notes in the browser when the first
  * completed write opens the mandatory app-wide storage decision. */

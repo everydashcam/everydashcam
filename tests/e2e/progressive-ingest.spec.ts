@@ -388,7 +388,7 @@ test.describe("progressive ingest", () => {
         await expect
             .poll(async () => (await page.locator("#player-total").textContent())?.trim(), { timeout: 20_000 })
             .not.toBe("0:00");
-        const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
         await expect(master).toHaveCount(1);
         await expect
             .poll(() => master.evaluate((video: HTMLVideoElement) => video.readyState))

@@ -90,7 +90,7 @@ interface DiagPayload {
         activeTripIndex: number | null;
         activeFrameIndex: number | null;
         preferredChannel: string;
-        viewMode: string;
+        cameraMode: string;
         followMode: string;
         chartZoomed: boolean;
         mapExpanded: boolean;
@@ -194,7 +194,7 @@ export function collectDiagnostics(extras?: { storageQuota?: number; storageUsag
             activeTripIndex: state.active?.trip ?? null,
             activeFrameIndex: state.active?.frame ?? null,
             preferredChannel: mainChannel(),
-            viewMode: state.composition.mode,
+            cameraMode: state.composition.mode,
             followMode: state.followMode,
             chartZoomed: state.chartZoomed,
             mapExpanded: state.mapExpanded,
@@ -279,7 +279,7 @@ export function serializeDiagnosticsText(p: DiagPayload): string {
     push(`trips: ${s.tripsCount}`);
     push(`active: trip ${s.activeTripIndex ?? "-"} / frame ${s.activeFrameIndex ?? "-"}`);
     push(`preferred camera: ${s.preferredChannel}`);
-    push(`view: ${s.viewMode} · follow: ${s.followMode}`);
+    push(`cameras: ${s.cameraMode} · follow: ${s.followMode}`);
     push(`chart zoomed: ${s.chartZoomed} · map expanded: ${s.mapExpanded}`);
     push(`sort: ${s.sortKey} ${s.sortDir}`);
     push(`ingest in progress: ${s.ingestInProgress} · unindexed: ${s.unindexedCount}`);

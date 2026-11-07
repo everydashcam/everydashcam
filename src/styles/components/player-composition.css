@@ -944,11 +944,10 @@ body.export-mode .video-grid::after {
     }
 }
 
-/* === True PiP overlays (export-mode) ===
- * In pip layouts the main slot fills the output frame; the others are
- * absolute insets positioned by player.ts (syncPipOverlays via getSplitSlots).
- * Casual viewing keeps the legacy focus side-column. */
-/* Resize grip - only on overlay windows. */
+/* === Overlay windows ===
+ * With overlay allowed, the layout engine may lay the smaller cameras over the
+ * main picture (player-layout.ts places them, viewing and export alike).
+ * Resize grip - only on overlay windows. */
 .pip-resize {
     display: none;
 }

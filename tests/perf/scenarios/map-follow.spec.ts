@@ -225,7 +225,7 @@ for (const vendor of vendors) {
                 };
                 const videos = [
                     ...document.querySelectorAll<HTMLVideoElement>(
-                        ".video-tile:not([hidden]) video:not(.preload-slot):not(.tile-blur-bg)",
+                        ".video-tile:not([hidden]) video:not(.preload-slot)",
                     ),
                 ].filter((video) => video.getClientRects().length > 0 && !!video.currentSrc);
                 for (const [index, video] of videos.entries()) {

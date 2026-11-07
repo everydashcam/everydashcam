@@ -610,7 +610,7 @@ test("resumes without restarting a slave that already finished its clip", async 
     // on its last frame.
     await openPairedTailTrip(page, 0.95, "mp4");
     await pausePlayback(page);
-    const rear = page.locator('.video-tile[data-channel="rear"] > video:not(.preload-slot):not(.tile-blur-bg)');
+    const rear = page.locator('.video-tile[data-channel="rear"] > video:not(.preload-slot)');
     const rearEndSec = await rear.evaluate((video: HTMLVideoElement) => video.duration);
     // Master 0.1 s before the rear's end: still inside the pair.
     await page.evaluate((atSec) => {
@@ -651,9 +651,7 @@ test("pauses a camera that is still finishing its last frames in a paired tail",
                         return;
                     }
                     clearTimeout(timeout);
-                    const video = dom.videoTileFront.querySelector<HTMLVideoElement>(
-                        "video:not(.preload-slot):not(.tile-blur-bg)",
-                    )!;
+                    const video = dom.videoTileFront.querySelector<HTMLVideoElement>("video:not(.preload-slot)")!;
                     // Stand in for a front that trails the rear into the tail.
                     video.currentTime = video.duration - 0.1;
                     video.play().catch(() => {});

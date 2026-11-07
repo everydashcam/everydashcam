@@ -31,7 +31,7 @@ export async function checkFolderMulticam(page: Page, directory: string): Promis
     await expect
         .poll(() =>
             page
-                .locator("#video-grid .video-tile:not([hidden]) > video:not(.preload-slot):not(.tile-blur-bg)")
+                .locator("#video-grid .video-tile:not([hidden]) > video:not(.preload-slot)")
                 .evaluateAll(
                     (videos: HTMLVideoElement[]) =>
                         videos.length === 2 && videos.every((video) => video.readyState >= 2),

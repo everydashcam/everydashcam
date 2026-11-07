@@ -19,7 +19,7 @@ import {
 import { makeMainFromMenu, showOnlyCameras } from "./_cameras.js";
 
 const SAMPLE = path.join(REPO_ROOT, "tests/testdata/asymmetric-channels");
-const LIVE_VIDEO = "video:not(.preload-slot):not(.tile-blur-bg)";
+const LIVE_VIDEO = "video:not(.preload-slot)";
 
 function channelVideo(page: Page, channel: "front" | "interior") {
     return page.locator(`.video-tile[data-channel="${channel}"] > ${LIVE_VIDEO}`);
@@ -247,7 +247,7 @@ test("opens the interior file from its sidebar row at its own start", async ({ p
     await page.waitForFunction(
         () => {
             const interior = document.querySelector<HTMLVideoElement>(
-                '.video-tile[data-channel="interior"] > video:not(.preload-slot):not(.tile-blur-bg)',
+                '.video-tile[data-channel="interior"] > video:not(.preload-slot)',
             );
             return interior?.duration === 12 && interior.readyState >= 2 && !interior.seeking;
         },

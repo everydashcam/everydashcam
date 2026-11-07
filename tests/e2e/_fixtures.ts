@@ -472,16 +472,14 @@ export async function boxOf(
     return box!;
 }
 
-const MASTER_VIDEO = ".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)";
+const MASTER_VIDEO = ".video-tile.active video:not(.preload-slot)";
 
 /**
  * Current playback position of the MASTER tile in seconds - the element a frame
  * step / seek actually moves (getTripCurrentTime / seekTripTime read dom.player,
  * the active-channel, active-slot <video>). The `.active` tile marks the master
- * channel; each tile carries three <video>s (a decorative `.tile-blur-bg`
- * backdrop, the live slot, and a hot `.preload-slot`), so exclude the other two
- * to land on the live slot - the same `video:not(.tile-blur-bg)` convention the
- * player CSS uses.
+ * channel; each tile carries two <video>s (the live slot and a hot
+ * `.preload-slot`), so exclude the preload one to land on the live slot.
  *
  * Do NOT use Math.max over every <video>: during playback the slave tiles drift
  * a frame or two ahead of the master and pause freezes that drift, so a pre-step

@@ -76,7 +76,7 @@ test.describe("TS trailer recording ingest", () => {
             await expect
                 .poll(() =>
                     page
-                        .locator("#video-grid .video-tile:not([hidden]) > video:not(.preload-slot):not(.tile-blur-bg)")
+                        .locator("#video-grid .video-tile:not([hidden]) > video:not(.preload-slot)")
                         .evaluateAll(
                             (videos: HTMLVideoElement[]) =>
                                 videos.length === 2 && videos.every((video) => video.readyState >= 2),
@@ -89,7 +89,7 @@ test.describe("TS trailer recording ingest", () => {
             await expect
                 .poll(() =>
                     page
-                        .locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)")
+                        .locator(".video-tile.active video:not(.preload-slot)")
                         .evaluate(
                             (video: HTMLVideoElement) =>
                                 !video.seeking && video.readyState >= 2 && video.currentTime < 0.1,
@@ -100,7 +100,7 @@ test.describe("TS trailer recording ingest", () => {
             await expect
                 .poll(() =>
                     page
-                        .locator("#video-grid .video-tile:not([hidden]) > video:not(.preload-slot):not(.tile-blur-bg)")
+                        .locator("#video-grid .video-tile:not([hidden]) > video:not(.preload-slot)")
                         .evaluateAll(
                             (videos: HTMLVideoElement[]) =>
                                 videos.length === 2 &&

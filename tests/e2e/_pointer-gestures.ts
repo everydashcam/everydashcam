@@ -37,7 +37,7 @@ export async function verifyTouchGestures(page: Page): Promise<void> {
             ]);
             await send("touchEnd", []);
         };
-        await pinch(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+        await pinch(".video-tile.active video:not(.preload-slot)");
         await expect.poll(() => page.evaluate(() => window.__everydashcam.state.videoZoom.scale)).toBeGreaterThan(1.5);
         const reset = page.locator(".zoom-badge");
         await expectResetHitArea(reset);

@@ -19,7 +19,7 @@ test.use({ viewerMap: "route-only", reducedMotion: "reduce" });
 const zoomScale = (page: Page) => page.evaluate(() => window.__everydashcam.state.videoZoom.scale);
 
 async function zoomVideo(page: Page): Promise<void> {
-    const video = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const video = page.locator(".video-tile.active video:not(.preload-slot)");
     await video.scrollIntoViewIfNeeded();
     // Find exposed video, since the map and camera thumbnails occupy different
     // parts of the frame on narrow, wide and fullscreen layouts.

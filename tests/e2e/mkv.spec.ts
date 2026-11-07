@@ -75,7 +75,7 @@ test.describe("mkv (matroska) container", () => {
             .poll(() => page.evaluate(() => (document.getElementById("player") as HTMLVideoElement).readyState))
             .toBeGreaterThanOrEqual(2);
         await pausePlayback(page);
-        await page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)").hover();
+        await page.locator(".video-tile.active video:not(.preload-slot)").hover();
         await page.mouse.wheel(0, -120);
         await expect(page.locator("#video-minimap")).toBeVisible();
         await expect

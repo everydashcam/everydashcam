@@ -57,7 +57,7 @@ async function startLoopingPlayback(page: Page): Promise<void> {
     await expect(page.locator("#player-loop")).toHaveAttribute("aria-label", "Loop on");
     await page.locator("#player-mini-progress").focus();
     await page.keyboard.press("Home");
-    const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const master = page.locator(".video-tile.active video:not(.preload-slot)");
     await expect
         .poll(() =>
             master.evaluate(
@@ -557,7 +557,7 @@ test("double-clicking a smaller camera changes fullscreen without making it main
     const order = await visibleCameraOrder(page);
     expect(order[0]).not.toBe("rear");
     const time = await masterVideoTime(page);
-    const rear = page.locator('.video-tile[data-channel="rear"] video:not(.preload-slot):not(.tile-blur-bg)');
+    const rear = page.locator('.video-tile[data-channel="rear"] video:not(.preload-slot)');
     await rear.dblclick();
     await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
     // Survive the single-click delay so a deferred camera swap cannot pass unnoticed.
@@ -699,7 +699,7 @@ test("video above panels preserves the recording and remembers either choice aft
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
     await chooseAudioSource(page, "rear");
-    const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
+    const master = page.locator(".video-tile.active video:not(.preload-slot)");
     await master.hover();
     await page.mouse.wheel(0, -120);
     await expect.poll(() => page.evaluate(() => window.__everydashcam.state.videoZoom.scale)).toBeGreaterThan(1);
@@ -1014,7 +1014,7 @@ test("video above panels preserves editor range, composition, overlays, crop and
     const readBlurPlacement = () =>
         blur.evaluate((element) => {
             const tile = element.closest<HTMLElement>(".video-tile")!;
-            const video = tile.querySelector<HTMLVideoElement>("video:not(.preload-slot):not(.tile-blur-bg)")!;
+            const video = tile.querySelector<HTMLVideoElement>("video:not(.preload-slot)")!;
             const composition = window.__everydashcam.state.composition;
             const crop = composition.crops.front!;
             const aspect = ((video.videoWidth / video.videoHeight) * crop.wPct) / crop.hPct;

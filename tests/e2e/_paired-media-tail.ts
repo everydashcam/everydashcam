@@ -7,7 +7,7 @@ import { showOnlyCameras } from "./_cameras.js";
 const FRONT = "NO20260101-120000-000001F.MP4";
 const REAR = "NO20260101-120000-000001B.MP4";
 const START_UTC = Date.UTC(2026, 0, 1, 12) / 1000;
-const ACTIVE_VIDEO = ".video-tile.active > video:not(.preload-slot):not(.tile-blur-bg)";
+const ACTIVE_VIDEO = ".video-tile.active > video:not(.preload-slot)";
 
 /** Real H.264 packets with a synthetic rear-only log whose clock is six seconds
  * ahead. No container clock is available to reconcile the conflicting anchors. */
@@ -92,9 +92,7 @@ async function drawRearZone(page: Page): Promise<void> {
     const layer = page.locator('.video-tile[data-channel="rear"] .blur-draw-layer');
     await expect(layer).toBeVisible();
     const content = await layer.evaluate((element) => {
-        const video = element
-            .closest(".video-tile")
-            ?.querySelector<HTMLVideoElement>("video:not(.preload-slot):not(.tile-blur-bg)");
+        const video = element.closest(".video-tile")?.querySelector<HTMLVideoElement>("video:not(.preload-slot)");
         if (!video?.videoWidth) throw new Error("rear video unavailable");
         const box = element.getBoundingClientRect();
         const scale = Math.min(box.width / video.videoWidth, box.height / video.videoHeight);
