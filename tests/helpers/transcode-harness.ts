@@ -243,11 +243,16 @@ export async function runTranscodeRegression(
                       ...common,
                       source: {
                           trip,
-                          slotChannels: ["front", "rear"],
+                          channels: ["front", "rear"],
                           startTripSec: 0,
                           endTripSec: trip.timeline.contentDurationSec,
                       },
-                      output: { ...common.output, layout: "h2" },
+                      output: {
+                          ...common.output,
+                          audioChannel: "front",
+                          arrangement: { mode: "equal", thumbScale: null, allowOverlay: false, overlayPositions: {} },
+                          aspects: {},
+                      },
                   });
         } catch (error) {
             if (hasDecodeFailure && error instanceof DOMException && error.name === "EncodingError") {

@@ -593,7 +593,7 @@ body:not(.export-mode) .video-tile.tile-absent {
    two-finger pinch (not a pan-y gesture) is yielded to us. When zoomed, the
    .zoomed rule above (touch-action:none) takes over so a single finger pans.
    Export mode is excluded: its tiles carry crop and pip-drag gestures. */
-body:not(.export-mode) .video-tile:not(.zoomed) > video:not(.tile-blur-bg) {
+body:not(.export-mode) .video-tile:not(.zoomed) > video {
     touch-action: pan-y;
 }
 

@@ -1,17 +1,19 @@
-// Frame composition: draw main video (with optional crop) + optional PiP /
-// split-screen + watermark on an OffscreenCanvas. Pure functions - no internal
-// state, everything through arguments. This is what makes the code testable
-// and reusable (the Simple Modal crop/split preview calls the same drawMain/
-// drawSplitScreen on a live canvas).
+// Frame composition: draw one camera (drawMain, with optional crop) or several
+// laid out by the camera layout engine (drawCameraComposition), plus the
+// backdrop and privacy patches, on an OffscreenCanvas. Pure functions - no
+// internal state, everything through arguments, so the editor preview can
+// reuse them on a live canvas.
 //
 // Crops use normalized visible-image coordinates (after camera reflection).
-// Privacy masks use normalized source coordinates; layout slots use normalized
-// output coordinates. Drawing uses output pixels (outputW × outputH).
+// Privacy masks use normalized source coordinates. Layout tiles and drawing
+// use output pixels (outputW × outputH).
 
 import { type CameraFlip, applyCanvasFlip, flipCropRect, flipPixelRect } from "../camera-flip.js";
 import type { VideoSample } from "mediabunny";
 
 import type { ResolvedRegionBlur } from "../blur-regions.js";
+import type { CameraTileLayout, LayoutRect } from "../camera-layout.js";
+import type { Channel } from "../parsers/types.js";
 
 import { roundRectPath } from "./canvas-draw.js";
 
@@ -242,8 +244,9 @@ export function fitKeepAspect(
 }
 
 /**
- * Render options for drawMain/drawSplitScreen. fill controls what fills the
- * letterbox bars (or empty slots): "black" (default) - plain fillRect;
+ * Render options for drawMain/drawCameraComposition. fill controls what fills
+ * the letterbox bars (or the space around the cameras): "black" (default) -
+ * plain fillRect;
  * "blur" + blurHelper - blurred cover copy of the source as backdrop.
  * If fill="blur" but no helper is provided, falls back to "black".
  * regionBlurHelper is required for painting privacy region blurs (pixelate /
@@ -316,7 +319,7 @@ export interface PxRect {
 /**
  * Maps a region rect (normalized source coords) into destination pixels, given
  * the visible source view (sx/sy/sw/sh, source px - the crop window drawMain /
- * drawSplitScreen computed) and the dest rect that view was fitted into.
+ * drawCameraComposition computed) and the dest rect that view was fitted into.
  * Returns null when the region does not intersect the visible view (fully
  * cropped away). The returned rect is clipped to the dest rect and rounded
  * OUTWARD (floor origin, ceil far edge) - a privacy patch must never undercover
@@ -531,8 +534,8 @@ export function paintRegionBlursForView(
 
 /**
  * Fills a dest rect per opts: blurs the source if fill="blur" and helper is
- * available, otherwise fills with black. Called by both drawMain and
- * drawSplitScreen before the fit draw.
+ * available, otherwise fills with black. Called by drawMain before the fit
+ * draw.
  */
 function fillBackdrop(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -649,76 +652,8 @@ export function drawMain(
     }
 }
 
-// drawPip / PipDrawSettings removed - PiP is now a split-layout (pip2/pip3/pip4)
-// with rounded slots. See drawSplitScreen + getSplitSlots.
-
 /**
- * One slot in a split-screen layout, in normalized output coordinates (0..1).
- * `rounded`: if true, the content is clipped with roundRect (PiP-style
- * overlay on top of the main slot).
- */
-export interface SplitSlot {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    rounded?: boolean;
-}
-
-/**
- * Composition layout identifier.
- * - single - one slot covering the full frame (single-channel export).
- * - h2 / v2 / left1right2 / left2right1 / grid2x2 - tiled layouts (equal slots).
- * - pip2 / pip3 / pip4 - PiP-style: slot 0 covers the full frame, the rest
- *   are small rounded overlays on top (right column, stacked bottom to top).
- *
- * The name "SplitLayout" is historical; it now covers all composition modes
- * including single, so one render path handles everything
- * (single = layout with 1 full-frame slot).
- */
-export type SplitLayout = "single" | "h2" | "v2" | "left1right2" | "left2right1" | "grid2x2" | "pip2" | "pip3" | "pip4";
-
-/**
- * Characteristic size of a PiP overlay as a fraction of output_h (28%).
- * Real dimensions are derived from it: height = PIP_OVERLAY_CHAR_SIZE × output_h,
- * width = height × effective_aspect. This gives all overlays the same visual
- * "weight" regardless of their own aspect ratio.
- */
-export const PIP_OVERLAY_CHAR_SIZE = 0.28;
-const PIP_OVERLAY_MARGIN = 0.02;
-/** Max overlay width as a fraction of output_w (guard for wide aspects on a narrow output). */
-export const PIP_OVERLAY_MAX_W = 0.4;
-
-/**
- * Context for getSplitSlots - controls the dimensions and positions of
- * dynamic-aspect overlays in pip-layouts. Has no effect on tile layouts
- * (h2/v2/grid2x2/left1right2/left2right1).
- */
-export interface SplitSlotsContext {
-    /** Output aspect (output_w/output_h). Needed to convert dynamic overlay dimensions into normalized output coords. */
-    outputAspect: number;
-    /**
-     * Effective aspect of each slot (W/H after applying crop).
-     * Slot 0 (main) is ignored - it fills the full frame. If absent or null
-     * for an overlay, defaults to 1:1.
-     */
-    slotEffectiveAspects?: ReadonlyArray<number | null | undefined>;
-    /**
-     * Custom overlay positions in output coords (fractions). Only for overlay
-     * slots (slotIdx >= 1 in pip-layouts). null/undefined = default position
-     * (RB stack, bottom to top).
-     */
-    overlayPositions?: ReadonlyArray<{ xPct: number; yPct: number } | null | undefined>;
-    /**
-     * Per-slot user-controlled scale for PiP overlays (multiplier on the default).
-     * 1.0 = base size from PIP_OVERLAY_CHAR_SIZE. Range ~[0.3, 2.0]. null/undefined
-     * = 1.0. Applies only to pip-* layouts, slotIdx >= 1.
-     */
-    slotPipScales?: ReadonlyArray<number | null | undefined>;
-}
-
-/**
- * Effective aspect of a slot's content after applying crop. Without crop -
+ * Effective aspect of a camera's picture after applying crop. Without crop -
  * source aspect. With crop - aspect of the selected zone in source pixels:
  * (cropW / cropH) = (cropPct.w * srcW) / (cropPct.h * srcH) =
  * (cropPct.w / cropPct.h) * srcAspect.
@@ -728,204 +663,124 @@ export function computeEffectiveAspect(sourceAspect: number, crop: CropRect | nu
     return (crop.wPct / crop.hPct) * sourceAspect;
 }
 
-/**
- * Computes PiP overlay dimensions in normalized output coords from effective
- * aspect and output aspect. Height is fixed (28% of output_h); width is
- * derived from the aspect. If widthPct exceeds PIP_OVERLAY_MAX_W, both axes
- * are scaled down proportionally (aspect preserved).
- */
-export function computeOverlayDims(
-    effectiveAspect: number,
-    outputAspect: number,
-    userScale = 1,
-): { wPct: number; hPct: number } {
-    const hPct = PIP_OVERLAY_CHAR_SIZE * Math.max(0.3, Math.min(2.0, userScale));
-    const wPct = (hPct * effectiveAspect) / outputAspect;
-    if (wPct > PIP_OVERLAY_MAX_W) {
-        const scale = PIP_OVERLAY_MAX_W / wPct;
-        return { wPct: PIP_OVERLAY_MAX_W, hPct: hPct * scale };
-    }
-    return { wPct, hPct };
+/** Corner radius of a camera window over the main one, as a share of the
+ *  window's smaller side. The editor preview rounds its windows the same. */
+export const OVERLAY_CORNER_SHARE = 0.08;
+
+/** What one camera contributes to a composed frame. */
+export interface CompositionCamera {
+    /** The picture to show, or null for a black tile (no footage now, or no
+     *  frame decoded yet). */
+    sample: VideoSample | null;
+    crop: CropRect | null;
+    flip?: Readonly<CameraFlip>;
+    regionBlurs: readonly ResolvedRegionBlur[] | null;
+}
+
+/** Pixel rectangle of a layout tile, snapped so neighbours share edges. */
+function tilePixels(tile: LayoutRect): PxRect {
+    const x = Math.round(tile.x);
+    const y = Math.round(tile.y);
+    return { x, y, w: Math.max(2, Math.round(tile.x + tile.w) - x), h: Math.max(2, Math.round(tile.y + tile.h) - y) };
 }
 
 /**
- * Returns slots for a layout. Order is fixed: slot 0 is the "primary" (for
- * layouts with unequal parts), then left-to-right, top-to-bottom. For
- * pip-layouts: slot 0 = main full frame; the rest are rounded overlays
- * (default: bottom-right corner stack from bottom to top;
- * ctx.overlayPositions[i] overrides the default).
- *
- * ctx is required only for pip-* layouts (tile layouts can omit it). Without
- * ctx pip overlays default to 16:9 aspect and 16:9 output aspect - compatible
- * with behavior before dynamic-aspect.
+ * Draws one multi-camera frame. The background is black, or with a blurred
+ * letterbox the backdrop camera blurred over the whole frame, so the empty
+ * space around the tiles carries the picture rather than bars. Every tile then
+ * shows its camera's crop, fitted (the engine already gave each tile the
+ * picture's shape); a camera without a picture is a black tile. Windows over
+ * the main camera get rounded corners. Privacy patches go over every picture
+ * and are censored out of the blurred background too.
  */
-export function getSplitSlots(layout: SplitLayout, ctx?: SplitSlotsContext): SplitSlot[] {
-    switch (layout) {
-        case "single":
-            return [{ x: 0, y: 0, w: 1, h: 1 }];
-        case "h2":
-            return [
-                { x: 0, y: 0, w: 0.5, h: 1 },
-                { x: 0.5, y: 0, w: 0.5, h: 1 },
-            ];
-        case "v2":
-            return [
-                { x: 0, y: 0, w: 1, h: 0.5 },
-                { x: 0, y: 0.5, w: 1, h: 0.5 },
-            ];
-        case "left1right2":
-            return [
-                { x: 0, y: 0, w: 0.5, h: 1 },
-                { x: 0.5, y: 0, w: 0.5, h: 0.5 },
-                { x: 0.5, y: 0.5, w: 0.5, h: 0.5 },
-            ];
-        case "left2right1":
-            return [
-                { x: 0, y: 0, w: 0.5, h: 0.5 },
-                { x: 0, y: 0.5, w: 0.5, h: 0.5 },
-                { x: 0.5, y: 0, w: 0.5, h: 1 },
-            ];
-        case "grid2x2":
-            return [
-                { x: 0, y: 0, w: 0.5, h: 0.5 },
-                { x: 0.5, y: 0, w: 0.5, h: 0.5 },
-                { x: 0, y: 0.5, w: 0.5, h: 0.5 },
-                { x: 0.5, y: 0.5, w: 0.5, h: 0.5 },
-            ];
-        case "pip2":
-        case "pip3":
-        case "pip4": {
-            // Slot 0 - main covering the full frame.
-            const slots: SplitSlot[] = [{ x: 0, y: 0, w: 1, h: 1 }];
-            const overlayCount = layout === "pip2" ? 1 : layout === "pip3" ? 2 : 3;
-            const outputAspect = ctx?.outputAspect ?? 16 / 9;
-            // Cumulative height of already-added overlays for the default RB stack.
-            let cumStackH = 0;
-            for (let i = 0; i < overlayCount; i++) {
-                const slotIdx = i + 1;
-                const effAspect = ctx?.slotEffectiveAspects?.[slotIdx] ?? 1;
-                const userScale = ctx?.slotPipScales?.[slotIdx] ?? 1;
-                const { wPct, hPct } = computeOverlayDims(effAspect, outputAspect, userScale);
-                let x: number;
-                let y: number;
-                const userPos = ctx?.overlayPositions?.[slotIdx];
-                if (userPos) {
-                    x = userPos.xPct;
-                    y = userPos.yPct;
-                } else {
-                    // Default RB stack: right edge with margin, bottom + sum
-                    // of previous overlay heights (with margin between).
-                    x = 1 - wPct - PIP_OVERLAY_MARGIN;
-                    y = 1 - PIP_OVERLAY_MARGIN - hPct - cumStackH - i * PIP_OVERLAY_MARGIN;
-                }
-                slots.push({ x, y, w: wPct, h: hPct, rounded: true });
-                cumStackH += hPct;
-            }
-            return slots;
-        }
-    }
-}
-
-/** Number of slots in a layout (for channel count validation). */
-export function getSplitSlotCount(layout: SplitLayout): 1 | 2 | 3 | 4 {
-    switch (layout) {
-        case "single":
-            return 1;
-        case "h2":
-        case "v2":
-        case "pip2":
-            return 2;
-        case "left1right2":
-        case "left2right1":
-        case "pip3":
-            return 3;
-        case "grid2x2":
-        case "pip4":
-            return 4;
-    }
-}
-
-/**
- * Draws one split-screen frame: each sample goes into its slot.
- *
- * samples.length must match the layout slot count; null in samples[i] means
- * "empty slot, black fill".
- *
- * slotCrops (optional) - per-slot crop in normalized source coordinates.
- * If slotCrops[i] is null/absent - fits the full frame (no crop); keep-aspect
- * below will letterbox if the slot and source aspect differ. If set - used
- * as-is and fitted into the slot with keep-aspect ("aspect-fit" bars appear
- * if the slot and crop aspect differ).
- *
- * slotRegionBlurs (optional) - per-slot privacy patches, painted over each
- * slot's video layer (inside the roundRect clip for PiP overlays, so patches
- * respect the rounded corners).
- */
-export function drawSplitScreen(
+export function drawCameraComposition(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-    samples: ReadonlyArray<VideoSample | null>,
-    slots: ReadonlyArray<SplitSlot>,
+    tiles: readonly CameraTileLayout[],
+    cameras: Partial<Record<Channel, CompositionCamera>>,
+    backdrop: Channel | null,
     outputW: number,
     outputH: number,
-    slotCrops?: ReadonlyArray<CropRect | null>,
     opts?: RenderFillOpts,
-    slotRegionBlurs?: ReadonlyArray<readonly ResolvedRegionBlur[] | null>,
-    slotFlips?: ReadonlyArray<Readonly<CameraFlip>>,
 ): void {
-    if (samples.length !== slots.length) {
-        throw new Error(`split-screen: expected ${slots.length} samples, got ${samples.length}`);
+    const main = tiles[0] ? cameras[tiles[0].channel] : undefined;
+    const mainRect = tiles[0] ? tilePixels(tiles[0]) : null;
+    const mainCovers =
+        !!main?.sample &&
+        !!mainRect &&
+        fitHidesBackdrop(
+            { dx: mainRect.x, dy: mainRect.y, dw: mainRect.w, dh: mainRect.h },
+            outputW,
+            outputH,
+            main.sample.format,
+        );
+    if (!mainCovers) {
+        const back = backdrop ? cameras[backdrop] : undefined;
+        if (opts?.fill === "blur" && opts.blurHelper && back?.sample) {
+            ctx.save();
+            applyCanvasFlip(ctx, { x: 0, y: 0, w: outputW, h: outputH }, back.flip);
+            const s = back.sample;
+            fillBlurredCover(
+                ctx,
+                s,
+                s.displayWidth,
+                s.displayHeight,
+                0,
+                0,
+                outputW,
+                outputH,
+                opts.blurHelper,
+                back.regionBlurs,
+            );
+            ctx.restore();
+        } else {
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, outputW, outputH);
+        }
     }
-    // Overall black background. Covers the areas between slots in irregular
-    // layouts. Per-slot blur backdrop is done separately below (so each slot
-    // gets a backdrop from its own channel, not a shared one).
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, outputW, outputH);
-    for (let i = 0; i < slots.length; i++) {
-        const sample = samples[i];
-        const slot = slots[i]!;
-        const dx = Math.round(slot.x * outputW);
-        const dy = Math.round(slot.y * outputH);
-        const dw = Math.max(2, Math.round(slot.w * outputW));
-        const dh = Math.max(2, Math.round(slot.h * outputH));
-        if (!sample) continue;
+    for (const tile of tiles) {
+        const { x: dx, y: dy, w: dw, h: dh } = tilePixels(tile);
+        const camera = cameras[tile.channel];
+        ctx.save();
+        if (tile.overlay) {
+            roundRectPath(ctx, dx, dy, dw, dh, Math.round(Math.min(dw, dh) * OVERLAY_CORNER_SHARE));
+            ctx.clip();
+        }
+        const sample = camera?.sample;
+        if (!camera || !sample) {
+            ctx.fillStyle = "#000";
+            ctx.fillRect(dx, dy, dw, dh);
+            ctx.restore();
+            continue;
+        }
         const sourceW = sample.displayWidth;
         const sourceH = sample.displayHeight;
-        const flip = slotFlips?.[i];
-        const crop = slotCrops?.[i];
-        const customCrop = crop ? flipCropRect(crop, flip) : null;
-        let sx: number;
-        let sy: number;
-        let sw: number;
-        let sh: number;
-        if (customCrop) {
-            sx = Math.max(0, Math.round(customCrop.xPct * sourceW));
-            sy = Math.max(0, Math.round(customCrop.yPct * sourceH));
-            sw = Math.min(sourceW - sx, Math.round(customCrop.wPct * sourceW));
-            sh = Math.min(sourceH - sy, Math.round(customCrop.hPct * sourceH));
-        } else {
-            // Default - fit the full frame (no crop); keep-aspect below will
-            // letterbox if the slot aspect differs from the source.
-            sx = 0;
-            sy = 0;
-            sw = sourceW;
-            sh = sourceH;
-        }
-        // Letterbox-fit the cropped zone into the slot. fit.dx/dy are relative
-        // to the slot origin; add dx/dy to get absolute canvas coordinates.
+        const crop = camera.crop ? flipCropRect(camera.crop, camera.flip) : null;
+        const sx = crop ? Math.max(0, Math.round(crop.xPct * sourceW)) : 0;
+        const sy = crop ? Math.max(0, Math.round(crop.yPct * sourceH)) : 0;
+        const sw = crop ? Math.min(sourceW - sx, Math.round(crop.wPct * sourceW)) : sourceW;
+        const sh = crop ? Math.min(sourceH - sy, Math.round(crop.hPct * sourceH)) : sourceH;
         const fit = fitKeepAspect(sw, sh, dw, dh);
         const drawX = dx + fit.dx;
         const drawY = dy + fit.dy;
-        const regionBlurs = slotRegionBlurs?.[i];
-        const paintSlotRegionBlurs = (): void => {
-            if (!regionBlurs?.length) return;
+        ctx.save();
+        applyCanvasFlip(ctx, { x: dx, y: dy, w: dw, h: dh }, camera.flip);
+        // Rounding can leave a hairline between the fitted picture and its
+        // tile; black keeps it from showing the background through.
+        if (!fitHidesBackdrop(fit, dw, dh, sample.format)) {
+            ctx.fillStyle = "#000";
+            ctx.fillRect(dx, dy, dw, dh);
+        }
+        sample.draw(ctx, sx, sy, sw, sh, drawX, drawY, fit.dw, fit.dh);
+        ctx.restore();
+        if (camera.regionBlurs?.length) {
             const dest = flipPixelRect(
                 { x: drawX, y: drawY, w: fit.dw, h: fit.dh },
                 { x: dx, y: dy, w: dw, h: dh },
-                flip,
+                camera.flip,
             );
             paintRegionBlursForView(
                 ctx,
-                regionBlurs,
+                camera.regionBlurs,
                 sourceW,
                 sourceH,
                 sx,
@@ -937,36 +792,9 @@ export function drawSplitScreen(
                 fit.dw,
                 fit.dh,
                 opts?.regionBlurHelper ?? null,
-                flip,
+                camera.flip,
             );
-        };
-        if (slot.rounded) {
-            // PiP-style overlay - clip with roundRect before drawing, restore
-            // ctx after. Radius ~8% of the smaller dimension.
-            const radius = Math.round(Math.min(dw, dh) * 0.08);
-            ctx.save();
-            // Use the shared polyfill (canvas-draw.ts) - native ctx.roundRect is
-            // absent before Chromium 99, which is inside the re-encode floor
-            // (WebCodecs encode = Chromium 94). roundRectPath calls beginPath.
-            roundRectPath(ctx, dx, dy, dw, dh, radius);
-            ctx.clip();
-            ctx.save();
-            applyCanvasFlip(ctx, { x: dx, y: dy, w: dw, h: dh }, flip);
-            fillBackdrop(ctx, sample, sourceW, sourceH, dx, dy, dw, dh, opts, regionBlurs);
-            sample.draw(ctx, sx, sy, sw, sh, drawX, drawY, fit.dw, fit.dh);
-            ctx.restore();
-            // Inside the clip: a patch on a rounded corner keeps the corner.
-            paintSlotRegionBlurs();
-            ctx.restore();
-        } else {
-            ctx.save();
-            applyCanvasFlip(ctx, { x: dx, y: dy, w: dw, h: dh }, flip);
-            if (!fitHidesBackdrop(fit, dw, dh, sample.format)) {
-                fillBackdrop(ctx, sample, sourceW, sourceH, dx, dy, dw, dh, opts, regionBlurs);
-            }
-            sample.draw(ctx, sx, sy, sw, sh, drawX, drawY, fit.dw, fit.dh);
-            ctx.restore();
-            paintSlotRegionBlurs();
         }
+        ctx.restore();
     }
 }

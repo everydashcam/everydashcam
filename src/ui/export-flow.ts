@@ -4,10 +4,11 @@
 // callback set and consumes the result.
 //
 // Routing:
-//   - composition.layout === "single" + quality = "original" + output = "source"
-//     + no overlays + no manual bitrate -> exportClip stream-copy (mediabunny).
-//   - composition.layout != "single"                        -> transcodeSplit
-//   - else                                                   -> transcode
+//   - one visible camera + quality = "original" + output = "source" + no
+//     overlays, crop, reflection or manual bitrate -> exportClip stream-copy.
+//   - several visible cameras -> transcodeSplit, laid out by the camera
+//     layout engine like the editor preview.
+//   - else -> transcode
 //
 // The pipeline picks the bitrate from the quality preset, the output dims from
 // the preset (or source / custom), and the optional overlays/watermark from
@@ -45,8 +46,11 @@ import type {
     TranscodeResult,
     WatermarkAnchor,
 } from "../transcode/types.js";
-import type { SplitLayout } from "../transcode/compose.js";
-import { contentToWallUtc, displayTzSec, tripCandidatesByChannel } from "../trips.js";
+import type { CameraFlip } from "../camera-flip.js";
+import type { Channel } from "../parsers/types.js";
+import type { CameraArrangement } from "../transcode/camera-composition.js";
+import type { CropRect } from "../transcode/compose.js";
+import { contentToFrame, contentToWallUtc, displayTzSec, tripCandidatesByChannel } from "../trips.js";
 import type { Trip } from "../trips.js";
 import { getBrakeThresholdG } from "../events.js";
 import { computeCumulativeDistanceM, sampleSpeedAcross } from "../transcode/frame-pos.js";
@@ -83,7 +87,16 @@ import {
 import { notify } from "./notifications.js";
 import { clipBasename, formatBytes, randomFilenameSuffix } from "./format.js";
 import { pausePlayback } from "./playback-pause.js";
-import { activeTrip, activeTripHasGps, state, mainChannel, visibleChannels } from "./state.js";
+import {
+    activeTrip,
+    activeTripHasGps,
+    audioChannel,
+    audioChannelAt,
+    mainChannel,
+    state,
+    visibleChannels,
+} from "./state.js";
+import { cameraExportAspect } from "./camera-aspect.js";
 import {
     type BeforeCommitHook,
     transcodeSplitViaWorker as transcodeSplit,
@@ -864,30 +877,28 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     // layout or blur edit from the future leak into this already-started run
     // (in the worst case re-enabling stream-copy and shipping raw frames).
     const channelOrder = visibleChannels();
-    const slotFlips = channelOrder.map((ch) => ({ ...cameraFlipForChannel(ch, trip) }));
     const channel = channelOrder[0] ?? mainChannel();
-    // Interim mapping onto the preset pipeline until it lays out with the
-    // camera layout engine.
-    const layout: SplitLayout =
-        channelOrder.length <= 1
-            ? "single"
-            : state.composition.mode === "main"
-              ? channelOrder.length === 2
-                  ? "pip2"
-                  : channelOrder.length === 3
-                    ? "pip3"
-                    : "pip4"
-              : channelOrder.length === 2
-                ? "h2"
-                : channelOrder.length === 3
-                  ? "left1right2"
-                  : "grid2x2";
-    const slotCrops = channelOrder.map((ch) => {
-        const crop = state.composition.crops[ch];
-        return crop ? { ...crop } : null;
-    });
-    const slotPipPositions = channelOrder.map(() => null);
-    const slotPipScales = channelOrder.map(() => 1);
+    const composition = state.composition;
+    const flips: Partial<Record<Channel, CameraFlip>> = {};
+    const crops: Partial<Record<Channel, CropRect>> = {};
+    const aspects: Partial<Record<Channel, number>> = {};
+    for (const ch of channelOrder) {
+        flips[ch] = { ...cameraFlipForChannel(ch, trip) };
+        const crop = composition.crops[ch];
+        if (crop) crops[ch] = { ...crop };
+        // The shapes the editor laid out with, so the file matches it.
+        aspects[ch] = cameraExportAspect(ch);
+    }
+    const arrangement: CameraArrangement = {
+        mode: composition.mode,
+        thumbScale: composition.thumbScale,
+        allowOverlay: composition.allowOverlay,
+        overlayPositions: structuredClone(composition.overlayPositions),
+    };
+    // The sound camera of the clip's first moment carries the whole clip:
+    // switching mid-clip would jump between microphones.
+    const startFrame = trip.frames[contentToFrame(trip.timeline, startTripSec).index];
+    const soundChannel = startFrame ? audioChannelAt(startFrame) : audioChannel();
     const quality = exportPanelState.quality;
     const encoderPreference = getEncoderPreference();
     const manualBitrateMbps = exportPanelState.manualBitrateMbps;
@@ -922,8 +933,8 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         manualBitrateMbps === null &&
         outputPresetId === "source" &&
         channelOrder.length <= 1 &&
-        !slotCrops[0] &&
-        !slotFlips.some(hasCameraFlip) &&
+        !crops[channel] &&
+        !channelOrder.some((ch) => hasCameraFlip(flips[ch])) &&
         letterboxFill === "black" &&
         speedFactor === 1 &&
         overlays === null &&
@@ -1378,23 +1389,23 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                     {
                         source: {
                             trip,
-                            slotChannels: channelOrder,
+                            channels: channelOrder,
                             startTripSec,
                             endTripSec,
                         },
                         output: {
                             height: dims.height,
                             aspect: dims.aspect,
-                            layout,
                             bitrate,
                             hardwareAcceleration,
                             watermarkAnchor,
                             withAudio: reencodeAudio,
+                            audioChannel: soundChannel,
+                            arrangement,
+                            aspects,
+                            crops,
+                            flips,
                             speedFactor,
-                            slotCrops,
-                            slotFlips,
-                            overlayPositions: slotPipPositions,
-                            slotPipScales,
                             letterboxFill,
                             overlays,
                             blurRegions: effectiveBlurRegions,
@@ -1423,8 +1434,8 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                             aspect: dims.aspect,
                             bitrate,
                             hardwareAcceleration,
-                            crop: slotCrops[0] ?? null,
-                            flip: slotFlips[0],
+                            crop: crops[channel] ?? null,
+                            flip: flips[channel],
                             watermarkAnchor,
                             withAudio: reencodeAudio,
                             speedFactor,
@@ -1538,7 +1549,8 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                     speedFactor,
                     channelCount: channelOrder.length,
                     segmentCounts,
-                    layout,
+                    cameraMode: arrangement.mode,
+                    cameraOverlay: arrangement.allowOverlay,
                     mapOverlay: !!overlays?.map,
                     withAudio: streamCopy ? withAudio : reencodeAudio,
                     deliveryMode,

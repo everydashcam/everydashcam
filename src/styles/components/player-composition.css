@@ -16,7 +16,7 @@
 /* Digital zoom (player-zoom.ts) and the export crop preview (player-crop.ts)
    each own one variable, so neither clears the other. Zoom is off in export
    mode, so at most one of them is set at a time. */
-.video-tile > video:not(.tile-blur-bg) {
+.video-tile > video {
     transform-origin: 0 0;
     transform: var(--video-zoom-transform, translate(0)) var(--video-crop-transform, translate(0))
         var(--camera-flip, translate(0));
@@ -136,9 +136,8 @@ body.export-mode .video-grid {
     width: auto;
     height: auto;
     margin: auto;
-    /* The frame interior is the real exported area: black letterbox (the tiles
-       paint it; in blur mode a blurred video fills it - see body.letterbox-blur
-       below). */
+    /* The frame interior is the real exported area: black around the
+       cameras, or the blurred background layer (.grid-backdrop below). */
     background: var(--dc-black);
     /* Own stacking context so the ::after frame ring reliably paints above the
        position:relative tiles (which are z-auto); without it the ring can hide
@@ -160,43 +159,16 @@ body.export-mode .video-grid::after {
     z-index: 6;
 }
 
-/* === Blurred letterbox preview (export-mode, letterboxFill="blur") ===
- * A live blurred cover-fit copy of each tile's video sits behind the contain
- * video, filling the letterbox bars with the same blur the pipeline burns in.
- * The copy mirrors the master's frames via captureStream (player-overlays.ts).
- * z-index:-1 inside an isolated tile keeps it behind the sharp video and the
- * channel label but in front of the (now-transparent) tile background, so it
- * shows only through the contain bars. */
-.tile-blur-bg {
+/* === Blurred background preview (export-mode, letterboxFill="blur") ===
+ * One canvas under the tiles shows the main camera blurred over the whole
+ * output frame, painted by player-backdrop.ts with the export's own helper.
+ * It is the grid's first child, so every tile draws over it. */
+.grid-backdrop {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    /* scale over-fills to hide the transparent edge bleed CSS blur leaves at
-       the element borders. */
-    filter: blur(16px);
-    transform: scale(1.08) scale(var(--camera-flip-x, 1), var(--camera-flip-y, 1));
-    z-index: -1;
     pointer-events: none;
-    display: none;
-}
-
-/* Only paint the backdrop in blur mode; JS toggles [hidden] per visible tile. */
-body.letterbox-blur .video-tile > .tile-blur-bg:not([hidden]) {
-    display: block;
-}
-
-body.letterbox-blur .video-tile {
-    background: transparent;
-    /* Contain the z-index:-1 backdrop within the tile's own stacking context
-       so it can't slip behind the grid/pasteboard. */
-    isolation: isolate;
-}
-
-/* Contain bars become see-through so the blurred backdrop shows in them. */
-body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
-    background: transparent;
 }
 
 /* === Export trim bar (export-mode) ===

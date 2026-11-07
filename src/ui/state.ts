@@ -17,7 +17,7 @@ import type { IngestStructureEntry } from "../ingest-structure.js";
 import type { PerFileMseBackend } from "../per-file-mse.js";
 import type { RecordingAnalysisProgress } from "../recording-analysis-progress.js";
 import type { TripFilters } from "../trip-filters.js";
-import { firstRecordingChannel } from "../camera-availability.js";
+import { firstRecordingChannel, frameCameraAvailability } from "../camera-availability.js";
 import type { CameraArrangementMode, OverlayPosition } from "../camera-layout.js";
 import type { CropRect } from "../transcode/compose.js";
 import { pickFrameChannel } from "../trips.js";
@@ -411,6 +411,17 @@ export function audioChannel(order: readonly Channel[] = visibleChannels()): Cha
     const first = order[0] ?? mainChannel();
     if (!trip) return first;
     return order.find((channel) => channelHasAudio(trip, channel)) ?? first;
+}
+
+/**
+ * Camera whose sound plays at `frame`: the user's pick, else the first camera
+ * of that moment's layout order with footage and sound - a camera standing in
+ * for a main one without footage brings its sound along.
+ */
+export function audioChannelAt(frame: TripFrame): Channel {
+    const order = frameCameraAvailability(frame, visibleChannels(), state.composition.mode).order;
+    const recording = order.filter((channel) => frame.channels[channel]);
+    return audioChannel(recording.length ? recording : order);
 }
 
 export const state: AppState = {

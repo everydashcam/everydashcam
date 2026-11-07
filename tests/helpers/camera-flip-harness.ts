@@ -1,6 +1,11 @@
 import { VideoSample } from "mediabunny";
 import type { CameraFlip } from "../../src/camera-flip.js";
-import { createBlurHelper, createRegionBlurHelper, drawMain, drawSplitScreen } from "../../src/transcode/compose.js";
+import {
+    createBlurHelper,
+    createRegionBlurHelper,
+    drawCameraComposition,
+    drawMain,
+} from "../../src/transcode/compose.js";
 
 export function renderFlippedFrames() {
     const source = new OffscreenCanvas(80, 60);
@@ -54,19 +59,22 @@ export function renderFlippedFrames() {
             flips[3],
         );
         const mosaicAfter = pixel(140, 100);
-        drawSplitScreen(
+        // Two cameras side by side, the second as a rounded window, over a
+        // blurred backdrop: each keeps its own reflection.
+        drawCameraComposition(
             ctx,
-            [sample, sample],
             [
-                { x: 0, y: 0, w: 0.5, h: 1 },
-                { x: 0.5, y: 0, w: 0.5, h: 1, rounded: true },
+                { channel: "front", role: "equal", overlay: false, x: 0, y: 30, w: 80, h: 60 },
+                { channel: "rear", role: "equal", overlay: true, x: 80, y: 30, w: 80, h: 60 },
             ],
+            {
+                front: { sample, crop: null, flip: flips[1], regionBlurs: null },
+                rear: { sample, crop: null, flip: flips[2], regionBlurs: null },
+            },
+            "front",
             160,
             120,
-            undefined,
             { fill: "blur", blurHelper: createBlurHelper() },
-            undefined,
-            [flips[1]!, flips[2]!],
         );
         const split = [pixel(10, 40), pixel(70, 80), pixel(90, 40), pixel(150, 80)];
         return { corners, crop, privacy, mosaicBefore, mosaicAfter, split };

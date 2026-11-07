@@ -816,11 +816,11 @@ test.describe("blur regions", () => {
         });
         expect(sourceLuma, "the source itself is not a black frame").toBeGreaterThan(24);
 
-        // Drawing across the portrait tile's bars clamps to the full source
-        // height; the covered source must also feed the repeated background.
+        // A zone over the whole picture is censored out of the blurred
+        // background too, above, behind and below the camera.
         await drawZone(page, 0.01, 0.01, 0.99, 0.99);
         await page.locator("#export-panel-blur-style").selectOption("fill");
-        const canvas = page.locator('.video-tile[data-channel="front"] .blur-preview-canvas');
+        const canvas = page.locator("#video-grid > .grid-backdrop");
         await expect(canvas).toBeVisible();
         await expect
             .poll(() =>

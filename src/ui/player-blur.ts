@@ -31,7 +31,6 @@ import {
     DEFAULT_ZONE_SPAN_SEC,
     MIN_ZONE_SPAN_SEC,
     regionRectAt,
-    resolveRegionBlursAt,
     sortBlurRegionsForPaint,
     upsertKeyframe,
     ZONE_START_PLAYHEAD_BACKOFF_SEC,
@@ -39,14 +38,11 @@ import {
 } from "../blur-regions.js";
 import type { CropRect } from "../transcode/compose.js";
 import {
-    createBlurHelper,
     createRegionBlurHelper,
-    fillBlurredCover,
     mapRegionRectToDest,
     paintRegionBlur,
     snapRegionToMosaicGrid,
     softBlurRegionGrid,
-    type BlurHelper,
     type RegionBlurHelper,
 } from "../transcode/compose.js";
 
@@ -99,7 +95,6 @@ interface TileUi {
 
 const tileUis = new Map<Channel, TileUi>();
 let previewHelper: RegionBlurHelper | null = null;
-let previewBackdropHelper: BlurHelper | null = null;
 let rafId = 0;
 let armed = false;
 let drawOpener: HTMLElement | null = null;
@@ -408,30 +403,6 @@ function paintTile(ch: Channel, ui: TileUi, regions: readonly BlurRegion[]): voi
     if (cropEditing || !v || tile.hidden) return;
 
     const mapping = tileMapping(ch, tileWidth, tileHeight);
-    if (mapping && exportPanelState.letterboxFill === "blur") {
-        // The CSS backdrop mirrors raw video. Repaint its visible bars with
-        // the export's censored backdrop, including regions outside the crop.
-        previewBackdropHelper ??= createBlurHelper();
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, tileWidth, tileHeight);
-        ctx.rect(mapping.dest.x, mapping.dest.y, mapping.dest.w, mapping.dest.h);
-        ctx.clip("evenodd");
-        applyCanvasFlip(ctx, { x: 0, y: 0, w: tileWidth, h: tileHeight }, mapping.flip);
-        fillBlurredCover(
-            ctx,
-            v,
-            v.videoWidth,
-            v.videoHeight,
-            0,
-            0,
-            tileWidth,
-            tileHeight,
-            previewBackdropHelper,
-            resolveRegionBlursAt(regions, ch, contentSec, exportStartSec),
-        );
-        ctx.restore();
-    }
     previewHelper ??= createRegionBlurHelper();
     for (const region of regions) {
         if (region.channel !== ch) continue;

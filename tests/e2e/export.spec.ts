@@ -1302,12 +1302,23 @@ test.describe("export", () => {
         await expect(page.locator("#player-telemetry-canvas")).toBeVisible();
     });
 
-    test("blurred letterbox preview mirrors the master when playing", async ({ page }) => {
+    test("blurred letterbox preview paints the main camera behind the cameras", async ({ page }) => {
         await page.locator("#export-panel-output").selectOption("1080_9x16");
         await page.locator("#export-panel-blur").check();
         await page.locator("#player-play").click();
-        await expect(page.locator("body")).toHaveClass(/letterbox-blur/);
-        await expect(page.locator('#video-grid .video-tile[data-channel="front"] > video.tile-blur-bg')).toBeVisible();
+        const backdrop = page.locator("#video-grid > .grid-backdrop");
+        await expect(backdrop).toBeVisible();
+        // The band above the cameras of a portrait frame carries the picture.
+        await expect
+            .poll(() =>
+                backdrop.evaluate((el: HTMLCanvasElement) => {
+                    const pixel = el
+                        .getContext("2d")!
+                        .getImageData(Math.floor(el.width / 2), Math.floor(el.height * 0.05), 1, 1).data;
+                    return pixel[0]! + pixel[1]! + pixel[2]!;
+                }),
+            )
+            .toBeGreaterThan(30);
         await shot(page, "export-17-blur");
     });
 

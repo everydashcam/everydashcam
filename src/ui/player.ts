@@ -131,6 +131,7 @@ import {
     activeFrame,
     activeTrip,
     audioChannel,
+    audioChannelAt,
     defaultCompositionForChannels,
     frameMasterCandidate,
     frameMasterChannel,
@@ -1840,10 +1841,7 @@ export function applyComposition(opts: { animate?: boolean } = {}): void {
  *  paired tail holds), falling back to the next camera with sound. */
 function playbackAudioChannel(): Channel {
     const af = activeFrame();
-    if (!af) return audioChannel();
-    const order = frameCameraAvailability(af.frame, visibleChannels(), state.composition.mode).order;
-    const recording = order.filter((ch) => af.frame.channels[ch]);
-    return audioChannel(recording.length ? recording : order);
+    return af ? audioChannelAt(af.frame) : audioChannel();
 }
 
 /**

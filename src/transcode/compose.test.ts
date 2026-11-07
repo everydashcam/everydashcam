@@ -1,11 +1,11 @@
 // Unit tests for pure composer functions: computeAutoCrop / computeOutputSize /
-// fitKeepAspect / fitKeepAspectCover / getSplitSlots / getSplitSlotCount /
-// computeEffectiveAspect.
+// fitKeepAspect / fitKeepAspectCover / computeEffectiveAspect and the privacy
+// region geometry.
 //
-// drawMain / drawSplitScreen / drawWatermark / fillBlurredCover are not covered
-// here - they require VideoSample / OffscreenCanvas, which are unavailable in
-// Node's jsdom-free vitest environment. Correctness is verified visually on real
-// files + e2e (deferred to a separate PR).
+// drawMain / drawCameraComposition / drawWatermark / fillBlurredCover are not
+// covered here - they require VideoSample / OffscreenCanvas, which are
+// unavailable in Node's jsdom-free vitest environment. The export pixel e2e
+// tests check them on real files.
 
 import { describe, expect, it } from "vitest";
 
@@ -19,8 +19,6 @@ import {
     mapRegionRectToDest,
     snapRegionToMosaicGrid,
     softBlurRegionGrid,
-    getSplitSlotCount,
-    getSplitSlots,
 } from "./compose.js";
 
 describe("computeOutputSize", () => {
@@ -91,92 +89,6 @@ describe("computeAutoCrop", () => {
     it("source = output (square → square) - no crop, no floating-point error", () => {
         const r = computeAutoCrop(1080, 1080, "1:1");
         expect(r).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
-    });
-});
-
-describe("getSplitSlotCount", () => {
-    it("h2 / v2 → 2 slots", () => {
-        expect(getSplitSlotCount("h2")).toBe(2);
-        expect(getSplitSlotCount("v2")).toBe(2);
-    });
-
-    it("left1right2 / left2right1 → 3 slots", () => {
-        expect(getSplitSlotCount("left1right2")).toBe(3);
-        expect(getSplitSlotCount("left2right1")).toBe(3);
-    });
-
-    it("grid2x2 → 4 slots", () => {
-        expect(getSplitSlotCount("grid2x2")).toBe(4);
-    });
-});
-
-describe("getSplitSlots", () => {
-    it("h2: two 50/50 horizontal slots covering the full output", () => {
-        const slots = getSplitSlots("h2");
-        expect(slots).toHaveLength(2);
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 0.5, h: 1 });
-        expect(slots[1]).toEqual({ x: 0.5, y: 0, w: 0.5, h: 1 });
-        const totalArea = slots.reduce((s, sl) => s + sl.w * sl.h, 0);
-        expect(totalArea).toBeCloseTo(1, 5);
-    });
-
-    it("v2: two 50/50 vertical slots", () => {
-        const slots = getSplitSlots("v2");
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 1, h: 0.5 });
-        expect(slots[1]).toEqual({ x: 0, y: 0.5, w: 1, h: 0.5 });
-    });
-
-    it("left1right2: primary slot is left half (full height)", () => {
-        const slots = getSplitSlots("left1right2");
-        expect(slots).toHaveLength(3);
-        // slot 0 - primary (left, full height).
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 0.5, h: 1 });
-        // slots 1 and 2 - right side, stacked.
-        expect(slots[1]).toEqual({ x: 0.5, y: 0, w: 0.5, h: 0.5 });
-        expect(slots[2]).toEqual({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
-        const totalArea = slots.reduce((s, sl) => s + sl.w * sl.h, 0);
-        expect(totalArea).toBeCloseTo(1, 5);
-    });
-
-    it("left2right1: slots 0 and 1 stacked left, slot 2 right full height", () => {
-        const slots = getSplitSlots("left2right1");
-        expect(slots).toHaveLength(3);
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 0.5, h: 0.5 });
-        expect(slots[1]).toEqual({ x: 0, y: 0.5, w: 0.5, h: 0.5 });
-        expect(slots[2]).toEqual({ x: 0.5, y: 0, w: 0.5, h: 1 });
-    });
-
-    it("grid2x2: four equal quadrants in tl tr bl br order", () => {
-        const slots = getSplitSlots("grid2x2");
-        expect(slots).toHaveLength(4);
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 0.5, h: 0.5 });
-        expect(slots[1]).toEqual({ x: 0.5, y: 0, w: 0.5, h: 0.5 });
-        expect(slots[2]).toEqual({ x: 0, y: 0.5, w: 0.5, h: 0.5 });
-        expect(slots[3]).toEqual({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
-        const totalArea = slots.reduce((s, sl) => s + sl.w * sl.h, 0);
-        expect(totalArea).toBeCloseTo(1, 5);
-    });
-
-    it("no layout has overlapping slots", () => {
-        for (const layout of ["h2", "v2", "left1right2", "left2right1", "grid2x2"] as const) {
-            const slots = getSplitSlots(layout);
-            for (let i = 0; i < slots.length; i++) {
-                for (let j = i + 1; j < slots.length; j++) {
-                    const a = slots[i]!;
-                    const b = slots[j]!;
-                    const overlap =
-                        Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
-                        Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-                    expect(overlap).toBeLessThan(1e-9);
-                }
-            }
-        }
-    });
-
-    it("getSplitSlots(layout).length === getSplitSlotCount(layout)", () => {
-        for (const layout of ["h2", "v2", "left1right2", "left2right1", "grid2x2"] as const) {
-            expect(getSplitSlots(layout).length).toBe(getSplitSlotCount(layout));
-        }
     });
 });
 
@@ -284,114 +196,6 @@ describe("computeEffectiveAspect", () => {
     it("hPct=0 - returns sourceAspect (guard against division by zero)", () => {
         const r = computeEffectiveAspect(16 / 9, { xPct: 0, yPct: 0, wPct: 1, hPct: 0 });
         expect(r).toBeCloseTo(16 / 9, 5);
-    });
-});
-
-describe("getSplitSlots with pip-context (dynamic overlay aspect+position)", () => {
-    it("pip2 without ctx - default position (RB) and default aspect (1:1 square in output coords)", () => {
-        const slots = getSplitSlots("pip2");
-        expect(slots).toHaveLength(2);
-        // slot 0 - main full frame.
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 1, h: 1 });
-        // slot 1 - rounded overlay in RB, height ≈ 0.28 of output.
-        const ov = slots[1]!;
-        expect(ov.rounded).toBe(true);
-        expect(ov.h).toBeCloseTo(0.28, 2);
-        // Position - RB corner with margin 0.02.
-        expect(ov.x + ov.w).toBeCloseTo(1 - 0.02, 2);
-        expect(ov.y + ov.h).toBeCloseTo(1 - 0.02, 2);
-    });
-
-    it("pip2 with 16:9 sourceAspect and 16:9 outputAspect - overlay 0.28×0.28 (square in output coords = 16:9 in pixels)", () => {
-        const slots = getSplitSlots("pip2", {
-            outputAspect: 16 / 9,
-            slotEffectiveAspects: [16 / 9, 16 / 9],
-        });
-        const ov = slots[1]!;
-        // h = 0.28, w = 0.28 * 1.78 / 1.78 = 0.28.
-        expect(ov.h).toBeCloseTo(0.28, 3);
-        expect(ov.w).toBeCloseTo(0.28, 3);
-    });
-
-    it("pip2 with 1:1 source in 16:9 output - overlay is narrow (w < h in output coords)", () => {
-        const slots = getSplitSlots("pip2", {
-            outputAspect: 16 / 9,
-            slotEffectiveAspects: [16 / 9, 1],
-        });
-        const ov = slots[1]!;
-        expect(ov.h).toBeCloseTo(0.28, 3);
-        // w = 0.28 * 1 / 1.78 ≈ 0.1575
-        expect(ov.w).toBeCloseTo(0.28 / (16 / 9), 3);
-        expect(ov.w).toBeLessThan(ov.h);
-    });
-
-    it("pip2 with very wide aspect - clamped by PIP_OVERLAY_MAX_W (0.40)", () => {
-        // 16:9 source in 9:16 output: overlay aspect would be very wide, > 0.40.
-        const slots = getSplitSlots("pip2", {
-            outputAspect: 9 / 16,
-            slotEffectiveAspects: [9 / 16, 16 / 9],
-        });
-        const ov = slots[1]!;
-        // w_pct = 0.28 * (16/9) / (9/16) = 0.28 * 1.78 * 1.78 ≈ 0.886 → clamped to 0.40.
-        expect(ov.w).toBeCloseTo(0.4, 3);
-        // h scaled proportionally.
-        expect(ov.h).toBeLessThan(0.28);
-    });
-
-    it("pip3 - 2 overlays in RB stack, second above first", () => {
-        const slots = getSplitSlots("pip3", {
-            outputAspect: 16 / 9,
-            slotEffectiveAspects: [16 / 9, 16 / 9, 16 / 9],
-        });
-        expect(slots).toHaveLength(3);
-        const ov1 = slots[1]!;
-        const ov2 = slots[2]!;
-        expect(ov1.rounded).toBe(true);
-        expect(ov2.rounded).toBe(true);
-        // Both in the right column - same x.
-        expect(ov1.x).toBeCloseTo(ov2.x, 3);
-        // Second overlay (slot 2) is above the first (smaller y).
-        expect(ov2.y).toBeLessThan(ov1.y);
-        // Gap between overlays ≈ PIP_OVERLAY_MARGIN (0.02).
-        const gap = ov1.y - (ov2.y + ov2.h);
-        expect(gap).toBeCloseTo(0.02, 2);
-    });
-
-    it("pip4 - 3 overlays stacked + slot 0 as primary", () => {
-        const slots = getSplitSlots("pip4", {
-            outputAspect: 16 / 9,
-            slotEffectiveAspects: [16 / 9, 16 / 9, 16 / 9, 16 / 9],
-        });
-        expect(slots).toHaveLength(4);
-        expect(slots[0]).toEqual({ x: 0, y: 0, w: 1, h: 1 });
-        // 3 rounded overlays.
-        expect(slots[1]!.rounded).toBe(true);
-        expect(slots[2]!.rounded).toBe(true);
-        expect(slots[3]!.rounded).toBe(true);
-        // Stack bottom-to-top: y[3] < y[2] < y[1].
-        expect(slots[3]!.y).toBeLessThan(slots[2]!.y);
-        expect(slots[2]!.y).toBeLessThan(slots[1]!.y);
-    });
-
-    it("pip2 with custom overlayPosition - overrides default RB", () => {
-        const slots = getSplitSlots("pip2", {
-            outputAspect: 16 / 9,
-            slotEffectiveAspects: [16 / 9, 16 / 9],
-            overlayPositions: [null, { xPct: 0.05, yPct: 0.05 }],
-        });
-        // Custom position for overlay; slot 0 (main full) is untouched.
-        expect(slots[1]!.x).toBeCloseTo(0.05, 5);
-        expect(slots[1]!.y).toBeCloseTo(0.05, 5);
-    });
-
-    it("ctx does not affect tile-layouts (h2/v2/grid2x2)", () => {
-        const noCtx = getSplitSlots("h2");
-        const withCtx = getSplitSlots("h2", {
-            outputAspect: 9 / 16,
-            slotEffectiveAspects: [1, 1],
-            overlayPositions: [{ xPct: 0.5, yPct: 0.5 }, null],
-        });
-        expect(noCtx).toEqual(withCtx);
     });
 });
 

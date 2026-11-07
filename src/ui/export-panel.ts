@@ -1208,7 +1208,7 @@ function syncSpeedDependentUi(): void {
 
 // Crop affordance: a button that opens the on-tile crop editor for the active
 // channel (the double-click-a-tile gesture still works and is the only way to
-// crop a non-main slot in split layouts). The editor itself owns the aspect
+// crop a smaller camera). The editor itself owns the aspect
 // presets, the "Original" reset and the how-to hint (player-crop shows
 // export.crop.hint in the editor overlay, when it is actionable) - this is just
 // a discoverable entry point, so no hint here.

@@ -25,14 +25,7 @@ import { contentToWallUtc, frameMediaOffset } from "../trips.js";
 import type { Trip } from "../trips.js";
 import { getUnits } from "../units-pref.js";
 
-import {
-    ALL_CHANNELS,
-    channelPlayers,
-    channelTileFor,
-    dom,
-    effectiveMasterChannel,
-    onActivePlayerEvent,
-} from "./dom.js";
+import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
 import { createExportMapSnapshotter, type ExportMapSnapshotter } from "./export-map-snapshot.js";
 import {
     exportPanelState,
@@ -44,6 +37,7 @@ import {
 import { buildOverlayPipelineArgs, resolveOutputDims } from "./export-flow.js";
 import { registerGpsSyncRefreshListener } from "./gps-sync-refresh.js";
 import { isCoarsePointer } from "./media-queries.js";
+import { syncPlayerBackdrop } from "./player-backdrop.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeFrame, activeTripHasGps, state } from "./state.js";
 import type { MapStyleId } from "./theme.js";
@@ -97,10 +91,6 @@ export function initPlayerOverlays(): void {
     onActivePlayerEvent("timeupdate", () => {
         if (!state.exportModeOpen) return;
         renderPreview();
-        // Re-checks each tile's blur capture source so the backdrop survives
-        // a preload slot-swap (cheap per tick: a WeakMap identity check per
-        // channel; re-capture only fires when the element actually changed).
-        syncBlurLetterbox();
     });
     attachWatermarkDrag();
     // Drag for every non-map widget via its transparent hit-box (speed/coords
@@ -466,7 +456,7 @@ function attachOverlayDrag(
 }
 
 function syncPlayerOverlays(): void {
-    syncBlurLetterbox();
+    syncPlayerBackdrop();
     const open = state.exportModeOpen;
     const wm = dom.playerWatermark;
     const mp = dom.playerMapOverlay;
@@ -675,88 +665,6 @@ function highlightCorner(anchor: WatermarkAnchor | null): void {
     for (const cell of Array.from(cornerTargets.children)) {
         const c = (cell as HTMLElement).dataset.corner;
         cell.classList.toggle("is-active", anchor != null && c === anchor);
-    }
-}
-
-// === Blurred letterbox preview ===
-// When export-mode is on AND letterboxFill==="blur", each visible tile gets a
-// live blurred cover-fit copy of its own video behind the contain video, so
-// the letterbox bars show the same blur the pipeline burns into the output.
-// We mirror the master's already-decoded frames via captureStream (shared
-// decode, auto-synced to play/pause/seek) rather than spinning up a second
-// decoder per tile. Where captureStream is unavailable (Safari) the blur
-// backdrop is skipped - the export itself is unaffected. The body.letterbox-blur
-// class makes the tiles/contain-bars transparent so the backdrop shows through
-// (CSS in player-composition.css).
-function syncBlurLetterbox(): void {
-    const active = state.exportModeOpen && exportPanelState.letterboxFill === "blur";
-    document.body.classList.toggle("letterbox-blur", active);
-    for (const ch of ALL_CHANNELS) {
-        const tile = channelTileFor(ch);
-        const master = channelPlayers[ch];
-        if (!tile || !master) continue;
-        const blur = ensureBlurVideo(tile);
-        if (active && !tile.hidden) {
-            attachCaptureStream(master, blur);
-            blur.hidden = false;
-            if (blur.paused) void blur.play().catch(() => {});
-        } else {
-            blur.hidden = true;
-            blur.pause();
-            // Stop the capture tracks, then detach: nulling srcObject alone only
-            // drops the consumer; per spec the source-side captured track stays
-            // live (the master keeps playing) until GC. Stopping it ends the
-            // pipeline deterministically so the master <video> isn't kept captured.
-            const captured = blur.srcObject;
-            if (captured instanceof MediaStream) {
-                for (const tr of captured.getTracks()) tr.stop();
-            }
-            if (blur.srcObject) blur.srcObject = null;
-        }
-    }
-}
-
-function ensureBlurVideo(tile: HTMLElement): HTMLVideoElement {
-    const existing = tile.querySelector<HTMLVideoElement>(":scope > video.tile-blur-bg");
-    if (existing) return existing;
-    const blur = document.createElement("video");
-    blur.className = "tile-blur-bg";
-    blur.muted = true;
-    blur.playsInline = true;
-    blur.setAttribute("aria-hidden", "true");
-    blur.hidden = true;
-    // First child so it sits behind the master/preload videos and the label;
-    // exact stacking is enforced by z-index in CSS.
-    tile.insertBefore(blur, tile.firstChild);
-    return blur;
-}
-
-// Maps each blur element to the master it was captured from. A preload
-// slot-swap makes the channel's active element a DIFFERENT physical <video>;
-// the old "srcObject already set" early-return then kept mirroring the
-// ex-active (cleared) element forever - a frozen/black backdrop with no
-// recovery until blur was toggled off and on.
-const blurCaptureSource = new WeakMap<HTMLVideoElement, HTMLVideoElement>();
-
-function attachCaptureStream(master: HTMLVideoElement, blur: HTMLVideoElement): void {
-    if (blur.srcObject && blurCaptureSource.get(blur) === master) return; // already mirroring this element
-    // Stale stream from a previous element: stop its tracks before
-    // re-capturing (same rationale as the teardown branch in syncBlurLetterbox).
-    if (blur.srcObject instanceof MediaStream) {
-        for (const tr of blur.srcObject.getTracks()) tr.stop();
-        blur.srcObject = null;
-    }
-    const cap = master as HTMLVideoElement & {
-        captureStream?: () => MediaStream;
-        mozCaptureStream?: () => MediaStream;
-    };
-    const grab = cap.captureStream ?? cap.mozCaptureStream;
-    if (!grab) return; // Safari etc.: no captureStream - skip blur preview
-    try {
-        blur.srcObject = grab.call(master);
-        blurCaptureSource.set(blur, master);
-    } catch (err) {
-        log.warn("blur letterbox captureStream failed", { err: String(err) });
     }
 }
 

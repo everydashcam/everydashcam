@@ -30,15 +30,15 @@ import {
 } from "../camera-layout.js";
 import { t } from "../i18n/index.js";
 import type { Channel } from "../parsers/types.js";
-import { computeEffectiveAspect } from "../transcode/compose.js";
-import { type Trip, tripCandidatesByChannel } from "../trips.js";
+import { OVERLAY_CORNER_SHARE } from "../transcode/compose.js";
 import { setOverlayPosition, setThumbScale } from "./camera-arrangement.js";
-import { ALL_CHANNELS, channelPlayers, channelTileFor, dom, forEachVideoSlot } from "./dom.js";
+import { cameraLayoutAspect } from "./camera-aspect.js";
+import { ALL_CHANNELS, channelTileFor, dom, forEachVideoSlot } from "./dom.js";
 import { resolveOutputDims } from "./export-flow.js";
 import { prefersReducedMotion } from "./media-queries.js";
 import { isCropDragging } from "./player-crop.js";
 import { attachPointerDrag } from "./pointer-drag.js";
-import { activeTrip, state } from "./state.js";
+import { state } from "./state.js";
 
 /** A layout as placed on screen, with what is needed to map gestures back. */
 interface PlacedLayout {
@@ -57,45 +57,11 @@ const OVERLAY_MIN_GRAB_PX = 4;
 
 let placed: PlacedLayout | null = null;
 let placedOrder: Channel[] = [];
-let placedTrip: Trip | null = null;
 let divider: HTMLDivElement | null = null;
 let relayoutFrame = 0;
 // Swallows the click the browser dispatches after an overlay drag so it does
 // not also make the dragged camera the main one.
 let overlayDragJustEnded = false;
-// Last aspect seen per camera of the open trip: used before a tile's video has
-// metadata, so a camera seen once keeps its shape instead of jumping to 16:9.
-const knownAspects = new Map<Channel, number>();
-
-/* --------------------------------- aspects --------------------------------- */
-
-/** Width / height of a camera's picture: the playing video, else the last one
- *  seen on this trip, else the recordings' stored size, else 16:9. */
-function sourceAspect(channel: Channel, trip: Trip | null): number {
-    const video = channelPlayers[channel];
-    if (video.videoWidth > 0 && video.videoHeight > 0) {
-        const aspect = video.videoWidth / video.videoHeight;
-        knownAspects.set(channel, aspect);
-        return aspect;
-    }
-    const known = knownAspects.get(channel);
-    if (known) return known;
-    if (trip) {
-        for (const candidate of tripCandidatesByChannel(trip, channel)) {
-            if (!candidate.width || !candidate.height) continue;
-            const turned = candidate.rotation === 90 || candidate.rotation === 270;
-            return turned ? candidate.height / candidate.width : candidate.width / candidate.height;
-        }
-    }
-    return 16 / 9;
-}
-
-/** Picture aspect as laid out: export mode shows the crop, so the tile takes
- *  the cropped picture's shape. */
-export function cameraLayoutAspect(channel: Channel): number {
-    const aspect = sourceAspect(channel, activeTrip());
-    return state.exportModeOpen ? computeEffectiveAspect(aspect, state.composition.crops[channel] ?? null) : aspect;
-}
 
 /* --------------------------------- layout ---------------------------------- */
 
@@ -164,11 +130,6 @@ function tileRect(tile: CameraTileLayout, scale: number): LayoutRect {
  * tiles from their previous places (an arrangement change, not a resize).
  */
 export function applyCameraLayout(order: readonly Channel[], opts: { animate?: boolean } = {}): void {
-    const trip = activeTrip();
-    if (trip !== placedTrip) {
-        knownAspects.clear();
-        placedTrip = trip;
-    }
     placedOrder = [...order];
     // A crop drag reshapes the dragged tile's picture on every move; keep the
     // tiles still until the drag ends instead of reflowing under the pointer.
@@ -189,17 +150,37 @@ export function applyCameraLayout(order: readonly Channel[], opts: { animate?: b
         tile.style.height = `${rect.h}px`;
         tile.dataset.role = tileLayout.role;
         tile.classList.toggle("tile-overlay", tileLayout.overlay);
+        // The export rounds its windows by their size; the editor shows the
+        // same corners. Viewing keeps the stylesheet's radius.
+        if (tileLayout.overlay && state.exportModeOpen) {
+            tile.style.borderRadius = `${Math.round(Math.min(rect.w, rect.h) * OVERLAY_CORNER_SHARE)}px`;
+        } else {
+            tile.style.removeProperty("border-radius");
+        }
         laidOut.add(tileLayout.channel);
     }
     for (const channel of ALL_CHANNELS) {
         if (laidOut.has(channel)) continue;
         const tile = channelTileFor(channel);
-        for (const prop of ["left", "top", "width", "height"]) tile.style.removeProperty(prop);
+        for (const prop of ["left", "top", "width", "height", "border-radius"]) tile.style.removeProperty(prop);
         delete tile.dataset.role;
         tile.classList.remove("tile-overlay");
     }
     syncDivider();
     if (before) animateFromBoxes(before);
+}
+
+/** Camera the export preview blurs behind the cameras: the main place's,
+ *  or the first one with a picture (the file's rule, camera-composition.ts). */
+export function backdropChannel(): Channel | null {
+    return (
+        placedOrder.find((channel) => {
+            const tile = channelTileFor(channel);
+            return (
+                !tile.hidden && !tile.classList.contains("tile-absent") && !tile.classList.contains("tile-unplayable")
+            );
+        }) ?? null
+    );
 }
 
 /** Re-lays out the last applied order (resize, metadata, export settings). */
@@ -227,10 +208,8 @@ function tileBoxes(): Map<Channel, DOMRect> {
     return boxes;
 }
 
-/** FLIP: each tile starts drawn at its old box and eases into the new one.
- *  Under reduced motion the tiles jump straight to their places (WCAG 2.3.3). */
+/** FLIP: each tile starts drawn at its old box and eases into the new one. */
 function animateFromBoxes(before: Map<Channel, DOMRect>): void {
-    if (prefersReducedMotion()) return;
     for (const [channel, old] of before) {
         const tile = channelTileFor(channel);
         if (tile.hidden || typeof tile.animate !== "function") continue;

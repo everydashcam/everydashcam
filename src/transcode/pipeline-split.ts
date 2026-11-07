@@ -1,13 +1,15 @@
-// Split-screen transcode pipeline. Architecturally separate from regular
-// transcode() (see pipeline.ts) because split decodes N sources in parallel
-// into the same frame - a different VideoSampleSink access pattern
-// (getSample(t) for each slot per frame), more complex in terms of memory/IO,
-// and requires its own validation.
+// Multi-camera transcode pipeline. Architecturally separate from regular
+// transcode() (see pipeline.ts) because it decodes N sources in parallel into
+// the same frame - a different VideoSampleSink access pattern (one decoder per
+// camera), more complex in terms of memory/IO, and requires its own validation.
 //
-// Per output tick (at output fps):
-//  - for each slot: find the active segment by trip-time;
-//  - if decoder is not open or is past the active segment: swap;
-//  - getSample(localTime) for that tripTime, one composition via drawSplitScreen.
+// The frame plan (camera-composition.ts) splits the clip into spans where the
+// cameras' availability is constant, each with its own layout. Per output tick
+// (at output fps):
+//  - take the tick's span;
+//  - for each camera with footage in it: find the active segment by trip-time,
+//    swap the decoder when it moved on, and pick the sample for that time;
+//  - compose the frame with drawCameraComposition.
 
 import { throwIfCancelled } from "../abort-signals.js";
 import { resolveOutputFps } from "./frame-rate.js";
@@ -27,16 +29,15 @@ import type { Channel } from "../parsers/types.js";
 import type { Trip } from "../trips.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 
+import { type CameraArrangement, createCompositionCursor, planCompositionSpans } from "./camera-composition.js";
 import {
-    computeEffectiveAspect,
+    type CompositionCamera,
     computeOutputSize,
     createBlurHelper,
     createRegionBlurHelper,
-    drawSplitScreen,
-    getSplitSlotCount,
-    getSplitSlots,
+    drawCameraComposition,
 } from "./compose.js";
-import type { BlurHelper, CropRect, RegionBlurHelper, SplitLayout } from "./compose.js";
+import type { BlurHelper, CropRect, RegionBlurHelper } from "./compose.js";
 import {
     clampSpeedFactor,
     framesForSpeed,
@@ -89,9 +90,9 @@ const log = createLogger("transcode:split");
 
 interface TranscodeSplitSource {
     trip: Trip;
-    /** Channels per slot, in getSplitSlots layout order. length must equal slotCount(layout). */
-    slotChannels: Channel[];
-    /** Range in trip-local seconds. All slots share the same range. */
+    /** Visible cameras in arrangement order; the first is the main one. */
+    channels: Channel[];
+    /** Range in trip-local seconds. All cameras share the same range. */
     startTripSec: number;
     endTripSec: number;
 }
@@ -100,36 +101,29 @@ interface TranscodeSplitOutput {
     hardwareAcceleration?: HardwareAcceleration;
     height: number;
     aspect: AspectId;
-    layout: SplitLayout;
     bitrate: number | null;
     watermarkAnchor: WatermarkAnchor | null;
-    /** Audio from slot 0 (master). */
     withAudio: boolean;
-    /**
-     * Crop in normalized reflected-image coordinates per slot; length matches the slot count.
-     * null in slotCrops[i] means "use the full frame" - drawSplitScreen fits
-     * it into the slot with keep-aspect-fit (letterbox/pillarbox when slot and
-     * source have different aspect ratios).
-     */
-    slotCrops?: (CropRect | null)[];
-    slotFlips?: CameraFlip[];
-    /**
-     * Custom PiP overlay positions in output coords (0..1, top-left corner).
-     * Applied only in pip-layouts (pip2/pip3/pip4) and only for overlay slots
-     * (slotIdx >= 1). null = default (bottom-right stack).
-     */
-    overlayPositions?: ({ xPct: number; yPct: number } | null)[];
-    /** Per-slot user-controlled scale for PiP overlays (slotIdx >= 1 in pip-*).
-     *  Default 1.0 - the default size from compose constants. */
-    slotPipScales?: (number | null | undefined)[];
-    /** Fill for letterbox inside slots and composition background. Default "black". */
+    /** Camera whose sound the clip carries, without switching mid-clip. Where
+     *  it has no footage the clip is silent. */
+    audioChannel: Channel;
+    arrangement: CameraArrangement;
+    /** Picture width / height per camera after its crop, as the editor laid
+     *  it out: the file is drawn with the shapes the preview showed. */
+    aspects: Partial<Record<Channel, number>>;
+    /** Crop per camera in normalized reflected-image coordinates; a camera
+     *  without one shows its full picture. */
+    crops?: Partial<Record<Channel, CropRect>>;
+    flips?: Partial<Record<Channel, CameraFlip>>;
+    /** Background around the cameras: black, or the main camera blurred over
+     *  the whole frame. */
     letterboxFill: import("./types.js").LetterboxFill;
     /** GPS-derived overlays painted on every frame. null = no overlays. */
     overlays: OverlayPipelineArgs | null;
     /** Timelapse speed-up factor (see TranscodeOutput.speedFactor). 1 = real time. */
     speedFactor: number;
     /** Privacy blur regions for the active trip (see TranscodeOutput.blurRegions).
-     *  Resolved per tick and routed to slots by each slot's channel. */
+     *  Resolved per tick and routed by camera. */
     blurRegions: BlurRegion[] | null;
 }
 
@@ -149,12 +143,8 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
     const { source, output, writable, signal, onProgress, mapSnapshotter } = args;
     throwIfCancelled(signal);
 
-    const expectedSlotCount = getSplitSlotCount(output.layout);
-    if (source.slotChannels.length !== expectedSlotCount) {
-        throw new Error(
-            `transcodeSplit: layout ${output.layout} expects ${expectedSlotCount} channels, got ${source.slotChannels.length}`,
-        );
-    }
+    const channels = source.channels;
+    if (channels.length === 0) throw new Error("transcodeSplit: no cameras to compose");
 
     const startMs = performance.now();
     const dims = computeOutputSize(output.height, output.aspect);
@@ -168,60 +158,43 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
     if (anyOverlay) await ensureOverlayFontsReady(output.overlays?.localeScript ?? "latin");
     if (output.watermarkAnchor) await ensureWatermarkFontReady();
 
-    // Build per-slot segment lists for the trip range.
-    const slotSegments: FileSegment[][] = source.slotChannels.map((ch) =>
+    // Per-camera segment lists for the trip range ("slot" below = a camera's
+    // index in `channels`).
+    const slotSegments: FileSegment[][] = channels.map((ch) =>
         sliceTripChannelForRange(source.trip, ch, source.startTripSec, source.endTripSec),
     );
 
     const videoResolver = createVideoSourceResolver(signal);
 
-    // Master segments for audio and timing - slot 0 (user-selected primary).
-    // If the master channel has no files in the range, throw.
-    const masterSegments = slotSegments[0]!;
-    if (masterSegments.length === 0) {
-        throw new Error("transcodeSplit: master slot has no candidates intersecting range");
+    // A camera without footage is a black tile and others stand in for a main
+    // camera without any, so the clip fails only when no camera has a picture.
+    if (slotSegments.every((segs) => segs.length === 0)) {
+        throw new Error("transcodeSplit: no visible camera has footage in the range");
+    }
+    // The sound comes from one camera for the whole clip; where it has no
+    // footage the encode path fills silence. A camera with none in the range
+    // leaves the clip without sound.
+    const audioSegments = output.withAudio
+        ? sliceTripChannelForRange(source.trip, output.audioChannel, source.startTripSec, source.endTripSec)
+        : [];
+    const withAudio = audioSegments.length > 0;
+    if (output.withAudio && !withAudio) {
+        log.info("split audio camera has no footage in the range", { channel: output.audioChannel });
     }
 
-    // Preflight: compute source aspect per slot via a minimal Input on the first
-    // segment. Opened without decoding - cheap, ~10 ms per file. Needed for
-    // dynamic-aspect PiP overlays and the precomputed splitSlots array (fixed
-    // geometry for the entire clip - channel aspect is constant within a trip).
-    const slotSourceAspects = await Promise.all(
-        slotSegments.map(async (segs, slotIdx) => {
-            const first = segs[0];
-            if (!first) return widthPx / heightPx;
-            const input = new Input({
-                source: createRetryingBlobSource(first.file, signal),
-                formats: VIDEO_INPUT_FORMATS,
-            });
-            try {
-                const vt = await input.getPrimaryVideoTrack();
-                if (!vt) return widthPx / heightPx;
-                const w = await vt.getDisplayWidth();
-                const h = await vt.getDisplayHeight();
-                return h > 0 ? w / h : widthPx / heightPx;
-            } catch (err) {
-                // Probe failed (unreadable/corrupt slot file): fall back to output
-                // aspect. Breadcrumb so a "slot N is wrongly letterboxed" report has
-                // a trace - this is the only place the file is opened pre-loop.
-                log.debug("split slot aspect probe failed", { slot: slotIdx, file: first.file.name, err: String(err) });
-                return widthPx / heightPx;
-            } finally {
-                input.dispose();
-            }
-        }),
-    );
-    // Effective aspect per slot - accounting for per-slot crop (aspect of the
-    // cropped area), used to compute PiP overlay dimensions.
-    const slotEffectiveAspects = slotSourceAspects.map((sa, i) =>
-        computeEffectiveAspect(sa, output.slotCrops?.[i] ?? null),
-    );
-    const splitSlots = getSplitSlots(output.layout, {
-        outputAspect: widthPx / heightPx,
-        slotEffectiveAspects,
-        overlayPositions: output.overlayPositions,
-        slotPipScales: output.slotPipScales,
+    // One layout per span of constant camera availability, laid out with the
+    // shapes the editor showed (no probe: the file must match the preview).
+    const spans = planCompositionSpans({
+        trip: source.trip,
+        channels,
+        arrangement: output.arrangement,
+        aspects: output.aspects,
+        width: widthPx,
+        height: heightPx,
+        startSec: source.startTripSec,
+        endSec: source.endTripSec,
     });
+    const spanAt = createCompositionCursor(spans);
 
     // Timelapse speed-up: fewer output ticks, each advancing the source clock by
     // speedFactor frames (see the main loop). Audio is dropped upstream at N > 1.
@@ -241,8 +214,10 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
     const framesTotal = framesForSpeed(totalOutputSec, outputFps, speedFactor);
 
     log.info("split transcode started", {
-        layout: output.layout,
-        slots: source.slotChannels,
+        mode: output.arrangement.mode,
+        channels,
+        spans: spans.length,
+        audioChannel: withAudio ? output.audioChannel : null,
         outputW: widthPx,
         outputH: heightPx,
         aspect: output.aspect,
@@ -250,7 +225,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         fps: outputFps,
         speedFactor,
         watermarkAnchor: output.watermarkAnchor,
-        masterSegmentsCount: masterSegments.length,
+        audioSegmentsCount: audioSegments.length,
         totalOutputSec: round2(totalOutputSec),
         framesTotal,
     });
@@ -281,20 +256,20 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
         const videoSource = createH264VideoSource(canvas, bitrate, encoderDiagnostics, hardwareAcceleration);
         out.addVideoTrack(videoSource, { frameRate: outputFps });
 
-        // Audio plan from the master channel: passthrough (stream-copy AAC/MP3, no
+        // Audio plan from the sound camera: passthrough (stream-copy AAC/MP3, no
         // encoder), encode (AAC, or Opus when AAC encode is unavailable), or skip.
         // See resolveAudioPlan.
         let audioPlan: ActiveAudioPlan | null = null;
-        let firstAudioFile = masterSegments[0]!.file;
-        // True when audio was requested but the master channel mixes audio formats;
+        let firstAudioFile = audioSegments[0]?.file ?? null;
+        // True when audio was requested but the sound camera mixes audio formats;
         // surfaced to the user (export.notify.audioFormatMixed) and in the result.
         let audioDroppedHeterogeneous = false;
         // True when audio was requested but no encoder exists and the source could not
         // be stream-copied (ADPCM / exotic codec on a no-encoder browser). Drop+notify.
         let audioDroppedNoEncoder = false;
         let audioDroppedUnsupported = false;
-        if (output.withAudio) {
-            // Heterogeneous master audio (e.g. an original clip spliced with a
+        if (withAudio && firstAudioFile) {
+            // Heterogeneous sound-camera audio (e.g. an original clip spliced with a
             // re-export) cannot share one track - drop audio rather than crash the
             // muxer mid-stream. `format` is the first audio-bearing master segment's
             // format.
@@ -307,7 +282,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             // multi-channel cameras with short per-file segments and small moovs, not
             // the one-big-file case that reuse targets.
             const probe = await probeAudioUniformity(
-                masterSegments.map((s) => s.file),
+                audioSegments.map((s) => s.file),
                 { signal },
             );
             firstAudioFile = probe.firstFile ?? firstAudioFile;
@@ -318,13 +293,12 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             audioDroppedUnsupported = audio.audioDroppedUnsupported;
         }
 
-        // Blur helper is created only when the background fill is "blur". Passed to
-        // drawSplitScreen for per-slot blur backdrop (each slot gets its own blur
-        // from its own channel, not a shared one).
+        // Blur helper is created only when the background fill is "blur": the
+        // backdrop camera blurred over the whole frame (drawCameraComposition).
         const blurHelper: BlurHelper | null = output.letterboxFill === "blur" ? createBlurHelper() : null;
         // Privacy-region scratch canvas, allocated once per run (see compose.ts).
         const regionBlurHelper: RegionBlurHelper | null = output.blurRegions?.length ? createRegionBlurHelper() : null;
-        const regionBlurResolvers = source.slotChannels.map((channel) =>
+        const regionBlurResolvers = channels.map((channel) =>
             createRegionBlurResolver(output.blurRegions ?? [], channel, source.startTripSec),
         );
         const renderOpts = { fill: output.letterboxFill, blurHelper, regionBlurHelper };
@@ -390,7 +364,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             // current outTs: move current ← next and pre-fetch the next one.
             next: VideoSample | null;
         }
-        const slotRuntimes: SlotRuntime[] = source.slotChannels.map(() => ({
+        const slotRuntimes: SlotRuntime[] = channels.map(() => ({
             currentSegmentIdx: -1,
             locatorSegmentIdx: 0,
             segTripStart: 0,
@@ -598,7 +572,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                     const fileName = slotSegments[slotIdx]?.[rt.currentSegmentIdx]?.file.name;
                     log.warn("split slot decode stopped early", {
                         slot: slotIdx,
-                        channel: source.slotChannels[slotIdx],
+                        channel: channels[slotIdx],
                         file: fileName,
                         ...rt.decodeProgress,
                         framesDone,
@@ -698,36 +672,36 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
 
                     // A slot decode / abort throwing here leaves the in-flight
                     // snapshot unconsumed; the reusing snapshotter owns its bitmap.
+                    // A camera absent from this span decodes nothing: its tile
+                    // is black, and a held paired tail keeps its last frame.
+                    const span = spanAt(tripTimeSec);
                     const samples = await joinAllOrThrowFirst(
-                        source.slotChannels.map((_, slotIdx) => getSlotSampleForFrame(slotIdx, tripTimeSec, f)),
+                        channels.map((channel, slotIdx) =>
+                            span.presence[channel] === "absent"
+                                ? Promise.resolve(null)
+                                : getSlotSampleForFrame(slotIdx, tripTimeSec, f),
+                        ),
                     );
 
-                    // Compose split-screen directly into the final output canvas.
-                    // Blur rects resolve at the content time of the frame each slot
-                    // ACTUALLY shows - a slot in a gap (or after a decode failure)
-                    // keeps displaying an earlier frozen frame, and resolving at the
-                    // tick time would leave a frozen plate uncovered whenever the
-                    // region span does not include the gap.
-                    const slotRegionBlurs = output.blurRegions?.length
-                        ? regionBlurResolvers.map((resolveRegionBlurs, slotIdx) => {
-                              const rt = slotRuntimes[slotIdx]!;
-                              const shownSec = rt.current
-                                  ? rt.segTripStart + rt.current.timestamp - rt.timeOrigin
-                                  : tripTimeSec;
-                              return resolveRegionBlurs(shownSec);
-                          })
-                        : undefined;
-                    drawSplitScreen(
-                        ctx,
-                        samples,
-                        splitSlots,
-                        widthPx,
-                        heightPx,
-                        output.slotCrops,
-                        renderOpts,
-                        slotRegionBlurs,
-                        output.slotFlips,
-                    );
+                    // Blur rects resolve at the content time of the frame each
+                    // camera ACTUALLY shows - a held tail (or a camera after a
+                    // decode failure) keeps an earlier frozen frame, and resolving
+                    // at the tick time would leave a frozen plate uncovered
+                    // whenever the region span does not include that time.
+                    const cameras: Partial<Record<Channel, CompositionCamera>> = {};
+                    channels.forEach((channel, slotIdx) => {
+                        const rt = slotRuntimes[slotIdx]!;
+                        const shownSec = rt.current
+                            ? rt.segTripStart + rt.current.timestamp - rt.timeOrigin
+                            : tripTimeSec;
+                        cameras[channel] = {
+                            sample: samples[slotIdx] ?? null,
+                            crop: output.crops?.[channel] ?? null,
+                            flip: output.flips?.[channel],
+                            regionBlurs: output.blurRegions?.length ? regionBlurResolvers[slotIdx]!(shownSec) : null,
+                        };
+                    });
+                    drawCameraComposition(ctx, span.tiles, cameras, span.backdrop, widthPx, heightPx, renderOpts);
                     if (framePos && overlays) {
                         drawTelemetryOverlays(ctx, widthPx, heightPx, overlays, framePos);
                         // No fix -> no snapshot in flight; hold the slot with the
@@ -763,22 +737,21 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                 }
             };
 
-            // Audio from master segments. Each segment's audio anchors at its
-            // ABSOLUTE content-axis position relative to the range start - the same
-            // anchoring the video ticks use (seg.tripStart). A back-to-back
-            // accumulator would desync A/V by the gap length whenever the master
-            // channel is missing a file mid-range (TripFrame.channels is Partial, so
-            // that input is structurally possible): every post-gap audio sample
-            // would play earlier than its video.
+            // Audio from the sound camera's segments. Each segment's audio anchors
+            // at its ABSOLUTE content-axis position relative to the range start -
+            // the same anchoring the video ticks use (seg.tripStart). A
+            // back-to-back accumulator would desync A/V by the gap length
+            // whenever that camera is missing a file mid-range: every post-gap
+            // audio sample would play earlier than its video.
             const runAudio = async (): Promise<void> => {
-                if (audioPlan && output.withAudio) {
+                if (audioPlan && withAudio) {
                     if (audioPlan.mode === "passthrough") {
-                        // Stream-copy master AAC/MP3 packets - no encoder, no silence
-                        // synthesis. A master-channel gap is just an audio hole; the
-                        // absolute segBaseOutSec keeps later audio aligned.
+                        // Stream-copy AAC/MP3 packets - no encoder, no silence
+                        // synthesis. A gap in the sound camera is just an audio
+                        // hole; the absolute segBaseOutSec keeps later audio aligned.
                         let audioCopyLastEndSec = 0;
                         let audioConfigPushed = false;
-                        for (const seg of masterSegments) {
+                        for (const seg of audioSegments) {
                             throwIfCancelled(signal);
                             const segBaseOutSec = Math.max(0, seg.tripStart + seg.startInFile - source.startTripSec);
                             const input = new Input({
@@ -806,17 +779,17 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                             }
                         }
                     } else {
-                        // Encode path: re-encode master audio, filling master-channel gaps
-                        // AND audio-less segments with silence so the muxer sees a
+                        // Encode path: re-encode the sound camera's audio, filling its
+                        // gaps AND audio-less segments with silence so the muxer sees a
                         // continuous timeline aligned with the composited video.
                         const silenceFormat = audioPlan.silenceFormat;
                         let nextExpectedOutSec = 0;
-                        for (const seg of masterSegments) {
+                        for (const seg of audioSegments) {
                             throwIfCancelled(signal);
                             const segDur = seg.endInFile - seg.startInFile;
                             const segBaseOutSec = Math.max(0, seg.tripStart + seg.startInFile - source.startTripSec);
                             if (segBaseOutSec > nextExpectedOutSec + 1e-3) {
-                                // Master-channel gap: cover it with silence so the muxer
+                                // Sound-camera gap: cover it with silence so the muxer
                                 // sees a continuous audio timeline and later segments stay
                                 // aligned with their video. Silence at the tracked source
                                 // format, not 48k/2: it is fed before the source's transform
@@ -832,7 +805,7 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                                 );
                             }
                             if (audioPlan.adpcmReader) {
-                                // ADPCM master: decode this segment ourselves (mediabunny
+                                // ADPCM sound: decode this segment ourselves (mediabunny
                                 // can't). Reuse the probed audio-bearing file's reader.
                                 // Earlier silent segments keep their silence.
                                 const reader =
