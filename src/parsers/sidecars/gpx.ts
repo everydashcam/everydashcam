@@ -70,6 +70,23 @@ export async function parseGpxTrack(
 }
 
 /**
+ * Returns the browser's description of an XML parse failure without the source
+ * line that Firefox echoes in a `<sourcetext>` child. That line is raw GPX, so
+ * it can carry coordinates and times, and the error message reaches logs and
+ * crash-report breadcrumbs. Chromium and WebKit report only the error text.
+ */
+function parserErrorDescription(parserError: Element): string {
+    let description = "";
+    const children = parserError.childNodes;
+    for (let i = 0; i < children.length; i++) {
+        const child = children.item(i);
+        if (child.nodeName === "sourcetext") continue;
+        description += child.textContent ?? "";
+    }
+    return description;
+}
+
+/**
  * Parses GPX file content and returns records in the shared GpsRecord format.
  * Fields absent from GPX (accelerometer) are set to zero. The MP4 filename
  * is supplied by the caller - GPX has no knowledge of a specific MP4.
@@ -93,7 +110,7 @@ function parseGpx(text: string, mp4Filename: string): ParsedGpxTrack {
     // non-browser DOMParser polyfills (@xmldom/xmldom does not implement querySelector).
     const parserErrors = doc.getElementsByTagName("parsererror");
     if (parserErrors.length > 0) {
-        throw new Error(`gpx parse error: ${(parserErrors[0]?.textContent ?? "").slice(0, 200)}`);
+        throw new Error(`gpx parse error: ${parserErrorDescription(parserErrors[0]!).trim().slice(0, 200)}`);
     }
 
     const root = doc.documentElement;

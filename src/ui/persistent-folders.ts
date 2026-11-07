@@ -154,7 +154,7 @@ async function openFolderHandle(
             void refreshChips();
         }
         log.warn("folder enumeration failed", {
-            label: handle.name,
+            folderName: handle.name,
             err: err instanceof Error ? err.message : String(err),
         });
         notify({

@@ -43,6 +43,10 @@ const EMAIL_RE = /[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi;
 // innocuous small decimals). We never put coordinates in messages by design,
 // but this is a cheap last-ditch guard for a future log line that does.
 const COORD_PAIR_RE = /-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g;
+// A single coordinate written as a markup attribute or a key/value field
+// (lat="55.75", "lon": 37.6). Parser errors can echo a source line, and the
+// pair matcher above needs a comma between the two numbers.
+const COORD_FIELD_RE = /\b(latitude|longitude|lat|lon|lng)(["']?\s*[=:]\s*["']?)-?\d+(?:\.\d+)?/gi;
 // Runs of 8+ digits encode capture timestamps (20240115...) or serials.
 const LONG_DIGITS_RE = /\d{8,}/g;
 
@@ -104,6 +108,7 @@ export function scrubMessage(input: string): string {
         return `***.${m.slice(dot + 1).toLowerCase()}`;
     });
     s = s.replace(COORD_PAIR_RE, "[coords]");
+    s = s.replace(COORD_FIELD_RE, (_match, key: string, separator: string) => `${key}${separator}[coords]`);
     s = s.replace(LONG_DIGITS_RE, "#");
     s = s.replace(EMAIL_RE, "[email]");
     return s.slice(0, MAX_STRING);

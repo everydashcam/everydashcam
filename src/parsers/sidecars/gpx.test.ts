@@ -367,6 +367,37 @@ describe("gpxSidecar.parse", () => {
         await expect(gpxSidecar.parse!(makeVendorFile("a.gpx", text), "a.mp4")).rejects.toThrow(/expected <gpx>/);
     });
 
+    it("reports a firefox parse error without the source line it echoes", async () => {
+        // Firefox appends the raw failing line in a <sourcetext> child (see
+        // nsXMLContentSink::ReportError); xmldom reports errors differently,
+        // so this stub returns a document of the Firefox shape.
+        const firefoxParserError = `<parsererror xmlns="http://www.mozilla.org/newlayout/xml/parsererror.xml">XML Parsing Error: not well-formed
+Location: https://everydashcam.com/app
+Line Number 3, Column 41:<sourcetext>  &lt;trkpt lat="12.345678" lon="98.765432"&gt;&lt;time&gt;2024-01-15T12:34:56Z
+----------------------------------------^</sourcetext></parsererror>`;
+        class FirefoxDomParser {
+            parseFromString(): unknown {
+                return new DOMParser().parseFromString(firefoxParserError, "application/xml");
+            }
+        }
+        vi.stubGlobal("DOMParser", FirefoxDomParser);
+        try {
+            const failure = await gpxSidecar.parse!(makeVendorFile("a.gpx", "<gpx><trkpt"), "a.mp4").then(
+                () => null,
+                (error: unknown) => error,
+            );
+            expect(failure).toBeInstanceOf(Error);
+            const message = (failure as Error).message;
+            expect(message).toContain("gpx parse error: XML Parsing Error: not well-formed");
+            expect(message).toContain("Line Number 3, Column 41:");
+            expect(message).not.toContain("12.345678");
+            expect(message).not.toContain("98.765432");
+            expect(message).not.toContain("2024-01-15");
+        } finally {
+            vi.stubGlobal("DOMParser", DOMParser);
+        }
+    });
+
     it("throws on empty gpx (no valid points)", async () => {
         const text = gpxDoc(`<trk><trkseg></trkseg></trk>`);
         await expect(gpxSidecar.parse!(makeVendorFile("a.gpx", text), "a.mp4")).rejects.toThrow(/no usable/);

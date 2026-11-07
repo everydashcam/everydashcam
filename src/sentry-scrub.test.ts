@@ -69,6 +69,17 @@ describe("scrubMessage", () => {
         expect(scrubMessage("ratio 1.5, 2.5 ok")).toBe("ratio 1.5, 2.5 ok");
     });
 
+    it("masks single coordinates written as attributes or key/value fields", () => {
+        expect(scrubMessage('<trkpt lat="12.345678" lon="-98.765432">')).toBe('<trkpt lat="[coords]" lon="[coords]">');
+        // A message cut mid-value still loses the digits that survived the cut.
+        expect(scrubMessage("<trkpt latitude='12.3456' longitude='98.76")).toBe(
+            "<trkpt latitude='[coords]' longitude='[coords]",
+        );
+        expect(scrubMessage('{"lat": 12.345678, "lng":98.765432}')).toBe('{"lat": [coords], "lng":[coords]}');
+        // Words that merely end in a coordinate key are not coordinates.
+        expect(scrubMessage("flat=3 plateau: 4")).toBe("flat=3 plateau: 4");
+    });
+
     it("truncates pathological lengths", () => {
         expect(scrubMessage("a".repeat(5000)).length).toBeLessThanOrEqual(1024);
         expect(scrubMessage(`${"private".repeat(200)}.mp4`)).toBe("***.mp4");
@@ -127,6 +138,7 @@ describe("scrubValue", () => {
             scrubValue({
                 "Семейная поездка.mp4": { status: "failed" },
                 folder: "Anna family vacation",
+                folderName: "Anna family vacation",
                 files: ["Anna family vacation.MP4", "Trip home.MOV"],
                 authorization: "Bearer private-key",
                 email: "anna@example.com",
@@ -136,6 +148,7 @@ describe("scrubValue", () => {
         ).toEqual({
             "***.mp4": { status: "failed" },
             folder: "***",
+            folderName: "***",
             files: ["***.mp4", "***.mov"],
         });
     });
