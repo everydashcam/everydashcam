@@ -438,6 +438,7 @@ export const zhDict = {
     "recordingLoad.cancel": "取消",
 
     "resize.videoMap": "调整地图宽度",
+    "resize.videoMap.hint": "拖动调整大小，双击贴合视频",
 
     "miniMap.expandAria": "展开地图 · 拖动可移动",
     "miniMap.close": "隐藏小地图",

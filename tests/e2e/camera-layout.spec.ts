@@ -233,6 +233,48 @@ test.describe("camera layout on a three-camera trip", () => {
     });
 });
 
+test("double-clicking the video/map splitter fits the video column to its cameras", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    await page.locator(".mini-map").click();
+    await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
+    // The widest map leaves a narrow video column with empty bands above and
+    // below the cameras.
+    const splitter = page.locator("#video-map-resize");
+    await splitter.focus();
+    await page.keyboard.press("Home");
+    const freeSpace = async (): Promise<{ side: number; vertical: number }> => {
+        const boxes = await tileBoxes(page);
+        const grid = await boxOf(page, "#video-grid");
+        const left = Math.min(...boxes.map((b) => b.x));
+        const right = Math.max(...boxes.map((b) => b.x + b.w));
+        const top = Math.min(...boxes.map((b) => b.y));
+        const bottom = Math.max(...boxes.map((b) => b.y + b.h));
+        return { side: Math.round(grid.width - (right - left)), vertical: Math.round(grid.height - (bottom - top)) };
+    };
+    await expect.poll(async () => (await freeSpace()).vertical).toBeGreaterThan(40);
+    await splitter.dblclick();
+    // The video column takes the width its cameras fill at this height.
+    await expect
+        .poll(
+            async () => {
+                const space = await freeSpace();
+                return Math.max(space.side, space.vertical);
+            },
+            { message: "the cameras fill the video column" },
+        )
+        .toBeLessThanOrEqual(3);
+    const map = await boxOf(page, ".map-wrap");
+    expect(map.width, "the map keeps its floor").toBeGreaterThanOrEqual(220);
+    const saved = Number(await page.evaluate(() => localStorage.getItem("everydashcam:map-pct")));
+    expect(saved, "the fitted width persists").toBeGreaterThan(15);
+    expect(saved).toBeLessThan(70);
+    await shot(page, "camera-layout-07-splitter-fit");
+});
+
 test("on a phone the video area is as tall as the cameras need", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(MOBILE);

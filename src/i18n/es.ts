@@ -440,6 +440,7 @@ export const esDict = {
     "recordingLoad.cancel": "Cancelar",
 
     "resize.videoMap": "Ajustar ancho del mapa",
+    "resize.videoMap.hint": "Arrastra para cambiar el tamaño; doble clic para ajustar el vídeo",
 
     "miniMap.expandAria": "Ampliar mapa · arrastra para mover",
     "miniMap.close": "Ocultar minimapa",

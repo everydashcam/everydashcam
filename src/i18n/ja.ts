@@ -450,6 +450,7 @@ export const jaDict = {
     "recordingLoad.cancel": "キャンセル",
 
     "resize.videoMap": "地図の幅を変更",
+    "resize.videoMap.hint": "ドラッグでサイズ変更、ダブルクリックで動画に合わせる",
 
     "miniMap.expandAria": "地図を広げる · ドラッグで移動",
     "miniMap.close": "ミニ地図を隠す",

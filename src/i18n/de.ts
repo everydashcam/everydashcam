@@ -438,6 +438,7 @@ export const deDict = {
     "recordingLoad.cancel": "Abbrechen",
 
     "resize.videoMap": "Kartenbreite ändern",
+    "resize.videoMap.hint": "Ziehen zum Anpassen, Doppelklick passt das Video ein",
 
     "miniMap.expandAria": "Karte aufklappen · ziehen zum Verschieben",
     "miniMap.close": "Mini-Karte ausblenden",

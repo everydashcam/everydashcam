@@ -449,6 +449,7 @@ export const koDict = {
     "recordingLoad.cancel": "취소",
 
     "resize.videoMap": "지도 너비 조절",
+    "resize.videoMap.hint": "드래그해서 크기 조절, 두 번 클릭하면 영상에 맞춤",
 
     "miniMap.expandAria": "지도 펼치기 · 끌어서 이동",
     "miniMap.close": "미니 지도 숨기기",

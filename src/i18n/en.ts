@@ -441,6 +441,7 @@ export const enDict = {
     "recordingLoad.cancel": "Cancel",
 
     "resize.videoMap": "Resize map width",
+    "resize.videoMap.hint": "Drag to resize, double-click to fit the video",
 
     "miniMap.expandAria": "Expand map · drag to move",
     "miniMap.close": "Hide mini-map",

@@ -440,6 +440,7 @@ export const frDict = {
     "recordingLoad.cancel": "Annuler",
 
     "resize.videoMap": "Régler la largeur de la carte",
+    "resize.videoMap.hint": "Fais glisser pour redimensionner, double-clique pour ajuster la vidéo",
 
     "miniMap.expandAria": "Agrandir la carte · glisse pour déplacer",
     "miniMap.close": "Cacher la mini-carte",

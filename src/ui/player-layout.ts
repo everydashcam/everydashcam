@@ -183,6 +183,24 @@ export function backdropChannel(): Channel | null {
     );
 }
 
+/**
+ * Frame width at which the cameras fill a frame of the current height with no
+ * space beside them, capped at `maxWidth`; null before the first layout. In
+ * export mode that is the output frame's width at this height.
+ */
+export function fittedFrameWidth(maxWidth: number): number | null {
+    const height = dom.videoGrid.parentElement?.clientHeight ?? 0;
+    if (!placedOrder.length || height <= 0 || maxWidth <= 0) return null;
+    if (state.exportModeOpen) {
+        const dims = resolveOutputDims();
+        return Math.min(maxWidth, Math.ceil((height * dims.width) / dims.height));
+    }
+    // Laid out at the widest frame allowed, the composition is as tall as the
+    // frame or as wide as the cap; its width is what the frame needs.
+    const layout = computeCameraLayout(requestFor(placedOrder, maxWidth, height, false));
+    return Math.min(maxWidth, Math.ceil(layout.bounds.w));
+}
+
 /** Re-lays out the last applied order (resize, metadata, export settings). */
 export function relayoutCameras(): void {
     if (!placedOrder.length) return;

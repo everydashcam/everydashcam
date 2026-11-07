@@ -440,6 +440,7 @@ export const ptDict = {
     "recordingLoad.cancel": "Cancelar",
 
     "resize.videoMap": "Mudar largura do mapa",
+    "resize.videoMap.hint": "Arraste para redimensionar; clique duas vezes para ajustar o vídeo",
 
     "miniMap.expandAria": "Expandir mapa · arraste para mover",
     "miniMap.close": "Esconder minimapa",

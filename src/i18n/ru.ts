@@ -445,6 +445,7 @@ export const ruDict = {
     "recordingLoad.cancel": "Отмена",
 
     "resize.videoMap": "Изменить ширину карты",
+    "resize.videoMap.hint": "Перетащи, чтобы изменить ширину; двойной клик подгонит видео",
 
     "miniMap.expandAria": "Развернуть карту · потяни для перемещения",
     "miniMap.close": "Скрыть мини-карту",

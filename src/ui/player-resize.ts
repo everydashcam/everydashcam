@@ -1,6 +1,7 @@
 // Resizable proportions inside the player. One drag handle remains:
 //   - .player-col-resize (vertical) between video and map - controls --map-width,
-//     the video-vs-map width ratio (expanded mode only).
+//     the video-vs-map width ratio (expanded mode only). A double-click or
+//     Enter fits the video column to its cameras.
 //
 // The event strip, chart, ruler and overview have fixed proportions. A
 // resizable handle would let users squish the chart canvas under the strip,
@@ -10,6 +11,7 @@
 import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import { dom } from "./dom.js";
 import { isMobileLayout } from "./media-queries.js";
+import { fittedFrameWidth } from "./player-layout.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { state } from "./state.js";
 
@@ -22,6 +24,10 @@ const MAP_PCT_MAX = 70;
 // the sidebar-resize handle so the two splitters behave the same.
 const MAP_PCT_STEP = 2;
 const MAP_PCT_STEP_SHIFT = 5;
+
+// Map floor of the expanded grid template (minmax(220px, ...) in viewer.css):
+// a fitted width must leave the map at least this much.
+const MAP_MIN_PX = 220;
 
 // The divider lives only in the expanded desktop layout; in the stacked
 // layouts the map is a full-screen toggle and --map-width is unused, so
@@ -60,6 +66,25 @@ function restoreResizeState(): void {
     if (Number.isFinite(savedMapPct) && savedMapPct >= MAP_PCT_MIN && savedMapPct <= MAP_PCT_MAX) {
         dom.playerWrap.style.setProperty("--map-width", `${savedMapPct}%`);
     }
+}
+
+/**
+ * Gives the video column exactly the width its cameras fill at the current
+ * height and the map the rest, so neither side keeps an empty band. The map
+ * keeps its floor and the percentage bounds.
+ */
+function fitMapToCameras(): number | null {
+    if (isMobileLayout() || !dom.playerWrap.classList.contains("map-expanded")) return null;
+    const frame = dom.videoGrid.parentElement;
+    const wrapWidth = dom.playerWrap.getBoundingClientRect().width;
+    const mapWidth = dom.mapWrap.getBoundingClientRect().width;
+    if (!frame || wrapWidth <= 0 || mapWidth <= 0) return null;
+    const frameWidth = frame.clientWidth;
+    const target = fittedFrameWidth(frameWidth + Math.max(0, mapWidth - MAP_MIN_PX));
+    if (target === null) return null;
+    const applied = setMapPct(((mapWidth + frameWidth - target) / wrapWidth) * 100);
+    writeLocalStorage(MAP_PCT_KEY, String(applied));
+    return applied;
 }
 
 export function initPlayerResize(): void {
@@ -144,8 +169,20 @@ export function initPlayerResize(): void {
     // Home/End jump to the extremes. Persist on each keydown - keyboard gives no
     // pointer onEnd, and the pointer onEnd is gated on resizeDragging which the
     // keyboard path never sets (same shape as sidebar-resize.ts).
+    // Double-click (or Enter) fits the map around the cameras.
+    dom.videoMapResize.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        if (fitMapToCameras() !== null) scheduleLiveResize();
+    });
     dom.videoMapResize.addEventListener("keydown", (e) => {
         if (isMobileLayout()) return;
+        if (e.key === "Enter") {
+            e.preventDefault();
+            // Global Enter toggles playback (player-hotkeys); here it fits.
+            e.stopPropagation();
+            if (fitMapToCameras() !== null) scheduleLiveResize();
+            return;
+        }
         const isLeft = e.key === "ArrowLeft";
         const isRight = e.key === "ArrowRight";
         const isHome = e.key === "Home";

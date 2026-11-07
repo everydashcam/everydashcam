@@ -571,6 +571,7 @@ export type I18nKey =
 
     // Resize separators
     | "resize.videoMap"
+    | "resize.videoMap.hint"
 
     // Mini-map
     | "miniMap.expandAria"

@@ -440,6 +440,7 @@ export const plDict = {
     "recordingLoad.cancel": "Anuluj",
 
     "resize.videoMap": "Zmień szerokość mapy",
+    "resize.videoMap.hint": "Przeciągnij, aby zmienić rozmiar; kliknij dwukrotnie, aby dopasować wideo",
 
     "miniMap.expandAria": "Powiększ mapę · ciągnij, żeby przesunąć",
     "miniMap.close": "Schowaj minimapę",
