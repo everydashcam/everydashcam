@@ -16,6 +16,7 @@ import {
 } from "../e2e/_fixtures.js";
 
 import { openPortable, test } from "./_fixtures.js";
+import { showOnlyCameras } from "../e2e/_cameras.js";
 
 test("plays and seeks offline, draws GPS and exports manual blur with a route overlay", async ({
     page,
@@ -124,9 +125,7 @@ test("falls back from a denied native picker and downloads MP4 and GPS without a
     await openPortable(page, info.outputPath("denied-picker"));
     await loadTrip(page, SAMPLE_70MAI);
     await openExport(page);
-    const includes = page.locator(".top-panel__channel-include");
-    await includes.nth(2).click();
-    await includes.nth(1).click();
+    await showOnlyCameras(page, ["front"]);
     await saveAndInspectVideo(page, info.outputPath("stream-copy.mp4"));
     await page.locator("#export-panel-done > button").click();
     await openExport(page);
@@ -155,10 +154,7 @@ test("whole-clip fill covers the first and last exported frames at fractional tr
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
     await openExport(page);
-    const includes = page.locator(".top-panel__channel-include");
-    await includes.nth(2).click();
-    await includes.nth(1).click();
-    await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+    await showOnlyCameras(page, ["front"]);
 
     for (const [edge, seconds] of [
         ["end", end],

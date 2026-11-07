@@ -16,6 +16,7 @@ import {
     readTranscodeDoneFields,
     test,
 } from "./_fixtures.js";
+import { showOnlyCameras } from "./_cameras.js";
 
 test.use({ serviceWorkers: "block" });
 
@@ -81,10 +82,7 @@ async function openBlurProgress(page: Page): Promise<void> {
     await gotoApp(page, "en");
     await loadTrip(page);
     await openExport(page);
-    const includes = page.locator(".top-panel__channel-include");
-    await includes.nth(2).click();
-    await includes.nth(1).click();
-    await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+    await showOnlyCameras(page, ["front"]);
     await pausePlayback(page);
 }
 

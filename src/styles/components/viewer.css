@@ -241,12 +241,11 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
     min-height: 0;
 }
 
-/* Multichannel player. Two layout modes via data-view-mode:
-   - "split": equal grid (1x1 / 1x2 / 2x2 depending on data-channel-count).
-     All tiles are equal, the active one has an orange border, click swaps.
-   - "focus" (default): the active tile fills the whole .video-frame, slave
-     tiles become PIP thumbnails in the bottom-right corner. Clicking a
-     thumbnail makes it active (focus-swap, the same channel moves to primary). */
+/* Multichannel player. Tiles are placed absolutely by the layout engine
+   (src/ui/player-layout.ts), each tile exactly the size of its camera's
+   picture; the grid is only the positioning box. data-mode (main | equal) and
+   data-strip (bottom | right | overlay) on the grid and data-role (main |
+   thumb | equal) on a tile exist for looks, never for geometry. */
 
 .video-grid {
     width: 100%;
@@ -281,239 +280,112 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
 }
 
 .video-tile {
-    /* position: relative is needed so .channel-label (absolute) treats
-       the tile as its containing block, not .video-frame - otherwise all
-       channel labels pile up in one corner. */
-    position: relative;
+    /* Placed by player-layout.ts with inline left/top/width/height. The tile
+       is also the containing block of .channel-label and the editors. */
+    position: absolute;
     background: var(--dc-black);
     overflow: hidden;
     min-width: 0;
     min-height: 0;
     cursor: default;
 }
-
-/* === SPLIT mode: equal grid === */
-.video-grid[data-view-mode="split"] {
-    display: grid;
-    gap: 0;
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
-}
-.video-grid[data-view-mode="split"][data-channel-count="2"] {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
-}
-.video-grid[data-view-mode="split"][data-channel-count="3"] {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-}
-.video-grid[data-view-mode="split"][data-channel-count="4"] {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-}
-.video-grid[data-view-mode="split"] .video-tile.active {
-    box-shadow: inset 0 0 0 3px var(--accent);
-}
-.video-grid[data-view-mode="split"] .video-tile {
-    transition: box-shadow var(--dc-dur-base) var(--dc-ease);
-}
-/* Non-active tiles are clickable to swap. */
-.video-grid[data-view-mode="split"][data-channel-count="2"] .video-tile:not(.active),
-.video-grid[data-view-mode="split"][data-channel-count="3"] .video-tile:not(.active),
-.video-grid[data-view-mode="split"][data-channel-count="4"] .video-tile:not(.active) {
+/* A smaller camera reads as a separate picture against the main one and
+   invites the click that makes it the main camera. */
+.video-grid[data-mode="main"] .video-tile[data-role="thumb"],
+.video-grid[data-mode="equal"] .video-tile[data-role="equal"] {
     cursor: pointer;
 }
-.video-grid[data-view-mode="split"][data-channel-count="2"] .video-tile:not(.active):hover,
-.video-grid[data-view-mode="split"][data-channel-count="3"] .video-tile:not(.active):hover,
-.video-grid[data-view-mode="split"][data-channel-count="4"] .video-tile:not(.active):hover {
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+.video-grid[data-mode="main"] .video-tile[data-role="thumb"]:hover,
+.video-grid[data-mode="equal"] .video-tile[data-role="equal"]:hover {
+    box-shadow: inset 0 0 0 2px var(--accent);
 }
-
-/* === FOCUS mode: primary in a wide column on the left + thumbnails in a
-       narrow column on the right, anchored to the bottom, keeping a 16:9
-       aspect-ratio (not stretched to the full row height).
-       Placement - via data-tile-role: "primary" / "thumb-0" / "thumb-1".
-       This lets us override the layout for mobile via @media without
-       !important. */
-.video-grid[data-view-mode="focus"] {
-    display: grid;
-    grid-template-columns: 1fr clamp(140px, 20%, 240px);
-    grid-template-rows: 1fr auto auto;
-    gap: var(--dc-space-2);
-}
-.video-grid[data-view-mode="focus"][data-channel-count="1"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="2"] {
-    grid-template-rows: 1fr auto;
-}
-
-/* Primary spans all rows of column 1. */
-.video-grid[data-view-mode="focus"] [data-tile-role="primary"] {
-    grid-column: 1;
-    grid-row: 1 / -1;
-}
-/* Thumbnails are in column 2, the row is set by index. thumb-0 is in the
-   bottommost row (visually the bottom-right corner), thumb-1 is above it. */
-.video-grid[data-view-mode="focus"][data-channel-count="2"] [data-tile-role="thumb-0"] {
-    grid-column: 2;
-    grid-row: 2;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="3"] [data-tile-role="thumb-0"] {
-    grid-column: 2;
-    grid-row: 3;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="3"] [data-tile-role="thumb-1"] {
-    grid-column: 2;
-    grid-row: 2;
-}
-/* 4-channel focus layout: primary + 3 thumbnails in the right column. */
-.video-grid[data-view-mode="focus"][data-channel-count="4"] {
-    grid-template-rows: 1fr 1fr 1fr;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="4"] [data-tile-role="primary"] {
-    grid-row: 1 / -1;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="4"] [data-tile-role="thumb-0"] {
-    grid-column: 2;
-    grid-row: 3;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="4"] [data-tile-role="thumb-1"] {
-    grid-column: 2;
-    grid-row: 2;
-}
-.video-grid[data-view-mode="focus"][data-channel-count="4"] [data-tile-role="thumb-2"] {
-    grid-column: 2;
-    grid-row: 1;
-}
-
-/* Primary/thumb looks key off data-tile-role (the slot), never .active (the
-   master): a held paired tail keeps the ended main camera's last frame in the
-   primary slot while a thumbnail camera plays as master. */
-.video-grid[data-view-mode="focus"] .video-tile[data-tile-role^="thumb-"] {
-    aspect-ratio: 16 / 9;
-    border: 2px solid rgba(255, 255, 255, 0.6);
-    border-radius: var(--dc-radius-sm);
-    overflow: hidden;
-    cursor: pointer;
-    transition:
-        border-color var(--dc-dur-base) var(--dc-ease),
-        box-shadow var(--dc-dur-base) var(--dc-ease);
-    box-shadow: var(--dc-shadow-popup);
-}
-.video-grid[data-view-mode="focus"] .video-tile[data-tile-role^="thumb-"]:hover {
-    border-color: var(--accent);
-}
-/* An unplayable tile is never a clickable thumbnail: drop the thumb border /
-   shadow / pointer. */
-.video-grid[data-view-mode="focus"] .video-tile.tile-unplayable[data-tile-role^="thumb-"] {
-    border-color: transparent;
-    box-shadow: none;
+/* A tile without a picture never takes the main place on a click. */
+.video-grid .video-tile.tile-absent,
+.video-grid .video-tile.tile-unplayable {
     cursor: default;
+    box-shadow: none;
+}
+.video-tile.tile-overlay {
+    z-index: 2;
+    border-radius: var(--dc-radius-md);
+    box-shadow:
+        0 0 0 2px rgba(255, 255, 255, 0.85),
+        var(--dc-shadow-popup);
+    cursor: move;
+    touch-action: none;
+}
+.video-tile.tile-overlay.pip-dragging {
+    cursor: grabbing;
+    box-shadow:
+        0 0 0 2px var(--accent),
+        var(--dc-shadow-popup);
 }
 
-/* === Narrow video-frame: reorganize tiles ===
-   Container query instead of media: the video can be narrow on desktop
-   too, when the sidebar+map are open. The 768 breakpoint is the same value
-   as --dc-bp-mobile, but we measure the viewer's width, not the window's. */
-@container viewer (max-width: 768px) {
-    /* Focus: primary fully occupies the top row (full width), thumbnails
-       are a horizontal row at the bottom. This gives more room to the
-       primary video on a narrow screen than a side column would. */
-    .video-grid[data-view-mode="focus"][data-channel-count="2"],
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] {
-        grid-template-rows: 1fr auto;
-        gap: var(--dc-space-1);
-    }
-    .video-grid[data-view-mode="focus"][data-channel-count="2"] {
-        grid-template-columns: 1fr;
-    }
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] {
-        grid-template-columns: 1fr 1fr;
-    }
-    .video-grid[data-view-mode="focus"] [data-tile-role="primary"] {
-        grid-column: 1 / -1;
-        grid-row: 1;
-    }
-    .video-grid[data-view-mode="focus"][data-channel-count="2"] [data-tile-role="thumb-0"] {
-        grid-column: 1;
-        grid-row: 2;
-    }
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] [data-tile-role="thumb-0"] {
-        grid-column: 1;
-        grid-row: 2;
-    }
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] [data-tile-role="thumb-1"] {
-        grid-column: 2;
-        grid-row: 2;
-    }
-
-    /* Split: on narrow, stack vertically into one column - a 2x2 grid here
-       is useless (cells would end up ~150px each). */
-    .video-grid[data-view-mode="split"][data-channel-count="2"] {
-        grid-template-columns: 1fr;
-        grid-template-rows: 1fr 1fr;
-    }
-    .video-grid[data-view-mode="split"][data-channel-count="3"] {
-        grid-template-columns: 1fr;
-        grid-template-rows: 1fr 1fr 1fr;
-    }
+/* Divider between the main camera and the strip: drag to resize the smaller
+   cameras, double-click to return to the automatic size. A thin visible line
+   with a wider grab zone over the tile gap. */
+.camera-divider {
+    position: absolute;
+    z-index: 3;
+    touch-action: none;
+    outline: none;
 }
-
-/* Mobile portrait (real device width): on a narrow screen the side row of
-   thumbnails would eat up half the video-frame's height. We move thumbs
-   into a floating PIP instead - small tiles over the primary video, like a
-   real picture-in-picture. Without them, on mobile it was unclear a trip
-   has multiple cameras. */
-@container viewer (max-width: 480px) {
-    .video-grid[data-view-mode="focus"][data-channel-count="2"],
-    .video-grid[data-view-mode="focus"][data-channel-count="3"],
-    .video-grid[data-view-mode="focus"][data-channel-count="4"] {
-        grid-template-rows: 1fr;
-        grid-template-columns: 1fr;
-        gap: 0;
+.camera-divider[hidden] {
+    display: none;
+}
+.camera-divider[data-orientation="horizontal"] {
+    height: 12px;
+    margin-top: -6px;
+    cursor: row-resize;
+}
+.camera-divider[data-orientation="vertical"] {
+    width: 12px;
+    margin-left: -6px;
+    cursor: col-resize;
+}
+.camera-divider::after {
+    content: "";
+    position: absolute;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity var(--dc-dur-fast) var(--dc-ease);
+}
+.camera-divider[data-orientation="horizontal"]::after {
+    left: 0;
+    right: 0;
+    top: 5px;
+    height: 2px;
+}
+.camera-divider[data-orientation="vertical"]::after {
+    top: 0;
+    bottom: 0;
+    left: 5px;
+    width: 2px;
+}
+.camera-divider:hover::after,
+.camera-divider.dragging::after,
+.camera-divider:focus-visible::after {
+    opacity: 1;
+}
+@media (pointer: coarse) {
+    .camera-divider[data-orientation="horizontal"] {
+        height: 28px;
+        margin-top: -14px;
     }
-    .video-grid[data-view-mode="focus"][data-channel-count="2"] [data-tile-role="primary"],
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] [data-tile-role="primary"],
-    .video-grid[data-view-mode="focus"][data-channel-count="4"] [data-tile-role="primary"] {
-        grid-column: 1;
-        grid-row: 1;
-        height: 100%;
+    .camera-divider[data-orientation="horizontal"]::after {
+        top: 13px;
     }
-    /* Floating PIP thumbnails: bottom-right corner of primary, stacking
-       upward. Width in cqw - 28% of the viewer container's width.
-       aspect-ratio 16:9 is inherited from the desktop rules, height is
-       computed by the browser. z-index 4 < channel-switcher (z=6), but
-       above video-loading-overlay (z=5 - though it's pointer-events:none).
-       Tapping swaps (shared logic in player.ts). */
-    .video-grid[data-view-mode="focus"][data-channel-count="2"] .video-tile[data-tile-role^="thumb-"],
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] .video-tile[data-tile-role^="thumb-"],
-    .video-grid[data-view-mode="focus"][data-channel-count="4"] .video-tile[data-tile-role^="thumb-"] {
-        position: absolute;
-        right: var(--dc-space-2);
-        width: 28cqw;
-        max-width: 160px;
-        z-index: 4;
-        box-shadow: var(--dc-shadow-popup);
+    .camera-divider[data-orientation="vertical"] {
+        width: 28px;
+        margin-left: -14px;
     }
-    /* Stacking bottom-to-top. Thumb height = width * 9/16 (aspect-ratio CSS).
-       We compute bottom via cqw, consistent with the width above.
-       min(160px, 28cqw) is synced with the thumb's max-width - if the
-       container is wider than ~570px, the thumb freezes at 160px and so does bottom. */
-    .video-grid[data-view-mode="focus"] [data-tile-role="thumb-0"] {
-        bottom: var(--dc-space-2);
-    }
-    .video-grid[data-view-mode="focus"] [data-tile-role="thumb-1"] {
-        bottom: calc(8px + min(160px, 28cqw) * 9 / 16 + 6px);
-    }
-    .video-grid[data-view-mode="focus"] [data-tile-role="thumb-2"] {
-        bottom: calc(8px + 2 * (min(160px, 28cqw) * 9 / 16 + 6px));
+    .camera-divider[data-orientation="vertical"]::after {
+        left: 13px;
     }
 }
 
-/* Channel label in the tile's corner - so the user sees "Front/Rear"
-   even on the testsrc2 fixture. */
+/* Channel label in the tile's corner - so the user sees which camera is the
+   main one now that a click swaps them. */
 .channel-label {
     position: absolute;
     bottom: var(--dc-space-1);
@@ -528,16 +400,12 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
     pointer-events: none;
     user-select: none;
 }
-/* On single-channel there's just one tile, the label is redundant. Not
-   needed on the active tile in focus-mode either (it's the primary channel, already obvious). */
-.video-grid[data-channel-count="1"] .channel-label,
-.video-grid[data-view-mode="focus"] .video-tile[data-tile-role="primary"] .channel-label {
+/* On single-channel there's just one tile, the label is redundant. */
+.video-grid[data-channel-count="1"] .channel-label {
     display: none;
 }
-/* Thumbnails in focus-mode are compact - shrink the label. */
-.video-grid[data-view-mode="focus"] .video-tile[data-tile-role^="thumb-"] .channel-label {
-    bottom: var(--dc-space-1);
-    left: var(--dc-space-1);
+/* Smaller cameras are compact - shrink the label. */
+.video-tile[data-role="thumb"] .channel-label {
     padding: 1px var(--dc-space-1);
     font-size: var(--dc-text-3xs);
 }
@@ -545,12 +413,25 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
 /* A camera present in the trip but unplayable: keep its tile (don't let it
    silently vanish from the grid) - black cell, its label, and a centered
    "can't play" note. The note is hidden on normal tiles. */
-.tile-unplayable-msg {
+.tile-unplayable-msg,
+.tile-absent-msg {
     display: none;
 }
 .video-tile.tile-unplayable {
     background: var(--dc-black);
 }
+/* A camera with no footage at this moment keeps its place with a note
+   instead of disappearing (camera-availability.ts). Its video is hidden: an
+   element left on another clip's frame would pass for live footage. */
+.video-tile.tile-absent > video {
+    visibility: hidden;
+}
+/* While viewing, a lighter cell than the letterbox shows where the camera
+   sits. The export draws it black, so its preview stays black too. */
+body:not(.export-mode) .video-tile.tile-absent {
+    background: var(--dc-ash-2);
+}
+.video-tile.tile-absent .tile-absent-msg,
 .video-tile.tile-unplayable .tile-unplayable-msg {
     display: block;
     position: absolute;
@@ -1198,17 +1079,18 @@ body.has-expanded-player .viewer {
         --chart-height: calc(var(--chart-zoom-target-size) + 95px);
         --mobile-bar-h: var(--player-controls-measured-h, calc(60px + env(safe-area-inset-bottom, 0px)));
     }
-    /* Video-frame on mobile: 16:9, ALWAYS fully visible in the first viewport
-       screen. Two caps via aspect-ratio:
-         - max-height = viewport - sticky bar so the full frame fits above the
-           bar without internal scroll inside the row;
-         - max-width = the AR-equivalent of max-height; without this the
-           browser would size width:100%, derive height = width*9/16, and only
-           THEN clamp height by max-height - leaving width unshrunk and the
-           video letterboxed vertically. Pairing both clamps lets the browser
-           shrink width to keep AR when height is the limiting dimension.
-       margin: 0 auto so a width-shrunk video centers in its grid cell (most
-       visible in landscape: 587w of 844 column).
+    /* Video-frame on mobile: as tall as the camera composition, ALWAYS fully
+       visible in the first viewport screen. --video-frame-sizing: content
+       hands the height to player-layout.ts, which lays the cameras out
+       against the max-height ceiling (never the current height, which would
+       stick at whatever a smaller box once chose) and writes the composition
+       height to --video-content-height. Until it does, the 16:9 box is the
+       fallback.
+       The ceiling subtracts BOTH the sticky bar AND the in-flow topbar: the
+       scroll content only has 100svh - topbar to live in, so without the
+       topbar term the frame's bottom slice hides behind the opaque sticky
+       bar on the first screen. --mobile-bar-h keeps the bar term in
+       lock-step with player-bar.css.
        svh, not dvh: dvh changes as iOS Safari shows/hides the URL bar on
        scroll, which would cause visible wobble in the video frame. svh
        locks to the smallest (URL-bar visible) layout - costs ~50-80px of
@@ -1218,20 +1100,21 @@ body.has-expanded-player .viewer {
        see MOBILE LANDSCAPE block below. */
     .player-wrap:not(.player-expanded):not(.map-expanded) .video-frame,
     .player-wrap:not(.player-expanded).map-expanded .video-frame {
+        --video-frame-sizing: content;
         display: block;
         aspect-ratio: 16 / 9;
         width: 100%;
-        /* Subtract BOTH the sticky bar AND the in-flow topbar: the scroll content
-           only has 100svh - topbar to live in, so without the topbar term the
-           frame is sized 100svh - bar and its bottom slice hides behind the
-           opaque sticky bar on the first screen. In portrait width caps first so
-           this is a no-op; in short landscape it is what keeps the road/plate
-           bottom visible above the bar. --mobile-bar-h keeps the bar term in
-           lock-step with player-bar.css. */
         max-height: calc(100svh - var(--mobile-bar-h, 60px) - var(--dc-topbar-h-mobile));
-        max-width: calc((100svh - var(--mobile-bar-h, 60px) - var(--dc-topbar-h-mobile)) * 16 / 9);
-        margin: 0 auto;
         min-height: 0;
+    }
+    .player-wrap:not(.player-expanded) .video-frame[style*="--video-content-height"] {
+        aspect-ratio: auto;
+        height: var(--video-content-height);
+    }
+    /* With the map open below, the cameras share the 16:9 box of the frame
+       width: a taller composition would push the map under the sticky bar. */
+    .player-wrap:not(.player-expanded).map-expanded .video-frame {
+        max-height: min(calc(100svh - var(--mobile-bar-h, 60px) - var(--dc-topbar-h-mobile)), calc(100cqw * 9 / 16));
     }
     /* The mobile default above comes later than the desktop overrides with the
        same specificity, so the hidden-canvas and no-GPS heights repeat here. */
@@ -1361,14 +1244,10 @@ body.has-expanded-player .viewer {
     }
     .player-wrap:not(.player-expanded).map-expanded .video-frame {
         /* Horizontal split: video shares its row height with the map at
-           50svh. Same fit-in-box pattern as the base mobile rule, scaled
-           to the split row instead of (viewport - bar). Width auto-shrinks
-           via max-width when 50svh is the limiting dimension. svh (not vh)
-           for the same iOS URL-bar stability reason as in the base rule. */
-        aspect-ratio: 16 / 9;
+           50svh, so that row is the composition's height ceiling instead of
+           (viewport - bar). svh (not vh) for the same iOS URL-bar stability
+           reason as in the base rule. */
         max-height: 50svh;
-        max-width: calc(50svh * 16 / 9);
-        margin: 0 auto;
         min-height: 0;
     }
     .player-wrap:not(.player-expanded).map-expanded .map-wrap {
@@ -1480,26 +1359,6 @@ body.has-expanded-player .viewer {
 }
 .player-wrap.player-expanded.player-panels-below .video-frame {
     container-type: size;
-}
-/* Focus thumbnails must also fit the reduced height, including the gaps
-   above them. The primary keeps all remaining width without changing zoom. */
-.player-wrap.player-expanded.player-panels-below .video-grid[data-view-mode="focus"] {
-    --focus-thumb-count: 1;
-    grid-template-columns:
-        minmax(0, 1fr)
-        min(
-            clamp(96px, 20%, 240px),
-            calc((100cqh - var(--focus-thumb-count) * var(--dc-space-2)) / var(--focus-thumb-count) * 16 / 9)
-        );
-}
-.player-wrap.player-expanded.player-panels-below .video-grid[data-view-mode="focus"][data-channel-count="1"] {
-    grid-template-columns: minmax(0, 1fr);
-}
-.player-wrap.player-expanded.player-panels-below .video-grid[data-view-mode="focus"][data-channel-count="3"] {
-    --focus-thumb-count: 2;
-}
-.player-wrap.player-expanded.player-panels-below .video-grid[data-view-mode="focus"][data-channel-count="4"] {
-    --focus-thumb-count: 3;
 }
 body.export-mode .player-wrap.player-expanded.player-panels-below .video-frame {
     display: flex;

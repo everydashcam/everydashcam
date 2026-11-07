@@ -20,6 +20,16 @@ import {
     pausePlayback,
     waitForMetadata,
 } from "./_fixtures.js";
+import {
+    cameraCheckbox,
+    cameraCheckboxes,
+    chooseArrangementMode,
+    closeCamerasMenu,
+    openCamerasMenu,
+    setCameraShown,
+    showOnlyCameras,
+    visibleCameraOrder,
+} from "./_cameras.js";
 
 test.describe.configure({ mode: "parallel" });
 test.use({ viewerMap: "route-only", reducedMotion: "reduce" });
@@ -121,10 +131,7 @@ test.describe("export", () => {
         const topTier = page.locator('.export-panel__radio:has(input[value="original"]) strong');
         await expect(topTier).toHaveText("High");
         // Reduce to a single camera (output=source by default) -> lossless again.
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
         await expect(topTier).toHaveText("Original");
         // Resizing the output away from source forces a re-encode again.
         await page.locator("#export-panel-output").selectOption("720_16x9");
@@ -133,10 +140,7 @@ test.describe("export", () => {
     });
 
     test("a manual bitrate forces single-camera re-encode and clearing it restores stream-copy", async ({ page }) => {
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
         await expect(page.locator("#export-panel-output")).toHaveValue("source");
         const manual = page.locator("#export-panel-bitrate");
         const topRadio = page.locator('.export-panel__radio input[value="original"]');
@@ -1018,21 +1022,22 @@ test.describe("export", () => {
     });
 
     test("excluding a camera drops it from the grid and export", async ({ page }) => {
-        const includes = page.locator(".top-panel__channel-include");
-        await expect(includes).toHaveCount(3);
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(3);
-        // .click (not .uncheck): the list re-renders on change; a post-uncheck
-        // state read would race the re-render.
-        await includes.last().click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(2);
-        await expect(page.locator(".top-panel__channel-chip.is-excluded")).toHaveCount(1);
+        await openCamerasMenu(page);
+        await expect(cameraCheckboxes(page)).toHaveCount(3);
+        await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(3);
+        await cameraCheckbox(page, "interior").click();
+        await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(2);
+        await expect(page.locator("#player-cameras-popover .cameras-menu__camera.is-hidden")).toHaveCount(1);
+        await closeCamerasMenu(page);
+        await expect(page.locator("#video-grid .video-tile:not([hidden])")).toHaveCount(2);
+        expect(await visibleCameraOrder(page)).toEqual(["front", "rear"]);
         await shot(page, "export-12-channel-exclude");
     });
 
-    test("layout v2 stacks 2-up after excluding a camera (no black column)", async ({ page }) => {
-        await page.locator(".top-panel__channel-include").last().click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(2);
-        await page.locator('.top-panel__layout-btn[data-layout="v2"]').click();
+    test("two equal cameras stack in a portrait output with no black column", async ({ page }) => {
+        await page.locator("#export-panel-output").selectOption("1080_9x16");
+        await setCameraShown(page, "interior", false);
+        await chooseArrangementMode(page, "equal");
 
         const grid = await boxOf(page, "#video-grid");
         const tiles = page.locator("#video-grid .video-tile:not([hidden])");
@@ -1043,12 +1048,12 @@ test.describe("export", () => {
                 return { x: r.x, y: r.y, w: r.width, h: r.height };
             }),
         );
-        // v2 = one full-width column, two rows. Each tile spans ~full grid width;
-        // the bug put both in a half-width column with the right half black.
+        // A 9:16 frame fits two 16:9 cameras best as one column: each tile
+        // spans the grid width, one above the other.
         for (const b of boxes) expect(b.w).toBeGreaterThan(grid.width * 0.9);
         const [top, bottom] = boxes.sort((p, q) => p.y - q.y);
         expect(bottom!.y).toBeGreaterThan(top!.y + top!.h * 0.5);
-        await shot(page, "export-13-layout-v2");
+        await shot(page, "export-13-layout-portrait-stack");
     });
 
     test("estimate block recomputes when Output changes", async ({ page }) => {
@@ -1356,10 +1361,7 @@ test.describe("export range lock", () => {
 
         // One source channel keeps this on the stream-copy path, so Save cannot
         // be disabled by the runner's H.264 encoder capabilities.
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
 
         const start = page.locator(".timeline-range__tab--start");
         const end = page.locator(".timeline-range__tab--end");

@@ -2,7 +2,7 @@
 //
 // Double-click a tile (export-mode) to enter crop edit: a draggable crop rect
 // with corner handles plus an aspect toolbar. The rect is stored in source
-// coords as composition.perSlotCrops[slotIdx] ({xPct,yPct,wPct,hPct}).
+// coords as composition.crops[channel] ({xPct,yPct,wPct,hPct}).
 //
 // Two display states inside the editor, toggled by whether a rect/handle is
 // being DRAGGED (cropDragging):
@@ -44,7 +44,7 @@ import { attachPointerDrag } from "./pointer-drag.js";
 import { containRect, type Rect } from "./video-geometry.js";
 import { notifyExportStateChanged, subscribeExportState } from "./export-state.js";
 import { pausePlayback } from "./playback-pause.js";
-import { mainChannel, state } from "./state.js";
+import { mainChannel, state, visibleChannels } from "./state.js";
 
 const MIN_CROP = 0.05; // smallest crop dimension as a fraction of source
 const ASPECT_PRESETS: string[] = ["free", "original", "16:9", "9:16", "1:1"];
@@ -68,6 +68,12 @@ let cropDragging = false;
 // at this display ratio so a 1:1 pick stays 1:1 while dragging.
 let editingAspect: AspectId | null = null;
 
+/** True while a crop rect or handle is being dragged: the edited tile's
+ *  picture changes shape on every move, so the layout holds still. */
+export function isCropDragging(): boolean {
+    return cropDragging;
+}
+
 export function initPlayerCrop(): void {
     // Double-click a tile in export-mode enters crop edit for that slot.
     dom.videoGrid.addEventListener("dblclick", (e) => {
@@ -77,7 +83,7 @@ export function initPlayerCrop(): void {
         const tile = target.closest<HTMLElement>(".video-tile");
         if (!tile || tile.hidden) return;
         const ch = tile.dataset.channel as Channel | undefined;
-        if (!ch || state.composition.channelOrder.indexOf(ch) < 0) return;
+        if (!ch || !visibleChannels().includes(ch)) return;
         e.preventDefault();
         e.stopPropagation();
         if (editingChannel === ch) exitCropEdit();
@@ -130,10 +136,8 @@ export function initPlayerCrop(): void {
  */
 export function enterCropEditMain(): void {
     if (!state.exportModeOpen) return;
-    const order = state.composition.channelOrder;
-    if (order.length === 0) return;
-    const main = mainChannel();
-    const ch = order.indexOf(main) >= 0 ? main : order[0]!;
+    if (visibleChannels().length === 0) return;
+    const ch = mainChannel();
     if (editingChannel === ch) return;
     enterCropEdit(ch);
 }
@@ -148,8 +152,7 @@ export function exitCropEditIfOpen(): void {
 /** Applies/clears the crop preview (transform + clip-path) on every channel video. */
 export function syncCropPreviews(): void {
     for (const ch of ALL_CHANNELS) {
-        const slotIdx = state.composition.channelOrder.indexOf(ch);
-        const crop = slotIdx >= 0 ? state.composition.perSlotCrops[slotIdx] : null;
+        const crop = visibleChannels().includes(ch) ? state.composition.crops[ch] : undefined;
         // Full source frame only for the channel whose rect is being DRAGGED
         // right now (so the selection reads against the original) and outside
         // export-mode. Every other case shows the stored crop as the result.
@@ -213,19 +216,14 @@ function applyCropPreviewToChannel(ch: Channel, crop: CropRect | null): void {
     v.style.clipPath = `inset(${top.toFixed(2)}px ${right.toFixed(2)}px ${bottom.toFixed(2)}px ${left.toFixed(2)}px)`;
 }
 
-function slotIdxOf(ch: Channel): number {
-    return state.composition.channelOrder.indexOf(ch);
-}
-
 function getCrop(ch: Channel): CropRect {
-    const idx = slotIdxOf(ch);
-    return state.composition.perSlotCrops[idx] ?? { xPct: 0, yPct: 0, wPct: 1, hPct: 1 };
+    return state.composition.crops[ch] ?? { xPct: 0, yPct: 0, wPct: 1, hPct: 1 };
 }
 
 function setCrop(ch: Channel, crop: CropRect | null): void {
-    const idx = slotIdxOf(ch);
-    if (idx < 0) return;
-    state.composition.perSlotCrops[idx] = crop;
+    if (!visibleChannels().includes(ch)) return;
+    if (crop) state.composition.crops[ch] = crop;
+    else delete state.composition.crops[ch];
     // Intentionally NOT applying the preview transform here. The video view is
     // driven by beginCropDrag/endCropDrag (full source while dragging, result on
     // release); setCrop only writes the crop value, leaving the live view to those.
@@ -322,7 +320,7 @@ function applyCropView(ch: Channel): void {
     // excluded source only while selecting, not the letterbox bars of the idle
     // zoomed result (where overlays/watermark sit).
     editorEl?.classList.toggle("is-dragging", cropDragging);
-    applyCropPreviewToChannel(ch, cropDragging ? null : (state.composition.perSlotCrops[slotIdxOf(ch)] ?? null));
+    applyCropPreviewToChannel(ch, cropDragging ? null : (state.composition.crops[ch] ?? null));
     layoutEditor();
     // The video's effective content rect just changed (full source <-> zoomed
     // crop), so the export overlays must re-anchor to it. notify wakes

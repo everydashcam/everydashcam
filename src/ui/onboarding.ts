@@ -174,12 +174,12 @@ const TOURS: Record<OnboardTourId, OnboardTour> = {
         delayMs: 450,
         steps: [
             {
-                anchors: ["#top-panel-layout", "#player-view-mode", "#top-panel"],
+                anchors: ["#video-grid"],
                 titleKey: "onboard.multi.layout.title",
                 bodyKey: "onboard.multi.layout.body",
             },
             {
-                anchors: ["#top-panel-channels", "#top-panel"],
+                anchors: ["#player-cameras"],
                 titleKey: "onboard.multi.channels.title",
                 bodyKey: "onboard.multi.channels.body",
             },

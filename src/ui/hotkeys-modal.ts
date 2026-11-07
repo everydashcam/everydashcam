@@ -45,6 +45,8 @@ function buildGroups(): HotkeyGroup[] {
                 { keys: ["T"], label: t("hotkeys.action.toggleStrip") },
                 { keys: ["M"], label: t("hotkeys.action.toggleMap") },
                 { keys: ["G"], label: t("hotkeys.action.toggleReadout") },
+                { keys: ["V"], label: t("hotkeys.action.cameraMode") },
+                { keys: ["N"], label: t("hotkeys.action.nextCamera") },
             ],
         },
         {

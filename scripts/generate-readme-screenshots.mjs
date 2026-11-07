@@ -16,7 +16,7 @@
 //      exactly like tests/e2e/_fixtures.ts so no onboarding overlay is in
 //      frame, EN locale, dark theme.
 //   3. Writes to docs/screenshots/:
-//        app-desktop.png       - >=3 trips, top trip selected, split front/rear,
+//        app-desktop.png       - >=3 trips, top trip selected, equal front/rear,
 //                                map expanded with the speed-colored route. Dark.
 //        app-mobile-player.png - a trip paused at the deer-braking moment. Light
 //                                theme, so the hero shows both themes at once.
@@ -32,7 +32,7 @@
 //      too heavy to ship on the landing.
 //
 // WHEN TO RE-RUN: whenever the UI those shots depend on changes (trip list /
-// player / split view / map) or the brand palette changes.
+// player / camera layout / map) or the brand palette changes.
 //
 // PRECONDITIONS (exit non-zero with a message if missing):
 //   - dist/en/index.html          (build the app first: `npm run build` -
@@ -69,7 +69,7 @@ const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 // Committed source frames (see PRECONDITIONS above).
 const FRAMES_DIR = join(REPO_ROOT, "docs/screenshots/frames");
 // One rear scene is enough: the rear camera is only visible on the selected
-// trip's split view; card previews always show the front channel.
+// trip's equal camera layout; card previews always show the front channel.
 const REAR_FRAME = join(FRAMES_DIR, "rear_sample.jpg");
 const DIST_INDEX = join(REPO_ROOT, "dist/en/index.html");
 const OUT_DIR = join(REPO_ROOT, "docs/screenshots");
@@ -659,11 +659,14 @@ async function shotDesktop(browser, fixtureRoot) {
     await annotateTopTrip(page);
     await selectTopTrip(page);
 
-    // Split view: focus is the default; the toggle is shown only on multichannel
-    // trips. Flip to split so BOTH cameras show at equal size.
-    await page.locator("#player-view-mode").click();
+    // "Main + others" is the default; the Cameras menu is shown only on
+    // multichannel trips. Switch to "All equal" so BOTH cameras show at the
+    // same size.
+    await page.locator("#player-cameras").click();
+    await page.locator('#player-cameras-popover [data-camera-mode="equal"]').click();
+    await page.keyboard.press("Escape");
     await page.locator("#video-grid").waitFor({ state: "visible" });
-    await page.waitForFunction(() => document.getElementById("video-grid")?.dataset.viewMode === "split", undefined, {
+    await page.waitForFunction(() => document.getElementById("video-grid")?.dataset.mode === "equal", undefined, {
         timeout: 5_000,
     });
 

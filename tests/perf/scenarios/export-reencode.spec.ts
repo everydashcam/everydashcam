@@ -32,6 +32,7 @@ import type { Page } from "@playwright/test";
 import { loadTrip, openExport, presetLocalStorage } from "../../e2e/_fixtures.js";
 import { blockExternalRequests } from "../harness/setup.js";
 import { discoverVendors } from "../harness/vendors.js";
+import { showFirstCameras } from "../../e2e/_cameras.js";
 
 /**
  * Save-picker stub with an amortized O(1) sink. The e2e capture stub grows its
@@ -201,9 +202,7 @@ for (const vendor of vendors) {
         await loadTrip(page, vendor.absPath);
         await openExport(page);
 
-        const includes = page.locator(".top-panel__channel-include");
-        const includeCount = await includes.count();
-        for (let i = includeCount - 1; i >= CHANNELS; i--) await includes.nth(i).click();
+        await showFirstCameras(page, CHANNELS);
 
         await page.locator(`input[name="export-panel-quality"][value="${QUALITY}"]`).check();
         await page.locator("#export-panel-output").selectOption(OUTPUT);

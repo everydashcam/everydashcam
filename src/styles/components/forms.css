@@ -3,7 +3,7 @@
    checkboxes across panels and modals.
    --------------------------------------------------------------------------
    Single source of truth for the FORM-FIELD look. The three form-field
-   <select>s (settings, top-panel audio, export output) and the two number
+   <select>s (settings, cameras-menu audio, export output) and the two number
    inputs used to diverge on background / padding / focus - several carried only
    the bare UA focus outline (an a11y gap). Component files keep layout only
    (width, align-self); this owns appearance + the focus ring. Imported after
@@ -14,7 +14,7 @@
    it keeps its own styling so it stays compact in the sidebar header.
    ========================================================================= */
 .settings-select,
-.top-panel__audio-select,
+.cameras-menu__audio-select,
 .export-panel__output-select,
 .export-panel__blur-style-select,
 .gpx-assignment-select,
@@ -31,14 +31,14 @@
 }
 
 .settings-select,
-.top-panel__audio-select,
+.cameras-menu__audio-select,
 .export-panel__output-select,
 .gpx-assignment-select {
     cursor: pointer;
 }
 
 .settings-select:hover,
-.top-panel__audio-select:hover,
+.cameras-menu__audio-select:hover,
 .export-panel__output-select:hover,
 .export-panel__blur-style-select:hover,
 .gpx-assignment-select:hover {
@@ -46,7 +46,7 @@
 }
 
 .settings-select:focus-visible,
-.top-panel__audio-select:focus-visible,
+.cameras-menu__audio-select:focus-visible,
 .export-panel__output-select:focus-visible,
 .export-panel__blur-style-select:focus-visible,
 .gpx-assignment-select:focus-visible,
@@ -92,7 +92,7 @@
    Desktop keeps the compact 13px. */
 @media (pointer: coarse) {
     .settings-select,
-    .top-panel__audio-select,
+    .cameras-menu__audio-select,
     .export-panel__output-select,
     .export-panel__blur-style-select,
     .gpx-assignment-select,

@@ -11,6 +11,7 @@ import {
     readInMemoryDownload,
     test,
 } from "./_fixtures.js";
+import { showOnlyCameras } from "./_cameras.js";
 
 test.use({ serviceWorkers: "block", viewerMap: "route-only" });
 
@@ -90,9 +91,7 @@ test.describe("export after worker WebGPU rejection", () => {
             await pausePlayback(page);
             await openExport(page);
             // A single channel can be copied after the user turns off automatic blur.
-            const includes = page.locator(".top-panel__channel-include");
-            await includes.nth(2).uncheck();
-            await includes.nth(1).uncheck();
+            await showOnlyCameras(page, ["front"]);
             const plates = page.locator("#export-panel-blur-plates");
             await plates.check();
             await page

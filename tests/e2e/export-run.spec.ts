@@ -29,6 +29,7 @@ import {
     readTranscodeDoneFields,
     test,
 } from "./_fixtures.js";
+import { showOnlyCameras, visibleCameraOrder } from "./_cameras.js";
 
 test.describe("export run", () => {
     test.beforeEach(async ({ page }) => {
@@ -46,11 +47,7 @@ test.describe("export run", () => {
         // Reduce to one channel -> canStreamCopy() is true (no re-encode). GPMF is
         // kept by default, so the
         // post-process meta-track injection must run and land a 'gpmd' handler.
-        const includes = page.locator(".top-panel__channel-include");
-        await expect(includes).toHaveCount(3);
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
 
         // Native path streams to disk at any size -> the in-memory warning stays
         // hidden (the other half of the no-native assertion below).
@@ -77,10 +74,7 @@ test.describe("export run", () => {
     });
 
     test("stream-copy hides the preceding GOP and seeks across a trimmed file join", async ({ page }) => {
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
 
         // Both real H.264 streams contain B-frames and begin with their only keyframe.
         // The selected range crosses their join at 2 s and starts inside the first GOP.
@@ -148,10 +142,7 @@ test.describe("export run", () => {
         );
         test.setTimeout(120_000);
 
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
         await expect(page.locator("#export-panel-output")).toHaveValue("source");
         await expect(page.locator('input[name="export-panel-quality"][value="original"]')).toBeChecked();
         await page.locator("#export-panel-watermark").uncheck();
@@ -231,7 +222,7 @@ test.describe("export run", () => {
         );
 
         test.setTimeout(120_000);
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(3);
+        expect(await visibleCameraOrder(page)).toHaveLength(3);
 
         await page.locator("#export-panel-save-btn").click();
         await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 100_000 });
@@ -257,9 +248,7 @@ test.describe("export run", () => {
         test.skip(browserName === "firefox", "Firefox WebCodecs H.264 encode is broken (Bugzilla 1918769)");
         test.skip(!(await canEncodeHighProfileH264(page)), "H.264 encode unavailable");
         test.setTimeout(120_000);
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
+        await showOnlyCameras(page, ["front"]);
         const end = page.locator('.export-trim-bar__input[data-range-edge="end"]');
         await end.fill("1");
         await end.press("Enter");
@@ -293,10 +282,7 @@ test.describe("export run", () => {
         );
         test.setTimeout(120_000);
 
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
 
         // Below the top tier -> re-encode (the top tier would stream-copy instead).
         await page.locator('input[name="export-panel-quality"][value="medium"]').check();
@@ -468,10 +454,7 @@ test.describe("export run (the destination goes away)", () => {
         await loadTrip(page, SAMPLE_70MAI);
         await openExport(page);
         // One channel: stream-copy eligible, and the cheapest re-encode too.
-        const includes = page.locator(".top-panel__channel-include");
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
     };
 
     test("stream-copy: names the real cause and offers a way to report it", async ({ page }) => {
@@ -552,11 +535,7 @@ test.describe("export run (in-memory, no native FSA)", () => {
     test("stream-copy buffers in memory and offers a Download button with a valid MP4", async ({ page }) => {
         // Single channel -> stream-copy. GPMF kept by default; on the in-memory
         // handle the in-place truncate + tail write before the commit works too.
-        const includes = page.locator(".top-panel__channel-include");
-        await expect(includes).toHaveCount(3);
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
 
         // Degraded-notice half of graceful degradation: on a no-native-FSA browser
         // the panel must warn that the export builds in RAM BEFORE the user commits.
@@ -598,7 +577,7 @@ test.describe("export run (in-memory, no native FSA)", () => {
             "WebCodecs High-profile H.264 encode not available on this platform",
         );
         test.setTimeout(120_000);
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(3);
+        expect(await visibleCameraOrder(page)).toHaveLength(3);
 
         await page.locator("#export-panel-save-btn").click();
         await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 100_000 });

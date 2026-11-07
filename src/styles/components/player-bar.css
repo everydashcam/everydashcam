@@ -663,7 +663,7 @@
 
 /* Very narrow bar (<=520) - mobile-player threshold. At this width the bar
    still contains: play + time (current/sep/total) + pm-speed + spacer + speed
-   + mute + show-map + capture + loop + view-mode + help + kebab
+   + mute + show-map + capture + loop + cameras + help + kebab
    + divider + export. With gap=10 that is ~500+px - export and kebab slide
    past overflow:hidden and become effectively unreachable. We hide the time
    section and the speed pill entirely - the current time is visible in the
@@ -806,7 +806,7 @@
     #gps-sync-pill-mobile:not([hidden]):not([data-overflow-hidden="true"]) {
         display: inline-flex;
     }
-    /* Speed pill, view-menu, view-mode button etc. stay in the bar on
+    /* Speed pill, view-menu, cameras menu etc. stay in the bar on
        mobile only until overflow-bar moves them into the kebab. After the
        first resize overflow-bar tags them with data-overflow-hidden="true"
        and they are hidden by the universal rule in overflow.css. */
@@ -866,8 +866,8 @@
        via CSS - if we did, the width measurement would not reflect real demand
        and overflow-bar would think everything fits.
        MANDATORY (never collapse) on mobile = play + current-time + speed metric +
-       playback-speed + view-menu + Export + kebab. Collapsible (dropped
-       high-priority-first): help/capture/loop/view-mode/mute/map -
+       playback-speed + view-menu + cameras menu + Export + kebab. Collapsible
+       (dropped high-priority-first): help/capture/loop/mute/map -
        so Export (priority 1, last) always stays inline. The narrow-band gap shrink below keeps the mandatory floor under
        the viewport down to ~320px. */
     /* Compact timing: only current "0:00" without " / 0:00" total.

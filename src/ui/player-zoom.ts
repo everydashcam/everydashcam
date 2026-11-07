@@ -26,7 +26,7 @@ import { attachPointerDrag, type PointerDragController } from "./pointer-drag.js
 import { attachPinchGesture, type PinchGeometry, type PinchGesture } from "./pinch-gesture.js";
 import { isMobileLayout } from "./media-queries.js";
 import { videoAttachedFile } from "./player-video-src.js";
-import { NO_VIDEO_ZOOM, state, type VideoZoomState } from "./state.js";
+import { NO_VIDEO_ZOOM, state, type VideoZoomState, visibleChannels } from "./state.js";
 import { normalizeWheelDelta, wheelZoomScaleFactor } from "./strip-zoom.js";
 
 const ZOOM_MIN = 1;
@@ -93,7 +93,10 @@ function canZoom(): boolean {
 function isCameraOnGrid(channel: Channel): boolean {
     const tile = channelTileFor(channel);
     return (
-        state.composition.channelOrder.includes(channel) && !tile.hidden && !tile.classList.contains("tile-unplayable")
+        visibleChannels().includes(channel) &&
+        !tile.hidden &&
+        !tile.classList.contains("tile-unplayable") &&
+        !tile.classList.contains("tile-absent")
     );
 }
 
@@ -101,7 +104,7 @@ function isCameraOnGrid(channel: Channel): boolean {
  *  preload slots, the blurred letterbox backdrop, hidden tiles. */
 function zoomableChannelOf(target: EventTarget | null): Channel | null {
     if (!(target instanceof HTMLVideoElement)) return null;
-    for (const channel of state.composition.channelOrder) {
+    for (const channel of visibleChannels()) {
         if (channelPlayers[channel] === target && isCameraOnGrid(channel)) return channel;
     }
     return null;
@@ -112,7 +115,7 @@ function zoomableChannelOf(target: EventTarget | null): Channel | null {
 function zoomableChannelAt(clientX: number, clientY: number): Channel | null {
     let best: Channel | null = null;
     let bestArea = Number.POSITIVE_INFINITY;
-    for (const channel of state.composition.channelOrder) {
+    for (const channel of visibleChannels()) {
         if (!isCameraOnGrid(channel)) continue;
         const rect = channelTileFor(channel).getBoundingClientRect();
         const inside = clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
@@ -388,15 +391,12 @@ function hideMinimap(): void {
 
 type MinimapPlacement = "frame-corner" | "tile-corner" | "none";
 
-/** Where the preview goes for the zoomed tile. The focus primary keeps the
- *  frame's top-right corner, which sits over the empty space above the
- *  thumbnail column. A split tile gets the preview in its own corner, because
- *  the frame corner belongs to another camera there. Focus thumbnails and
- *  small split tiles are too small to share with a preview. */
+/** Where the preview goes for the zoomed tile. A lone camera keeps the
+ *  frame's top-right corner. With several cameras the frame corner may belong
+ *  to another camera, so a tile large enough to share gets the preview in its
+ *  own corner and a small one gets none. */
 function minimapPlacement(geom: FrameGeometry): MinimapPlacement {
-    const role = geom.tile.dataset.tileRole;
-    if (role === "primary") return "frame-corner";
-    if (role !== undefined) return "none";
+    if (visibleChannels().length <= 1) return "frame-corner";
     return geom.tileW >= MINIMAP_MIN_TILE_WIDTH && geom.tileH >= MINIMAP_MIN_TILE_HEIGHT ? "tile-corner" : "none";
 }
 

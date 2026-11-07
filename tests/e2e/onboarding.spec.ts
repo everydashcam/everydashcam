@@ -143,10 +143,10 @@ test.describe("onboarding", () => {
 
         const onb = page.locator(".dc-onb");
         await expect(onb).toBeVisible({ timeout: 5_000 });
-        await expect(page.locator(".dc-onb__title")).toContainText("Layout");
-        // Step through to the dedicated reorder/hide-cameras step.
-        await page.locator(".dc-onb__next").click(); // -> arrange cameras
-        await expect(page.locator(".dc-onb__title")).toContainText("Arrange cameras");
+        await expect(page.locator(".dc-onb__title")).toContainText("Main camera");
+        // Step through to the Cameras menu step.
+        await page.locator(".dc-onb__next").click();
+        await expect(page.locator(".dc-onb__title")).toContainText("Cameras menu");
         await page.locator(".dc-onb__skip").click();
         await expect(onb).toHaveCount(0);
         expect(await flag(page, "multichannel")).toBe("1");
@@ -242,19 +242,26 @@ test.describe("onboarding", () => {
         const spot = page.locator(".dc-onb__spot");
         await expect(pop).toBeVisible({ timeout: 5_000 });
         await expect(page.locator(".dc-onb")).toHaveAttribute("data-mode", "anchor");
-        // The compact chart sits beneath the video, leaving room for a bottom
-        // sheet. Its spotlight must remain completely above the explanation.
-        await expect(pop).toHaveAttribute("data-placement", "sheet");
+        // The explanation docks at whichever screen edge leaves the chart's
+        // spotlight whole: the chart's place depends on how tall the cameras
+        // lay out above it.
+        const placement = await pop.getAttribute("data-placement");
+        expect(["sheet", "sheet-top"]).toContain(placement);
         const chartBox = await page.locator("#player-chart").boundingBox();
         const chartSpot = await spot.boundingBox();
-        const bottomSheet = await pop.boundingBox();
+        const sheet = await pop.boundingBox();
         expect(chartBox, "chart must have a box").not.toBeNull();
         expect(chartSpot, "chart spotlight must have a box").not.toBeNull();
-        expect(bottomSheet, "bottom sheet must have a box").not.toBeNull();
+        expect(sheet, "sheet must have a box").not.toBeNull();
         expect(chartSpot!.y).toBeLessThanOrEqual(chartBox!.y);
         expect(chartSpot!.y + chartSpot!.height).toBeGreaterThanOrEqual(chartBox!.y + chartBox!.height);
-        expect(bottomSheet!.y).toBeGreaterThan(chartSpot!.y + chartSpot!.height);
-        expect(bottomSheet!.y + bottomSheet!.height).toBeCloseTo(MOBILE.height, 0);
+        if (placement === "sheet") {
+            expect(sheet!.y).toBeGreaterThan(chartSpot!.y + chartSpot!.height);
+            expect(sheet!.y + sheet!.height).toBeCloseTo(MOBILE.height, 0);
+        } else {
+            expect(sheet!.y).toBeCloseTo(0, 0);
+            expect(sheet!.y + sheet!.height).toBeLessThan(chartSpot!.y);
+        }
 
         // The export control lives in the sticky bottom player bar, so this
         // step needs the opposite edge to keep its highlighted target visible.

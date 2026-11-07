@@ -1333,30 +1333,16 @@
                     </button>
                 </div>
             </div>
-            <!-- Top-panel: composition controls visible above the player.
-                 Visibility matrix (see src/ui/top-panel.ts):
-                   - single-channel casual: hidden;
-                   - multi-channel casual: layout + channels + audio source;
-                   - single-channel export: output preset only;
-                   - multi-channel export: layout + channels + audio + output preset.
-                 Filled in by JS - body.no-trips and initial single-channel
-                 hide it via [hidden]. -->
             <nav id="mobile-view-nav" class="mobile-view-nav" hidden>
                 <button id="mobile-view-video" type="button" data-i18n="player.nav.video" aria-controls="player-wrap">Video</button>
                 <button id="mobile-view-map" type="button" data-i18n="viewMenu.map" aria-controls="player-wrap">Map</button>
                 <button id="mobile-view-events" type="button" data-i18n="player.nav.events" aria-controls="mobile-events-list" aria-expanded="false">Events</button>
             </nav>
             <div id="mobile-events-list" class="mobile-events-list" hidden></div>
+            <!-- Trip name above the player in export mode, where the sidebar
+                 with the trip card is hidden. See src/ui/top-panel.ts. -->
             <div id="top-panel" class="top-panel" hidden>
                 <div id="top-panel-trip-name" class="top-panel__trip-name"></div>
-                <details id="top-panel-controls" class="top-panel__controls" open>
-                    <summary id="top-panel-controls-summary"></summary>
-                    <div class="top-panel__controls-content">
-                        <div id="top-panel-layout" class="top-panel__group top-panel__group--layout" hidden></div>
-                        <div id="top-panel-channels" class="top-panel__group top-panel__group--channels" hidden></div>
-                        <div id="top-panel-audio" class="top-panel__group top-panel__group--audio" hidden></div>
-                    </div>
-                </details>
             </div>
 
             <div class="player-wrap" id="player-wrap">
@@ -1372,14 +1358,9 @@
                     <span id="player-fullscreen-hint" class="player-fullscreen-hint" role="status" hidden></span>
                 </div>
                 <div class="video-frame">
-                    <!-- Split-view grid for multi-channel trips. Each tile
-                         statically represents a channel (front/rear/interior);
-                         JS shows only the tiles whose channels exist in the
-                         current frame (via [hidden]). The active tile has
-                         the .active class (border + audio); clicking a
-                         non-active one makes it active (swaps channels).
-                         Single-channel trips use only the front tile,
-                         the rest stay hidden - the layout collapses to 1x1. -->
+                    <!-- One tile per camera. src/ui/player-layout.ts places the
+                         visible ones from the layout engine; hidden cameras keep
+                         [hidden]. The .active tile is the master clock. -->
                     <div class="video-grid" id="video-grid" data-channel-count="1">
                         <!-- Each tile has TWO <video> elements: active-slot and
                              preload-slot. Active-slot plays the current file; preload-slot
@@ -1394,32 +1375,36 @@
                             <video id="player-preload" class="preload-slot" playsinline preload="auto" disablepictureinpicture disableremoteplayback muted></video>
                             <span class="channel-label">Front camera</span>
                             <span class="tile-unplayable-msg" data-i18n="player.tile.cantPlay">Can't play this camera</span>
-                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to reorder slot" data-i18n-attr="title:topPanel.channels.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
-                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize"></button>
+                            <span class="tile-absent-msg" data-i18n="player.tile.noRecording">No recording at this moment</span>
+                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to move this camera" data-i18n-attr="title:player.cameras.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
+                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize the smaller cameras" data-i18n-attr="title:player.cameras.resizeAria"></button>
                         </div>
                         <div class="video-tile" data-channel="rear" hidden>
                             <video id="player-rear" playsinline preload="metadata" disablepictureinpicture disableremoteplayback muted></video>
                             <video id="player-rear-preload" class="preload-slot" playsinline preload="auto" disablepictureinpicture disableremoteplayback muted></video>
                             <span class="channel-label">Rear camera</span>
                             <span class="tile-unplayable-msg" data-i18n="player.tile.cantPlay">Can't play this camera</span>
-                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to reorder slot" data-i18n-attr="title:topPanel.channels.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
-                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize"></button>
+                            <span class="tile-absent-msg" data-i18n="player.tile.noRecording">No recording at this moment</span>
+                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to move this camera" data-i18n-attr="title:player.cameras.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
+                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize the smaller cameras" data-i18n-attr="title:player.cameras.resizeAria"></button>
                         </div>
                         <div class="video-tile" data-channel="interior" hidden>
                             <video id="player-interior" playsinline preload="metadata" disablepictureinpicture disableremoteplayback muted></video>
                             <video id="player-interior-preload" class="preload-slot" playsinline preload="auto" disablepictureinpicture disableremoteplayback muted></video>
                             <span class="channel-label">Interior camera</span>
                             <span class="tile-unplayable-msg" data-i18n="player.tile.cantPlay">Can't play this camera</span>
-                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to reorder slot" data-i18n-attr="title:topPanel.channels.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
-                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize"></button>
+                            <span class="tile-absent-msg" data-i18n="player.tile.noRecording">No recording at this moment</span>
+                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to move this camera" data-i18n-attr="title:player.cameras.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
+                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize the smaller cameras" data-i18n-attr="title:player.cameras.resizeAria"></button>
                         </div>
                         <div class="video-tile" data-channel="side" hidden>
                             <video id="player-side" playsinline preload="metadata" disablepictureinpicture disableremoteplayback muted></video>
                             <video id="player-side-preload" class="preload-slot" playsinline preload="auto" disablepictureinpicture disableremoteplayback muted></video>
                             <span class="channel-label">Side camera</span>
                             <span class="tile-unplayable-msg" data-i18n="player.tile.cantPlay">Can't play this camera</span>
-                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to reorder slot" data-i18n-attr="title:topPanel.channels.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
-                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize"></button>
+                            <span class="tile-absent-msg" data-i18n="player.tile.noRecording">No recording at this moment</span>
+                            <button class="tile-drag-handle" type="button" tabindex="-1" aria-hidden="true" title="Drag to move this camera" data-i18n-attr="title:player.cameras.reorderAria"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="6" cy="12" r="1.3"/><circle cx="10" cy="12" r="1.3"/></svg></button>
+                            <button class="pip-resize" type="button" tabindex="-1" aria-hidden="true" title="Resize the smaller cameras" data-i18n-attr="title:player.cameras.resizeAria"></button>
                         </div>
                         <!-- Overlay spinner for the duration of buffering (HTMLVideoElement
                              fires "waiting" when the decoder waits for data - typically
@@ -1947,19 +1932,19 @@
                                 <!-- camera (lucide) -->
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                             </button>
-                            <!-- Multichannel view-mode toggle: focus (active large + PIP)
-                                 vs split (equal grid). On single-channel trips the button
-                                 is hidden - no choice to make, one tile either way. -->
-                            <button id="player-view-mode" class="player-btn" type="button"
-                                    data-mode="focus"
-                                    data-i18n-attr="aria-label:player.view.toggle,title:player.view.toggle"
-                                    aria-label="Camera layout"
-                                    title="Camera layout" hidden>
-                                <!-- picture-in-picture-2 (focus mode) -->
-                                <svg class="i-vm i-vm-focus" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 9V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h7"/><rect width="10" height="7" x="12" y="13" rx="2"/></svg>
-                                <!-- grid-2x2 (split mode) -->
-                                <svg class="i-vm i-vm-split" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 12h18"/><path d="M12 3v18"/></svg>
-                            </button>
+                            <!-- Camera arrangement menu, shown on trips with several
+                                 cameras. Filled in by src/ui/cameras-menu.ts. -->
+                            <div class="view-menu-wrap cameras-menu-wrap" id="player-cameras-wrap" hidden>
+                                <button id="player-cameras" class="player-btn" type="button"
+                                        aria-haspopup="dialog" aria-expanded="false" aria-controls="player-cameras-popover"
+                                        data-i18n-attr="aria-label:player.cameras.button,title:player.cameras.button"
+                                        aria-label="Cameras" title="Cameras">
+                                    <!-- main picture with two smaller ones under it -->
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="11" rx="2"/><rect x="3" y="17" width="8" height="4" rx="1"/><rect x="13" y="17" width="8" height="4" rx="1"/></svg>
+                                </button>
+                                <div id="player-cameras-popover" class="view-menu-popover cameras-menu" role="dialog"
+                                     data-i18n-attr="aria-label:player.cameras.title" aria-label="Cameras" hidden></div>
+                            </div>
                             <!-- Map expand/collapse toggle. On desktop the mini-map circle
                                  doubles as a click target to expand; on mobile the circle
                                  is hidden (covers the camera + bad touch target), so this
@@ -2068,7 +2053,7 @@
                             </button>
                             <!-- Overflow kebab for player-bar. When the bar shrinks
                                  (narrow sidebar+map or a mobile screen), the
-                                 capture/loop/view-mode/help buttons move into the popup.
+                                 capture/loop/cameras/help buttons move into the popup.
                                  Hidden on a wide desktop. -->
                             <div class="overflow-wrap">
                                 <button id="player-overflow" class="player-btn overflow-toggle" type="button"

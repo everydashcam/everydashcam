@@ -19,6 +19,7 @@ import {
     shot,
     test,
 } from "./_fixtures.js";
+import { chooseArrangementMode, openCamerasMenu, visibleCameraOrder } from "./_cameras.js";
 
 test.describe.configure({ mode: "parallel" });
 
@@ -194,14 +195,15 @@ test.describe("player", () => {
         expect(await page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(true);
     });
 
-    test("a focus thumbnail zooms under the wheel and takes the zoom over from the primary", async ({ page }) => {
+    test("a smaller camera zooms under the wheel and takes the zoom over from the main one", async ({ page }) => {
         await pausePlayback(page);
         await seekToTripStart(page);
         await wheelVideoZoom(page, -120);
         await expect(page.locator("#video-minimap")).toBeVisible();
 
-        const thumb = page.locator('.video-tile[data-tile-role="thumb-0"]');
-        const thumbChannel = await thumb.getAttribute("data-channel");
+        const thumbChannel = (await visibleCameraOrder(page))[1]!;
+        const thumb = page.locator(`.video-tile[data-channel="${thumbChannel}"]`);
+        await expect(thumb).toHaveAttribute("data-role", "thumb");
         await thumb.locator(LIVE_VIDEO).hover();
         await page.mouse.wheel(0, -120);
         await expect.poll(() => zoomedChannel(page)).toBe(thumbChannel);
@@ -217,15 +219,15 @@ test.describe("player", () => {
         expect(await zoomTransforms(page)).toEqual([]);
     });
 
-    test("a split tile zooms, previews and pans the camera under the cursor", async ({ page }) => {
+    test("an equal tile zooms, previews and pans the camera under the cursor", async ({ page }) => {
         await pausePlayback(page);
         await seekToTripStart(page);
-        await page.locator('.top-panel__layout-btn[data-layout="left1right2"]').click();
-        await expect(page.locator("#video-grid")).toHaveAttribute("data-view-mode", "split");
-        const tile = page.locator('.video-tile[data-slot="1"]');
-        const channel = await tile.getAttribute("data-channel");
-        const audioChannel = await page.evaluate(() => window.__everydashcam.state.composition.audioChannel);
-        expect(audioChannel, "the zoomed tile is not the audio source").not.toBe(channel);
+        await chooseArrangementMode(page, "equal");
+        const order = await visibleCameraOrder(page);
+        const channel = order[1]!;
+        const tileSelector = `.video-tile[data-channel="${channel}"]`;
+        const tile = page.locator(tileSelector);
+        await expect(tile).toHaveAttribute("data-role", "equal");
 
         // One wheel event zooms by at most x1.15; four leave room to pan.
         await tile.locator(LIVE_VIDEO).hover();
@@ -235,7 +237,7 @@ test.describe("player", () => {
         const minimap = page.locator("#video-minimap");
         await expect(minimap).toBeVisible();
         await expect.poll(() => minimapPainted(page)).toBe(true);
-        const tileBox = await boxOf(page, '.video-tile[data-slot="1"]');
+        const tileBox = await boxOf(page, tileSelector);
         const minimapBox = await boxOf(page, "#video-minimap");
         expect(minimapBox.x, "the preview sits in the zoomed tile").toBeGreaterThanOrEqual(tileBox.x);
         expect(minimapBox.x + minimapBox.width).toBeLessThanOrEqual(tileBox.x + tileBox.width);
@@ -252,17 +254,17 @@ test.describe("player", () => {
         const after = await page.evaluate(() => ({ ...window.__everydashcam.state.videoZoom }));
         expect(after.channel).toBe(channel);
         expect(after.offsetX - before.offsetX, "the drag pans the zoomed tile").toBeCloseTo(-40, 0);
-        // A tile click swaps the audio after a double-click guard delay; the
-        // pan's release must not be read as that click.
+        // A tile click makes that camera main after a double-click guard
+        // delay; the pan's release must not be read as that click.
         await page.waitForTimeout(400);
-        expect(await page.evaluate(() => window.__everydashcam.state.composition.audioChannel)).toBe(audioChannel);
+        expect(await visibleCameraOrder(page)).toEqual(order);
     });
 
     test("a zoomed slave camera keeps its zoom across a clip change", async ({ page }) => {
         await pausePlayback(page);
         await seekToTripStart(page);
-        const thumb = page.locator('.video-tile[data-tile-role="thumb-0"]');
-        const channel = await thumb.getAttribute("data-channel");
+        const channel = (await visibleCameraOrder(page))[1]!;
+        const thumb = page.locator(`.video-tile[data-channel="${channel}"]`);
         const live = thumb.locator(LIVE_VIDEO);
         const firstSource = await live.evaluate((video: HTMLVideoElement) => video.currentSrc);
         await live.hover();
@@ -436,22 +438,30 @@ test.describe("player", () => {
         expect(dl.suggestedFilename()).toMatch(/\.(jpe?g|png)$/i);
     });
 
-    test("tile click swaps the audio source", async ({ page }) => {
-        const rearTile = page.locator('.video-tile[data-channel="rear"]');
-        await expect(rearTile).toBeVisible();
-        await rearTile.click();
-        await expect(page.locator(".top-panel__audio-select")).toHaveValue("rear");
-        await shot(page, "player-02-audio-swap");
-    });
-
-    test("dragging a tile by its grip inserts it into the drop slot", async ({ page }) => {
+    test("a click on a smaller camera makes it the main one and the sound follows it", async ({ page }) => {
         const front = page.locator('.video-tile[data-channel="front"]');
         const rear = page.locator('.video-tile[data-channel="rear"]');
-        const interior = page.locator('.video-tile[data-channel="interior"]');
-        await expect(front).toHaveAttribute("data-slot", "0");
-        await expect(rear).toHaveAttribute("data-slot", "1");
-        await expect(interior).toHaveAttribute("data-slot", "2");
+        await expect(rear).toHaveAttribute("data-role", "thumb");
+        await rear.click();
+        await expect(rear).toHaveAttribute("data-role", "main");
+        await expect(front).toHaveAttribute("data-role", "thumb");
+        // A swap, not an insert: the interior camera keeps its place.
+        expect(await visibleCameraOrder(page)).toEqual(["rear", "front", "interior"]);
+        const volume = (tile: typeof rear) => tile.locator(LIVE_VIDEO).evaluate((v: HTMLVideoElement) => v.volume);
+        await expect.poll(() => volume(rear), { message: "the main camera plays its sound" }).toBeGreaterThan(0);
+        await expect.poll(() => volume(front), { message: "the old main camera goes quiet" }).toBe(0);
+        await shot(page, "player-02-click-main");
+    });
 
+    test("a click on the main camera plays or pauses instead of rearranging", async ({ page }) => {
+        await pausePlayback(page);
+        const order = await visibleCameraOrder(page);
+        await page.locator(`.video-tile[data-channel="${order[0]}"]`).click();
+        await expect.poll(() => page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(false);
+        expect(await visibleCameraOrder(page)).toEqual(order);
+    });
+
+    test("dragging the main camera onto a smaller one swaps them", async ({ page }) => {
         const handle = await boxOf(page, '.video-tile[data-channel="front"] .tile-drag-handle');
         const target = await boxOf(page, '.video-tile[data-channel="interior"]');
         await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
@@ -464,31 +474,54 @@ test.describe("player", () => {
         await shot(page, "player-03-tile-reorder");
         await page.mouse.up();
 
-        // Insert (not swap): rear -> primary, interior -> slot 1, front -> slot 2.
-        await expect(rear).toHaveAttribute("data-slot", "0");
-        await expect(interior).toHaveAttribute("data-slot", "1");
-        await expect(front).toHaveAttribute("data-slot", "2");
+        await expect.poll(() => visibleCameraOrder(page)).toEqual(["interior", "rear", "front"]);
+        await expect(page.locator('.video-tile[data-channel="interior"]')).toHaveAttribute("data-role", "main");
         await expect(page.locator(".tile-drag-ghost")).toHaveCount(0);
         await expect(page.locator(".tile-drop-placeholder")).toHaveCount(0);
     });
 
-    test("dragging a top-panel chip reorders channels", async ({ page }) => {
-        const chips = page.locator(".top-panel__channel-chip");
-        await expect(chips).toHaveCount(3);
-        const firstCh = await chips.first().getAttribute("data-channel");
-
-        const front = await boxOf(page, '.top-panel__channel-chip[data-channel="front"]');
-        const interior = await boxOf(page, '.top-panel__channel-chip[data-channel="interior"]');
-        await page.mouse.move(front.x + front.width / 2, front.y + front.height / 2);
+    test("dragging one smaller camera onto another moves it there", async ({ page }) => {
+        const handle = await boxOf(page, '.video-tile[data-channel="rear"] .tile-drag-handle');
+        const target = await boxOf(page, '.video-tile[data-channel="interior"]');
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
         await page.mouse.down();
-        await page.mouse.move(front.x + front.width / 2 + 8, front.y + front.height / 2, { steps: 3 });
-        await page.mouse.move(interior.x + interior.width / 2, interior.y + interior.height / 2, { steps: 8 });
-        await expect(page.locator(".chip-drag-ghost")).toBeVisible();
-        await expect(page.locator('.top-panel__channel-chip[data-channel="interior"]')).toHaveClass(/drop-before/);
+        await page.mouse.move(handle.x + 20, handle.y + 20, { steps: 4 });
+        await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
+        await page.mouse.up();
+        await expect.poll(() => visibleCameraOrder(page)).toEqual(["front", "interior", "rear"]);
+        await expect(page.locator('.video-tile[data-channel="front"]')).toHaveAttribute("data-role", "main");
+    });
+
+    test("dragging a camera by its handle in the Cameras menu reorders the layout", async ({ page }) => {
+        await openCamerasMenu(page);
+        const rows = page.locator("#player-cameras-popover .cameras-menu__camera");
+        await expect(rows).toHaveCount(3);
+        const handle = await boxOf(page, '#player-cameras-popover [data-channel="front"] .cameras-menu__handle');
+        const target = await boxOf(page, '#player-cameras-popover .cameras-menu__camera[data-channel="interior"]');
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 8, { steps: 3 });
+        await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
+        await expect(page.locator(".tile-drag-ghost")).toBeVisible();
+        await expect(
+            page.locator('#player-cameras-popover .cameras-menu__camera[data-channel="interior"]'),
+        ).toHaveClass(/drop-target/);
         await page.mouse.up();
 
-        await expect(chips.first()).not.toHaveAttribute("data-channel", firstCh ?? "");
-        await expect(page.locator(".chip-drag-ghost")).toHaveCount(0);
+        await expect.poll(() => visibleCameraOrder(page)).toEqual(["rear", "interior", "front"]);
+        await expect(rows.first()).toHaveAttribute("data-channel", "rear");
+        await expect(page.locator(".tile-drag-ghost")).toHaveCount(0);
+    });
+
+    test("arrow keys on a menu handle move the camera one place", async ({ page }) => {
+        await openCamerasMenu(page);
+        await page.locator('#player-cameras-popover [data-channel="interior"] .cameras-menu__handle').focus();
+        await page.keyboard.press("ArrowUp");
+        await expect.poll(() => visibleCameraOrder(page)).toEqual(["front", "interior", "rear"]);
+        await expect(
+            page.locator('#player-cameras-popover [data-channel="interior"] .cameras-menu__handle'),
+            "focus stays on the moved handle",
+        ).toBeFocused();
     });
 
     test("mini-map drag moves it and persists the position", async ({ page }) => {

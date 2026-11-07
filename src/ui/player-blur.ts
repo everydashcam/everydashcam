@@ -69,7 +69,7 @@ import {
     subscribePlayerFrames,
     type ChannelPresentedFrame,
 } from "./player-frame-time.js";
-import { activeTrip, state } from "./state.js";
+import { activeTrip, state, visibleChannels } from "./state.js";
 import { cancelTrackPass, cancelTrackPassesExceptTrip } from "./blur-track.js";
 import { containRect, type Rect } from "./video-geometry.js";
 
@@ -120,8 +120,8 @@ export function initPlayerBlur(): void {
         if (
             !blurEditorActive() ||
             ALL_CHANNELS.some((ch) => channelTileFor(ch).classList.contains("crop-editing")) ||
-            drawChannels.length !== state.composition.channelOrder.length ||
-            drawChannels.some((ch, i) => ch !== state.composition.channelOrder[i])
+            drawChannels.length !== visibleChannels().length ||
+            drawChannels.some((ch, i) => ch !== visibleChannels()[i])
         )
             disarmDraw();
         // Trip switch invalidates the armed draw layers (their channel
@@ -221,11 +221,11 @@ function syncLifecycle(): void {
     if (active) {
         previewRegions = sortBlurRegionsForPaint(activeEffectiveBlurRegions());
         for (const ch of ALL_CHANNELS) {
-            if (state.composition.channelOrder.indexOf(ch) >= 0) ensureTileUi(ch);
+            if (visibleChannels().includes(ch)) ensureTileUi(ch);
         }
         // Drop UI for channels that left the layout.
         for (const [ch, ui] of tileUis) {
-            if (state.composition.channelOrder.indexOf(ch) < 0) {
+            if (!visibleChannels().includes(ch)) {
                 destroyTileUi(ui);
                 tileUis.delete(ch);
             }
@@ -298,8 +298,7 @@ function tileMapping(ch: Channel, width?: number, height?: number): TileMapping 
     const tileWidth = width ?? tile.clientWidth;
     const tileHeight = height ?? tile.clientHeight;
     if (!v || v.videoWidth <= 0 || v.videoHeight <= 0 || tileWidth <= 0) return null;
-    const slotIdx = state.composition.channelOrder.indexOf(ch);
-    const crop = (slotIdx >= 0 ? state.composition.perSlotCrops[slotIdx] : null) ?? {
+    const crop = state.composition.crops[ch] ?? {
         xPct: 0,
         yPct: 0,
         wPct: 1,
@@ -726,9 +725,9 @@ export function toggleBlurDraw(): void {
     exitCropEditIfOpen();
     drawOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     armed = true;
-    drawChannels = [...state.composition.channelOrder];
+    drawChannels = visibleChannels();
     pauseBlurVideos();
-    for (const ch of state.composition.channelOrder) {
+    for (const ch of drawChannels) {
         const tile = channelTileFor(ch);
         if (tile.hidden) continue;
         const layer = document.createElement("div");

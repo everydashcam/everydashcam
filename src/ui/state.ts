@@ -17,7 +17,9 @@ import type { IngestStructureEntry } from "../ingest-structure.js";
 import type { PerFileMseBackend } from "../per-file-mse.js";
 import type { RecordingAnalysisProgress } from "../recording-analysis-progress.js";
 import type { TripFilters } from "../trip-filters.js";
-import type { CropRect, SplitLayout } from "../transcode/compose.js";
+import { firstRecordingChannel } from "../camera-availability.js";
+import type { CameraArrangementMode, OverlayPosition } from "../camera-layout.js";
+import type { CropRect } from "../transcode/compose.js";
 import { pickFrameChannel } from "../trips.js";
 import type { Trip, TripFrame, VideoCandidate } from "../trips.js";
 
@@ -50,20 +52,6 @@ export type TripListDensity = "cards" | "rows";
 // (chronologically) so the whole drive plays through.
 type TripEndBehavior = "stop" | "loop" | "advance";
 
-/**
- * Player composition layout. Defines how channels are arranged in the player
- * area, and identically describes the output frame composition for export
- * (player = WYSIWYG preview).
- *  - "single": one channel fills the output frame. Used on single-channel
- *    trips and as a "show me just one" option in multi-channel trips.
- *  - "h2"/"v2": two channels side-by-side / stacked, equal slots.
- *  - "left1right2"/"left2right1": three channels, asymmetric split.
- *  - "grid2x2": four channels in 2x2 grid.
- *  - "pip2"/"pip3"/"pip4": one main channel full-frame, N-1 small rounded
- *    overlays in the right column.
- */
-export type Layout = SplitLayout;
-
 // "chase": heading-up like "rotate", plus camera tilt + 3D buildings +
 // (optionally) speed-adaptive zoom - the "dashcam / racing-game" view.
 export type FollowMode = "off" | "follow" | "rotate" | "chase";
@@ -80,44 +68,36 @@ export interface MiniMapData {
     gradient: unknown[];
 }
 
+/** Where the audio comes from: the main camera (or, when its files carry no
+ *  sound, the next camera that has some), or one camera the user picked. */
+export type AudioSource = "follow-main" | Channel;
+
 /**
- * Player composition state. Persistent across casual <-> export mode within a
- * session: the player is the WYSIWYG preview of the export, so layout/channels/
- * crops/audio choices apply to both the live playback and the saved file.
+ * Camera arrangement shared by playback and export: the player is the WYSIWYG
+ * preview of the export, so the mode, order, sizes, crops and audio choice
+ * apply to both the live playback and the saved file. Persistent across the
+ * export-mode toggle within a session; the arrangement part (not crops or
+ * audio) is remembered per camera set by player-layout-pref.ts.
  *
- * Slot ordering: channelOrder[0] is the "main" slot (large tile in pip / first
- * in h2 / top-left in grid). audioChannel is independent of slot order - the
- * user may show front in slot 0 but pull audio from rear via the audio dropdown.
- *
- * Per-slot arrays (perSlotCrops/Scales/Aspects/PipPositions) all have length
- * equal to the slot count of the current layout. On layout change the arrays
- * are resized: trailing entries dropped, new entries filled with defaults.
+ * Everything is keyed by channel, never by position: swapping cameras keeps
+ * each camera's crop and overlay window with that camera.
  */
 export interface CompositionState {
-    /** Active layout. "single" means only one channel is visible. */
-    layout: Layout;
-    /**
-     * Channels in slot order. Length = slot count of layout. channelOrder[0] is
-     * the visually main slot. Length 1 for layout="single".
-     */
-    channelOrder: Channel[];
-    /**
-     * Channel that plays audio. Defaults to channelOrder[0] on layout change;
-     * the user can override via the audio-source dropdown in top-panel.
-     */
-    audioChannel: Channel;
-    /** Per-slot crop rect (null = full source frame, no crop). */
-    perSlotCrops: (CropRect | null)[];
-    /**
-     * Per-slot PiP scale (1.0 = default size). Meaningful only for slots 1+ in
-     * pip layouts; ignored elsewhere but stored to survive layout flips.
-     */
-    perSlotScales: number[];
-    /**
-     * Per-slot PiP overlay positions in output coords (0..1 from top-left).
-     * Used only for pip layouts. null = default position (bottom-right stack).
-     */
-    perSlotPipPositions: ({ xPct: number; yPct: number } | null)[];
+    mode: CameraArrangementMode;
+    /** Every camera of the trip in display order, hidden ones included. The
+     *  first visible one is the main camera (and the master clock). */
+    order: Channel[];
+    /** Cameras the user switched off. At least one camera stays visible. */
+    hidden: Channel[];
+    /** Smaller cameras' size relative to the main one; null = automatic. */
+    thumbScale: number | null;
+    /** Lets the smaller cameras sit over the main picture when a strip would
+     *  shrink it ("main" mode only). */
+    allowOverlay: boolean;
+    overlayPositions: Partial<Record<Channel, OverlayPosition>>;
+    /** Export crop per camera (visible-image coordinates). */
+    crops: Partial<Record<Channel, CropRect>>;
+    audio: AudioSource;
 }
 
 /**
@@ -288,117 +268,80 @@ export function activeTripHasGps(): boolean {
     return recordsHaveGps(activeTrip()?.records);
 }
 
-/**
- * Main visible channel = composition.channelOrder[0]. Convenience accessor;
- * call sites that pick a candidate for the "primary" player tile (largest in
- * pip, left in h2, top-left in grid) use this. Falls back to "front" only on
- * the (impossible-in-practice) empty channelOrder.
- */
-export function mainChannel(): Channel {
-    return state.composition.channelOrder[0] ?? "front";
+/** Cameras shown, in display order (the composition order without the
+ *  hidden ones). Never empty for a composition built by this module. */
+export function visibleChannels(composition: CompositionState = state.composition): Channel[] {
+    return composition.order.filter((channel) => !composition.hidden.includes(channel));
 }
 
 /**
- * Current active VideoCandidate - the frame selected by state.active.frame,
- * channel resolved via the main composition slot with fallback (see
- * pickFrameChannel). Returns null if active is invalid or the frame is empty.
+ * Main camera = first visible camera. It is the large tile in "main" mode,
+ * the first tile in "equal" mode, and the preferred master clock. Falls back
+ * to "front" only for an empty composition.
+ */
+export function mainChannel(): Channel {
+    return visibleChannels()[0] ?? "front";
+}
+
+/**
+ * Camera that plays as the master clock in `frame`: the first visible camera
+ * with footage there (the main one, or the camera standing in for it - see
+ * camera-availability.ts), else any camera of the frame so time keeps running
+ * while every visible camera shows a placeholder. Null only for an empty frame.
+ */
+export function frameMasterChannel(frame: TripFrame): Channel | null {
+    return firstRecordingChannel(frame, visibleChannels()) ?? pickFrameChannel(frame, mainChannel())?.channel ?? null;
+}
+
+/** frameMasterChannel with its file - for surfaces that show "the" picture of
+ *  a moment (hover thumbnails, file names) the way the player shows it. */
+export function frameMasterCandidate(frame: TripFrame): { channel: Channel; candidate: VideoCandidate } | null {
+    const channel = frameMasterChannel(frame);
+    const candidate = channel ? frame.channels[channel] : undefined;
+    return channel && candidate ? { channel, candidate } : null;
+}
+
+/**
+ * Current active VideoCandidate - the master camera's file in the frame
+ * selected by state.active.frame. Returns null if active is invalid or the
+ * frame is empty.
  */
 export function activeCandidate(): VideoCandidate | null {
     const af = activeFrame();
-    if (!af) return null;
-    return pickFrameChannel(af.frame, mainChannel())?.candidate ?? null;
+    return af ? (frameMasterCandidate(af.frame)?.candidate ?? null) : null;
 }
 
 /**
- * Slot count for a given layout. Source of truth: getSplitSlots in compose.ts,
- * but we duplicate the small map here so the UI module can compute slot count
- * without importing the heavy compose module path.
- */
-export function layoutSlotCount(layout: Layout): number {
-    switch (layout) {
-        case "single":
-            return 1;
-        case "h2":
-        case "v2":
-        case "pip2":
-            return 2;
-        case "left1right2":
-        case "left2right1":
-        case "pip3":
-            return 3;
-        case "grid2x2":
-        case "pip4":
-            return 4;
-    }
-}
-
-/** True for layouts where one slot is the main full-frame and others are small
- *  rounded overlays (pip2/pip3/pip4). Used to differentiate edit-mode UX:
- *  in pip layouts slot 1+ gets a resize handle, in tile layouts (h2/grid) it
- *  does not. */
-export function isPipLayout(layout: Layout): boolean {
-    return layout === "pip2" || layout === "pip3" || layout === "pip4";
-}
-
-/** True for "focus" layouts: a single main tile owns the frame and any extra
- *  channels are pip overlays (single + pip2/pip3/pip4), as opposed to tiled
- *  split layouts (h2/v2/grid/...). Many call sites gate tile roles, crop and
- *  audio routing on "is this focus or split" - keep that predicate here so it
- *  has one definition. */
-export function isFocusLayout(layout: Layout): boolean {
-    return layout === "single" || isPipLayout(layout);
-}
-
-/**
- * Builds a default composition for a trip given its set of channels. Layout
- * picked by channel count: 1 = single, 2/3/4 = corresponding pip layout (focus
- * mode, matches the previous viewMode="focus" default). channelOrder seeds
- * from the channel list in canonical order (front/rear/interior/side); the
- * order is fed into the layout so the front camera lands in the main slot.
+ * Default composition for a trip's playable channels: canonical order (front
+ * first), every camera visible, the main camera with the others beside it.
  */
 export function defaultCompositionForChannels(channels: Channel[]): CompositionState {
-    const ordered = CANONICAL_CHANNEL_ORDER.filter((c) => channels.includes(c));
-    const count = Math.min(4, Math.max(1, ordered.length));
-    const layout = defaultLayoutForCount(count);
-    const slots = layoutSlotCount(layout);
-    const order = ordered.slice(0, slots);
+    const order = CANONICAL_CHANNEL_ORDER.filter((c) => channels.includes(c));
     return {
-        layout,
-        channelOrder: order,
-        audioChannel: order[0] ?? "front",
-        perSlotCrops: Array.from({ length: slots }, () => null),
-        perSlotScales: Array.from({ length: slots }, () => 1),
-        perSlotPipPositions: Array.from({ length: slots }, () => null),
+        mode: "main",
+        order: order.length ? order : ["front"],
+        hidden: [],
+        thumbScale: null,
+        allowOverlay: false,
+        overlayPositions: {},
+        crops: {},
+        audio: "follow-main",
     };
 }
 
-/** Canonical channel order used to seed channelOrder defaults so front (the
- *  conventional "main camera") lands in slot 0 even when the trip exposes
- *  rear/interior in arbitrary order. */
+/** Canonical channel order used to seed the order so front (the conventional
+ *  "main camera") comes first even when the trip lists rear/interior first. */
 export const CANONICAL_CHANNEL_ORDER: Channel[] = ["front", "rear", "interior", "side"];
 
 /**
- * Default layout for a given visible-channel count, matching the app's
- * focus-first default (1 = single, 2/3/4 = pipN). Used for the initial
- * composition and when the channel-include toggles change the visible count.
- */
-export function defaultLayoutForCount(count: number): Layout {
-    const n = Math.min(4, Math.max(1, count));
-    return n === 1 ? "single" : n === 2 ? "pip2" : n === 3 ? "pip3" : "pip4";
-}
-
-/**
- * Insert-reorder for the channel slot order: removes `ch` and re-inserts it at
- * slot `toIndex`, sliding the rest. This is the single model behind both reorder
- * affordances - dragging a video tile (player-tile-reorder.ts) and dragging a
- * top-panel chip - so they never diverge. Pure: returns a new array, does not
- * mutate the input.
+ * Insert-reorder: removes `ch` and re-inserts it at `toIndex`, sliding the
+ * rest. Reorders cameras within the strip and in "equal" mode. Pure: returns a
+ * new array, does not mutate the input.
  *
- * `toIndex` is the slot index the dragged channel should occupy in the result,
- * expressed against the ORIGINAL order's indices (i.e. the slot the user dropped
- * onto); it is clamped to the valid range after removal, so dropping onto the
- * last slot lands the channel at the end. Returns the input unchanged (a copy)
- * if `ch` is absent or the move is a no-op.
+ * `toIndex` is expressed against the ORIGINAL order's indices (the position
+ * the user dropped onto); it is clamped to the valid range after removal, so
+ * dropping onto the last position lands the channel at the end. Returns the
+ * input unchanged (a copy) if `ch` is absent or the move is a no-op.
  */
 export function moveChannelInOrder(order: Channel[], ch: Channel, toIndex: number): Channel[] {
     const from = order.indexOf(ch);
@@ -427,51 +370,47 @@ export function swapChannelsInOrder(order: readonly Channel[], a: Channel, b: Ch
 }
 
 /**
- * Mutates state.composition atomically. Callsites that change layout /
- * channelOrder / audioChannel MUST go through this helper so per-slot arrays
- * get resized in sync with layout. Per-slot arrays preserve entries by
- * index (trailing entries dropped on shrink, defaults appended on grow).
+ * Replaces state.composition with `patch` applied and its invariants
+ * restored: `hidden` only names cameras of `order` and never hides all of
+ * them, and an explicit audio camera must be visible (else the audio follows
+ * the main camera again). Every composition change goes through here.
  */
-export function setLayoutAndChannels(args: {
-    layout?: Layout;
-    channelOrder?: Channel[];
-    audioChannel?: Channel;
-}): void {
-    const next = { ...state.composition };
-    if (args.layout && args.layout !== next.layout) {
-        next.layout = args.layout;
-        const slots = layoutSlotCount(args.layout);
-        next.perSlotCrops = resizeSlotArray(next.perSlotCrops, slots, null);
-        next.perSlotScales = resizeSlotArray(next.perSlotScales, slots, 1);
-        next.perSlotPipPositions = resizeSlotArray(next.perSlotPipPositions, slots, null);
-    }
-    if (args.channelOrder) {
-        next.channelOrder = args.channelOrder.slice(0, layoutSlotCount(next.layout));
-    }
-    // If channelOrder shrank and audioChannel is no longer present, fall back
-    // to the new slot 0; the audio dropdown enforces "audio source must be
-    // a visible channel" so this stays a safe default.
-    const audio = args.audioChannel ?? next.audioChannel;
-    next.audioChannel = next.channelOrder.includes(audio) ? audio : (next.channelOrder[0] ?? "front");
+export function updateComposition(patch: Partial<CompositionState>): void {
+    const next: CompositionState = { ...state.composition, ...patch };
+    next.hidden = next.hidden.filter(
+        (channel, index) => next.order.includes(channel) && next.hidden.indexOf(channel) === index,
+    );
+    if (next.hidden.length >= next.order.length)
+        next.hidden = next.hidden.filter((channel) => channel !== next.order[0]);
+    if (next.audio !== "follow-main" && !visibleChannels(next).includes(next.audio)) next.audio = "follow-main";
     state.composition = next;
 }
 
-/** Resets per-slot crops / scales / PiP positions to defaults for the current
- *  slot count. Called on trip change: these are expressed in fractions of a
- *  specific source frame, so carrying them onto a different trip lands them
- *  wrong. setLayoutAndChannels only resizes them on a layout CHANGE, so a trip
- *  whose layout matches the previous one would otherwise inherit stale values. */
-export function resetPerSlotComposition(): void {
-    const slots = layoutSlotCount(state.composition.layout);
-    state.composition.perSlotCrops = Array.from({ length: slots }, () => null);
-    state.composition.perSlotScales = Array.from({ length: slots }, () => 1);
-    state.composition.perSlotPipPositions = Array.from({ length: slots }, () => null);
+/**
+ * Whether a camera's recordings carry sound. A recording whose metadata is
+ * still pending counts as having sound, so the audio follows the main camera
+ * until the files prove otherwise.
+ */
+export function channelHasAudio(trip: Trip, channel: Channel): boolean {
+    return trip.frames.some((frame) => {
+        const candidate = frame.channels[channel];
+        return !!candidate && (candidate.audio !== null || candidate.metadataReady === false);
+    });
 }
 
-function resizeSlotArray<T>(arr: T[], targetLen: number, fillWith: T): T[] {
-    if (arr.length === targetLen) return arr;
-    if (arr.length > targetLen) return arr.slice(0, targetLen);
-    return [...arr, ...Array.from({ length: targetLen - arr.length }, () => fillWith)];
+/**
+ * Camera whose sound plays: the user's pick, else the first of `order` whose
+ * files carry sound, else the first of `order`. `order` defaults to the
+ * visible cameras; the viewer passes the layout order of the current moment so
+ * the sound follows a camera standing in for the main one.
+ */
+export function audioChannel(order: readonly Channel[] = visibleChannels()): Channel {
+    const audio = state.composition.audio;
+    if (audio !== "follow-main" && visibleChannels().includes(audio)) return audio;
+    const trip = activeTrip();
+    const first = order[0] ?? mainChannel();
+    if (!trip) return first;
+    return order.find((channel) => channelHasAudio(trip, channel)) ?? first;
 }
 
 export const state: AppState = {

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { DESKTOP, SAMPLE_70MAI, expect, gotoApp, loadTrip, presetLocalStorage, test } from "./_fixtures.js";
+import { visibleCameraOrder } from "./_cameras.js";
 
 async function waitForMapIdle(page: Page): Promise<void> {
     await page.evaluate(
@@ -344,7 +345,9 @@ test("zoom, drag and recenter remain responsive during frame-paced Chase", async
     expect(after.time - start.time).toBeGreaterThan(0.1);
 });
 
-test("Chase follows a different physical master after channel reordering", async ({ page }, testInfo) => {
+test("Chase follows a different physical master after a click makes another camera main", async ({
+    page,
+}, testInfo) => {
     await openChase(page);
     const previous = await page.evaluateHandle(() => window.__everydashcam.dom.player);
     try {
@@ -354,14 +357,10 @@ test("Chase follows a different physical master after channel reordering", async
             player.muted = true;
             await player.play();
         });
-        const rear = await page.locator('.top-panel__channel-chip[data-channel="rear"]').boundingBox();
-        const front = await page.locator('.top-panel__channel-chip[data-channel="front"]').boundingBox();
-        if (!rear || !front) throw new Error("camera reorder controls unavailable");
-        await page.mouse.move(rear.x + rear.width / 2, rear.y + rear.height / 2);
-        await page.mouse.down();
-        await page.mouse.move(front.x + front.width / 2, front.y + front.height / 2, { steps: 8 });
-        await page.mouse.up();
-        await expect(page.locator(".top-panel__channel-chip").first()).toHaveAttribute("data-channel", "rear");
+        // A click on the smaller rear camera hands it the main place, and
+        // with it the master clock.
+        await page.locator('.video-tile[data-channel="rear"]').click();
+        await expect.poll(() => visibleCameraOrder(page).then((order) => order[0])).toBe("rear");
         expect(await page.evaluate((old) => window.__everydashcam.dom.player !== old, previous)).toBe(true);
         const result = await measureChase(page);
         await testInfo.attach("master-swap-cadence", { body: JSON.stringify(result), contentType: "application/json" });

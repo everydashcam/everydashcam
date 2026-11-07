@@ -18,6 +18,7 @@ import {
     shot,
     test,
 } from "./_fixtures.js";
+import { showOnlyCameras } from "./_cameras.js";
 
 async function prepare(
     page: Page,
@@ -33,10 +34,7 @@ async function prepare(
 
 async function openSingleCameraExport(page: Page): Promise<void> {
     await openExport(page);
-    const cameras = page.locator(".top-panel__channel-include");
-    await cameras.nth(2).click();
-    await cameras.nth(1).click();
-    await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+    await showOnlyCameras(page, ["front"]);
 }
 
 async function pickerCalls(page: Page): Promise<number> {

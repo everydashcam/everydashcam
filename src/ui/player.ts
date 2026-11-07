@@ -32,7 +32,6 @@ import { createLogger } from "../log.js";
 import { captureSentryMessage } from "../sentry.js";
 import { emitLifecycle } from "../perf.js";
 import type { Channel } from "../parsers/types.js";
-import { getSplitSlots, PIP_OVERLAY_CHAR_SIZE, type SplitSlotsContext } from "../transcode/compose.js";
 import { PerFileMseBackend } from "../per-file-mse.js";
 import {
     pickFrameChannel,
@@ -102,7 +101,7 @@ import {
     videoOwnedBlobUrl,
 } from "./player-video-src.js";
 import { nativeSlaveSyncStep, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
-import { pairedTailHold } from "../camera-availability.js";
+import { frameCameraAvailability, pairedTailHold } from "../camera-availability.js";
 import { applyVideoZoom, consumeDragClickSuppress, initPlayerZoom, resetVideoZoom } from "./player-zoom.js";
 import { initPlayerMetrics, refreshMetricsFromActiveFrame, resyncMetricsForTrip } from "./player-metrics.js";
 import { isPreloadReadyForPromotion } from "./player-preload.js";
@@ -111,7 +110,10 @@ import { isClipTailFailure } from "./playback-tail.js";
 import { isCoarsePointer } from "./media-queries.js";
 import { syncExportButton } from "./player-export-button.js";
 import { initPlayerFullscreen, syncFullscreenButton, toggleFullscreen } from "./player-fullscreen.js";
-import { persistCurrentLayout, restoreLayoutForTrip } from "./player-layout-pref.js";
+import { restoreArrangementForTrip } from "./player-layout-pref.js";
+import { applyCameraLayout, initPlayerLayout, relayoutCameras } from "./player-layout.js";
+import { initCameraArrangement } from "./camera-arrangement.js";
+import { initCamerasMenu, syncCamerasMenu } from "./cameras-menu.js";
 import { initPlayerLoop, syncLoopButton, toggleLoop } from "./player-loop.js";
 import {
     closeSpeedMenu,
@@ -123,20 +125,18 @@ import {
 } from "./player-speed.js";
 import { initPlayerVolume, syncMuteButton, toggleMuted } from "./player-volume.js";
 import { setPreviewPlaybackActive } from "./trip-preview.js";
-import { attachPointerDrag } from "./pointer-drag.js";
 import { clearOpeningTrip, renderTrips, syncActiveTripHighlight, updateActiveFrameHighlight } from "./sidebar.js";
 import { exportPanelState, resetExportRangeForTrip, subscribeExportState } from "./export-state.js";
 import {
     activeFrame,
     activeTrip,
+    audioChannel,
     defaultCompositionForChannels,
-    isFocusLayout,
-    isPipLayout,
-    type Layout,
+    frameMasterCandidate,
+    frameMasterChannel,
     mainChannel,
-    resetPerSlotComposition,
-    setLayoutAndChannels,
     state,
+    visibleChannels,
 } from "./state.js";
 import { syncTopPanel } from "./top-panel.js";
 
@@ -459,7 +459,7 @@ function schedulePreloadNext(): void {
         clearAllPreloadSlots();
         return;
     }
-    const picked = pickFrameChannel(nextFrame, mainChannel());
+    const picked = frameMasterCandidate(nextFrame);
     let isMasterSlotLoading = false;
     // The channel whose slot the master branch below owns. A next master that
     // already plays its file there (the next interval of the same file) needs
@@ -665,15 +665,13 @@ export function playFrame(
     if (!trip) return;
     const frame = trip.frames[frameIdx];
     if (!frame) return;
-    const picked = pickFrameChannel(frame, mainChannel());
+    const picked = frameMasterCandidate(frame);
     if (!picked) return;
     activeClipEndedByFailure = false;
     const video = picked.candidate;
     const fileOffsetSec = startOffsetSec + frameMediaOffset(frame, picked.channel);
-    // Do NOT update composition.channelOrder[0] to picked.channel. If the current
-    // frame lacks the requested channel we play the fallback, but the user's
-    // choice is preserved - the next frame that has the channel restores it
-    // automatically.
+    // The composition order is not touched when another camera stands in as
+    // master: the next frame where the main camera records restores it.
 
     const tripChanged = !state.active || state.active.trip !== tripIdx;
     const prevFrameIdx = state.active ? state.active.frame : -1;
@@ -718,13 +716,11 @@ export function playFrame(
     if (tripChanged) resetVideoZoom();
 
     if (tripChanged) {
-        // Reset player composition for the new trip. Per-slot crops/scales are
-        // always reset (a crop expressed in fractions of the previous source
-        // would land wrong on a different channel set). For multi-channel trips
-        // we restore the user's last layout + camera order for this physical
-        // camera set (player-layout-pref), so stepping through several trips off
-        // one card keeps the chosen split/order; single-channel trips have no
-        // arrangement to restore and fall back to the default.
+        // Reset the composition for the new trip. Crops always reset (a crop in
+        // fractions of the previous trip's frames would land wrong here), and
+        // the audio follows the main camera again. Multi-camera trips restore
+        // the arrangement remembered for this camera set (player-layout-pref),
+        // so stepping through several trips off one card keeps it.
         const tripChannels = new Set<Channel>();
         for (const f of trip.frames) {
             for (const [ch, cand] of Object.entries(f.channels)) {
@@ -732,27 +728,10 @@ export function playFrame(
             }
         }
         const playableChannels = [...tripChannels];
-        const restored = restoreLayoutForTrip(trip, playableChannels);
-        if (restored) {
-            setLayoutAndChannels({
-                layout: restored.layout,
-                channelOrder: restored.channelOrder,
-                // Audio source is not persisted; default to the (restored) main slot.
-                audioChannel: restored.channelOrder[0],
-            });
-        } else {
-            const def = defaultCompositionForChannels(playableChannels);
-            setLayoutAndChannels({
-                layout: def.layout,
-                channelOrder: def.channelOrder,
-                audioChannel: def.audioChannel,
-            });
-        }
-        // Always clear per-slot crops/scales/PiP positions: setLayoutAndChannels
-        // only resizes them on a layout CHANGE, so a trip whose layout matches the
-        // previous one would otherwise inherit a crop expressed in the old source's
-        // fractions.
-        resetPerSlotComposition();
+        state.composition = {
+            ...defaultCompositionForChannels(playableChannels),
+            ...restoreArrangementForTrip(trip, playableChannels),
+        };
         // Reset the export range to the new trip's full span - a range carried
         // over from a longer previous trip would slice no files on a shorter one.
         resetExportRangeForTrip(trip);
@@ -1554,62 +1533,54 @@ function isHeldTailChannel(ch: Channel): boolean {
 }
 
 /**
- * Writes the layout-derived attributes for a frame: grid dataset
- * (channelCount / viewMode / layout) plus each tile's slot, tileRole and
- * .active class. Shared by syncFrameToGrid (full attach) and syncGridLayoutOnly
- * (cosmetic focus<->split toggle) so the two never drift on how a tile's
- * role/slot is set or cleared.
+ * Writes the per-tile state for a frame and lays the tiles out: visibility,
+ * the playable / unplayable / no-recording look, the .active master mark and
+ * the geometry from the layout engine (player-layout.ts). Shared by
+ * syncFrameToGrid (full attach) and syncGridLayoutOnly (arrangement changes)
+ * so the two never drift on how a tile's state is set.
  *
- * Slot index per channel comes from composition.channelOrder, so user
- * reordering via top-panel reflects in the player. Legacy data-tile-role
- * (primary / thumb-N) follows the same order: primary = slot 0; thumbs go
- * 0..N-1 by slot rank, not by canonical ALL_CHANNELS iteration. In split-mode
- * role is cleared - CSS auto-flow places tiles via data-channel-count.
+ * A visible camera always keeps its tile: without footage at this moment it
+ * shows a "no recording" placeholder in place instead of vanishing and
+ * reflowing the others. The order comes from frameCameraAvailability, so a
+ * camera standing in for a main camera without footage takes the main place
+ * - the same rule the export follows. Hidden cameras get no tile.
  *
- * Owns tile VISIBILITY (tile.hidden) and the grid's data-channel-count: a tile
- * shows iff the frame has the channel (or the channel holds a paired tail's
- * last frame, heldTailCandidate) AND the composition includes it, so a
- * camera toggled off in the top-panel disappears from the grid and the
- * data-channel-count shrinks (CSS templates key off it). Does NOT touch
- * <video>.src / backends - only syncFrameToGrid attaches/disposes media.
+ * Does NOT touch <video>.src / backends - only syncFrameToGrid attaches media.
  */
-function applyTileLayoutRoles(frame: TripFrame, activeCh: Channel, masterOffsetSec = activePlayer().currentTime): void {
+function applyTileLayoutRoles(
+    frame: TripFrame,
+    activeCh: Channel,
+    masterOffsetSec = activePlayer().currentTime,
+    opts: { animate?: boolean } = {},
+): void {
     syncCameraFlips();
-    const isFocus = isFocusLayout(state.composition.layout);
-    const channelOrder = state.composition.channelOrder;
-    // Grid sizing follows the COMPOSITION (visible slots), not the frame's raw
-    // channel count - excluding a camera must shrink the grid, in the player and
-    // (since composition is shared) the export.
-    dom.videoGrid.dataset.channelCount = String(channelOrder.length);
-    // data-view-mode (focus|split) is the legacy coarse marker that drives
-    // existing CSS; data-layout exposes the precise layout (single/h2/.../pip4)
-    // so CSS/JS can distinguish e.g. h2 from grid2x2 (both "split" in legacy
-    // terms). They stay in sync via setLayoutAndChannels().
-    dom.videoGrid.dataset.viewMode = isFocus ? "focus" : "split";
-    dom.videoGrid.dataset.layout = state.composition.layout;
+    const visible = visibleChannels();
+    const availability = frameCameraAvailability(frame, visible, state.composition.mode);
+    dom.videoGrid.dataset.channelCount = String(visible.length);
     for (const ch of ALL_CHANNELS) {
         const tile = channelTileFor(ch);
+        const inComposition = visible.includes(ch);
         const cand = frame.channels[ch];
-        const slotIdx = channelOrder.indexOf(ch);
-        const inComposition = slotIdx >= 0;
         const playbackCand =
             ch === activeCh
                 ? cand
                 : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand ?? heldTailCandidate(frame, ch) ?? undefined);
         const failed = !!playbackCand && runtimePlaybackFailures.has(playbackCand);
         const playable = !!playbackCand?.canPlay && !failed;
-        // Three tile states (not a binary visible/hidden):
-        //   - absent (no candidate this frame) or excluded (slotIdx < 0): hidden.
-        //   - present but failed to play, yet still in the composition: KEEP the
-        //     tile (black + label + a "can't play" note) so a camera that exists
-        //     but won't decode does not silently vanish - in a forensic tool a
-        //     disappearing angle reads as "never recorded". It owns its slot/cell
-        //     but is never marked active and gets no media (syncFrameToGrid skips).
-        //   - playable + included: the normal case.
-        const unplayable = !!cand && !playable && inComposition;
-        const visible = (playable && inComposition) || unplayable;
-        tile.hidden = !visible;
+        // Three looks for a visible camera:
+        //   - playable: the normal case.
+        //   - present but failed to play: black + label + a "can't play" note,
+        //     so a camera that exists but won't decode does not silently vanish
+        //     - in a forensic tool a disappearing angle reads as "never
+        //     recorded". It is never marked active and gets no media.
+        //   - no footage at this moment (or a paired tail whose element does
+        //     not show the file's end, e.g. after a jump into the tail): a
+        //     "no recording" placeholder in the camera's place.
+        const unplayable = inComposition && !!playbackCand && !playable;
+        const absent = inComposition && !playbackCand;
+        tile.hidden = !inComposition;
         tile.classList.toggle("tile-unplayable", unplayable);
+        tile.classList.toggle("tile-absent", absent);
         let retry = tile.querySelector<HTMLButtonElement>(".tile-playback-retry");
         if (failed && playbackCand) {
             if (!retry) {
@@ -1626,19 +1597,11 @@ function applyTileLayoutRoles(frame: TripFrame, activeCh: Channel, masterOffsetS
         } else {
             retry?.remove();
         }
-        if (visible) {
-            // Only a playable tile can be the active (audio/large) one.
-            tile.classList.toggle("active", playable && ch === activeCh);
-            tile.dataset.slot = String(slotIdx);
-            if (isFocus && slotIdx === 0) tile.dataset.tileRole = "primary";
-            else if (isFocus && slotIdx > 0) tile.dataset.tileRole = `thumb-${slotIdx - 1}`;
-            else delete tile.dataset.tileRole;
-        } else {
-            tile.classList.remove("active");
-            delete tile.dataset.tileRole;
-            delete tile.dataset.slot;
-        }
+        // Only a playable tile can be the active (master) one.
+        tile.classList.toggle("active", inComposition && playable && ch === activeCh);
     }
+    applyCameraLayout(availability.order, opts);
+    syncCamerasMenu();
 }
 
 /**
@@ -1667,9 +1630,9 @@ function syncFrameToGrid(
         const attachCand = ch === activeCh ? cand : (activeSlaveTarget(ch, masterOffsetSec)?.cand ?? cand);
         if (attachCand?.canPlay && !runtimePlaybackFailures.has(attachCand)) {
             detachIfErrored(v, attachCand.file);
-            // Mute/volume: audio source = composition.audioChannel (decoupled
-            // from the visual main slot). preferredMuted still wins globally;
-            // non-audio channels are muted with volume=0 as a dirty fallback.
+            // Mute/volume: the audio source (playbackAudioChannel).
+            // preferredMuted still wins globally; other channels are muted
+            // with volume=0 as a dirty fallback.
             routeChannelAudio(v, ch);
             // playbackRate: copy from active so slaves run at the same speed.
             v.playbackRate = state.preferredPlaybackRate;
@@ -1728,10 +1691,6 @@ function syncFrameToGrid(
             clearVideoSrc(v);
         }
     }
-    // Hide the view-mode button on single-channel trips - layout choice is moot.
-    const heldChannelCount = ALL_CHANNELS.filter((ch) => heldTailCandidate(frame, ch)).length;
-    dom.viewModeBtn.hidden = frameChannels(frame).length + heldChannelCount <= 1;
-    syncViewModeButton();
     relabelChannelTiles();
     syncOutputAspect();
 }
@@ -1771,240 +1730,10 @@ function syncOutputAspect(): void {
     if (aspect) dom.videoGrid.style.setProperty("--dc-output-aspect", aspect);
     else dom.videoGrid.style.removeProperty("--dc-output-aspect");
     // syncOutputAspect runs on every export-state change (subscribeExportState)
-    // and at the end of layout syncs - the single hook point for pip insets +
-    // crop previews.
-    syncPipOverlays();
+    // and at the end of layout syncs - the hook point for the export preview
+    // box (output shape, crops) and the crop previews inside it.
+    relayoutCameras();
     syncCropPreviews();
-}
-
-// === True PiP overlay rendering (export-mode) ===
-// In pip layouts the main slot fills the output frame and the other channels
-// become small overlays on top of it. Casual viewing keeps the legacy
-// focus-mode side-column (still useful for watching). We reuse getSplitSlots
-// (the exact geometry the export pipeline uses) so the preview matches the
-// burned output, and absolute-position each tile from the returned rects.
-
-/** Numeric output aspect (w/h) for getSplitSlots; defaults to 16/9. */
-function computeOutputAspectNumber(): number {
-    const css = computeOutputAspect();
-    if (!css) return 16 / 9;
-    const parts = css.split("/");
-    const w = Number.parseFloat(parts[0] ?? "");
-    const h = Number.parseFloat(parts[1] ?? "");
-    return w > 0 && h > 0 ? w / h : 16 / 9;
-}
-
-/** Source aspect (w/h) of a channel's video; 1 if metadata not yet loaded. */
-function channelSourceAspect(ch: Channel): number {
-    const v = channelPlayers[ch];
-    if (v && v.videoWidth > 0 && v.videoHeight > 0) return v.videoWidth / v.videoHeight;
-    return 1;
-}
-
-/** Inline style props written on a pip-inset tile for absolute positioning.
- *  Cleared together when a tile leaves pip-inset or the layout is not pip. */
-const PIP_INSET_INLINE_PROPS = ["position", "left", "top", "width", "height", "z-index"];
-
-function clearPipInsetInlineProps(tile: HTMLElement): void {
-    for (const prop of PIP_INSET_INLINE_PROPS) tile.style.removeProperty(prop);
-}
-
-/** Clears any inline pip positioning so non-pip / casual layouts use CSS. */
-function clearPipInlineStyles(): void {
-    if (dom.videoGrid) {
-        dom.videoGrid.classList.remove("pip-overlay-mode");
-        dom.videoGrid.style.removeProperty("grid-template-columns");
-        dom.videoGrid.style.removeProperty("grid-template-rows");
-    }
-    for (const ch of ALL_CHANNELS) {
-        const tile = channelTileFor(ch);
-        tile.classList.remove("pip-inset", "pip-main");
-        clearPipInsetInlineProps(tile);
-    }
-}
-
-function syncPipOverlays(): void {
-    const layout = state.composition.layout;
-    if (!state.exportModeOpen || !isPipLayout(layout)) {
-        clearPipInlineStyles();
-        return;
-    }
-    const af = activeFrame();
-    if (!af) {
-        clearPipInlineStyles();
-        return;
-    }
-    const channelOrder = state.composition.channelOrder;
-    const slotCount = channelOrder.length;
-    const slotEffectiveAspects: number[] = [];
-    for (let i = 0; i < slotCount; i++) {
-        const ch = channelOrder[i];
-        slotEffectiveAspects[i] = ch ? channelSourceAspect(ch) : 1;
-    }
-    const ctx: SplitSlotsContext = {
-        outputAspect: computeOutputAspectNumber(),
-        slotEffectiveAspects,
-        slotPipScales: state.composition.perSlotScales,
-        overlayPositions: state.composition.perSlotPipPositions,
-    };
-    const slots = getSplitSlots(layout, ctx);
-
-    dom.videoGrid.classList.add("pip-overlay-mode");
-    // The export-mode grid takes its size from in-flow content (the video), so
-    // the main slot stays IN FLOW filling a single-cell grid - without it the
-    // grid would collapse to zero height. Insets overlay absolutely on top.
-    dom.videoGrid.style.gridTemplateColumns = "1fr";
-    dom.videoGrid.style.gridTemplateRows = "1fr";
-    for (const ch of ALL_CHANNELS) {
-        const tile = channelTileFor(ch);
-        const slotIdx = channelOrder.indexOf(ch);
-        const slot = slotIdx >= 0 ? slots[slotIdx] : undefined;
-        if (slot && !tile.hidden && slotIdx === 0) {
-            // Main slot: in-flow, fills the single grid cell, gives the grid size.
-            tile.classList.add("pip-main");
-            tile.classList.remove("pip-inset");
-            clearPipInsetInlineProps(tile);
-        } else if (slot && !tile.hidden) {
-            // Inset slot: absolute overlay positioned from getSplitSlots.
-            tile.classList.add("pip-inset");
-            tile.classList.remove("pip-main");
-            tile.style.position = "absolute";
-            tile.style.left = `${(slot.x * 100).toFixed(3)}%`;
-            tile.style.top = `${(slot.y * 100).toFixed(3)}%`;
-            tile.style.width = `${(slot.w * 100).toFixed(3)}%`;
-            tile.style.height = `${(slot.h * 100).toFixed(3)}%`;
-            tile.style.zIndex = "2";
-        } else {
-            tile.classList.remove("pip-inset", "pip-main");
-            clearPipInsetInlineProps(tile);
-        }
-    }
-}
-
-// Drag-to-move and corner-resize for pip insets. Active only in export-mode
-// pip layouts on non-main tiles. A movement threshold separates a drag from a
-// click so the audio-swap click handler still works on a tap; after a real
-// drag the next click is swallowed so it does not also swap audio.
-const PIP_DRAG_THRESHOLD_PX = 4;
-const PIP_SCALE_MIN = 0.3;
-const PIP_SCALE_MAX = 2.0;
-let pipDragJustHappened = false;
-
-function pipInsetSlotIdx(tile: HTMLElement): number {
-    if (!state.exportModeOpen || !isPipLayout(state.composition.layout)) return -1;
-    const ch = tile.dataset.channel as Channel | undefined;
-    if (!ch) return -1;
-    const idx = state.composition.channelOrder.indexOf(ch);
-    // slot 0 is the full-frame main - not a draggable inset.
-    return idx >= 1 ? idx : -1;
-}
-
-function initPipInteractions(): void {
-    // Suppress the audio-swap click that follows a drag (capture phase, before
-    // the bubble-phase swap delegate in player-tile-input.ts).
-    dom.videoGrid.addEventListener(
-        "click",
-        (e) => {
-            if (pipDragJustHappened) {
-                pipDragJustHappened = false;
-                e.stopImmediatePropagation();
-                e.preventDefault();
-            }
-        },
-        true,
-    );
-
-    for (const ch of ALL_CHANNELS) {
-        const tile = channelTileFor(ch);
-        attachPipDrag(tile);
-        const handle = tile.querySelector<HTMLButtonElement>(".pip-resize");
-        if (handle) attachPipResize(tile, handle);
-    }
-}
-
-function attachPipDrag(tile: HTMLElement): void {
-    let slotIdx = -1;
-    let startX = 0;
-    let startY = 0;
-    let baseXPct = 0;
-    let baseYPct = 0;
-    let wPct = 0;
-    let hPct = 0;
-    let dragging = false;
-    attachPointerDrag(tile, {
-        onStart: (e) => {
-            if ((e.target as HTMLElement)?.classList.contains("pip-resize")) return false;
-            slotIdx = pipInsetSlotIdx(tile);
-            if (slotIdx < 0) return false;
-            const grid = dom.videoGrid.getBoundingClientRect();
-            const r = tile.getBoundingClientRect();
-            if (grid.width <= 0 || grid.height <= 0) return false;
-            startX = e.clientX;
-            startY = e.clientY;
-            baseXPct = (r.left - grid.left) / grid.width;
-            baseYPct = (r.top - grid.top) / grid.height;
-            wPct = r.width / grid.width;
-            hPct = r.height / grid.height;
-            dragging = false;
-            return true;
-        },
-        onMove: (e) => {
-            if (slotIdx < 0) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            if (!dragging && Math.hypot(dx, dy) < PIP_DRAG_THRESHOLD_PX) return;
-            dragging = true;
-            tile.classList.add("pip-dragging");
-            const grid = dom.videoGrid.getBoundingClientRect();
-            const maxX = Math.max(0, 1 - wPct);
-            const maxY = Math.max(0, 1 - hPct);
-            const xPct = Math.max(0, Math.min(maxX, baseXPct + dx / grid.width));
-            const yPct = Math.max(0, Math.min(maxY, baseYPct + dy / grid.height));
-            state.composition.perSlotPipPositions[slotIdx] = { xPct, yPct };
-            syncPipOverlays();
-        },
-        onEnd: () => {
-            tile.classList.remove("pip-dragging");
-            if (dragging) {
-                dragging = false;
-                // Swallow the click that the browser dispatches after pointerup so
-                // it does not also trigger an audio-source swap.
-                pipDragJustHappened = true;
-            }
-        },
-    });
-}
-
-function attachPipResize(tile: HTMLElement, handle: HTMLButtonElement): void {
-    let slotIdx = -1;
-    let anchorLeftPx = 0;
-    attachPointerDrag(handle, {
-        onStart: (e) => {
-            slotIdx = pipInsetSlotIdx(tile);
-            if (slotIdx < 0) return false;
-            anchorLeftPx = tile.getBoundingClientRect().left;
-            tile.classList.add("pip-dragging");
-            e.preventDefault();
-            e.stopPropagation();
-            return true;
-        },
-        onMove: (e) => {
-            if (slotIdx < 0) return;
-            const grid = dom.videoGrid.getBoundingClientRect();
-            if (grid.width <= 0) return;
-            const widthPct = (e.clientX - anchorLeftPx) / grid.width;
-            const ch = state.composition.channelOrder[slotIdx];
-            const effAspect = ch ? channelSourceAspect(ch) : 1;
-            // Invert computeOverlayDims: wPct = CHAR_SIZE × scale × effAspect / outputAspect.
-            const scale =
-                (widthPct * computeOutputAspectNumber()) / (PIP_OVERLAY_CHAR_SIZE * Math.max(1e-6, effAspect));
-            state.composition.perSlotScales[slotIdx] = Math.max(PIP_SCALE_MIN, Math.min(PIP_SCALE_MAX, scale));
-            syncPipOverlays();
-        },
-        onEnd: () => {
-            tile.classList.remove("pip-dragging");
-        },
-    });
 }
 
 function computeOutputAspect(): string | null {
@@ -2034,64 +1763,6 @@ function computeOutputAspect(): string | null {
             }
             return null;
     }
-}
-
-/** Updates the view-mode button visuals: orange active indicator + SVG icon (focus = picture-in-picture, split = grid-2x2). */
-function syncViewModeButton(): void {
-    const isFocus = isFocusLayout(state.composition.layout);
-    dom.viewModeBtn.dataset.mode = isFocus ? "focus" : "split";
-    const focusIcon = dom.viewModeBtn.querySelector<HTMLElement>(".i-vm-focus");
-    const splitIcon = dom.viewModeBtn.querySelector<HTMLElement>(".i-vm-split");
-    if (focusIcon) focusIcon.hidden = !isFocus;
-    if (splitIcon) splitIcon.hidden = isFocus;
-    const label = isFocus ? t("player.view.focus") : t("player.view.split");
-    dom.viewModeBtn.setAttribute("aria-label", label);
-    dom.viewModeBtn.setAttribute("title", label);
-}
-
-/** Tiled (split) layout for a given visible-slot count: 2 -> h2, 3 ->
- *  left1right2, 4 -> grid2x2 (1 slot never reaches split). */
-function splitLayoutForSlots(slots: number): Layout {
-    return slots === 2 ? "h2" : slots === 3 ? "left1right2" : "grid2x2";
-}
-
-/** Focus (pip) layout for a given visible-slot count: 1 -> single,
- *  2/3/4 -> pip2/pip3/pip4. */
-function focusLayoutForSlots(slots: number): Layout {
-    return slots === 2 ? "pip2" : slots === 3 ? "pip3" : slots === 4 ? "pip4" : "single";
-}
-
-/**
- * Toggles between focus and split modes. CSS reacts to data-view-mode for the
- * layout change.
- *
- * Only layout attributes and tile roles change here (via syncGridLayoutOnly) -
- * the <video> backends are left untouched. The earlier version called
- * syncFrameToGrid, whose per-channel attachCandidateToVideo pass hit the "same
- * file, new startSec" branch for MSE backends (TS / hev1-remux) with the
- * default startSec=0, did seekTo(0) + currentTime=0 and reset playback to the
- * start. Native MP4 was unaffected (setVideoSrcFromFile is idempotent per File).
- */
-function toggleViewMode(): void {
-    // Every tile changes size and place (focus<->split), so kept offsets
-    // would land on an arbitrary part of the frame.
-    resetVideoZoom();
-    // Pick a layout that matches the requested coarse view mode. Slot count
-    // follows the current trip's channel count; setLayoutAndChannels resizes
-    // per-slot arrays to match. Existing CSS keys off data-view-mode for the
-    // visual placement (focus = primary+thumbs, split = equal grid), so the
-    // pipN / h2 / grid2x2 / left1right2 choice is mostly state bookkeeping
-    // until layout-specific CSS lands.
-    const goingToSplit = isFocusLayout(state.composition.layout);
-    const slots = state.composition.channelOrder.length;
-    const nextLayout = goingToSplit ? splitLayoutForSlots(slots) : focusLayoutForSlots(slots);
-    setLayoutAndChannels({ layout: nextLayout });
-    const af = activeFrame();
-    if (af) syncGridLayoutOnly(af.frame, effectiveMasterChannel());
-    syncViewModeButton();
-    syncTopPanel();
-    // User changed focus<->split: remember it for this camera set.
-    persistCurrentLayout();
 }
 
 // Brief center play/pause icon flash on the active tile, confirming a toggle the
@@ -2126,16 +1797,15 @@ function flashPlaybackToggle(forcePlaying?: boolean): void {
 }
 
 /**
- * Cosmetic layout-only update for the current frame: grid dataset + per-tile
- * slot/tileRole/active, via applyTileLayoutRoles. Does NOT touch src/backends -
- * used by the focus<->split toggle and composition changes (see toggleViewMode /
- * applyComposition) where media must keep playing uninterrupted. `activeCh` is
- * the channel that plays as master, as in syncFrameToGrid: in a frame without
- * the main channel, passing the main one would leave no tile active and hide
- * a main channel that holds a paired tail's last frame.
+ * Arrangement-only update for the current frame: per-tile state and layout via
+ * applyTileLayoutRoles. Does NOT touch src/backends - used by arrangement
+ * changes (see applyComposition) where media must keep playing uninterrupted.
+ * `activeCh` is the channel that plays as master, as in syncFrameToGrid: in a
+ * frame without the main channel, passing the main one would leave no tile
+ * active.
  */
-function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel): void {
-    applyTileLayoutRoles(frame, activeCh);
+function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel, opts: { animate?: boolean } = {}): void {
+    applyTileLayoutRoles(frame, activeCh, activePlayer().currentTime, opts);
     const picked = pickFrameChannel(frame, activeCh);
     if (picked && runtimePlaybackFailures.has(picked.candidate)) {
         showRuntimePlaybackFailure(picked.candidate, picked.channel);
@@ -2146,49 +1816,58 @@ function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel): void {
 }
 
 /**
- * Re-applies state.composition to the live DOM video grid - tile positions,
- * view-mode button, audio routing. Idempotent and cheap; called by top-panel
- * after layout / channelOrder / audioChannel mutations.
+ * Re-applies state.composition to the live DOM video grid - tile places and
+ * looks, audio routing, the Cameras menu. Idempotent and cheap; called after
+ * every arrangement change (camera-arrangement.ts) and export setting that
+ * reshapes the preview. `animate` slides the tiles to their new places.
  *
- * Does NOT change <video>.src - composition mutations don't change which file
- * plays in which slot, only which slot is "primary" and which slot owns audio.
- * Without an active frame this is a no-op (nothing on screen to update).
+ * Does NOT change <video>.src: an arrangement change moves tiles and may hand
+ * the master clock to another already-playing camera, but every camera keeps
+ * its file. Without an active frame this is a no-op.
  */
-export function applyComposition(): void {
+export function applyComposition(opts: { animate?: boolean } = {}): void {
     const af = activeFrame();
     if (af) {
-        syncGridLayoutOnly(af.frame, effectiveMasterChannel());
+        syncGridLayoutOnly(af.frame, effectiveMasterChannel(), opts);
         syncAudioRouting();
     }
-    syncViewModeButton();
+    syncCamerasMenu();
     syncTopPanel();
 }
 
+/** Camera whose sound plays now: the user's pick, else the camera in the main
+ *  place (a stand-in when the main one has no footage, the sibling while a
+ *  paired tail holds), falling back to the next camera with sound. */
+function playbackAudioChannel(): Channel {
+    const af = activeFrame();
+    if (!af) return audioChannel();
+    const order = frameCameraAvailability(af.frame, visibleChannels(), state.composition.mode).order;
+    const recording = order.filter((ch) => af.frame.channels[ch]);
+    return audioChannel(recording.length ? recording : order);
+}
+
 /**
- * Applies state.composition.audioChannel to per-channel <video>.muted/volume.
- * The visual main slot (channelOrder[0]) is decoupled from the audio source -
- * user can show front in the big tile but listen to rear via the audio
- * dropdown.
- *
- * preferredMuted still wins: if the user is globally muted, the audio source
- * is muted too. Non-audio channels are always muted regardless.
+ * Applies the audio choice (playbackAudioChannel) to per-channel
+ * <video>.muted/volume. preferredMuted still wins: if the user is globally
+ * muted, the audio source is muted too. Other channels are always muted.
  */
 function syncAudioRouting(): void {
+    const source = playbackAudioChannel();
     for (const ch of ALL_CHANNELS) {
         const v = channelPlayers[ch];
-        if (v) routeChannelAudio(v, ch);
+        if (v) routeChannelAudio(v, ch, source);
     }
 }
 
 /**
- * Applies the per-channel audio routing rule to one <video>: the channel that
- * matches composition.audioChannel carries sound (at preferredVolume unless
- * globally muted); every other channel is muted with volume 0. Single source of
- * the rule - promote/grid-sync/audio-sync all route through here so the paths
- * cannot drift.
+ * Applies the per-channel audio routing rule to one <video>: the audio
+ * source carries sound (at preferredVolume unless globally muted); every other
+ * channel is muted with volume 0. Single source of the rule -
+ * promote/grid-sync/audio-sync all route through here so the paths cannot
+ * drift.
  */
-function routeChannelAudio(v: HTMLVideoElement, ch: Channel): void {
-    const isAudioSource = ch === state.composition.audioChannel;
+function routeChannelAudio(v: HTMLVideoElement, ch: Channel, source: Channel = playbackAudioChannel()): void {
+    const isAudioSource = ch === source;
     v.muted = !isAudioSource || state.preferredMuted;
     v.volume = isAudioSource ? state.preferredVolume : 0;
 }
@@ -2390,9 +2069,7 @@ export function seekPresentedContentTime(contentSec: number): void {
     const trip = activeTrip();
     if (!trip) return;
     const destination = trip.frames[contentToFrame(trip.timeline, contentSec).index];
-    const channel = destination
-        ? (pickFrameChannel(destination, mainChannel())?.channel ?? mainChannel())
-        : mainChannel();
+    const channel = (destination && frameMasterChannel(destination)) ?? mainChannel();
     seekTripTime(playbackTimeForContent(trip.timeline, tripCandidatesByChannel(trip, channel), contentSec));
 }
 
@@ -2670,13 +2347,12 @@ export function initPlayer(): void {
         resyncMetricsForTrip();
     });
 
-    // Initialize data-view-mode immediately - without it CSS selectors
-    // `.video-grid[data-view-mode="focus"]` won't match and tiles end up in the default (split-like) display.
-    // On single-channel this isn't visible (one tile fills the area in either mode), but the first ingest
-    // of a multichannel trip needs the correct focus-layout from the start.
-    dom.videoGrid.dataset.viewMode = isFocusLayout(state.composition.layout) ? "focus" : "split";
-    dom.videoGrid.dataset.layout = state.composition.layout;
-    syncViewModeButton();
+    initPlayerLayout();
+    initCameraArrangement({
+        apply: ({ animate }) => applyComposition({ animate }),
+        resetZoom: resetVideoZoom,
+    });
+    initCamerasMenu();
 
     // Export-mode toggles -> recompute --dc-output-aspect so the letterbox
     // snaps to the right shape on open/close. Same subscriber catches
@@ -2699,21 +2375,15 @@ export function initPlayer(): void {
 
     initPlayerVolume({ applyAudioRouting: syncAudioRouting });
 
-    dom.viewModeBtn.addEventListener("click", toggleViewMode);
-
     initPlayerZoom();
 
     initPlayerTileInput({
         toggleFullscreen,
-        toggleViewMode,
-        applyComposition,
         consumeDragClickSuppress,
         flashPlaybackToggle,
     });
 
-    initTileReorder({ applyComposition, resetZoom: resetVideoZoom });
-
-    initPipInteractions();
+    initTileReorder();
 
     // Slave loadedmetadata: sync currentTime to active. Active loadedmetadata
     // is handled via onActivePlayerEvent above (with pendingFileOffset).
@@ -2888,7 +2558,7 @@ export function initPlayer(): void {
         }
         // Volume/mute likewise: some browsers reset them on src change. Restore
         // via the ROUTING, not by writing preferred* onto dom.player directly:
-        // the audio source is composition.audioChannel, which may not be the
+        // the audio source (playbackAudioChannel) may not be the
         // active element - the direct write unmuted the master at preferred
         // volume on every file boundary, producing two audible channels (echo)
         // until the next syncFrameToGrid.

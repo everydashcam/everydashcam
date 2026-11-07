@@ -23,7 +23,7 @@ import { getLogBuffer } from "./log.js";
 import { capabilitySignature, detectCapabilities } from "./capabilities.js";
 import { collectGraphicsDiagnostics, type GraphicsDiagnostics } from "./graphics-diagnostics.js";
 import { tripAllCandidates, type VideoCandidate } from "./trips.js";
-import { isPipLayout, mainChannel, state } from "./ui/state.js";
+import { mainChannel, state } from "./ui/state.js";
 import { APP_VERSION } from "./version.js";
 
 interface DiagFileEntry {
@@ -194,8 +194,7 @@ export function collectDiagnostics(extras?: { storageQuota?: number; storageUsag
             activeTripIndex: state.active?.trip ?? null,
             activeFrameIndex: state.active?.frame ?? null,
             preferredChannel: mainChannel(),
-            viewMode:
-                isPipLayout(state.composition.layout) || state.composition.layout === "single" ? "focus" : "split",
+            viewMode: state.composition.mode,
             followMode: state.followMode,
             chartZoomed: state.chartZoomed,
             mapExpanded: state.mapExpanded,

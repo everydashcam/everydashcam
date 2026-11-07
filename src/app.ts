@@ -143,7 +143,6 @@ import {
 } from "./ui/trip-open-target.js";
 import { initOnboarding, pickTripOpenTour, runTripOpenTour } from "./ui/onboarding.js";
 import { initSupportPrompt } from "./ui/support-prompt.js";
-import { resetVideoZoom } from "./ui/player-zoom.js";
 import { clearOpeningTrip, initSidebar, renderTrips, syncSortControls } from "./ui/sidebar.js";
 import { initSidebarResize } from "./ui/sidebar-resize.js";
 import { activeTrip, state } from "./ui/state.js";
@@ -512,7 +511,7 @@ initExportMode();
 initMobileViewNav((index, saveClip) => {
     if (state.active) void openTripEvent(state.active.trip, index, saveClip);
 });
-initTopPanel({ onCompositionApply: applyComposition, resetZoom: resetVideoZoom });
+initTopPanel();
 initExportPanel({ onCompositionApply: applyComposition });
 initExportTrimBar({ getTripCurrentTime, seekThenPlay });
 initTimelineRange();

@@ -16,6 +16,7 @@ import {
     presetLocalStorage,
     test,
 } from "./_fixtures.js";
+import { makeMainFromMenu, showOnlyCameras } from "./_cameras.js";
 
 const SAMPLE = path.join(REPO_ROOT, "tests/testdata/asymmetric-channels");
 const LIVE_VIDEO = "video:not(.preload-slot):not(.tile-blur-bg)";
@@ -72,14 +73,7 @@ async function seekTo(page: Page, seconds: number): Promise<void> {
 }
 
 async function makeInteriorMain(page: Page): Promise<void> {
-    const interior = await boxOf(page, '.top-panel__channel-chip[data-channel="interior"]');
-    const front = await boxOf(page, '.top-panel__channel-chip[data-channel="front"]');
-    await page.mouse.move(interior.x + interior.width / 2, interior.y + interior.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(interior.x + interior.width / 2 + 8, interior.y + interior.height / 2, { steps: 3 });
-    await page.mouse.move(front.x + front.width / 2, front.y + front.height / 2, { steps: 8 });
-    await expect(page.locator('.top-panel__channel-chip[data-channel="front"]')).toHaveClass(/drop-before/);
-    await page.mouse.up();
+    await makeMainFromMenu(page, "interior");
     await expect(page.locator(".video-tile.active")).toHaveAttribute("data-channel", "interior");
 }
 
@@ -281,8 +275,7 @@ test("opens the interior file from its sidebar row at its own start", async ({ p
 
 test("exports one continuous interior range across its file boundary", async ({ page }) => {
     await openExport(page);
-    await page.locator('.top-panel__channel-chip[data-channel="front"] .top-panel__channel-include').uncheck();
-    await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+    await showOnlyCameras(page, ["interior"]);
     for (const [edge, seconds] of [
         ["start", "88"],
         ["end", "98"],

@@ -15,6 +15,7 @@ import {
     presetLocalStorage,
     test,
 } from "./_fixtures.js";
+import { chooseAudioSource, visibleCameraOrder } from "./_cameras.js";
 
 test.use({ viewerMap: "route-only" });
 
@@ -547,26 +548,29 @@ test("a rejected exit keeps controls available and prevents a hidden clip editor
     await expect(page.locator("#player-wrap")).toHaveClass(/player-panels-below/);
 });
 
-test("double-clicking another camera changes fullscreen without changing playback or audio", async ({ page }) => {
+test("double-clicking a smaller camera changes fullscreen without making it main or changing playback", async ({
+    page,
+}) => {
     await gotoApp(page);
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
-    const audio = page.locator(".top-panel__audio-select");
-    const camera = await audio.inputValue();
-    expect(camera).not.toBe("rear");
+    const order = await visibleCameraOrder(page);
+    expect(order[0]).not.toBe("rear");
     const time = await masterVideoTime(page);
     const rear = page.locator('.video-tile[data-channel="rear"] video:not(.preload-slot):not(.tile-blur-bg)');
     await rear.dblclick();
     await expect(page.locator("#player-wrap")).toHaveClass(/player-expanded/);
-    // Survive the single-click delay so a deferred audio swap cannot pass unnoticed.
+    // Survive the single-click delay so a deferred camera swap cannot pass unnoticed.
     await page.waitForTimeout(350);
-    await expect(audio).toHaveValue(camera);
+    expect(await visibleCameraOrder(page)).toEqual(order);
     await expect(page.locator("#player-play")).toHaveAttribute("data-paused", "true");
     expect(await masterVideoTime(page)).toBeCloseTo(time, 2);
-    await rear.dblclick();
+    // The controls overlay the lower edge of the full-screen picture, where
+    // the smaller cameras sit; their upper part stays reachable.
+    await rear.dblclick({ position: { x: 20, y: 10 } });
     await expect(page.locator("#player-wrap")).not.toHaveClass(/player-expanded/);
     await page.waitForTimeout(350);
-    await expect(audio).toHaveValue(camera);
+    expect(await visibleCameraOrder(page)).toEqual(order);
     await expect(page.locator("#player-play")).toHaveAttribute("data-paused", "true");
 });
 
@@ -694,7 +698,7 @@ test("video above panels preserves the recording and remembers either choice aft
     await gotoApp(page);
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
-    await page.locator(".top-panel__audio-select").selectOption("rear");
+    await chooseAudioSource(page, "rear");
     const master = page.locator(".video-tile.active video:not(.preload-slot):not(.tile-blur-bg)");
     await master.hover();
     await page.mouse.wheel(0, -120);
@@ -950,7 +954,7 @@ test("video above panels preserves editor range, composition, overlays, crop and
     await end.press("Enter");
     const range = [await start.inputValue(), await end.inputValue()];
     await page.locator('.export-panel__radio input[value="low"]').check();
-    await page.locator(".top-panel__audio-select").selectOption("rear");
+    await chooseAudioSource(page, "rear");
     await page.locator("#export-panel-ov-speed").check();
     await page.locator("#export-panel-ov-coords").check();
     await page.locator('.video-tile[data-channel="front"]').dblclick();
@@ -1005,14 +1009,14 @@ test("video above panels preserves editor range, composition, overlays, crop and
     await page.mouse.up();
     await expect.poll(async () => (await blur.boundingBox())!.x).not.toBeCloseTo(beforeBlur!.x, 0);
     await page.locator('.video-tile[data-channel="interior"]').click();
-    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.composition.audioChannel)).toBe("interior");
+    await expect.poll(() => visibleCameraOrder(page).then((order) => order[0])).toBe("interior");
     const editedComposition = await page.evaluate(() => window.__everydashcam.state.composition);
     const readBlurPlacement = () =>
         blur.evaluate((element) => {
             const tile = element.closest<HTMLElement>(".video-tile")!;
             const video = tile.querySelector<HTMLVideoElement>("video:not(.preload-slot):not(.tile-blur-bg)")!;
             const composition = window.__everydashcam.state.composition;
-            const crop = composition.perSlotCrops[composition.channelOrder.indexOf("front")]!;
+            const crop = composition.crops.front!;
             const aspect = ((video.videoWidth / video.videoHeight) * crop.wPct) / crop.hPct;
             const tileRect = tile.getBoundingClientRect();
             const rect = element.getBoundingClientRect();

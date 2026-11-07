@@ -56,7 +56,7 @@ import { exportPanelState, notifyExportStateChanged, subscribeExportState } from
 import { subscribeBlurTripRegroup } from "./blur-regions-state.js";
 import { captureBlurTripSource, matchesBlurTripSource, type BlurTripSource } from "./blur-trip-source.js";
 import { notify } from "./notifications.js";
-import { activeTrip, state } from "./state.js";
+import { activeTrip, state, visibleChannels } from "./state.js";
 import { subscribeTrackerWorkerNotifications, requestTrackerWorker } from "./tracker-worker-client.js";
 
 export type { DetectKind } from "../workers/tracker-protocol.js";
@@ -301,7 +301,7 @@ function passParams(trip: Trip): PassParams | null {
     const range = exportPanelState.range;
     const startSec = range ? range.startTripSec : 0;
     const endSec = range ? range.endTripSec : trip.timeline.contentDurationSec;
-    const channels = [...state.composition.channelOrder];
+    const channels = visibleChannels();
     return {
         // Tile order changes composition, not the source frames to analyze.
         key: `${startSec}|${endSec}|${[...channels].sort().join("+")}|${kinds.map((kind) => `${kind}:${st.thresholds[kind]}`).join("+")}|${st.quality}`,

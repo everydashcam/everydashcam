@@ -32,14 +32,8 @@ const ui = vi.hoisted(() => {
 // app's DOM-facing state and notification imports are severed for Node.
 vi.mock("./state.js", () => ({
     activeTrip: () => ui.trip,
-    state: {
-        exportModeOpen: true,
-        composition: {
-            get channelOrder() {
-                return ui.channels;
-            },
-        },
-    },
+    visibleChannels: () => [...ui.channels],
+    state: { exportModeOpen: true },
 }));
 vi.mock("./export-state.js", () => ({
     exportPanelState: {

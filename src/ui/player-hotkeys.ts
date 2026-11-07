@@ -6,13 +6,14 @@
 // (Shift+arrow = long seek step, Shift+. = >, Shift+I/O = jump to clip edge).
 // Arrow seek steps are user-configurable in settings; defaults 5s / 30s.
 
+import { cycleMainCamera, toggleArrangementMode } from "./camera-arrangement.js";
 import { dom } from "./dom.js";
 import { exportPanelState, setRangeEdge, toggleExportMode } from "./export-state.js";
 import { isAnyModalOpen } from "./modal-helper.js";
 import { stepFrame } from "./player-frame-step.js";
 import { pausePlayback } from "./playback-pause.js";
 import { getSeekStepSec, getSeekStepShiftSec } from "./seek-step-pref.js";
-import { activeCandidate, state } from "./state.js";
+import { activeCandidate, state, visibleChannels } from "./state.js";
 import { flashRangeTab } from "./timeline-range.js";
 
 interface HotkeyDeps {
@@ -200,6 +201,17 @@ export function initPlayerHotkeys(deps: HotkeyDeps): void {
             if (!hasActive) return;
             e.preventDefault();
             deps.toggleLoop();
+            return;
+        }
+
+        // V: main camera + others <-> all cameras equal. N: the next camera
+        // takes the main place. Both need two cameras on screen; with one,
+        // the key is left to the page.
+        if (code === "KeyV" || code === "KeyN") {
+            if (!hasActive || e.repeat || visibleChannels().length < 2) return;
+            e.preventDefault();
+            if (code === "KeyV") toggleArrangementMode();
+            else cycleMainCamera();
             return;
         }
 

@@ -11,6 +11,7 @@ import {
     presetLocalStorage,
     test,
 } from "./_fixtures.js";
+import { cameraCheckbox, closeCamerasMenu, openCamerasMenu } from "./_cameras.js";
 
 for (const locale of ["ru", "de"]) {
     test(`camera controls stay reachable beside the export panel in ${locale}`, async ({ page }) => {
@@ -23,18 +24,17 @@ for (const locale of ["ru", "de"]) {
 
         for (const width of [1024, 768]) {
             await page.setViewportSize({ width, height: 900 });
-            const camera = page.locator('.top-panel__channel-chip[data-channel="interior"] input');
-            await camera.click({ trial: true });
-            const panel = await boxOf(page, "#top-panel");
-            for (const chip of await page.locator(".top-panel__channel-chip").all()) {
-                const bounds = await chip.boundingBox();
-                expect(bounds).not.toBeNull();
-                expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(panel.x + panel.width + 1);
-            }
-            await camera.uncheck();
-            await expect(camera).not.toBeChecked();
-            await camera.check();
-            await expect(camera).toBeChecked();
+            // Inline or folded into the overflow menu, the menu opens.
+            await openCamerasMenu(page);
+            const menu = await boxOf(page, "#player-cameras-popover");
+            expect(menu.x).toBeGreaterThanOrEqual(0);
+            expect(menu.x + menu.width).toBeLessThanOrEqual(width + 1);
+            const camera = cameraCheckbox(page, "interior");
+            await camera.click();
+            await expect(cameraCheckbox(page, "interior")).not.toBeChecked();
+            await cameraCheckbox(page, "interior").click();
+            await expect(cameraCheckbox(page, "interior")).toBeChecked();
+            await closeCamerasMenu(page);
         }
     });
 }
@@ -86,7 +86,7 @@ for (const viewport of [DESKTOP, MOBILE, { width: 360, height: 800 }, { width: 8
     });
 }
 
-test("trip meta counts camera files without a camera count; mobile cameras start collapsed", async ({ page }) => {
+test("trip meta counts camera files without a camera count; mobile cameras live in the bar menu", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(MOBILE);
     await gotoApp(page);
@@ -94,12 +94,16 @@ test("trip meta counts camera files without a camera count; mobile cameras start
     const meta = page.locator(".trip-meta-text").first();
     await expect(meta).toContainText("6 files");
     await expect(meta).not.toContainText("camera");
-    await expect(page.locator("#top-panel-controls")).not.toHaveAttribute("open");
-    await page.locator("#top-panel-controls-summary").click();
-    await expect(page.locator(".top-panel__channel-include").first()).toHaveAccessibleName(/preview and saved video/);
-    await page.locator(".top-panel__channel-include").last().uncheck();
-    await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(2);
-    await expect(page.locator("#top-panel-controls-summary")).toHaveText("2 cameras");
+    await expect(page.locator("#top-panel")).toBeHidden();
+    await openCamerasMenu(page);
+    const menu = await boxOf(page, "#player-cameras-popover");
+    expect(menu.x).toBeGreaterThanOrEqual(0);
+    expect(menu.x + menu.width).toBeLessThanOrEqual(MOBILE.width + 1);
+    await expect(cameraCheckbox(page, "front")).toHaveAccessibleName(/^Show /);
+    await cameraCheckbox(page, "interior").click();
+    await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(2);
+    await closeCamerasMenu(page);
+    await expect(page.locator("#video-grid .video-tile:not([hidden])")).toHaveCount(2);
     await page.locator("#mobile-view-map").click();
     await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
     await page.locator("#mobile-view-video").click();

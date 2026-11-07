@@ -313,8 +313,8 @@ export function initOverflowBar(opts: OverflowBarOptions): OverflowBarHandle {
     for (const group of containers) ro.observe(group);
 
     // Mutation observer on children - detects external visibility changes
-    // (hidden/disabled attribute) after initial measure. E.g. player-view-mode
-    // becomes visible only after trip activation (multi-channel detect);
+    // (hidden/disabled attribute) after initial measure. E.g. player-loop
+    // becomes visible only after trip activation;
     // without this it would not enter overflow despite bar overflowing.
     // attributeFilter narrows traffic; subtree:true catches mutations inside
     // wrappers (.player-mute-wrap).

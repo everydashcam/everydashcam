@@ -1,36 +1,25 @@
-// Direct channel reorder on the video grid: drag a tile by its grip handle and
-// drop it onto another tile to move it into that slot (insert semantics - the
-// rest slide over, like reordering a list). Pointer Events (not HTML5 DnD) so
-// the same gesture works on mouse and touch - the legacy chip DnD in
-// top-panel.ts was dead on touch screens.
+// Direct camera reorder on the video grid: drag a tile by its grip handle and
+// drop it onto another tile. Onto or off the main camera the two trade places
+// (the same swap a click makes); between smaller cameras, and in the equal
+// grid, the camera is inserted at the target and the rest slide over, like
+// reordering a list. Pointer Events (not HTML5 DnD) so the same gesture works
+// on mouse and touch.
 //
 // Why a grip handle (not whole-tile drag): the tile body already owns two
-// gestures - tap = swap audio source (player-tile-input.ts), pan = move the
-// zoomed video (player-zoom.ts). A dedicated hit target keeps all three
-// unambiguous without movement-threshold heuristics that would risk the
-// carefully-tuned zoom/audio interplay.
+// gestures - tap = make main / play-pause (player-tile-input.ts), pan = move
+// the zoomed video (player-zoom.ts). A dedicated hit target keeps all three
+// unambiguous without movement-threshold heuristics.
 //
 // Feedback while dragging: a ghost label tracks the pointer (so the drag is not
 // blind), the source tile dims, and the drop target shows a dashed "drops here"
-// placeholder carrying the dragged channel's name. The actual reorder math is
-// moveChannelInOrder (state.ts), shared with the top-panel chip drag.
+// placeholder carrying the dragged camera's name.
 
 import type { Channel } from "../parsers/types.js";
 import { dom } from "./dom.js";
 import { channelDisplayLabel } from "./format.js";
 import { attachPointerDrag } from "./pointer-drag.js";
-import { persistCurrentLayout } from "./player-layout-pref.js";
-import { activeTrip, moveChannelInOrder, setLayoutAndChannels, state } from "./state.js";
-
-interface ReorderDeps {
-    /** Re-applies composition to the DOM grid (tile roles, audio routing,
-     *  view-mode button, top-panel). Same callback player-tile-input uses. */
-    applyComposition: () => void;
-    /** Resets the active video's digital zoom. A reorder restages which tile is
-     *  primary; a lingering zoom transform would otherwise sit on the ex-primary
-     *  (now a small overlay). Mirrors toggleViewMode / top-panel reorder. */
-    resetZoom: () => void;
-}
+import { makeMainCamera, moveCamera } from "./camera-arrangement.js";
+import { activeTrip, state, visibleChannels } from "./state.js";
 
 interface DragState {
     sourceCh: Channel;
@@ -41,7 +30,6 @@ interface DragState {
     moved: boolean;
 }
 
-let deps: ReorderDeps = { applyComposition: () => {}, resetZoom: () => {} };
 let drag: DragState | null = null;
 // Set true after a real drag ends so the synthetic click the browser fires on
 // pointerup does not reach the grid's audio-swap delegate. Cleared by the next
@@ -55,8 +43,7 @@ let ghostEl: HTMLElement | null = null;
 let placeholderEl: HTMLElement | null = null;
 
 /** Wire the grid reorder. Call once from initPlayer after dom refs resolve. */
-export function initTileReorder(opts: ReorderDeps): void {
-    deps = opts;
+export function initTileReorder(): void {
     attachPointerDrag(dom.videoGrid, {
         onStart: onPointerDown,
         onMove: onPointerMove,
@@ -66,9 +53,9 @@ export function initTileReorder(opts: ReorderDeps): void {
         },
     });
 
-    // Capture-phase so it runs before the bubble-phase audio-swap delegate on
+    // Capture-phase so it runs before the bubble-phase tile click delegate on
     // the same grid element. Swallows: (a) the click after a real drag, and
-    // (b) a plain tap on the handle - neither should swap the audio source.
+    // (b) a plain tap on the handle - neither is a tile click.
     dom.videoGrid.addEventListener(
         "click",
         (ev) => {
@@ -97,13 +84,13 @@ function onPointerDown(ev: PointerEvent): boolean {
     const handle = target.closest(".tile-drag-handle") as HTMLElement | null;
     if (!handle) return false;
     swallowNextClick = false;
-    if (state.composition.channelOrder.length <= 1) return false;
+    if (visibleChannels().length <= 1) return false;
     const sourceTile = handle.closest(".video-tile") as HTMLElement | null;
     if (!sourceTile) return false;
     const sourceCh = sourceTile.dataset.channel as Channel | undefined;
     if (!sourceCh) return false;
 
-    // Keep the gesture ours: no audio-swap, no zoom pan, no text selection.
+    // Keep the gesture ours: no tile click, no zoom pan, no text selection.
     ev.preventDefault();
     ev.stopPropagation();
     drag = { sourceCh, sourceTile, dropTile: null, moved: false };
@@ -137,10 +124,10 @@ function onPointerUp(): void {
     const { sourceCh, dropTile } = drag;
     const targetCh = dropTile?.dataset.channel as Channel | undefined;
     cleanup();
-    // Capture is on the grid; even a tap on the grip must not swap audio.
+    // Capture is on the grid; even a tap on the grip must not reach the tiles.
     swallowNextClick = true;
     if (!targetCh || targetCh === sourceCh) return;
-    insertChannel(sourceCh, targetCh);
+    dropChannel(sourceCh, targetCh);
 }
 
 function cleanup(): void {
@@ -162,9 +149,9 @@ function clearDropTarget(): void {
 /** Visible video-tile under the viewport point, or null. Geometric hit-test by
  *  bounding rect (not elementFromPoint) so overlays painted above the grid - the
  *  route mini-map, zoom mini-map, loading spinner, the drag ghost itself - never
- *  steal the drop target. When tiles overlap (focus-mode floating thumbs sit on
- *  top of the primary) the smallest containing tile wins, i.e. the thumb, which
- *  is the visually topmost. */
+ *  steal the drop target. When tiles overlap (overlay windows sit on top of the
+ *  main camera) the smallest containing tile wins, i.e. the window, which is
+ *  the visually topmost. */
 function tileUnderPoint(clientX: number, clientY: number): HTMLElement | null {
     let best: HTMLElement | null = null;
     let bestArea = Number.POSITIVE_INFINITY;
@@ -181,18 +168,15 @@ function tileUnderPoint(clientX: number, clientY: number): HTMLElement | null {
     return best;
 }
 
-/** Moves `ch` into the slot currently held by `targetCh` (insert, not swap),
- *  then restages the grid. Shared model with the chip drag via
- *  moveChannelInOrder. */
-function insertChannel(ch: Channel, targetCh: Channel): void {
-    const order = state.composition.channelOrder;
-    const targetIndex = order.indexOf(targetCh);
-    if (targetIndex < 0) return;
-    const next = moveChannelInOrder(order, ch, targetIndex);
-    setLayoutAndChannels({ channelOrder: next });
-    deps.resetZoom();
-    deps.applyComposition();
-    persistCurrentLayout();
+/** Drops `ch` onto `targetCh`: a swap when either is the main camera, an
+ *  insert otherwise (see the file header). */
+function dropChannel(ch: Channel, targetCh: Channel): void {
+    const main = visibleChannels()[0];
+    if (state.composition.mode === "main" && (ch === main || targetCh === main)) {
+        makeMainCamera(ch === main ? targetCh : ch);
+        return;
+    }
+    moveCamera(ch, targetCh);
 }
 
 /* ------------------------------ ghost + placeholder ------------------------------ */

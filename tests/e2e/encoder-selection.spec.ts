@@ -17,6 +17,7 @@ import {
     SAMPLE_70MAI,
     test,
 } from "./_fixtures.js";
+import { showOnlyCameras } from "./_cameras.js";
 
 test.use({ viewerMap: "route-only" });
 
@@ -347,9 +348,7 @@ for (const layout of ["single", "composite"] as const) {
         await page.addInitScript(() => localStorage.setItem("everydashcam:encoder", "software"));
         await prepareExport(page);
         if (layout === "single") {
-            const includes = page.locator(".top-panel__channel-include");
-            await includes.nth(2).click();
-            await includes.nth(1).click();
+            await showOnlyCameras(page, ["front"]);
             await page.locator('input[name="export-panel-quality"][value="medium"]').check();
             await page.locator("#export-panel-watermark").uncheck();
         } else {
@@ -386,9 +385,7 @@ test("an unsupported manual encoder explains how to recover while unchanged expo
     await prepareExport(page);
     await expect(page.locator("#export-panel-save-btn")).toBeDisabled();
     await expect(page.locator("#export-panel-encode-note")).toContainText("Automatic");
-    const includes = page.locator(".top-panel__channel-include");
-    await includes.nth(2).click();
-    await includes.nth(1).click();
+    await showOnlyCameras(page, ["front"]);
     await saveExport(page);
     expect(probes).toBe(0);
     expect(

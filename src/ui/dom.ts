@@ -6,9 +6,8 @@
 // graph stays tree-shaped: state -> dom -> everything else.
 
 import type { Channel } from "../parsers/types.js";
-import { pickFrameChannel } from "../trips.js";
 
-import { activeFrame, mainChannel } from "./state.js";
+import { activeFrame, frameMasterChannel, mainChannel } from "./state.js";
 
 /**
  * Strict querySelector helper with an explicit result type - reduces DOM cast
@@ -181,20 +180,16 @@ export const channelPlayers: Record<Channel, HTMLVideoElement> = new Proxy({} as
 });
 
 /**
- * Channel of the actually playing master video. If the current frame has
- * mainChannel(), that is used. Otherwise falls back via pickFrameChannel
- * (same logic as activeCandidate in state.ts) - needed when the preferred
- * channel was saved from a previous multi-channel trip but the current
- * single-channel trip only has a different channel. Without the fallback,
- * activePlayer would return an empty <video>, breaking captureCurrentFrame,
+ * Channel of the actually playing master video (frameMasterChannel for the
+ * active frame): the main camera when it records, else the next visible one
+ * that does, else any camera of the frame. Without the fallback, activePlayer
+ * would return an empty <video>, breaking captureCurrentFrame,
  * dom.player.play()/.currentTime, and other operations that assume "master
  * is playing".
  */
 export function effectiveMasterChannel(): Channel {
-    const main = mainChannel();
     const af = activeFrame();
-    if (!af) return main;
-    return pickFrameChannel(af.frame, main)?.channel ?? main;
+    return af ? (frameMasterChannel(af.frame) ?? mainChannel()) : mainChannel();
 }
 
 /** The active (master) <video> - the one currently playing video. */
@@ -230,7 +225,9 @@ export const dom = {
      *  (see ios-folder-warning-modal.ts). */
     fileInput: $id<HTMLInputElement>("file-input"),
     videoGrid: $id<HTMLElement>("video-grid"),
-    viewModeBtn: $id<HTMLButtonElement>("player-view-mode"),
+    camerasWrap: $id<HTMLElement>("player-cameras-wrap"),
+    camerasBtn: $id<HTMLButtonElement>("player-cameras"),
+    camerasPopover: $id<HTMLElement>("player-cameras-popover"),
     videoTileFront: $sel<HTMLElement>('.video-tile[data-channel="front"]'),
     videoTileRear: $sel<HTMLElement>('.video-tile[data-channel="rear"]'),
     videoTileInterior: $sel<HTMLElement>('.video-tile[data-channel="interior"]'),
@@ -360,15 +357,11 @@ export const dom = {
     playerChartZoomIn: $id<HTMLButtonElement>("player-chart-zoom-in"),
     playerChartOverviewReset: $id<HTMLButtonElement>("player-chart-overview-reset"),
     exportBtn: $id<HTMLButtonElement>("player-export"),
-    // === New side-drawer export panel + top-panel (replace export-modal). ===
-    // Visibility tied to state.exportModeOpen via body.export-mode + the
-    // top-panel matrix (see src/ui/top-panel.ts). Skeleton in index.html, content
-    // rendered by src/ui/top-panel.ts and src/ui/export-panel.ts.
+    // === Side-drawer export panel + the export-mode trip name above the player.
+    // Visibility tied to state.exportModeOpen via body.export-mode. Skeleton in
+    // index.html, content rendered by src/ui/top-panel.ts and src/ui/export-panel.ts.
     topPanel: $id<HTMLDivElement>("top-panel"),
     topPanelTripName: $id<HTMLDivElement>("top-panel-trip-name"),
-    topPanelLayout: $id<HTMLDivElement>("top-panel-layout"),
-    topPanelChannels: $id<HTMLDivElement>("top-panel-channels"),
-    topPanelAudio: $id<HTMLDivElement>("top-panel-audio"),
     exportPanel: $id<HTMLElement>("export-panel"),
     // Trim bar between the video and the timeline stack (clip-range controls).
     // Skeleton in index.html, content rendered by src/ui/export-trim-bar.ts.

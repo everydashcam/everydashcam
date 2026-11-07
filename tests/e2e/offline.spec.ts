@@ -13,6 +13,7 @@ import {
     presetLocalStorage,
     readExportResult,
 } from "./_fixtures.js";
+import { showOnlyCameras } from "./_cameras.js";
 
 const READY_TIMEOUT = 20_000;
 
@@ -88,10 +89,7 @@ test.describe("offline", () => {
         await expect.poll(() => masterVideoTime(page)).toBeGreaterThan(before + 0.1);
         await play.click();
         await openExport(page);
-        const includes = page.locator(".top-panel__channel-include");
-        await expect(includes).toHaveCount(3);
-        await includes.nth(2).click();
-        await includes.nth(1).click();
+        await showOnlyCameras(page, ["front"]);
         await page.locator("#export-panel-save-btn").click();
         await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 30_000 });
         const result = await readExportResult(page);

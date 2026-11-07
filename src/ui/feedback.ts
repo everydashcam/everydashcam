@@ -21,7 +21,7 @@ import { dom, effectiveMasterChannel } from "./dom.js";
 import { formatNumber, formatTime } from "./format.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 import { notify } from "./notifications.js";
-import { activeCandidate, activeFrame, isFocusLayout, mainChannel, state } from "./state.js";
+import { activeCandidate, activeFrame, mainChannel, state } from "./state.js";
 
 const log = createLogger("feedback");
 
@@ -373,7 +373,7 @@ function currentContextSummary(): string {
     }
     lines.push(
         t("feedback.body.context.layout", {
-            view: isFocusLayout(state.composition.layout) ? "focus" : "split",
+            view: state.composition.mode,
             channel: mainChannel(),
         }),
     );

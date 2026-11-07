@@ -44,7 +44,6 @@ import { getDateLocale, t } from "../i18n/index.js";
 import { emitLifecycle } from "../perf.js";
 import { findNearestIndex, isValidGpsFix } from "../parser.js";
 import {
-    pickFrameChannel,
     wallToContentSec,
     contentToWallUtc,
     contentToFrame,
@@ -67,7 +66,7 @@ import { isCoarsePointer } from "./media-queries.js";
 import { attachPointerDrag, capturePointer, suppressEdgeSwipeNav } from "./pointer-drag.js";
 import { attachPinchGesture } from "./pinch-gesture.js";
 import { renderRangeRuler } from "./range-ruler.js";
-import { activeTrip, mainChannel, state } from "./state.js";
+import { activeTrip, frameMasterCandidate, state } from "./state.js";
 import {
     applyPinchZoom,
     applyWheelPan,
@@ -2598,7 +2597,7 @@ function findFileForRelSec(trip: Trip, relSec: number): VideoCandidate | null {
     // only the display name). relSec is on the footage axis; contentToFrame
     // clamps a past-the-end value to the last frame, matching the old fallback.
     const at = contentToFrame(trip.timeline, relSec);
-    return pickFrameChannel(trip.frames[at.index]!, mainChannel())?.candidate ?? null;
+    return frameMasterCandidate(trip.frames[at.index]!)?.candidate ?? null;
 }
 
 /**
@@ -2741,7 +2740,7 @@ function locateFileAndLocalTime(trip: Trip, relSec: number): { file: File; local
     // A frame can start inside a longer file from another camera.
     const at = contentToFrame(trip.timeline, relSec);
     const frame = trip.frames[at.index]!;
-    const picked = pickFrameChannel(frame, mainChannel());
+    const picked = frameMasterCandidate(frame);
     if (!picked) return null;
     return { file: picked.candidate.file, localTime: frameMediaOffset(frame, picked.channel) + at.offsetInFrame };
 }

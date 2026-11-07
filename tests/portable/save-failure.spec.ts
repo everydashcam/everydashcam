@@ -4,6 +4,7 @@ import { BufferSource, Input, MP4 } from "mediabunny";
 import { PORTABLE_UPDATE_URL } from "../../src/portable/manifest.mjs";
 import { loadTrip, openExport, presetLocalStorage, SAMPLE_70MAI } from "../e2e/_fixtures.js";
 import { openPortable } from "./_fixtures.js";
+import { showOnlyCameras } from "../e2e/_cameras.js";
 
 test("reports initial fallback allocation failure and allows a successful retry", async ({ page }, info) => {
     const errors: string[] = [];
@@ -53,9 +54,7 @@ test("reports initial fallback allocation failure and allows a successful retry"
     await page.locator("#settings-modal-header-close").click();
     await loadTrip(page, SAMPLE_70MAI);
     await openExport(page);
-    const includes = page.locator(".top-panel__channel-include");
-    await includes.nth(2).click();
-    await includes.nth(1).click();
+    await showOnlyCameras(page, ["front"]);
     await page.evaluate(() =>
         (window as unknown as { __failNextPortableAllocation: () => void }).__failNextPortableAllocation(),
     );

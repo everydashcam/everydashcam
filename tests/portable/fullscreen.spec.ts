@@ -3,6 +3,7 @@ import { expect } from "@playwright/test";
 import { verifyExpandedNotifications } from "../e2e/_ui-lifecycle.js";
 
 import { openPortable, test } from "./_fixtures.js";
+import { chooseAudioSource } from "../e2e/_cameras.js";
 
 test("file-origin notifications follow the expanded player and its dialogs", async ({ page }, info) => {
     await presetLocalStorage(page);
@@ -27,7 +28,7 @@ test("file playback keeps its context and remembers panels below the video after
     expect(url).toMatch(/^file:/);
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
-    await page.locator(".top-panel__audio-select").selectOption("rear");
+    await chooseAudioSource(page, "rear");
     await page.locator("#player-mini-progress").focus();
     await page.keyboard.press("Home");
     await expect.poll(() => masterVideoTime(page)).toBeLessThan(0.1);

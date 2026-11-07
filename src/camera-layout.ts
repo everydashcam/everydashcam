@@ -91,7 +91,7 @@ const OVERLAY_MIN_GAIN = 0.03;
 const SCORE_TIE_TOLERANCE = 0.01;
 /** Margin of overlay windows from the main picture's edges and between each
  *  other, as a share of the main picture height. */
-const OVERLAY_MARGIN_SHARE = 0.025;
+export const OVERLAY_MARGIN_SHARE = 0.025;
 
 export const VIEWER_TILE_GAP_PX = 2;
 export const VIEWER_MIN_THUMB_HEIGHT_PX = 72;

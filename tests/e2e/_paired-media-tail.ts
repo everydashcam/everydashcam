@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { createMseFixture } from "../helpers/mse-fixtures.js";
 import { expectExportedPixelsCovered } from "./_export-pixels.js";
 import { boxOf, expect, openExport, pausePlayback } from "./_fixtures.js";
+import { showOnlyCameras } from "./_cameras.js";
 
 const FRONT = "NO20260101-120000-000001F.MP4";
 const REAR = "NO20260101-120000-000001B.MP4";
@@ -124,8 +125,7 @@ async function drawRearZone(page: Page): Promise<void> {
 export async function checkPairedMediaBlur(page: Page): Promise<void> {
     await loadPairedMediaTrip(page);
     await openExport(page);
-    await page.locator('.top-panel__channel-chip[data-channel="rear"] input').check();
-    await page.locator('.top-panel__channel-chip[data-channel="front"] input').uncheck();
+    await showOnlyCameras(page, ["rear"]);
     await expect(page.locator(".video-tile.active")).toHaveAttribute("data-channel", "rear");
     await seekPairedMedia(page, 45.5);
     await drawRearZone(page);

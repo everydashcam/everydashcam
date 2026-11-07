@@ -88,10 +88,9 @@ export function initPlayerCameraFlip(): void {
                 if (isCameraFlipLocked()) return;
                 exitCropEditIfOpen();
                 const flip = cameraFlipForChannel(ch);
-                const slot = state.composition.channelOrder.indexOf(ch);
-                const crop = state.composition.perSlotCrops[slot];
+                const crop = state.composition.crops[ch];
                 if (crop)
-                    state.composition.perSlotCrops[slot] = flipCropRect(crop, {
+                    state.composition.crops[ch] = flipCropRect(crop, {
                         horizontal: axis === "horizontal",
                         vertical: axis === "vertical",
                     });

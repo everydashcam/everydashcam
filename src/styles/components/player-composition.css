@@ -6,16 +6,9 @@
  *     video grid maintains that aspect inside the .video-frame, with black
  *     letterbox bars filling the remainder. In casual mode the aspect var
  *     is unset; the grid fills the entire video-frame naturally.
- *  2) Layouts that the legacy data-view-mode + data-channel-count cascade
- *     doesn't express (v2, left1right2, left2right1). The legacy rules
- *     in viewer.css still drive h2 / grid2x2 / pip / single; this file
- *     only adds the missing layout shapes.
- *
- * Slot ordering. tile.dataset.slot is set by player.ts from
- * state.composition.channelOrder.indexOf(channel). This lets the user
- * reorder channels via the top-panel without DOM reflow - CSS reads the
- * slot index from the attribute. Tiles not in channelOrder keep no slot
- * attribute and stay hidden via tile.hidden.
+ *  2) Editors and overlays drawn inside the tiles (crop, PiP resize grip,
+ *     camera settings). Tile geometry itself comes from the layout engine
+ *     (src/ui/player-layout.ts), not from CSS.
  */
 
 /* === Output letterbox === */
@@ -204,98 +197,6 @@ body.letterbox-blur .video-tile {
 /* Contain bars become see-through so the blurred backdrop shows in them. */
 body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
     background: transparent;
-}
-
-/* === New layouts not covered by legacy data-view-mode CSS === */
-
-/* v2: vertical 2 - one column, two equal rows. The legacy split template keys
-   off [data-view-mode="split"][data-channel-count="2"] (specificity 0,3,0) and
-   sets 2 columns x 1 row; the bare [data-layout="v2"] (0,2,0) loses to it, while
-   the per-slot grid-row rules below DO apply - the mismatch dumped both tiles
-   into the left column and blacked out the right. Matching the legacy
-   specificity ([data-view-mode][data-layout] = 0,3,0) and relying on source
-   order (this file is @imported after viewer.css - order fixed in index.css)
-   lets the data-layout template win. Same battle for left1right2/left2right1. */
-.video-grid[data-view-mode="split"][data-layout="v2"] {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 0;
-}
-.video-grid[data-layout="v2"] .video-tile[data-slot="0"] {
-    grid-row: 1;
-}
-.video-grid[data-layout="v2"] .video-tile[data-slot="1"] {
-    grid-row: 2;
-}
-
-/* left1right2: large left fills full height; two small stacked on right. */
-.video-grid[data-view-mode="split"][data-layout="left1right2"] {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 0;
-}
-.video-grid[data-layout="left1right2"] .video-tile[data-slot="0"] {
-    grid-column: 1;
-    grid-row: 1 / -1;
-}
-.video-grid[data-layout="left1right2"] .video-tile[data-slot="1"] {
-    grid-column: 2;
-    grid-row: 1;
-}
-.video-grid[data-layout="left1right2"] .video-tile[data-slot="2"] {
-    grid-column: 2;
-    grid-row: 2;
-}
-
-/* left2right1: symmetric - two small stacked on left, large right. */
-.video-grid[data-view-mode="split"][data-layout="left2right1"] {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 0;
-}
-.video-grid[data-layout="left2right1"] .video-tile[data-slot="0"] {
-    grid-column: 2;
-    grid-row: 1 / -1;
-}
-.video-grid[data-layout="left2right1"] .video-tile[data-slot="1"] {
-    grid-column: 1;
-    grid-row: 1;
-}
-.video-grid[data-layout="left2right1"] .video-tile[data-slot="2"] {
-    grid-column: 1;
-    grid-row: 2;
-}
-
-/* === Slot order for flat (h2 / grid2x2) layouts ===
- * Legacy CSS for these uses auto-flow + the fixed DOM order, which means
- * channel reorder via top-panel didn't actually change visual placement.
- * The `order` property reorders flex/grid children visually without DOM
- * mutation - cheap and lets the existing data-channel-count cascade stay.
- *
- * order is computed as data-slot + 1 so the auto-flow position of an
- * unset (= -1) is treated as "after the rest" - hidden tiles stay tucked
- * away even with display:none stripped.
- */
-.video-grid[data-layout="h2"] .video-tile,
-.video-grid[data-layout="grid2x2"] .video-tile {
-    order: 999;
-}
-.video-grid[data-layout="h2"] .video-tile[data-slot="0"],
-.video-grid[data-layout="grid2x2"] .video-tile[data-slot="0"] {
-    order: 0;
-}
-.video-grid[data-layout="h2"] .video-tile[data-slot="1"],
-.video-grid[data-layout="grid2x2"] .video-tile[data-slot="1"] {
-    order: 1;
-}
-.video-grid[data-layout="grid2x2"] .video-tile[data-slot="2"] {
-    order: 2;
-}
-.video-grid[data-layout="grid2x2"] .video-tile[data-slot="3"] {
-    order: 3;
 }
 
 /* === Export trim bar (export-mode) ===
@@ -1075,54 +976,12 @@ body.letterbox-blur .video-tile > video:not(.tile-blur-bg) {
  * In pip layouts the main slot fills the output frame; the others are
  * absolute insets positioned by player.ts (syncPipOverlays via getSplitSlots).
  * Casual viewing keeps the legacy focus side-column. */
-/* Keep the grid's display (the aspect-ratio box sizing relies on it); just
-   make it the positioning context so the absolute insets anchor to it. The
-   tiles are taken out of grid flow by position:absolute, so the focus-mode
-   grid template no longer places them. */
-body.export-mode .video-grid.pip-overlay-mode {
-    position: relative;
-}
-
-/* Neutralize the focus-mode grid placement that still matches here: the tiles
-   keep data-tile-role (thumb-0/1/...) and the grid keeps data-view-mode=focus,
-   so viewer.css's `grid-column:2; grid-row:N` rules apply. For an absolutely
-   positioned grid item a DEFINITE grid placement makes its %-offsets resolve
-   against the assigned GRID AREA, not the grid container. With the single-cell
-   1fr/1fr template syncPipOverlays sets, `grid-column:2` lands on an implicit
-   zero-width track at the right edge - collapsing every inset to ~0px off-frame
-   (the "pip overlays vanish in export-mode" bug). auto placement restores the
-   grid container's padding box as the containing block, so the JS left/top/
-   width/height percentages map to the visible frame. The body type selector
-   tips specificity over the focus rules. */
-body.export-mode .video-grid.pip-overlay-mode .video-tile {
-    grid-column: auto;
-    grid-row: auto;
-}
-
-.video-tile.pip-inset {
-    border: 2px solid rgba(255, 255, 255, 0.85);
-    border-radius: var(--dc-radius-md);
-    overflow: hidden;
-    box-shadow: var(--dc-shadow-popup);
-    cursor: move;
-    touch-action: none;
-}
-
-.video-tile.pip-inset.pip-dragging {
-    cursor: grabbing;
-    border-color: var(--accent);
-}
-
-.video-tile.pip-inset video {
-    object-fit: cover;
-}
-
-/* Resize grip - only on pip insets in export-mode. */
+/* Resize grip - only on overlay windows. */
 .pip-resize {
     display: none;
 }
 
-.video-tile.pip-inset .pip-resize {
+.video-tile.tile-overlay .pip-resize {
     display: block;
     position: absolute;
     right: 0;
@@ -1142,7 +1001,7 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
    grab size on coarse pointers, matching the crop-handle / map-overlay__resize
    coarse rules. The clip-path keeps it a corner triangle. */
 @media (pointer: coarse) {
-    .video-tile.pip-inset .pip-resize {
+    .video-tile.tile-overlay .pip-resize {
         width: 28px;
         height: 28px;
     }
@@ -1468,7 +1327,7 @@ body.export-mode .video-grid.pip-overlay-mode .video-tile {
     text-align: center;
 }
 
-.video-tile.pip-inset .blur-draw-hint {
+.video-tile.tile-overlay .blur-draw-hint {
     display: none;
 }
 

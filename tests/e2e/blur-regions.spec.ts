@@ -24,6 +24,7 @@ import {
 } from "./_fixtures.js";
 import { expectExportedPixelsCovered, type PixelCheckpoint } from "./_export-pixels.js";
 import type { Page } from "@playwright/test";
+import { setOverlayAllowed, showOnlyCameras } from "./_cameras.js";
 
 test.use({ viewerMap: "route-only", reducedMotion: "reduce" });
 
@@ -174,11 +175,7 @@ test.describe("blur regions", () => {
         await openExport(page);
         // Single channel -> the stream-copy path is reachable, so the gate
         // assertion below is meaningful.
-        const includes = page.locator(".top-panel__channel-include");
-        await expect(includes).toHaveCount(3);
-        await includes.nth(2).click();
-        await includes.nth(1).click();
-        await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(1);
+        await showOnlyCameras(page, ["front"]);
     });
 
     test("draw zone: row appears, box editable, stream-copy tier relabels", { tag: "@golden-blur" }, async ({
@@ -203,8 +200,7 @@ test.describe("blur regions", () => {
     });
 
     test("a rear-camera seed and time setters use its corrected content time", async ({ page }) => {
-        await page.locator('.top-panel__channel-chip[data-channel="rear"] input').check();
-        await page.locator('.top-panel__channel-chip[data-channel="front"] input').uncheck();
+        await showOnlyCameras(page, ["rear"]);
         await expect(page.locator('.video-tile[data-channel="rear"]')).toBeVisible();
         await page.evaluate(async () => {
             const { state, dom } = window.__everydashcam;
@@ -859,16 +855,18 @@ test.describe("blur regions", () => {
             );
             test.setTimeout(120_000);
             if (split) {
-                await page.locator('.top-panel__channel-chip[data-channel="rear"] input').check();
-                await page.locator('.top-panel__layout-btn[data-layout="pip2"]').click();
-                await expect(page.locator(".top-panel__channel-include:checked")).toHaveCount(2);
+                // Front as the main camera over the whole output, rear in a
+                // window over it.
+                await showOnlyCameras(page, ["front", "rear"]);
+                await setOverlayAllowed(page, true);
+                await expect(page.locator('.video-tile[data-channel="rear"]')).toHaveClass(/\btile-overlay\b/);
             }
             await page.locator("#export-panel-output").selectOption("720_16x9");
             await page.locator("#export-panel-audio").uncheck();
             if (end < 4) await setFixtureTrimEdge(page, "end", end);
             if (start > 0) await setFixtureTrimEdge(page, "start", start);
-            // The main PiP slot fills the output; its central mask stays away
-            // from the rear-camera inset, so source coordinates still apply.
+            // The main camera fills the output; its central mask stays away
+            // from the rear-camera window, so source coordinates still apply.
             await drawZone(page, 0.35, 0.35, 0.65, 0.65);
             await expect(page.locator('.video-tile[data-channel="front"] .blur-box:not([hidden])')).toBeVisible();
             const zone = await zoneSourceRect(page);

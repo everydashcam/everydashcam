@@ -10,6 +10,7 @@ import {
     shot,
     test,
 } from "./_fixtures.js";
+import { openCamerasMenu } from "./_cameras.js";
 
 test.beforeEach(async ({ page }) => {
     await presetLocalStorage(page);
@@ -64,7 +65,8 @@ test("recognized multi-camera recordings stay silent and offer camera help by th
     await gotoApp(page, "en");
     await loadTrip(page);
     await expect(page.locator("#recognition-banner")).toBeHidden();
-    const help = page.locator('#top-panel-channels [data-feedback-preset="cameras"]');
+    await openCamerasMenu(page);
+    const help = page.locator('#player-cameras-popover [data-feedback-preset="cameras"]');
     await expect(help).toBeVisible();
     await shot(page, "recognition-camera-help-desktop");
     await help.click();

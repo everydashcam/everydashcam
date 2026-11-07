@@ -12,7 +12,7 @@
 // internals.
 
 import { getDateLocale, t } from "../i18n/index.js";
-import { contentToFrame, frameMediaOffset, pickFrameChannel } from "../trips.js";
+import { contentToFrame, frameMediaOffset } from "../trips.js";
 import {
     beginTimelineWindowGesture,
     finishTimelineWindowGesture,
@@ -31,7 +31,7 @@ import { formatTime } from "./format.js";
 import { extractFrameAt } from "./frame-extract.js";
 import { attachPointerDrag, suppressEdgeSwipeNav } from "./pointer-drag.js";
 import { getSeekStepSec, getSeekStepShiftSec } from "./seek-step-pref.js";
-import { activeTrip, mainChannel, state } from "./state.js";
+import { activeTrip, frameMasterCandidate, state } from "./state.js";
 
 // Init-time injected callables. The scrubber needs them in DOM event handlers
 // installed during initPlayerScrubber; instead of importing from player.ts
@@ -209,7 +209,7 @@ export function initPlayerScrubber(deps: {
         // Frame containing sec + offset inside it (footage-axis resolver).
         const at = contentToFrame(trip.timeline, sec);
         const frame = trip.frames[at.index]!;
-        const picked = pickFrameChannel(frame, mainChannel());
+        const picked = frameMasterCandidate(frame);
         if (!picked) return;
         const fileSec = frameMediaOffset(frame, picked.channel) + at.offsetInFrame;
         const file = picked.candidate.file;

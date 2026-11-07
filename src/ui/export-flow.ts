@@ -45,6 +45,7 @@ import type {
     TranscodeResult,
     WatermarkAnchor,
 } from "../transcode/types.js";
+import type { SplitLayout } from "../transcode/compose.js";
 import { contentToWallUtc, displayTzSec, tripCandidatesByChannel } from "../trips.js";
 import type { Trip } from "../trips.js";
 import { getBrakeThresholdG } from "../events.js";
@@ -82,7 +83,7 @@ import {
 import { notify } from "./notifications.js";
 import { clipBasename, formatBytes, randomFilenameSuffix } from "./format.js";
 import { pausePlayback } from "./playback-pause.js";
-import { activeTrip, activeTripHasGps, state, mainChannel } from "./state.js";
+import { activeTrip, activeTripHasGps, state, mainChannel, visibleChannels } from "./state.js";
 import {
     type BeforeCommitHook,
     transcodeSplitViaWorker as transcodeSplit,
@@ -164,7 +165,7 @@ function measureRangeSource(trip: Trip): { bitrate: number; fps: number | null }
     const endSec = range ? range.endTripSec : trip.timeline.contentDurationSec;
     let bitrate = 0;
     let fps: number | null = null;
-    for (const channel of state.composition.channelOrder) {
+    for (const channel of visibleChannels()) {
         const segments = sliceTripChannelForRange(trip, channel, startSec, endSec);
         bitrate += rangeSourceBitrateBps(segments);
         const channelFps = rangeSourceFps(segments);
@@ -206,9 +207,9 @@ function streamCopyEligibleConfig(): boolean {
     return (
         exportPanelState.manualBitrateMbps === null &&
         exportPanelState.outputPresetId === "source" &&
-        state.composition.channelOrder.length <= 1 &&
-        !state.composition.perSlotCrops[0] &&
-        !state.composition.channelOrder.some((ch) => hasCameraFlip(cameraFlipForChannel(ch))) &&
+        visibleChannels().length <= 1 &&
+        !state.composition.crops[mainChannel()] &&
+        !visibleChannels().some((ch) => hasCameraFlip(cameraFlipForChannel(ch))) &&
         exportPanelState.letterboxFill === "black" &&
         exportPanelState.speedFactor === 1 &&
         !anyOverlayEnabled() &&
@@ -225,7 +226,7 @@ function anyBlurRegionInExport(): boolean {
     if (anyDetectEnabled() && (detectStale() || detectPassState() !== null || detectRegions().length > 0)) {
         return true;
     }
-    return anyRegionOnChannels(activeBlurRegions(), state.composition.channelOrder);
+    return anyRegionOnChannels(activeBlurRegions(), visibleChannels());
 }
 
 /** Active trip's regions for the worker args - manual zones plus the detection
@@ -256,7 +257,7 @@ function undecodableSource(trip: Trip): { codec: VideoCodec | null } | null {
     const range = exportPanelState.range;
     const startSec = range ? range.startTripSec : 0;
     const endSec = range ? range.endTripSec : trip.timeline.contentDurationSec;
-    for (const channel of state.composition.channelOrder) {
+    for (const channel of visibleChannels()) {
         const files = new Set(sliceTripChannelForRange(trip, channel, startSec, endSec).map((segment) => segment.file));
         for (const candidate of tripCandidatesByChannel(trip, channel)) {
             if (!files.has(candidate.file)) continue;
@@ -862,13 +863,31 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     // minutes. Reading the active singleton afterwards used to let a trip,
     // layout or blur edit from the future leak into this already-started run
     // (in the worst case re-enabling stream-copy and shipping raw frames).
-    const channelOrder = [...state.composition.channelOrder];
+    const channelOrder = visibleChannels();
     const slotFlips = channelOrder.map((ch) => ({ ...cameraFlipForChannel(ch, trip) }));
     const channel = channelOrder[0] ?? mainChannel();
-    const layout = state.composition.layout;
-    const slotCrops = state.composition.perSlotCrops.map((crop) => (crop ? { ...crop } : null));
-    const slotPipPositions = state.composition.perSlotPipPositions.map((pos) => (pos ? { ...pos } : null));
-    const slotPipScales = [...state.composition.perSlotScales];
+    // Interim mapping onto the preset pipeline until it lays out with the
+    // camera layout engine.
+    const layout: SplitLayout =
+        channelOrder.length <= 1
+            ? "single"
+            : state.composition.mode === "main"
+              ? channelOrder.length === 2
+                  ? "pip2"
+                  : channelOrder.length === 3
+                    ? "pip3"
+                    : "pip4"
+              : channelOrder.length === 2
+                ? "h2"
+                : channelOrder.length === 3
+                  ? "left1right2"
+                  : "grid2x2";
+    const slotCrops = channelOrder.map((ch) => {
+        const crop = state.composition.crops[ch];
+        return crop ? { ...crop } : null;
+    });
+    const slotPipPositions = channelOrder.map(() => null);
+    const slotPipScales = channelOrder.map(() => 1);
     const quality = exportPanelState.quality;
     const encoderPreference = getEncoderPreference();
     const manualBitrateMbps = exportPanelState.manualBitrateMbps;

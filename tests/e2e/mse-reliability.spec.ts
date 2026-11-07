@@ -409,17 +409,20 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
     // the layout.
     const tail = page.evaluate(
         () =>
-            new Promise<{ samples: number; frontHidden: number; viewModeHidden: number }>((resolve, reject) => {
+            new Promise<{ samples: number; frontHidden: number; camerasHidden: number }>((resolve, reject) => {
                 const { state, dom } = window.__everydashcam;
                 const timeout = setTimeout(() => reject(new Error("second pair did not start")), 20_000);
-                const result = { samples: 0, frontHidden: 0, viewModeHidden: 0 };
+                const result = { samples: 0, frontHidden: 0, camerasHidden: 0 };
                 const tick = (): void => {
                     const frame = state.active?.frame ?? 0;
                     if (frame === 1) {
-                        if (result.samples === 0) dom.viewModeBtn.click();
+                        // V switches the arrangement mode, the layout change under test.
+                        if (result.samples === 0) {
+                            document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyV", key: "v" }));
+                        }
                         result.samples++;
                         if (dom.videoTileFront.hidden) result.frontHidden++;
-                        if (dom.viewModeBtn.hidden) result.viewModeHidden++;
+                        if (dom.camerasWrap.hidden) result.camerasHidden++;
                     }
                     if (frame >= 2) {
                         clearTimeout(timeout);
@@ -434,7 +437,7 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
     expect((await tail).samples, "display frames in the tail").toBeGreaterThan(3);
     expect(await tail, "front tile and layout control through the tail").toMatchObject({
         frontHidden: 0,
-        viewModeHidden: 0,
+        camerasHidden: 0,
     });
     await expect
         .poll(() => page.locator("#player").evaluate((video: HTMLVideoElement) => video.currentTime))
@@ -552,44 +555,52 @@ test("moves past a paired tail that its camera already played as a slave", async
 
 test("drops the shorter camera when a seek from the middle of its pair lands in the tail", async ({ page }) => {
     // The front element is mid-clip, not at its end: holding it would show a
-    // frame from another moment that keeps playing, out of reach of pause.
+    // frame from another moment that keeps playing, out of reach of pause. The
+    // camera keeps its place with the no-recording note instead.
     // A 1.2 s tail leaves room for the seek to land well inside it.
     await openPairedTailTrip(page, 1.2);
     const tail = await page.evaluate(
         () =>
-            new Promise<{ samples: number; frontVisible: number; frontPlaying: number }>((resolve, reject) => {
-                const { state, dom } = window.__everydashcam;
-                const trip = state.trips[state.active!.trip]!;
-                const segment = trip.timeline.segments[1]!;
-                // The arrow key seeks 5 s ahead; from here it lands mid-tail.
-                const seekFromSec = segment.contentStart + segment.durationSec / 2 - 5;
-                const timeout = setTimeout(() => reject(new Error("seek did not reach the tail")), 20_000);
-                const result = { samples: 0, frontVisible: 0, frontPlaying: 0 };
-                let hasSeeked = false;
-                const tick = (): void => {
-                    const frame = state.active?.frame ?? 0;
-                    if (!hasSeeked && frame === 0 && dom.player.currentTime >= seekFromSec) {
-                        hasSeeked = true;
-                        document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight" }));
-                    }
-                    if (hasSeeked && frame === 1) {
-                        result.samples++;
-                        if (!dom.videoTileFront.hidden) result.frontVisible++;
-                        const frontVideos = [...dom.videoTileFront.querySelectorAll("video")];
-                        if (frontVideos.some((video) => !video.paused)) result.frontPlaying++;
-                    }
-                    if (frame >= 2) {
-                        clearTimeout(timeout);
-                        resolve(result);
-                        return;
-                    }
+            new Promise<{ samples: number; frontPicture: number; frontPlaceholder: number; frontPlaying: number }>(
+                (resolve, reject) => {
+                    const { state, dom } = window.__everydashcam;
+                    const trip = state.trips[state.active!.trip]!;
+                    const segment = trip.timeline.segments[1]!;
+                    // The arrow key seeks 5 s ahead; from here it lands mid-tail.
+                    const seekFromSec = segment.contentStart + segment.durationSec / 2 - 5;
+                    const timeout = setTimeout(() => reject(new Error("seek did not reach the tail")), 20_000);
+                    const result = { samples: 0, frontPicture: 0, frontPlaceholder: 0, frontPlaying: 0 };
+                    let hasSeeked = false;
+                    const tick = (): void => {
+                        const frame = state.active?.frame ?? 0;
+                        if (!hasSeeked && frame === 0 && dom.player.currentTime >= seekFromSec) {
+                            hasSeeked = true;
+                            document.dispatchEvent(
+                                new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight" }),
+                            );
+                        }
+                        if (hasSeeked && frame === 1) {
+                            result.samples++;
+                            const tile = dom.videoTileFront;
+                            if (!tile.hidden && tile.classList.contains("tile-absent")) result.frontPlaceholder++;
+                            else if (!tile.hidden) result.frontPicture++;
+                            const frontVideos = [...dom.videoTileFront.querySelectorAll("video")];
+                            if (frontVideos.some((video) => !video.paused)) result.frontPlaying++;
+                        }
+                        if (frame >= 2) {
+                            clearTimeout(timeout);
+                            resolve(result);
+                            return;
+                        }
+                        requestAnimationFrame(tick);
+                    };
                     requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
+                },
+            ),
     );
     expect(tail.samples, "display frames in the tail").toBeGreaterThan(0);
-    expect(tail, "front camera through the tail").toMatchObject({ frontVisible: 0, frontPlaying: 0 });
+    expect(tail, "front camera through the tail").toMatchObject({ frontPicture: 0, frontPlaying: 0 });
+    expect(tail.frontPlaceholder, "the front camera keeps its place").toBe(tail.samples);
 });
 
 test("resumes without restarting a slave that already finished its clip", async ({ page }) => {
