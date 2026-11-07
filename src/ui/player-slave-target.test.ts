@@ -269,6 +269,25 @@ describe("pairedTailHold", () => {
         expect(pairedTailHold(frames[2]!, "rear"), "1 s tail").toBe(rear);
     });
 
+    it("holds a pair's shorter channel when another camera is cut independently", () => {
+        // One interior file spans both pairs, so the trip goes through the
+        // independent-cut splitter rather than splitting pair by pair.
+        const first = pair(1000, 60, 60.5);
+        const second = pair(1060.5, 60, 60.5);
+        const interior = makeCandidate({ name: "1000I.ts", startUtc: 1000, durationSec: 121, channel: "interior" });
+        const frames = groupTrips([...first, ...second, interior])[0]!.frames;
+        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual([
+            "front+interior+rear",
+            "interior+rear",
+            "front+interior+rear",
+            "interior+rear",
+        ]);
+        expect(pairedTailHold(frames[1]!, "front")).toBe(first[0]);
+        expect(pairedTailHold(frames[3]!, "front")).toBe(second[0]);
+        expect(pairedTailHold(frames[2]!, "front"), "front back in the next pair").toBeNull();
+        expect(pairedTailHold(frames[3]!, "interior"), "independent camera still plays").toBeNull();
+    });
+
     it("shows nothing for a camera that stopped long before its sibling", () => {
         const [front, rear] = pair(1000, 30, 60);
         const frames = groupTrips([front!, rear!])[0]!.frames;

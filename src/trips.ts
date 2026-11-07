@@ -262,11 +262,11 @@ export interface TripFrame {
     wallDurationSec: number;
     channels: Partial<Record<Channel, VideoCandidate>>;
     mediaOffsetSec?: Partial<Record<Channel, number>>;
-    /** Set on the tail intervals of a split pair (splitPairedFrameIntervals):
-     *  the pair's channels whose files ended at or before this interval's
-     *  start, and the interval's offset from the pair's shared media origin.
-     *  The fact is recorded where the split knows it; the viewer decides
-     *  whether such a channel keeps its last frame on screen. */
+    /** Set on the tail intervals of a pair (markPairedTails): the pair's
+     *  channels whose files ended at or before this interval's start while a
+     *  sibling plays on, and the interval's offset from the pair's shared
+     *  media origin. The trip records the fact; the viewer decides whether
+     *  such a channel keeps its last frame on screen. */
     pairedTail?: PairedTail;
 }
 
@@ -1126,7 +1126,7 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     // Small overlaps between sequential pairs are clock noise, not evidence
     // that their footage is duplicated. Split each pair independently so the
     // next pair cannot hide the preceding files' playable tails.
-    if (!hasOverlappingCuts) return frames.flatMap(splitPairedFrameIntervals);
+    if (!hasOverlappingCuts) return markPairedTails(frames.flatMap(splitPairedFrameIntervals));
 
     const durationsByChannel = new Map<Channel, { min: number; max: number }>();
     for (const candidate of candidates) {
@@ -1215,13 +1215,72 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
         } else intervals.push(interval);
     }
     // A fully hidden duplicate still needs its own playback surface.
-    return used.size === candidates.length ? intervals : frames;
+    return used.size === candidates.length ? markPairedTails(intervals) : frames;
+}
+
+// Paired files share a media origin, and the splitters cut intervals at file
+// ends with the same arithmetic, so only float noise separates a file's end
+// from the start of the interval after it.
+const PAIRED_TAIL_JOIN_TOLERANCE_SEC = 0.001;
+
+/**
+ * Records on each interval the paired channels that already ended before it
+ * (TripFrame.pairedTail) and returns the same array. A channel ended into the
+ * interval when its file ends exactly where the interval starts while a
+ * sibling from the same media origin plays on into it; later intervals carry
+ * it as long as that pair keeps playing. Runs over the finished intervals of
+ * either splitter, so a paired tail reads the same whether or not the trip
+ * also has independently cut cameras. A recording gap or an independent cut
+ * records nothing.
+ */
+function markPairedTails(intervals: TripFrame[]): TripFrame[] {
+    const isSameTime = (a: number, b: number): boolean => Math.abs(a - b) <= PAIRED_TAIL_JOIN_TOLERANCE_SEC;
+    const originUtc = (frame: TripFrame, channel: Channel): number => frame.startUtc - frameMediaOffset(frame, channel);
+    for (let i = 1; i < intervals.length; i++) {
+        const previous = intervals[i - 1]!;
+        const current = intervals[i]!;
+        if (!isSameTime(previous.startUtc + previous.durationSec, current.startUtc)) continue;
+        // Whether a file from the pair at `pairOriginUtc` plays on from the
+        // previous interval into this one.
+        const playsOn = (pairOriginUtc: number): boolean =>
+            frameChannels(current).some(
+                (sibling) =>
+                    previous.channels[sibling] === current.channels[sibling] &&
+                    isSameTime(originUtc(previous, sibling), pairOriginUtc),
+            );
+        const endedChannels: Partial<Record<Channel, VideoCandidate>> = {};
+        let pairOriginUtc: number | null = null;
+        for (const channel of frameChannels(previous)) {
+            if (current.channels[channel]) continue;
+            const candidate = previous.channels[channel]!;
+            const origin = originUtc(previous, channel);
+            if (!isSameTime(origin + candidate.durationSec, current.startUtc) || !playsOn(origin)) continue;
+            endedChannels[channel] = candidate;
+            pairOriginUtc = origin;
+        }
+        const earlier = previous.pairedTail;
+        if (earlier) {
+            const earlierOriginUtc = previous.startUtc - earlier.pairOffsetSec;
+            const isSamePair = pairOriginUtc === null || isSameTime(pairOriginUtc, earlierOriginUtc);
+            if (isSamePair && playsOn(earlierOriginUtc)) {
+                for (const [channel, candidate] of Object.entries(earlier.endedChannels) as [
+                    Channel,
+                    VideoCandidate,
+                ][]) {
+                    if (!current.channels[channel]) endedChannels[channel] ??= candidate;
+                }
+                pairOriginUtc = earlierOriginUtc;
+            }
+        }
+        if (pairOriginUtc !== null) {
+            current.pairedTail = { pairOffsetSec: current.startUtc - pairOriginUtc, endedChannels };
+        }
+    }
+    return intervals;
 }
 
 /** Paired channels share media time zero; each file end changes which channels
- *  remain playable without shifting the next pair on the footage axis. Every
- *  interval after the first records the channels that already ended
- *  (TripFrame.pairedTail). */
+ *  remain playable without shifting the next pair on the footage axis. */
 function splitPairedFrameIntervals(frame: TripFrame): TripFrame[] {
     const channels = frameChannels(frame);
     if (channels.length < 2) return [frame];
@@ -1237,17 +1296,12 @@ function splitPairedFrameIntervals(frame: TripFrame): TripFrame[] {
             channels: {},
             mediaOffsetSec: {},
         };
-        const endedChannels: Partial<Record<Channel, VideoCandidate>> = {};
         for (const channel of channels) {
             const candidate = frame.channels[channel]!;
-            if (candidate.durationSec <= offsetSec) {
-                endedChannels[channel] = candidate;
-                continue;
-            }
+            if (candidate.durationSec <= offsetSec) continue;
             interval.channels[channel] = candidate;
             interval.mediaOffsetSec![channel] = offsetSec;
         }
-        if (offsetSec > 0) interval.pairedTail = { pairOffsetSec: offsetSec, endedChannels };
         intervals.push(interval);
         offsetSec = endSec;
     }
