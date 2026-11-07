@@ -3115,7 +3115,10 @@ function initPlayerControls(): void {
                     // !paused guard prevents re-entry: after the first pause the browser may
                     // still emit timeupdate (async pause), and without the guard
                     // seekTripTime(endTripSec) would fire again, triggering an MSE backend re-attach loop.
-                    dom.player.pause();
+                    // pausePlayback drops the playback intent synchronously; the
+                    // element's 'pause' event arrives later, so after a bare
+                    // pause() the snap below would still read playback as wanted.
+                    pausePlayback();
                     seekTripTime(range.endTripSec, "exact", "reload");
                 }
             }
