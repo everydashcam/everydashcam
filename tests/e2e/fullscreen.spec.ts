@@ -117,7 +117,7 @@ async function setPanelsBelow(page: Page, enabled: boolean): Promise<void> {
     await page.locator("#player-view-menu").click();
     const option = page.locator("[data-fullscreen-panels-below]");
     await expect(option).toBeVisible();
-    await expect(option).toHaveAttribute("role", "menuitemcheckbox");
+    await expect(option).toHaveAttribute("role", "checkbox");
     if ((await option.getAttribute("aria-checked")) !== String(enabled)) await option.click();
     await expect(option).toHaveAttribute("aria-checked", String(enabled));
     await expect(option).toBeFocused();

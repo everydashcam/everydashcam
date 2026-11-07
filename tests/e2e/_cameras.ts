@@ -1,6 +1,7 @@
-// Cameras menu driver shared by the e2e and portable suites. The menu is a
-// popover rebuilt from state on every change, so each helper opens it, acts,
-// and closes it again: a stale handle to a row would point at a detached node.
+// Cameras menu driver shared by the e2e and portable suites. The menu is the
+// View menu's cameras section, rebuilt from state on every change, so each
+// helper opens it, acts, and closes it again: a stale handle to a row would
+// point at a detached node.
 
 import { type Locator, type Page, expect } from "@playwright/test";
 
@@ -8,13 +9,13 @@ export type CameraChannel = "front" | "rear" | "interior" | "side";
 
 /** Visibility checkboxes in the open menu, one per camera, in layout order. */
 export function cameraCheckboxes(page: Page): Locator {
-    return page.locator("#player-cameras-popover .cameras-menu__visible");
+    return page.locator("#player-cameras-section .cameras-menu__visible");
 }
 
 /** The checkbox that shows or hides `channel` in the open menu. */
 export function cameraCheckbox(page: Page, channel: CameraChannel): Locator {
     return page.locator(
-        `#player-cameras-popover .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__visible`,
+        `#player-cameras-section .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__visible`,
     );
 }
 
@@ -27,24 +28,18 @@ export async function settleCameraLayout(page: Page): Promise<void> {
     });
 }
 
-/** Opens the menu from its button, or from the overflow menu where a narrow
- *  bar folds the button. */
+/** Opens the View menu, whose cameras section is the cameras menu. The View
+ *  button never folds into the overflow menu. */
 export async function openCamerasMenu(page: Page): Promise<void> {
-    const panel = page.locator("#player-cameras-popover");
-    if (await panel.isVisible()) return;
-    if ((await page.locator("#player-cameras-wrap").getAttribute("data-overflow-hidden")) === "true") {
-        // The overflow entry carries the button's localized name.
-        const name = (await page.locator("#player-cameras").getAttribute("aria-label")) ?? "";
-        await page.locator("#player-overflow").click();
-        await page.locator("#player-overflow-menu .overflow-menu-btn").filter({ hasText: name }).click();
-    } else {
-        await page.locator("#player-cameras").click();
+    const section = page.locator("#player-cameras-section");
+    if (!(await page.locator("#player-view-menu-popover").isVisible())) {
+        await page.locator("#player-view-menu").click();
     }
-    await expect(panel).toBeVisible();
+    await expect(section).toBeVisible();
 }
 
 export async function closeCamerasMenu(page: Page): Promise<void> {
-    const panel = page.locator("#player-cameras-popover");
+    const panel = page.locator("#player-view-menu-popover");
     if (!(await panel.isVisible())) return;
     await page.keyboard.press("Escape");
     await expect(panel).toBeHidden();
@@ -65,11 +60,11 @@ async function setCheckbox(page: Page, channel: CameraChannel, checked: boolean)
 export async function showOnlyCameras(page: Page, channels: readonly CameraChannel[]): Promise<void> {
     await openCamerasMenu(page);
     for (const channel of channels) await setCheckbox(page, channel, true);
-    const rows = page.locator("#player-cameras-popover .cameras-menu__camera");
+    const rows = page.locator("#player-cameras-section .cameras-menu__camera");
     for (const channel of await rows.evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.channel))) {
         if (!channels.includes(channel as CameraChannel)) await setCheckbox(page, channel as CameraChannel, false);
     }
-    await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(channels.length);
+    await expect(page.locator("#player-cameras-section .cameras-menu__visible:checked")).toHaveCount(channels.length);
     await closeCamerasMenu(page);
 }
 
@@ -89,7 +84,7 @@ export async function setCameraShown(page: Page, channel: CameraChannel, shown: 
 /** Picks the sound source: a camera, or "follow-main". */
 export async function chooseAudioSource(page: Page, value: CameraChannel | "follow-main"): Promise<void> {
     await openCamerasMenu(page);
-    await page.locator("#player-cameras-popover .cameras-menu__audio-select").selectOption(value);
+    await page.locator("#player-cameras-section .cameras-menu__audio-select").selectOption(value);
     await closeCamerasMenu(page);
 }
 
@@ -97,10 +92,10 @@ export async function chooseAudioSource(page: Page, value: CameraChannel | "foll
 export async function makeMainFromMenu(page: Page, channel: CameraChannel): Promise<void> {
     await openCamerasMenu(page);
     await page
-        .locator(`#player-cameras-popover .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__main`)
+        .locator(`#player-cameras-section .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__main`)
         .click();
     await expect(
-        page.locator(`#player-cameras-popover .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__main`),
+        page.locator(`#player-cameras-section .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__main`),
     ).toHaveAttribute("aria-pressed", "true");
     await closeCamerasMenu(page);
 }
@@ -108,7 +103,7 @@ export async function makeMainFromMenu(page: Page, channel: CameraChannel): Prom
 /** Switches between "main camera + others" and "all equal". */
 export async function chooseArrangementMode(page: Page, mode: "main" | "equal"): Promise<void> {
     await openCamerasMenu(page);
-    await page.locator(`#player-cameras-popover [data-camera-mode="${mode}"]`).click();
+    await page.locator(`#player-cameras-section [data-camera-mode="${mode}"]`).click();
     await expect(page.locator("#video-grid")).toHaveAttribute("data-mode", mode);
     await closeCamerasMenu(page);
 }
@@ -116,9 +111,9 @@ export async function chooseArrangementMode(page: Page, mode: "main" | "equal"):
 /** Allows or forbids the smaller cameras to sit over the main one. */
 export async function setOverlayAllowed(page: Page, allowed: boolean): Promise<void> {
     await openCamerasMenu(page);
-    const box = page.locator("#player-cameras-popover .cameras-menu__overlay");
+    const box = page.locator("#player-cameras-section .cameras-menu__overlay");
     if ((await box.isChecked()) !== allowed) await box.click();
-    await expect(page.locator("#player-cameras-popover .cameras-menu__overlay")).toBeChecked({ checked: allowed });
+    await expect(page.locator("#player-cameras-section .cameras-menu__overlay")).toBeChecked({ checked: allowed });
     await closeCamerasMenu(page);
 }
 

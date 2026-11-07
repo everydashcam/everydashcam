@@ -225,9 +225,8 @@ export const dom = {
      *  (see ios-folder-warning-modal.ts). */
     fileInput: $id<HTMLInputElement>("file-input"),
     videoGrid: $id<HTMLElement>("video-grid"),
-    camerasWrap: $id<HTMLElement>("player-cameras-wrap"),
-    camerasBtn: $id<HTMLButtonElement>("player-cameras"),
-    camerasPopover: $id<HTMLElement>("player-cameras-popover"),
+    /** Cameras section at the top of the View menu (cameras-menu.ts). */
+    camerasSection: $id<HTMLElement>("player-cameras-section"),
     videoTileFront: $sel<HTMLElement>('.video-tile[data-channel="front"]'),
     videoTileRear: $sel<HTMLElement>('.video-tile[data-channel="rear"]'),
     videoTileInterior: $sel<HTMLElement>('.video-tile[data-channel="interior"]'),

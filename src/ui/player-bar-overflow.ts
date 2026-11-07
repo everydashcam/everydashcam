@@ -2,7 +2,6 @@
 // visible and gets its own row when the player is narrow.
 
 import { t } from "../i18n/index.js";
-import { openCamerasMenuFromOverflow } from "./cameras-menu.js";
 import { openCaptureMenuFromOverflow } from "./capture-menu.js";
 import { dom } from "./dom.js";
 import { isMobileLayout, MOBILE_LAYOUT_QUERY } from "./media-queries.js";
@@ -97,8 +96,8 @@ export function initPlayerBarOverflow() {
     const items: OverflowableItem[] = [];
 
     // Priorities: HIGH priority = drop FIRST (see overflow-bar.ts header). The
-    // least-useful-on-mobile controls (help, capture, loop, cameras) leave the
-    // bar first; mute next; the map toggle stays longest (it is the
+    // least-useful-on-mobile controls (help, capture, loop) leave the bar
+    // first; mute next; the map toggle stays longest (it is the
     // ONLY entry to the map on mobile, the mini-map circle being hidden there).
     // Export (priority 1) is always the last to go - so on every real phone width
     // it stays inline instead of disappearing into the kebab.
@@ -153,15 +152,6 @@ export function initPlayerBarOverflow() {
             isActive: () => loop.getAttribute("aria-pressed") === "true",
         });
     }
-    // Cameras: shown on multi-camera trips only. From the overflow menu the
-    // dialog opens next to the overflow button (cameras-menu.ts).
-    items.push({
-        el: dom.camerasWrap,
-        priority: 7,
-        label: () => t("player.cameras.button"),
-        isAvailable: () => !dom.camerasWrap.hidden,
-        onActivate: openCamerasMenuFromOverflow,
-    });
     // Mute (together with the volume popover wrap): collapse the whole wrap so the
     // volume range does not stay DOM-positioned against a hidden mute button. The
     // wrap holds the real slider, which goes display:none on collapse, so the

@@ -688,7 +688,6 @@ export type I18nKey =
     | "player.pauseSkipped"
     | "player.tile.cantPlay"
     | "player.tile.noRecording"
-    | "player.cameras.button"
     | "player.cameras.title"
     | "player.cameras.mode.label"
     | "player.cameras.mode.main"

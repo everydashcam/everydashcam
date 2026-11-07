@@ -422,7 +422,7 @@ test("plays a paired MPEG-TS tail on the running channel and keeps the next pair
                         }
                         result.samples++;
                         if (dom.videoTileFront.hidden) result.frontHidden++;
-                        if (dom.camerasWrap.hidden) result.camerasHidden++;
+                        if (dom.camerasSection.hidden) result.camerasHidden++;
                     }
                     if (frame >= 2) {
                         clearTimeout(timeout);

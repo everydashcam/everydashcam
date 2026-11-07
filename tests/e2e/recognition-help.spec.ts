@@ -66,7 +66,9 @@ test("recognized multi-camera recordings stay silent and offer camera help by th
     await loadTrip(page);
     await expect(page.locator("#recognition-banner")).toBeHidden();
     await openCamerasMenu(page);
-    const help = page.locator('#player-cameras-popover [data-feedback-preset="cameras"]');
+    // One link below the cameras section and the panels, not one per part.
+    const help = page.locator('#player-view-menu-popover [data-feedback-preset="cameras"]');
+    await expect(help).toHaveCount(1);
     await expect(help).toBeVisible();
     await shot(page, "recognition-camera-help-desktop");
     await help.click();

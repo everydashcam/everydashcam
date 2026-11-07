@@ -24,9 +24,8 @@ for (const locale of ["ru", "de"]) {
 
         for (const width of [1024, 768]) {
             await page.setViewportSize({ width, height: 900 });
-            // Inline or folded into the overflow menu, the menu opens.
             await openCamerasMenu(page);
-            const menu = await boxOf(page, "#player-cameras-popover");
+            const menu = await boxOf(page, "#player-view-menu-popover");
             expect(menu.x).toBeGreaterThanOrEqual(0);
             expect(menu.x + menu.width).toBeLessThanOrEqual(width + 1);
             const camera = cameraCheckbox(page, "interior");
@@ -96,12 +95,12 @@ test("trip meta counts camera files without a camera count; mobile cameras live 
     await expect(meta).not.toContainText("camera");
     await expect(page.locator("#top-panel")).toBeHidden();
     await openCamerasMenu(page);
-    const menu = await boxOf(page, "#player-cameras-popover");
+    const menu = await boxOf(page, "#player-view-menu-popover");
     expect(menu.x).toBeGreaterThanOrEqual(0);
     expect(menu.x + menu.width).toBeLessThanOrEqual(MOBILE.width + 1);
     await expect(cameraCheckbox(page, "front")).toHaveAccessibleName(/^Show /);
     await cameraCheckbox(page, "interior").click();
-    await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(2);
+    await expect(page.locator("#player-cameras-section .cameras-menu__visible:checked")).toHaveCount(2);
     await closeCamerasMenu(page);
     await expect(page.locator("#video-grid .video-tile:not([hidden])")).toHaveCount(2);
     await page.locator("#mobile-view-map").click();

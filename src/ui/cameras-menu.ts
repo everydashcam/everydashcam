@@ -1,11 +1,13 @@
-// "Cameras" menu in the player bar: arrangement mode, overlay permission,
+// Cameras section of the View menu: arrangement mode, overlay permission,
 // which cameras show and in what order, the main camera and the sound source.
 // Shown on trips with several cameras, in viewing and export alike - the
 // arrangement is shared, so this is the one place to set it. Every change goes
-// through camera-arrangement.ts.
+// through camera-arrangement.ts. The View menu (view-menu.ts) owns the dialog
+// and its lifecycle; the orchestrator renders this section when it opens.
 //
-// A dialog with native controls rather than a role="menu": it mixes radios,
+// Native controls rather than menu items: the section mixes radios,
 // checkboxes, a select and drag handles, which menu semantics cannot express.
+// That is why the View menu is a dialog.
 
 import { t } from "../i18n/index.js";
 import type { Channel } from "../parsers/types.js";
@@ -19,15 +21,9 @@ import {
 } from "./camera-arrangement.js";
 import { dom } from "./dom.js";
 import { channelDisplayLabel } from "./format.js";
-import { initPlayerPopoverPosition } from "./player-popover.js";
 import { attachPointerDrag } from "./pointer-drag.js";
-import { createPopover } from "./popover-lifecycle.js";
 import { activeTrip, mainChannel, state, visibleChannels } from "./state.js";
 
-let popover: ReturnType<typeof createPopover> | null = null;
-// Whether the Cameras button was folded into the overflow menu when the menu
-// opened, which decides the button the menu sits by.
-let openedFolded = false;
 // Row under the pointer while a camera is dragged by its handle.
 let drag: { channel: Channel; target: Channel | null; ghost: HTMLElement | null } | null = null;
 
@@ -36,73 +32,24 @@ function hasSeveralCameras(): boolean {
     return !!activeTrip() && state.composition.order.length > 1;
 }
 
-/** Whether the Cameras button is folded into the overflow menu right now. */
-function isFolded(): boolean {
-    return dom.camerasWrap.dataset.overflowHidden === "true";
-}
-
-function overflowButton(): HTMLElement | null {
-    return document.getElementById("player-overflow");
-}
-
-export function initCamerasMenu(): void {
-    const button = dom.camerasBtn;
-    const panel = dom.camerasPopover;
-    initPlayerPopoverPosition(() => (isFolded() ? (overflowButton() ?? button) : button), panel);
-    popover = createPopover({
-        button,
-        panel,
-        show: () => {
-            openedFolded = isFolded();
-            renderCamerasMenu();
-            panel.hidden = false;
-            button.classList.add("is-open");
-        },
-        hide: () => {
-            panel.hidden = true;
-            button.classList.remove("is-open");
-            endDrag();
-            // Back home after an opening from the overflow menu.
-            if (panel.parentElement !== dom.camerasWrap) dom.camerasWrap.append(panel);
-        },
-        afterOpen: () => panel.querySelector<HTMLElement>("input:checked, input, button")?.focus(),
-    });
-    button.addEventListener("click", (e) => {
-        e.stopPropagation();
-        popover?.toggle();
-    });
-    // The menu sits by whichever button opened it; once the Cameras button
-    // folds into the overflow menu or comes back, that place is wrong. An
-    // overflow pass rewrites the attribute on every bar resize (opening the
-    // menu is one), so only a changed outcome counts.
-    new MutationObserver(() => {
-        if (!panel.hidden && isFolded() !== openedFolded) popover?.close();
-    }).observe(dom.camerasWrap, { attributes: true, attributeFilter: ["data-overflow-hidden"] });
-    syncCamerasMenu();
-}
-
 /**
- * Opens the menu from its overflow-menu entry. The Cameras button is hidden
- * then, so the dialog moves next to the overflow button and opens there.
- */
-export function openCamerasMenuFromOverflow(): void {
-    const anchorWrap = overflowButton()?.parentElement;
-    if (isFolded() && anchorWrap) anchorWrap.append(dom.camerasPopover);
-    popover?.open();
-}
-
-/**
- * Shows the button on multi-camera trips and refreshes an open menu. Called
- * after every arrangement change and trip switch.
+ * Shows the section on multi-camera trips and refreshes it while the View
+ * menu is open. Called after every arrangement change and trip switch.
  */
 export function syncCamerasMenu(): void {
+    const section = dom.camerasSection;
     const available = hasSeveralCameras();
-    dom.camerasWrap.hidden = !available;
+    section.hidden = !available;
     if (!available) {
-        popover?.close();
+        cancelCameraDrag();
+        // A trip switch can empty the section under an open menu; the panel
+        // rows below keep the keyboard inside the dialog.
+        const hadFocus = section.contains(document.activeElement);
+        section.replaceChildren();
+        if (hadFocus) dom.viewMenuPopover.querySelector<HTMLElement>(".view-menu-row:not([hidden])")?.focus();
         return;
     }
-    if (!dom.camerasPopover.hidden) renderCamerasMenu();
+    if (!dom.viewMenuPopover.hidden) renderCamerasMenu();
 }
 
 /* -------------------------------- rendering -------------------------------- */
@@ -130,11 +77,15 @@ function renderModes(): HTMLElement {
         option.tabIndex = checked ? 0 : -1;
         option.textContent = t(mode === "main" ? "player.cameras.mode.main" : "player.cameras.mode.equal");
         option.addEventListener("click", () => setArrangementMode(mode));
+        // Arrows only move focus; Enter or Space picks the layout, like the
+        // map modes below. The View menu opens with focus here, and a stray
+        // arrow must not restage every camera.
         option.addEventListener("keydown", (e) => {
             if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
             e.preventDefault();
             e.stopPropagation();
-            setArrangementMode(mode === "main" ? "equal" : "main");
+            const other = mode === "main" ? "equal" : "main";
+            group.querySelector<HTMLElement>(`[data-camera-mode="${other}"]`)?.focus();
         });
         group.append(option);
     }
@@ -250,42 +201,41 @@ function renderAudio(): HTMLElement {
     return label;
 }
 
-/** Rebuilds the menu from state, keeping keyboard focus on the same control. */
+/**
+ * Rebuilds the section from state, keeping keyboard focus on the same
+ * control. The View menu calls it before it opens; no-op on a single-camera
+ * trip and while a camera is being dragged.
+ */
 export function renderCamerasMenu(): void {
-    const panel = dom.camerasPopover;
-    if (drag) return;
+    const section = dom.camerasSection;
+    if (drag || !hasSeveralCameras()) return;
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.focusKey;
-    panel.replaceChildren();
-    panel.append(header("player.cameras.mode.label"), renderModes(), renderOverlayToggle());
-    panel.append(header("player.cameras.title"));
+    section.replaceChildren();
+    // The segmented control explains itself; its group carries the "Layout"
+    // name for screen readers, and the menu stays one header shorter.
+    section.append(header("player.cameras.title"), renderModes(), renderOverlayToggle());
     const list = document.createElement("ul");
     list.className = "cameras-menu__cameras";
     for (const channel of state.composition.order) list.append(renderCameraRow(channel));
-    panel.append(list, renderAudio());
-    const help = document.createElement("button");
-    help.type = "button";
-    help.className = "view-menu-row feedback-link";
-    help.dataset.feedbackPreset = "cameras";
-    help.textContent = t("recognition.cameras.help");
-    help.addEventListener("click", () => popover?.close(true));
-    panel.append(help);
-    if (focused) panel.querySelector<HTMLElement>(`[data-focus-key="${focused}"]`)?.focus();
+    section.append(list, renderAudio());
+    if (focused) section.querySelector<HTMLElement>(`[data-focus-key="${focused}"]`)?.focus();
 }
 
 /* -------------------------------- reordering ------------------------------- */
 
 function rowUnderPoint(x: number, y: number): HTMLElement | null {
-    for (const row of dom.camerasPopover.querySelectorAll<HTMLElement>(".cameras-menu__camera")) {
+    for (const row of dom.camerasSection.querySelectorAll<HTMLElement>(".cameras-menu__camera")) {
         const r = row.getBoundingClientRect();
         if (y >= r.top && y <= r.bottom && x >= r.left && x <= r.right) return row;
     }
     return null;
 }
 
-function endDrag(): void {
+/** Drops an unfinished reorder: the View menu calls it when it closes. */
+export function cancelCameraDrag(): void {
     if (!drag) return;
     drag.ghost?.remove();
-    for (const row of dom.camerasPopover.querySelectorAll(".cameras-menu__camera")) {
+    for (const row of dom.camerasSection.querySelectorAll(".cameras-menu__camera")) {
         row.classList.remove("is-dragging", "drop-target");
     }
     drag = null;
@@ -311,14 +261,14 @@ function attachHandleDrag(handle: HTMLElement, channel: Channel, name: string): 
             drag.ghost.style.top = `${e.clientY + 12}px`;
             const row = rowUnderPoint(e.clientX, e.clientY);
             const target = (row?.dataset.channel as Channel | undefined) ?? null;
-            for (const r of dom.camerasPopover.querySelectorAll(".cameras-menu__camera")) {
+            for (const r of dom.camerasSection.querySelectorAll(".cameras-menu__camera")) {
                 r.classList.toggle("drop-target", r === row && target !== channel);
             }
             drag.target = target !== channel ? target : null;
         },
         onEnd: (_e, reason) => {
             const target = drag?.target ?? null;
-            endDrag();
+            cancelCameraDrag();
             if (reason === "up" && target) moveCamera(channel, target);
             else renderCamerasMenu();
         },

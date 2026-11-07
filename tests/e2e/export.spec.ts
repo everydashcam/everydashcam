@@ -1024,10 +1024,10 @@ test.describe("export", () => {
     test("excluding a camera drops it from the grid and export", async ({ page }) => {
         await openCamerasMenu(page);
         await expect(cameraCheckboxes(page)).toHaveCount(3);
-        await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(3);
+        await expect(page.locator("#player-cameras-section .cameras-menu__visible:checked")).toHaveCount(3);
         await cameraCheckbox(page, "interior").click();
-        await expect(page.locator("#player-cameras-popover .cameras-menu__visible:checked")).toHaveCount(2);
-        await expect(page.locator("#player-cameras-popover .cameras-menu__camera.is-hidden")).toHaveCount(1);
+        await expect(page.locator("#player-cameras-section .cameras-menu__visible:checked")).toHaveCount(2);
+        await expect(page.locator("#player-cameras-section .cameras-menu__camera.is-hidden")).toHaveCount(1);
         await closeCamerasMenu(page);
         await expect(page.locator("#video-grid .video-tile:not([hidden])")).toHaveCount(2);
         expect(await visibleCameraOrder(page)).toEqual(["front", "rear"]);

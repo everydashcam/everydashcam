@@ -144,9 +144,9 @@ test.describe("onboarding", () => {
         const onb = page.locator(".dc-onb");
         await expect(onb).toBeVisible({ timeout: 5_000 });
         await expect(page.locator(".dc-onb__title")).toContainText("Main camera");
-        // Step through to the Cameras menu step.
+        // Step through to the camera settings step, which points at View.
         await page.locator(".dc-onb__next").click();
-        await expect(page.locator(".dc-onb__title")).toContainText("Cameras menu");
+        await expect(page.locator(".dc-onb__title")).toContainText("Camera settings");
         await page.locator(".dc-onb__skip").click();
         await expect(onb).toHaveCount(0);
         expect(await flag(page, "multichannel")).toBe("1");

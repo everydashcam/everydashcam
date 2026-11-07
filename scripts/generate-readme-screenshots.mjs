@@ -659,11 +659,11 @@ async function shotDesktop(browser, fixtureRoot) {
     await annotateTopTrip(page);
     await selectTopTrip(page);
 
-    // "Main + others" is the default; the Cameras menu is shown only on
-    // multichannel trips. Switch to "All equal" so BOTH cameras show at the
+    // "Main + others" is the default; the View menu has a cameras section only
+    // on multichannel trips. Switch to "All equal" so BOTH cameras show at the
     // same size.
-    await page.locator("#player-cameras").click();
-    await page.locator('#player-cameras-popover [data-camera-mode="equal"]').click();
+    await page.locator("#player-view-menu").click();
+    await page.locator('#player-cameras-section [data-camera-mode="equal"]').click();
     await page.keyboard.press("Escape");
     await page.locator("#video-grid").waitFor({ state: "visible" });
     await page.waitForFunction(() => document.getElementById("video-grid")?.dataset.mode === "equal", undefined, {

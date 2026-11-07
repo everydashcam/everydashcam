@@ -324,22 +324,55 @@ test("in a short landscape the cameras stay above the controls on the first scre
     }
 });
 
-test("a single-camera trip offers no Cameras menu on a desktop or a phone", async ({ page }) => {
+test("the View menu starts with the cameras on a multi-camera trip", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize(DESKTOP);
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    await page.locator("#player-view-menu").click();
+    const dialog = page.getByRole("dialog", { name: "View" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Cameras" })).toBeVisible();
+    // The dialog takes focus on its first control: the checked layout.
+    await expect(page.locator('[data-camera-mode="main"]')).toBeFocused();
+    const cameras = await boxOf(page, "#player-cameras-section");
+    const panels = await boxOf(page, '.view-menu-row[data-panel="chart"]');
+    expect(cameras.y + cameras.height, "cameras come before the panels").toBeLessThanOrEqual(panels.y);
+    // A stray arrow only moves focus; Space inside the dialog picks the
+    // control rather than toggling playback.
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator('[data-camera-mode="equal"]')).toBeFocused();
+    await expect(page.locator("#video-grid")).toHaveAttribute("data-mode", "main");
+    await page.keyboard.press("Space");
+    await expect(page.locator("#video-grid")).toHaveAttribute("data-mode", "equal");
+    await expect(page.locator('[data-camera-mode="equal"]'), "focus follows the choice").toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.locator('[data-camera-mode="main"]')).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#video-grid")).toHaveAttribute("data-mode", "main");
+    await page.locator('.view-menu-row[data-panel="chart"]').focus();
+    await page.keyboard.press("Space");
+    await expect(page.locator('.view-menu-row[data-panel="chart"]')).toHaveAttribute("aria-checked", "false");
+    await expect(page.locator("#player-play")).toHaveAttribute("data-paused", "true");
+    await page.keyboard.press("Space");
+    await expect(page.locator('.view-menu-row[data-panel="chart"]')).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("#player-view-menu")).toBeFocused();
+});
+
+test("a single-camera trip has no cameras section in the View menu", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
     await loadTrip(page, SAMPLE_NOGPS);
     await pausePlayback(page);
-    await expect(page.locator("#player-cameras-wrap")).toHaveAttribute("hidden", "");
-    await expect(page.locator("#player-cameras")).toBeHidden();
-
-    await page.setViewportSize(MOBILE);
-    await expect(page.locator("#player-cameras")).toBeHidden();
-    await page.locator("#player-overflow").click();
-    await expect(page.locator("#player-overflow-menu")).toBeVisible();
-    await expect(page.locator("#player-overflow-menu .overflow-menu-btn").filter({ hasText: "Cameras" })).toHaveCount(
-        0,
-    );
+    await page.locator("#player-view-menu").click();
+    await expect(page.getByRole("dialog", { name: "View" })).toBeVisible();
+    await expect(page.locator("#player-cameras-section")).toBeHidden();
+    await expect(page.locator("#player-cameras-section")).toBeEmpty();
+    await expect(page.locator('.view-menu-row[data-panel="chart"]')).toBeFocused();
 });
 
 /** A front camera recording 6 s and a rear camera that stops after 2.4 s. */

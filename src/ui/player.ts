@@ -114,7 +114,7 @@ import { initPlayerFullscreen, syncFullscreenButton, toggleFullscreen } from "./
 import { restoreArrangementForTrip } from "./player-layout-pref.js";
 import { applyCameraLayout, initPlayerLayout, relayoutCameras } from "./player-layout.js";
 import { initCameraArrangement } from "./camera-arrangement.js";
-import { initCamerasMenu, syncCamerasMenu } from "./cameras-menu.js";
+import { syncCamerasMenu } from "./cameras-menu.js";
 import { initPlayerLoop, syncLoopButton, toggleLoop } from "./player-loop.js";
 import {
     closeSpeedMenu,
@@ -1826,7 +1826,7 @@ function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel, opts: { animate
 
 /**
  * Re-applies state.composition to the live DOM video grid - tile places and
- * looks, audio routing, the Cameras menu. Idempotent and cheap; called after
+ * looks, audio routing, the View menu cameras. Idempotent and cheap; called after
  * every arrangement change (camera-arrangement.ts) and export setting that
  * reshapes the preview. `animate` slides the tiles to their new places.
  *
@@ -2358,7 +2358,6 @@ export function initPlayer(): void {
         apply: ({ animate }) => applyComposition({ animate }),
         resetZoom: resetVideoZoom,
     });
-    initCamerasMenu();
 
     // Export-mode toggles -> recompute --dc-output-aspect so the letterbox
     // snaps to the right shape on open/close. Same subscriber catches

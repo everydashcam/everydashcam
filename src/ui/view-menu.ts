@@ -1,5 +1,7 @@
-// "View" dropdown - toggle visibility of the optional viewer panels. Chart,
-// events and readouts are checkboxes; map is a three-state control
+// "View" dialog - what the viewer shows. On trips with several cameras it
+// starts with their arrangement, rendered by cameras-menu.ts through the
+// onOpen/onClose hooks; this module owns the dialog and the panels below.
+// Chart, events and readouts are checkboxes; map is a three-state control
 // (off / mini / large) whose layout transition is owned by map.ts. The basic
 // on/off preference remains persisted in localStorage["dc.viewer.panels"].
 //
@@ -116,6 +118,11 @@ export interface ViewMenuOptions {
     button: HTMLElement;
     popover: HTMLElement;
     panels: Record<Panel, HTMLElement | null>;
+    /** Runs before the dialog shows, so content rendered here is measured
+     *  and positioned with it. */
+    onOpen?: () => void;
+    /** Runs after the dialog hides. */
+    onClose?: () => void;
 }
 
 /** Per-panel availability. A disabled panel cannot be toggled by the user
@@ -228,12 +235,25 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
         button: opts.button,
         panel: opts.popover,
         show: () => {
+            opts.onOpen?.();
             opts.popover.hidden = false;
             opts.button.classList.add("is-open");
         },
         hide: () => {
             opts.popover.hidden = true;
             opts.button.classList.remove("is-open");
+            opts.onClose?.();
+        },
+        // A dialog takes focus on opening. A radio group is reached through
+        // its checked option, the one in the tab order.
+        afterOpen: () => {
+            const first = [...opts.popover.querySelectorAll<HTMLElement>("button, input, select, [tabindex]")].find(
+                (control) =>
+                    control.tabIndex >= 0 &&
+                    !(control as HTMLButtonElement).disabled &&
+                    control.getClientRects().length > 0,
+            );
+            first?.focus();
         },
     });
     function togglePopover(force?: boolean): void {
@@ -284,6 +304,9 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
             if (mapModeRequestHandler) mapModeRequestHandler(mode);
             else setPanelVisible("map", mode !== "off");
         });
+        // Arrows only move focus; Enter or Space picks the layout. Each map
+        // mode reflows the whole viewer, so passing through one on the way to
+        // another must not apply it.
         button.addEventListener("keydown", (event) => {
             const visibleModes = mapModes.filter((modeButton) => modeButton.getClientRects().length > 0);
             const visibleIndex = visibleModes.indexOf(button);

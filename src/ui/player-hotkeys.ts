@@ -68,7 +68,9 @@ function isNativeActivationTarget(target: EventTarget | null): boolean {
 
 function isPlayerToolbarButton(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLButtonElement) || !target.matches("#player-bar button")) return false;
-    if (target.closest('[role="menu"]')) return false;
+    // Controls inside a bar popup (the View dialog, the capture menu) are its
+    // content, not toolbar buttons: Space must activate them.
+    if (target.closest('[role="menu"], [role="dialog"]')) return false;
     const popup = target.getAttribute("aria-haspopup");
     return popup === null || popup === "false";
 }

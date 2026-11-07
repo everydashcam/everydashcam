@@ -1,5 +1,5 @@
 // Top-panel: the trip name above the player in export mode, where the sidebar
-// with the trip card is hidden. Camera controls live in the Cameras menu in
+// with the trip card is hidden. Camera controls live in the View menu in
 // the player bar (cameras-menu.ts) for both viewing and export.
 
 import { displayClockDate } from "../trips.js";

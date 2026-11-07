@@ -1939,19 +1939,6 @@
                                 <div id="player-capture-menu" class="view-menu-popover capture-menu" role="menu"
                                      data-i18n-attr="aria-label:player.captureMenu.title" aria-label="Still image" hidden></div>
                             </div>
-                            <!-- Camera arrangement menu, shown on trips with several
-                                 cameras. Filled in by src/ui/cameras-menu.ts. -->
-                            <div class="view-menu-wrap cameras-menu-wrap" id="player-cameras-wrap" hidden>
-                                <button id="player-cameras" class="player-btn" type="button"
-                                        aria-haspopup="dialog" aria-expanded="false" aria-controls="player-cameras-popover"
-                                        data-i18n-attr="aria-label:player.cameras.button,title:player.cameras.button"
-                                        aria-label="Cameras" title="Cameras">
-                                    <!-- main picture with two smaller ones under it -->
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="11" rx="2"/><rect x="3" y="17" width="8" height="4" rx="1"/><rect x="13" y="17" width="8" height="4" rx="1"/></svg>
-                                </button>
-                                <div id="player-cameras-popover" class="view-menu-popover cameras-menu" role="dialog"
-                                     data-i18n-attr="aria-label:player.cameras.title" aria-label="Cameras" hidden></div>
-                            </div>
                             <!-- Map expand/collapse toggle. On desktop the mini-map circle
                                  doubles as a click target to expand; on mobile the circle
                                  is hidden (covers the camera + bad touch target), so this
@@ -1963,12 +1950,14 @@
                                 <!-- lucide: map -->
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>
                             </button>
-                            <!-- "View" dropdown: chart / events / readouts are visibility
-                                 toggles; map is a three-state off / mini / large control.
-                                 Hotkeys C / T / M / G. See src/ui/view-menu.ts. -->
+                            <!-- "View" dialog: on trips with several cameras it starts with
+                                 their arrangement (src/ui/cameras-menu.ts), then the panels.
+                                 Chart / events / readouts are visibility toggles; map is a
+                                 three-state off / mini / large control. Hotkeys C / T / M / G.
+                                 See src/ui/view-menu.ts. -->
                             <div class="view-menu-wrap">
                                 <button id="player-view-menu" class="player-btn player-btn-text view-menu-button" type="button"
-                                        aria-haspopup="true" aria-expanded="false"
+                                        aria-haspopup="dialog" aria-expanded="false" aria-controls="player-view-menu-popover"
                                         data-i18n-attr="aria-label:viewMenu.title,title:viewMenu.title"
                                         aria-label="View" title="View">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1981,9 +1970,14 @@
                                     <span class="view-menu-button__label" data-i18n="viewMenu.label">View</span>
                                     <span class="view-menu-button__chevron" aria-hidden="true">▾</span>
                                 </button>
-                                <div id="player-view-menu-popover" class="view-menu-popover" hidden role="menu">
+                                <div id="player-view-menu-popover" class="view-menu-popover" hidden role="dialog"
+                                     data-i18n-attr="aria-label:viewMenu.label" aria-label="View">
+                                    <!-- Camera arrangement, shown on trips with several cameras.
+                                         Filled in by src/ui/cameras-menu.ts. -->
+                                    <div id="player-cameras-section" class="cameras-menu" role="group"
+                                         data-i18n-attr="aria-label:player.cameras.title" aria-label="Cameras" hidden></div>
                                     <div class="view-menu-popover__header" data-i18n="viewMenu.section.display">Display</div>
-                                    <button type="button" class="view-menu-row view-menu-row--described" role="menuitemcheckbox"
+                                    <button type="button" class="view-menu-row view-menu-row--described" role="checkbox"
                                             data-fullscreen-panels-below aria-checked="false" hidden
                                             aria-labelledby="view-menu-panels-below-label" aria-describedby="view-menu-panels-below-description">
                                         <span class="view-menu-row__check" aria-hidden="true">
@@ -1995,7 +1989,7 @@
                                             <span id="view-menu-panels-below-description" class="view-menu-row__description" data-i18n="viewMenu.videoAbovePanels.description">Keep controls visible below the video.</span>
                                         </span>
                                     </button>
-                                    <button type="button" class="view-menu-row" role="menuitemcheckbox" data-panel="chart"
+                                    <button type="button" class="view-menu-row" role="checkbox" data-panel="chart"
                                             aria-checked="true">
                                         <span class="view-menu-row__check" aria-hidden="true">
                                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2004,7 +1998,7 @@
                                         <span class="view-menu-row__label" data-i18n="viewMenu.chart">Speed + |G| chart</span>
                                         <span class="view-menu-row__hint mono">C</span>
                                     </button>
-                                    <button type="button" class="view-menu-row" role="menuitemcheckbox" data-panel="strip"
+                                    <button type="button" class="view-menu-row" role="checkbox" data-panel="strip"
                                             aria-checked="true">
                                         <span class="view-menu-row__check" aria-hidden="true">
                                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2018,17 +2012,17 @@
                                             <span class="view-menu-row__label" data-i18n="viewMenu.map">Map</span>
                                             <span class="view-menu-row__hint mono">M</span>
                                         </div>
-                                        <div class="view-menu-map__modes" role="group"
+                                        <div class="view-menu-map__modes" role="radiogroup"
                                              data-i18n-attr="aria-label:viewMenu.map" aria-label="Map">
-                                            <button type="button" role="menuitemradio" data-map-mode="off"
+                                            <button type="button" role="radio" data-map-mode="off"
                                                     aria-checked="false" data-i18n="viewMenu.map.off">Off</button>
-                                            <button type="button" role="menuitemradio" data-map-mode="mini"
+                                            <button type="button" role="radio" data-map-mode="mini"
                                                     aria-checked="true" data-i18n="viewMenu.map.mini">Mini</button>
-                                            <button type="button" role="menuitemradio" data-map-mode="large"
+                                            <button type="button" role="radio" data-map-mode="large"
                                                     aria-checked="false" data-i18n="viewMenu.map.large">Large</button>
                                         </div>
                                     </div>
-                                    <button type="button" class="view-menu-row" role="menuitemcheckbox" data-panel="readout"
+                                    <button type="button" class="view-menu-row" role="checkbox" data-panel="readout"
                                             aria-checked="true">
                                         <span class="view-menu-row__check" aria-hidden="true">
                                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2037,9 +2031,9 @@
                                         <span class="view-menu-row__label" data-i18n="viewMenu.readout">GPS readouts</span>
                                         <span class="view-menu-row__hint mono">G</span>
                                     </button>
-                                    <button type="button" class="view-menu-row feedback-link" role="menuitem"
+                                    <button type="button" class="view-menu-row feedback-link"
                                             data-feedback-preset="cameras" data-i18n="recognition.cameras.help">Missing a camera?</button>
-                                    <button id="recognition-gps-menu" type="button" class="view-menu-row feedback-link" role="menuitem" hidden
+                                    <button id="recognition-gps-menu" type="button" class="view-menu-row feedback-link" hidden
                                             data-feedback-preset="gps" data-i18n="recognition.gps.help">Expected GPS in these recordings? Tell me</button>
                                 </div>
                             </div>
@@ -2060,7 +2054,7 @@
                             </button>
                             <!-- Overflow kebab for player-bar. When the bar shrinks
                                  (narrow sidebar+map or a mobile screen), the
-                                 capture/loop/cameras/help buttons move into the popup.
+                                 capture/loop/help buttons move into the popup.
                                  Hidden on a wide desktop. -->
                             <div class="overflow-wrap">
                                 <button id="player-overflow" class="player-btn overflow-toggle" type="button"

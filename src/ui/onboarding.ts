@@ -179,8 +179,8 @@ const TOURS: Record<OnboardTourId, OnboardTour> = {
                 bodyKey: "onboard.multi.layout.body",
             },
             {
-                // A narrow bar folds the Cameras button into the overflow menu.
-                anchors: ["#player-cameras", "#player-overflow"],
+                // The camera arrangement opens from the View menu.
+                anchors: ["#player-view-menu"],
                 titleKey: "onboard.multi.channels.title",
                 bodyKey: "onboard.multi.channels.body",
             },

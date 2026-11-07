@@ -426,18 +426,13 @@
     align-items: baseline;
     gap: var(--dc-space-1);
 }
-/* "View" dropdown - toggles chart/strip/map visibility. Wrap is
+/* "View" dialog - camera arrangement and panel visibility. Wrap is
    position:relative so the popover can be anchored to the button. The
    button uses the text+chevron style of player-btn-text (like the playback
    speed button). */
 .view-menu-wrap {
     position: relative;
     display: inline-flex;
-}
-/* The Cameras wrap is hidden on single-camera trips; the display above would
-   otherwise beat the hidden attribute. */
-.view-menu-wrap[hidden] {
-    display: none;
 }
 .view-menu-button {
     display: inline-flex;
@@ -519,7 +514,7 @@
     align-items: flex-start;
 }
 .view-menu-row--described .view-menu-row__check {
-    margin-top: 3px;
+    margin-top: 2px;
 }
 .view-menu-row__text {
     display: flex;
@@ -536,10 +531,12 @@
     cursor: not-allowed;
     pointer-events: none; /* skip hover background, clicks reach nothing */
 }
+/* The size of the native checkboxes in the cameras section above, so both
+   kinds line up in one dialog. */
 .view-menu-row__check {
-    flex: 0 0 14px;
-    width: 14px;
-    height: 14px;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
     border: 1.5px solid var(--dc-ash-5);
     border-radius: var(--dc-radius-xs);
     display: inline-flex;
@@ -624,11 +621,21 @@
     cursor: not-allowed;
 }
 
-/* "Cameras" menu (src/ui/cameras-menu.ts): a dialog with native controls in
-   the View menu's look - same headers, the map's segmented control for the
+/* Cameras section of the View menu (src/ui/cameras-menu.ts): native controls
+   in the View rows' look - same headers, the map's segmented control for the
    two modes, rows with the View rows' padding and hover. */
 .cameras-menu {
-    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--dc-space-1);
+}
+.cameras-menu[hidden] {
+    display: none;
+}
+/* A camera row holds a handle, a name and a Main button: the panel rows'
+   width cuts longer names, on a phone too. */
+.view-menu-popover:has(> .cameras-menu:not([hidden])) {
+    width: 300px;
 }
 .cameras-menu .cameras-menu__modes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -997,7 +1004,7 @@
     #gps-sync-pill-mobile:not([hidden]):not([data-overflow-hidden="true"]) {
         display: inline-flex;
     }
-    /* Speed pill, view-menu, cameras menu etc. stay in the bar on
+    /* Speed pill, view-menu etc. stay in the bar on
        mobile only until overflow-bar moves them into the kebab. After the
        first resize overflow-bar tags them with data-overflow-hidden="true"
        and they are hidden by the universal rule in overflow.css. */
@@ -1057,7 +1064,7 @@
        via CSS - if we did, the width measurement would not reflect real demand
        and overflow-bar would think everything fits.
        MANDATORY (never collapse) on mobile = play + current-time + speed metric +
-       playback-speed + view-menu + cameras menu + Export + kebab. Collapsible
+       playback-speed + view-menu + Export + kebab. Collapsible
        (dropped high-priority-first): help/capture/loop/mute/map -
        so Export (priority 1, last) always stays inline. The narrow-band gap shrink below keeps the mandatory floor under
        the viewport down to ~320px. */

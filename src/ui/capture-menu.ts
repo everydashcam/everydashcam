@@ -3,7 +3,7 @@
 // and copy without the menu. With a single choice (one camera, no clipboard)
 // the button saves at once instead of opening a one-row menu. When the bar is
 // narrow the button folds into the overflow menu, and its entry opens this
-// menu next to the overflow button (like the Cameras menu).
+// menu next to the overflow button.
 
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";

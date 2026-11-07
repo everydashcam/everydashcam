@@ -45,6 +45,7 @@ import { APP_VERSION } from "./version.js";
 import { initPortableUpdates } from "./portable/updates.js";
 
 import { initCapabilityGate, surfaceDegradedCapabilities, surfaceMapUnavailable } from "./ui/capability-gate.js";
+import { cancelCameraDrag, renderCamerasMenu } from "./ui/cameras-menu.js";
 import { initConnectivity } from "./ui/connectivity.js";
 import { initOfflineBanner } from "./ui/offline-banner.js";
 import { scheduleServiceWorkerRegistration } from "./ui/sw-registration.js";
@@ -479,12 +480,15 @@ if (!__PORTABLE__) initSwitchLangModal();
 initTripPreparation();
 initHotkeysModal();
 if (!__PORTABLE__) initWhatsNewModal();
-// "View" dropdown - chart/strip/readout toggles plus the map's off/mini/large
-// control. Reads visibility from localStorage; map.ts registers the layout
-// transition handler once MapLibre is ready.
+// "View" dialog - the cameras section on multi-camera trips, then
+// chart/strip/readout toggles plus the map's off/mini/large control. Reads
+// visibility from localStorage; map.ts registers the layout transition handler
+// once MapLibre is ready.
 initViewMenu({
     button: dom.viewMenuButton,
     popover: dom.viewMenuPopover,
+    onOpen: renderCamerasMenu,
+    onClose: cancelCameraDrag,
     panels: {
         // Hide ONLY the canvas (not the whole .player-chart box), otherwise
         // the whole-trip row and ruler inside would also disappear when

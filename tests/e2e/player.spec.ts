@@ -596,17 +596,17 @@ test.describe("player", () => {
 
     test("dragging a camera by its handle in the Cameras menu reorders the layout", async ({ page }) => {
         await openCamerasMenu(page);
-        const rows = page.locator("#player-cameras-popover .cameras-menu__camera");
+        const rows = page.locator("#player-cameras-section .cameras-menu__camera");
         await expect(rows).toHaveCount(3);
-        const handle = await boxOf(page, '#player-cameras-popover [data-channel="front"] .cameras-menu__handle');
-        const target = await boxOf(page, '#player-cameras-popover .cameras-menu__camera[data-channel="interior"]');
+        const handle = await boxOf(page, '#player-cameras-section [data-channel="front"] .cameras-menu__handle');
+        const target = await boxOf(page, '#player-cameras-section .cameras-menu__camera[data-channel="interior"]');
         await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
         await page.mouse.down();
         await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 8, { steps: 3 });
         await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
         await expect(page.locator(".tile-drag-ghost")).toBeVisible();
         await expect(
-            page.locator('#player-cameras-popover .cameras-menu__camera[data-channel="interior"]'),
+            page.locator('#player-cameras-section .cameras-menu__camera[data-channel="interior"]'),
         ).toHaveClass(/drop-target/);
         await page.mouse.up();
 
@@ -617,11 +617,11 @@ test.describe("player", () => {
 
     test("arrow keys on a menu handle move the camera one place", async ({ page }) => {
         await openCamerasMenu(page);
-        await page.locator('#player-cameras-popover [data-channel="interior"] .cameras-menu__handle').focus();
+        await page.locator('#player-cameras-section [data-channel="interior"] .cameras-menu__handle').focus();
         await page.keyboard.press("ArrowUp");
         await expect.poll(() => visibleCameraOrder(page)).toEqual(["front", "interior", "rear"]);
         await expect(
-            page.locator('#player-cameras-popover [data-channel="interior"] .cameras-menu__handle'),
+            page.locator('#player-cameras-section [data-channel="interior"] .cameras-menu__handle'),
             "focus stays on the moved handle",
         ).toBeFocused();
     });

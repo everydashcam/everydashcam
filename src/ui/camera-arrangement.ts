@@ -1,5 +1,5 @@
 // User actions on the camera arrangement. Every control that changes it - a
-// tile click or drag, the Cameras menu, hotkeys, the divider, overlay windows -
+// tile click or drag, the View menu, hotkeys, the divider, overlay windows -
 // goes through these functions, so each change restages the grid, resets a
 // zoom that would land on the wrong camera, remembers the arrangement for the
 // camera set and wakes the export panel the same way.
