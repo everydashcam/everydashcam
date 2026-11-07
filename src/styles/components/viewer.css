@@ -598,15 +598,17 @@ body:not(.export-mode) .video-tile:not(.zoomed) > video {
 }
 
 /* === Channel reorder: drag a tile by its grip handle to swap with another ===
-   The handle is the only drag initiator (tap on the tile body still swaps the
-   audio source, pan still works when zoomed) - a dedicated hit target keeps
-   the pointer gestures unambiguous on both mouse and touch.
+   The handle is the only drag initiator (a click on the tile body plays or
+   swaps cameras, pan still works when zoomed) - a dedicated hit target keeps
+   the pointer gestures unambiguous.
 
-   Visibility: only in multi-channel casual mode. Hidden on single-channel
+   Visibility: only in multi-channel casual mode, and only where the pointer
+   can hover, revealed on tile hover. Hidden on single-channel
    (data-channel-count="1" - nothing to reorder) and in export-mode (the tiles
-   carry their own pip-drag/crop/watermark interactions there). Shown on tile
-   hover for fine pointers; always visible on coarse pointers (touch) where
-   there is no hover to reveal it. */
+   carry their own pip-drag/crop/watermark interactions there). Without hover
+   it would have to stay on screen over every picture, a small target a few
+   pixels from the tap that swaps cameras; touch screens swap with that tap
+   and reorder in the View menu's camera list instead. */
 .tile-drag-handle {
     position: absolute;
     top: var(--dc-space-1);
@@ -634,22 +636,13 @@ body:not(.export-mode) .video-tile:not(.zoomed) > video {
     display: block;
 }
 
-/* Multi-channel casual mode: handle exists. */
-.video-grid:not([data-channel-count="1"]) .video-tile:not([hidden]) .tile-drag-handle {
-    display: inline-flex;
-}
-
-/* Fine pointer (mouse): reveal on tile hover. */
 @media (hover: hover) {
+    .video-grid:not([data-channel-count="1"]) .video-tile:not([hidden]) .tile-drag-handle {
+        display: inline-flex;
+    }
+
     .video-tile:hover .tile-drag-handle {
         opacity: 1;
-    }
-}
-
-/* Coarse pointer (touch): no hover, keep it visible so it is discoverable. */
-@media (hover: none) {
-    .video-grid:not([data-channel-count="1"]) .video-tile:not([hidden]) .tile-drag-handle {
-        opacity: 0.85;
     }
 }
 

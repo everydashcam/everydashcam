@@ -3,7 +3,8 @@
 // (the same swap a click makes); between smaller cameras, and in the equal
 // grid, the camera is inserted at the target and the rest slide over, like
 // reordering a list. Pointer Events (not HTML5 DnD) so the same gesture works
-// on mouse and touch.
+// on mouse, pen and touch. The handle shows only where the pointer can hover
+// (viewer.css); touch-only screens reorder in the View menu's camera list.
 //
 // Why a grip handle (not whole-tile drag): the tile body already owns two
 // gestures - tap = make main / play-pause (player-tile-input.ts), pan = move

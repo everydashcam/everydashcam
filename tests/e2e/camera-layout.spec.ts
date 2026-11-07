@@ -378,6 +378,25 @@ test("a single-camera trip has only the reflection in the View menu's cameras se
     await expect(section.locator(".cameras-menu__flip-axis").first()).toBeFocused();
 });
 
+test.describe("on a touch phone", () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    test("the cameras carry only their names", async ({ page }) => {
+        await presetLocalStorage(page);
+        await page.setViewportSize(MOBILE);
+        await gotoApp(page);
+        await loadTrip(page, SAMPLE_70MAI);
+        await pausePlayback(page);
+        await settleCameraLayout(page);
+        const tiles = page.locator("#video-grid > .video-tile:not([hidden])");
+        const count = await tiles.count();
+        expect(count).toBeGreaterThan(1);
+        await expect(tiles.locator("button:visible")).toHaveCount(0);
+        await expect(tiles.locator(".channel-label:visible")).toHaveCount(count);
+        await shot(page, "camera-layout-09-touch-tiles");
+    });
+});
+
 /** A front camera recording 6 s and a rear camera that stops after 2.4 s. */
 async function openShortRearTrip(page: Page): Promise<void> {
     const clips = await Promise.all([
