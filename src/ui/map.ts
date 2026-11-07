@@ -2739,7 +2739,8 @@ function noteUserMapInteraction(): void {
 /**
  * Restarts the rAF loop if it was stopped by the early-exit in tick. Safe to
  * call repeatedly - no-op if the loop is already running. Called from sites
- * where state.active may become non-null: after ingest, on playFrame, on expandMap.
+ * where state.active or a GPS track may appear: after ingest, on playFrame,
+ * on map layout changes (including a late track), on play and seeks.
  */
 export function ensureMarkerLoop(): void {
     if (markerRafHandle !== null) return;
@@ -2747,7 +2748,7 @@ export function ensureMarkerLoop(): void {
         clearTimeout(markerTimerHandle);
         markerTimerHandle = null;
     }
-    if (!state.active) return;
+    if (!state.active || !state.hasTrack) return;
     startMarkerLoop();
 }
 
@@ -2929,15 +2930,13 @@ export function startMarkerLoop(): void {
     const tick = (): void => {
         markerRafHandle = null;
         markerTimerHandle = null;
-        // Early exit ONLY when no trip is active (idle before first trip
-        // selection) - do not reschedule; ensureMarkerLoop() restarts when
-        // state.active appears. Eliminates 60 Hz idle wake-ups.
-        //
-        // Not gated on state.marker: a no-GPS trip never creates one (refreshMap
-        // bails before marker creation), and the marker-specific work skips
-        // itself inside markerTick instead. Playback synchronization does not
-        // run here; the player owns its own cadence.
-        if (!state.active) {
+        // Nothing to draw: no active trip yet, or a trip without a GPS track.
+        // Do not reschedule - ensureMarkerLoop() restarts the loop when a trip
+        // or a late track appears (playFrame, applyMapLayout after
+        // syncMapPanels, play/seek events). Playback synchronization does not
+        // run here (the player owns its own cadence), so a trip without GPS
+        // needs no idle wake-ups at all.
+        if (!state.active || !state.hasTrack) {
             markerRafHandle = null;
             return;
         }
