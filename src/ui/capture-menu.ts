@@ -92,10 +92,14 @@ export function initCaptureMenu(take: TakeStill): void {
     takeStill = take;
     const button = dom.playerBar.capture;
     const panel = dom.playerBar.captureMenu;
-    initPlayerPopoverPosition(() => (isFolded() ? (overflowButton() ?? button) : button), panel);
+    // The button on screen: the capture button, or the overflow button it
+    // folded into. The menu sits by it and gives the focus back to it.
+    const visibleOpener = (): HTMLElement => (isFolded() ? (overflowButton() ?? button) : button);
+    initPlayerPopoverPosition(visibleOpener, panel);
     popover = createPopover({
         button,
         panel,
+        returnFocusTo: visibleOpener,
         show: () => {
             openedFolded = isFolded();
             renderCaptureMenu();

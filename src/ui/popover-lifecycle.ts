@@ -6,6 +6,9 @@ interface PopoverOptions {
     show?: () => void;
     hide?: () => void;
     afterOpen?: () => void;
+    /** Element that takes the focus back on close, when it is not the button:
+     *  a button folded into an overflow menu cannot be focused. */
+    returnFocusTo?: () => HTMLElement;
 }
 
 interface PopoverController {
@@ -70,7 +73,8 @@ export function createPopover(options: PopoverOptions): PopoverController {
             if (options.hide) options.hide();
             else panel.hidden = true;
             button.setAttribute("aria-expanded", "false");
-            if ((restoreFocus || hadFocus) && button.isConnected) button.focus({ preventScroll: true });
+            const focusTarget = options.returnFocusTo?.() ?? button;
+            if ((restoreFocus || hadFocus) && focusTarget.isConnected) focusTarget.focus({ preventScroll: true });
         },
         toggle() {
             if (isOpen) controller.close();

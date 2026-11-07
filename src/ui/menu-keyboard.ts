@@ -3,6 +3,7 @@ interface MenuKeyboardOptions {
     menu: HTMLElement;
     itemSelector: string;
     onOpen: () => void;
+    /** Closes the menu through its popover, which returns the focus. */
     onClose: () => void;
 }
 
@@ -41,7 +42,6 @@ export function initMenuKeyboard(options: MenuKeyboardOptions): () => void {
             if (event.key === "Escape") event.preventDefault();
             event.stopPropagation();
             onClose();
-            button.focus();
         }
     }
 

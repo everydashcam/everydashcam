@@ -66,6 +66,31 @@ test.describe("mobile portrait", () => {
         await shot(page, "mobile-03-overflow");
     });
 
+    test("the still-image menu opened from the kebab gives the focus back to the kebab", async ({ page }) => {
+        await loadTrip(page, SAMPLE_70MAI);
+        const overflow = page.locator("#player-overflow");
+        const menu = page.locator("#player-capture-menu");
+        await expect(page.locator("#player-capture"), "the capture button folds on a phone-width bar").toBeHidden();
+        const openFromKebab = async (): Promise<void> => {
+            await overflow.click();
+            await page
+                .locator("#player-overflow-menu")
+                .getByRole("button", { name: "Still image", exact: true })
+                .click();
+            await expect(menu.getByRole("menuitem").first()).toBeFocused();
+        };
+
+        await openFromKebab();
+        await page.keyboard.press("Escape");
+        await expect(menu).toBeHidden();
+        await expect(overflow, "Escape").toBeFocused();
+
+        await openFromKebab();
+        await page.keyboard.press("Enter");
+        await expect(menu).toBeHidden();
+        await expect(overflow, "an action chosen with the keyboard").toBeFocused();
+    });
+
     test("overflow kebab carries a working volume slider", async ({ page }) => {
         // On the narrow bar mute collapses into the kebab; its popover slider is
         // hidden with the wrap, so the menu renders its own slider (drag to 0
