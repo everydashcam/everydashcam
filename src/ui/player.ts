@@ -188,7 +188,7 @@ export function reconcileActiveTripAfterRegroup(): void {
             return attachedFile !== (frame.channels[channel] ?? heldTailCandidate(frame, channel))?.file;
         });
         if (target.trip !== state.active.trip || target.frame !== state.active.frame || hasChangedMedia) {
-            playFrame(target.trip, target.frame, target.offsetInFrame, isPlaybackIntended);
+            playFrame(target.trip, target.frame, target.offsetInFrame, isPlaybackIntended, "reload");
         }
     }
     const trip = state.trips[state.active.trip];
@@ -610,10 +610,13 @@ function promotePreloadSlot(ch: Channel, cand: VideoCandidate, positionSec: numb
     return true;
 }
 
-/** Why playFrame switches frames. "continue" is playback reaching the next
- *  frame on its own; it may keep warm sources and an element already at the
- *  position. "jump" is any explicit move. */
-type PlayFrameIntent = "jump" | "continue";
+/** Why playFrame switches frames. "jump" is the user moving playback.
+ *  "continue" is playback reaching the next frame on its own; it may keep
+ *  warm sources and an element already at the position. "reload" is the app
+ *  re-applying or moving playback without the user (a regroup, a camera
+ *  dropped as unplayable, the next trip after this one ends): its media is
+ *  handled like a jump, but it leaves the drawer and other UI alone. */
+type PlayFrameIntent = "jump" | "continue" | "reload";
 
 /**
  * How far an element that keeps its file across a frame change may sit from
@@ -679,12 +682,12 @@ export function playFrame(
     const prevFrameIdx = state.active ? state.active.frame : -1;
     const prevActive = state.active ? { trip: state.active.trip, frame: state.active.frame } : null;
 
-    // An explicit move hands the screen to the viewer: the mobile drawer
+    // A user's move hands the screen to the viewer: the mobile drawer
     // closes, and the click "opening" spinner clears for BOTH a trip change
     // AND a re-activation of the already-open trip (clicking another clip row
     // in it), whose no-tripChanged path below would otherwise leave it stuck.
-    // Playback reaching the next clip on its own leaves both alone: the user
-    // may be browsing the list, or opening another trip, while this one plays.
+    // Playback or the app moving on by itself leaves both alone: the user may
+    // be browsing the list, or opening another trip, meanwhile.
     if (intent === "jump") {
         if (dom.sidebar.dataset.drawerOpen === "true") setDrawerOpen(false);
         clearOpeningTrip();
@@ -1026,7 +1029,7 @@ function markCandidateUnplayable(cand: VideoCandidate, ch: Channel): void {
     const af = activeFrame();
     if (!af || !state.active) return;
     const offsetInFrame = Math.max(0, masterFileOffsetSec - frameMediaOffset(af.frame, effectiveMasterChannel()));
-    playFrame(state.active.trip, state.active.frame, offsetInFrame, isPlaybackIntended);
+    playFrame(state.active.trip, state.active.frame, offsetInFrame, isPlaybackIntended, "reload");
 }
 
 interface PlaybackRetryPosition {
@@ -2995,7 +2998,7 @@ function finishActiveClip(): void {
         // (resetExportRangeForTrip).
         const nextTripIdx = chronologicalNextTripIndex(state.active.trip);
         if (nextTripIdx >= 0) {
-            playFrame(nextTripIdx, 0, 0, isPlaybackIntended);
+            playFrame(nextTripIdx, 0, 0, isPlaybackIntended, "reload");
             return;
         }
         stopAtTripEnd();
