@@ -504,7 +504,7 @@ test(`_diag-boundary: ${vendor?.name}`, async ({ browser }) => {
             .filter(
                 (l) =>
                     (l.ns === "player" || l.ns === "per-file-mse") &&
-                    /preload promoted|attach: |stream up|seekTo|regroup|error|fail/i.test(l.msg),
+                    /preload (slot )?promoted|attach: |stream up|seekTo|regroup|error|fail/i.test(l.msg),
             )
             .map((l) => ({
                 ts: l.ts,

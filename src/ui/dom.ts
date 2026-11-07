@@ -35,13 +35,13 @@ export const ALL_CHANNELS: readonly Channel[] = ["front", "rear", "interior", "s
 /**
  * Video slots per channel: [active-slot, preload-slot]. Active plays the current
  * file; preload holds a "hot" decoder for the next file so a swap on the "ended"
- * event happens without a micro-pause (see promotePreloadAsActive in player.ts).
+ * event happens without a micro-pause (see promotePreloadSlot in player.ts).
  * On swap, activeSlotIdx[ch] flips - the physical <video> elements stay put, only
  * the pointer "who is active" changes. The CSS class .preload-slot is moved
  * synchronously via syncSlotRoles so visibility/pointer-events apply to the right one.
  *
  * Slave channels get the same treatment when the device can afford the extra
- * decoders (see canPreloadSlaveChannels / promoteSlavePreload in player.ts);
+ * decoders (see canPreloadSlaveChannels / promotePreloadSlot in player.ts);
  * otherwise their slot[1] stays empty and they reload at each file change.
  */
 const channelPlayerSlots: Record<Channel, [HTMLVideoElement, HTMLVideoElement]> = {

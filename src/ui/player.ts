@@ -273,15 +273,15 @@ let resumeAfterSeekTimer: ReturnType<typeof setTimeout> | null = null;
 // pause: setVideoSrcFromFile triggers a decoder re-load (moov parse + first
 // keyframe decode). To eliminate it, each tile keeps a second "warm" <video>
 // (preload slot, see dom.ts) into which we load the next file in advance
-// (triggered from active loadedmetadata). On the 'ended' event we do a cheap
-// slot swap: ex-preload becomes active and plays immediately (decoder already
-// warm), ex-active becomes the preload for the file after next.
+// (triggered from active loadedmetadata). At the clip change playFrame does a
+// cheap slot swap (promotePreloadSlot): ex-preload becomes active and plays
+// immediately (decoder already warm), ex-active becomes the preload for the
+// file after next. The master may change at that boundary (a paired tail,
+// trips.ts); the next master's slot is warmed and promoted the same way.
 //
 // Slave channels warm their next file the same way when the device can afford
 // the extra decoders (canPreloadSlaveChannels); promotePreloadSlot swaps them
-// over wherever their next file gets attached. A boundary that changes the
-// master channel (a paired tail, trips.ts) goes through playFrame, which
-// promotes the new master's slot the same way.
+// over wherever their next file gets attached.
 //
 // MSE-backed files (hev1 remux, MPEG-TS, Matroska, ADPCM audio) cannot share
 // the slot - there is no second MediaSource per channel - but their worker
@@ -298,7 +298,7 @@ let resumeAfterSeekTimer: ReturnType<typeof setTimeout> | null = null;
  * Loads the next file into the channel's preload slot (URL.createObjectURL +
  * v.src + load). Idempotent: if the slot already holds this file it's a no-op
  * (called repeatedly from loadedmetadata chains). Preload is always muted -
- * two sources playing would echo. playbackRate is set in promotePreloadAsActive
+ * two sources playing would echo. playbackRate is set in promotePreloadSlot
  * before play(); until then preload does not play.
  */
 function setPreloadSrc(ch: Channel, cand: VideoCandidate): boolean {
@@ -444,8 +444,8 @@ function canPreloadSlaveChannels(channelCount: number): boolean {
  * Called from:
  *  - onActivePlayerEvent("loadedmetadata") - after the new active has loaded
  *    initial bytes, start warming the next decoder.
- *  - promotePreloadAsActive() - immediately after swap, so ex-active (now
- *    preload) advances to frame+2.
+ *  - playFrame on a source it reuses or promotes, which emits no
+ *    loadedmetadata, so ex-active (now preload) advances to frame+2.
  */
 function schedulePreloadNext(): void {
     if (!state.active || state.exportModeOpen) return;
@@ -613,96 +613,6 @@ function promotePreloadSlot(ch: Channel, cand: VideoCandidate, positionSec: numb
     return true;
 }
 
-/**
- * Attempts to switch to the preload slot instead of doing a full src reload via
- * playFrame. Returns true on success (state.active.frame updated + slot swapped +
- * play()), false if the swap cannot happen - caller must then call playFrame.
- *
- * Success conditions:
- *  - next-frame master channel matches the current master;
- *  - preload slot holds exactly that file (videoAttachedFile match);
- *  - preload slot has reached HAVE_FUTURE_DATA so play() can advance rather
- *    than stalling on a metadata-only or single-frame buffer.
- */
-function tryPromotePreloadAsActive(nextFrameIdx: number): boolean {
-    if (!state.active) return false;
-    const trip = state.trips[state.active.trip];
-    if (!trip) return false;
-    const nextFrame = trip.frames[nextFrameIdx];
-    if (!nextFrame) return false;
-    const masterCh = effectiveMasterChannel();
-    const picked = pickFrameChannel(nextFrame, mainChannel());
-    if (!picked || picked.channel !== masterCh) return false;
-    const cand = picked.candidate;
-    if (frameMediaOffset(nextFrame, masterCh) > 0 || videoAttachedFile.get(activePlayer()) === cand.file) return false;
-    if (requiresMseBackend(cand) || !cand.canPlay || runtimePlaybackFailures.has(cand)) return false;
-
-    const newActive = preloadPlayer(masterCh);
-    if (videoAttachedFile.get(newActive) !== cand.file) return false;
-    if (!isPreloadReadyForPromotion(newActive.readyState)) return false;
-    // Decoder error or a skipped video track - don't promote (fall back to
-    // playFrame, whose attach reaches the codec overlay).
-    if (newActive.error || hasDroppedVideoTrack(newActive)) return false;
-
-    // No need to pause ex-active (it is on 'ended', playback has already stopped).
-    // If paused explicitly, its timeupdate could fire one last time after the swap.
-
-    // Apply audio/rate state to the new active BEFORE the swap so the very first
-    // frame plays at the correct volume/rate. Otherwise there would be one render
-    // with muted=true (preload state). Routed per composition.audioChannel -
-    // unmuting the master unconditionally produced a frame of double audio when
-    // the audio source is a different channel.
-    routeChannelAudio(newActive, masterCh);
-    newActive.playbackRate = state.preferredPlaybackRate;
-    // Browser may have pre-fetched a frame to reach HAVE_METADATA, advancing
-    // currentTime. Reset to 0 - user expects the file to start from the beginning.
-    if (newActive.currentTime !== 0) newActive.currentTime = 0;
-
-    swapActiveSlot(masterCh);
-    state.active = { trip: state.active.trip, frame: nextFrameIdx };
-    activeClipEndedByFailure = false;
-    // The promoted slot already sits at the frame start. A seek pin that
-    // outlived the clip never landed and names a position in the previous one.
-    clearPendingSeek();
-
-    // Slave channels (if any) are moved to their next-frame files via
-    // attachCandidateToVideo - micro-pause for slaves, but master plays without
-    // delay. syncFrameToGrid handles this: master sees newActive with an already-
-    // attached file (setVideoSrcFromFile no-ops); slaves get re-attached.
-    syncFrameToGrid(nextFrame, masterCh);
-
-    // Zoom survives the promote (same trip): re-apply the transform to newActive
-    // because the swap moved it to ex-active = preload slot. Without this the
-    // first frame after promote renders untransformed (zoom lost). Files within
-    // one trip usually share the same aspect; if they differ the ResizeObserver
-    // on video-grid will clamp offsets on the next tick.
-    if (state.videoZoom.scale > 1) applyVideoZoom();
-
-    updateActiveFrameHighlight(state.active.trip, nextFrameIdx - 1, nextFrameIdx);
-    smoothCameraToActiveFrameOffset(0);
-    updatePlayerProgressUi();
-    syncCaptureButton();
-
-    // Start playback when it is wanted. Ignore play() reject - autoplay policy
-    // could theoretically fire, but master was already playing before the swap
-    // so a user gesture is on record. A clip closed while the user had paused
-    // (a tail decode failure on a paused element) stays paused on the next clip.
-    if (isPlaybackIntended) newActive.play().catch(() => {});
-
-    log.info("preload promoted to active", {
-        channel: masterCh,
-        file: cand.file.name,
-        frameIndex: nextFrameIdx,
-        readyState: newActive.readyState,
-    });
-
-    // Ex-active is now the preload slot. Clear its src and immediately kick
-    // preload for the file after next to keep the chain smooth.
-    clearPreloadSlot(masterCh);
-    schedulePreloadNext();
-    return true;
-}
-
 /** Why playFrame switches frames. "continue" is playback reaching the next
  *  frame on its own; it may keep warm sources and an element already at the
  *  position. "jump" is any explicit move. */
@@ -769,10 +679,11 @@ export function playFrame(
         clearOpeningTrip();
     }
 
-    // Any explicit playFrame invalidates the preload slot: a trip change certainly,
-    // and a manual seek to another frame too - the preload may have been for the
-    // frame after the previous active. New active loadedmetadata will re-kick
-    // schedulePreloadNext. A prewarmed MSE backend for this very frame stays.
+    // Warm sources for another frame are dropped: after a trip change or a
+    // jump they were warmed for the frame after the previous one. The files
+    // this frame attaches stay for promotion, and on a natural advance so do
+    // the files after them (invalidateWarmSourcesFor). The new active's
+    // loadedmetadata, or the reuse path below, re-kicks schedulePreloadNext.
     if (state.active) invalidateWarmSourcesFor(trip, frame, intent);
     state.active = { trip: tripIdx, frame: frameIdx };
     // The reported position holds this call's target while its source loads:
@@ -951,10 +862,10 @@ export function playFrame(
     }
     hideCodecUnsupportedOverlay();
 
-    // A boundary that changes the master channel (a paired tail) cannot use
-    // tryPromotePreloadAsActive. A warm native slot that holds this file is
-    // promoted here instead, and the same-source path below starts it without
-    // a load; so is one a jump lands in.
+    // A warm native slot that holds this file becomes the master's element,
+    // whichever channel was master before: the same-source path below then
+    // starts it without a load. This is how a natural clip change stays
+    // seamless, and a jump that lands in a warm file takes it too.
     if (!requiresMseBackend(video) && promotePreloadSlot(picked.channel, video, fileOffsetSec)) {
         if (state.videoZoom.scale > 1) applyVideoZoom();
     }
@@ -3029,10 +2940,8 @@ function finishActiveClip(): void {
         stopAtTripEnd();
         return;
     }
-    // Try swapping the preload slot first (no micro-pause). If the preload hasn't warmed up yet,
-    // the file doesn't match, or the master channel for the next frame is different,
-    // tryPromotePreloadAsActive returns false and we fall back to a normal playFrame (100-300ms decoder reload).
-    if (tryPromotePreloadAsActive(nextFrameIdx)) return;
+    // The same transition as any other frame change: playFrame promotes the
+    // warm slots that hold the next files, and attaches the rest cold.
     playFrame(state.active.trip, nextFrameIdx, 0, isPlaybackIntended, "continue");
 }
 
