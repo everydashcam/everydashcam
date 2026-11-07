@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-08.1",
+        category: "improvement",
+        text: {
+            en: "Improved the camera layout for multi-camera dashcams.",
+            ru: "Улучшена раскладка камер для многокамерных регистраторов.",
+            de: "Verbesserte Kameraanordnung für Dashcams mit mehreren Kameras.",
+            es: "Mejorada la disposición de las cámaras en dashcams con varias cámaras.",
+            fr: "Amélioration de la disposition des caméras pour les dashcams à plusieurs caméras.",
+            pl: "Ulepszono układ kamer dla wideorejestratorów z wieloma kamerami.",
+            pt: "Melhorado o layout das câmeras para câmeras veiculares com várias câmeras.",
+            zh: "改进了多摄像头行车记录仪的摄像头布局。",
+            ja: "複数カメラのドライブレコーダーでカメラの配置を改善しました。",
+            ko: "다중 카메라 블랙박스의 카메라 배치를 개선했어요.",
+        },
+    },
+    {
         id: "2026-11-05.1",
         category: "support",
         text: {
