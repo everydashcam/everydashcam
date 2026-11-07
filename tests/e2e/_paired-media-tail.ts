@@ -57,13 +57,30 @@ async function seekPairedMedia(page: Page, seconds: number): Promise<void> {
         .toBeCloseTo(seconds, 1);
 }
 
+/** Rendered boxes of both camera tiles, rounded to whole pixels. */
+async function tileBoxes(page: Page): Promise<Record<string, number[]>> {
+    return page.locator(".video-grid").evaluate((grid) => {
+        const boxes: Record<string, number[]> = {};
+        for (const tile of grid.querySelectorAll<HTMLElement>(".video-tile:not([hidden])")) {
+            const box = tile.getBoundingClientRect();
+            boxes[tile.dataset.channel!] = [box.x, box.y, box.width, box.height].map(Math.round);
+        }
+        return boxes;
+    });
+}
+
 export async function checkPairedMediaTail(page: Page): Promise<void> {
     await loadPairedMediaTrip(page);
     await seekPairedMedia(page, 44);
+    const boxesBeforeTail = await tileBoxes(page);
+    expect(Object.keys(boxesBeforeTail).sort()).toEqual(["front", "rear"]);
     await page.locator("#player-play").click();
     await expect(page.locator(".video-tile.active")).toHaveAttribute("data-channel", "rear");
     await expect(page.locator(ACTIVE_VIDEO)).toHaveJSProperty("ended", true);
     await expect(page.locator(ACTIVE_VIDEO)).toHaveJSProperty("currentTime", 46);
+    // The ended front camera holds its last frame in the primary slot while the
+    // rear thumbnail plays as master; neither tile may swap looks.
+    expect(await tileBoxes(page), "tile geometry through the held tail").toEqual(boxesBeforeTail);
     await seekPairedMedia(page, 45.5);
     await seekPairedMedia(page, 10);
     await expect(page.locator(".video-tile.active")).toHaveAttribute("data-channel", "front");

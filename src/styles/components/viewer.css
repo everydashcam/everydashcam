@@ -388,7 +388,10 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
     grid-row: 1;
 }
 
-.video-grid[data-view-mode="focus"] .video-tile:not(.active) {
+/* Primary/thumb looks key off data-tile-role (the slot), never .active (the
+   master): a held paired tail keeps the ended main camera's last frame in the
+   primary slot while a thumbnail camera plays as master. */
+.video-grid[data-view-mode="focus"] .video-tile[data-tile-role^="thumb-"] {
     aspect-ratio: 16 / 9;
     border: 2px solid rgba(255, 255, 255, 0.6);
     border-radius: var(--dc-radius-sm);
@@ -399,13 +402,12 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
         box-shadow var(--dc-dur-base) var(--dc-ease);
     box-shadow: var(--dc-shadow-popup);
 }
-.video-grid[data-view-mode="focus"] .video-tile:not(.active):hover {
+.video-grid[data-view-mode="focus"] .video-tile[data-tile-role^="thumb-"]:hover {
     border-color: var(--accent);
 }
 /* An unplayable tile is never a clickable thumbnail: drop the thumb border /
-   shadow / pointer even when it lands in a :not(.active) slot (e.g. the primary
-   camera failed mid-trip, so no tile is .active). */
-.video-grid[data-view-mode="focus"] .video-tile.tile-unplayable:not(.active) {
+   shadow / pointer. */
+.video-grid[data-view-mode="focus"] .video-tile.tile-unplayable[data-tile-role^="thumb-"] {
     border-color: transparent;
     box-shadow: none;
     cursor: default;
@@ -485,9 +487,9 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
        computed by the browser. z-index 4 < channel-switcher (z=6), but
        above video-loading-overlay (z=5 - though it's pointer-events:none).
        Tapping swaps (shared logic in player.ts). */
-    .video-grid[data-view-mode="focus"][data-channel-count="2"] .video-tile:not(.active),
-    .video-grid[data-view-mode="focus"][data-channel-count="3"] .video-tile:not(.active),
-    .video-grid[data-view-mode="focus"][data-channel-count="4"] .video-tile:not(.active) {
+    .video-grid[data-view-mode="focus"][data-channel-count="2"] .video-tile[data-tile-role^="thumb-"],
+    .video-grid[data-view-mode="focus"][data-channel-count="3"] .video-tile[data-tile-role^="thumb-"],
+    .video-grid[data-view-mode="focus"][data-channel-count="4"] .video-tile[data-tile-role^="thumb-"] {
         position: absolute;
         right: var(--dc-space-2);
         width: 28cqw;
@@ -529,11 +531,11 @@ body.export-mode .player-wrap:has(#player-chart-canvas[hidden]):not(.no-chart-da
 /* On single-channel there's just one tile, the label is redundant. Not
    needed on the active tile in focus-mode either (it's the primary channel, already obvious). */
 .video-grid[data-channel-count="1"] .channel-label,
-.video-grid[data-view-mode="focus"] .video-tile.active .channel-label {
+.video-grid[data-view-mode="focus"] .video-tile[data-tile-role="primary"] .channel-label {
     display: none;
 }
 /* Thumbnails in focus-mode are compact - shrink the label. */
-.video-grid[data-view-mode="focus"] .video-tile:not(.active) .channel-label {
+.video-grid[data-view-mode="focus"] .video-tile[data-tile-role^="thumb-"] .channel-label {
     bottom: var(--dc-space-1);
     left: var(--dc-space-1);
     padding: 1px var(--dc-space-1);
