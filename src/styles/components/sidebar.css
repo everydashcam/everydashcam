@@ -1597,9 +1597,8 @@ body.export-mode .sidebar-toggle,
    reuses .map-expanded and must not cost the user the trip list. */
 @media (min-width: 768px) and (min-height: 501px) {
     body:not(.map-unavailable):has(
-            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
-        )
-        main.layout {
+        .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+    ) {
         --viewer-reserve: 772px;
     }
 }

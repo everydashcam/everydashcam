@@ -75,7 +75,7 @@
    centered modal because there is no spare pane to dock into. */
 #gps-sync-modal.is-modeless {
     inset: max(env(titlebar-area-height, 44px), var(--dc-topbar-h)) auto 0 0;
-    width: max(280px, min(var(--sidebar-width, clamp(220px, 22vw, 320px)), calc(100vw - 320px)));
+    width: max(280px, var(--sidebar-track));
     padding: 0;
     align-items: stretch;
     justify-content: stretch;

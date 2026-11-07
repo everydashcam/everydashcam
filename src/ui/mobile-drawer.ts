@@ -13,7 +13,7 @@
 import { dom } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { flipCollapse } from "./flip.js";
-import { MOBILE_LAYOUT_QUERY } from "./media-queries.js";
+import { isMobileLayout, MOBILE_LAYOUT_QUERY } from "./media-queries.js";
 import { focusableWithin } from "./modal-helper.js";
 import { state } from "./state.js";
 
@@ -29,16 +29,21 @@ function isMobileViewport(): boolean {
     return window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
 }
 
+function isPlayerExpanded(): boolean {
+    return dom.playerWrap.classList.contains("player-expanded");
+}
+
 /**
- * True while the expanded map holds the whole sidebar column on a desktop
- * window, so the list can only be shown as the overlay drawer. sidebar.css owns
+ * True while a desktop window can show the trip list only as the drawer over
+ * the player: the expanded map holds the whole sidebar column. sidebar.css owns
  * the breakpoint and the conditions and publishes the verdict as
- * --sidebar-yielded; reading it back keeps them in one place.
+ * --sidebar-yielded; reading it back keeps them in one place. A fullscreen
+ * player covers the column question entirely, so it reports false there.
  */
-export function isSidebarYieldedToMap(): boolean {
-    // Without an expanded map there is nothing to yield to; this also skips the
-    // style read on the frequent player class flips (controls, morphing).
-    if (!dom.playerWrap.classList.contains("map-expanded") || isMobileViewport()) return false;
+export function isDesktopListOverlay(): boolean {
+    // Cheap class checks first: they skip the style read whenever no drawer
+    // could apply, including the fullscreen controls' class flips.
+    if (!dom.playerWrap.classList.contains("map-expanded") || isPlayerExpanded() || isMobileLayout()) return false;
     return getComputedStyle(dom.sidebar).getPropertyValue("--sidebar-yielded").trim() === "1";
 }
 
@@ -46,11 +51,12 @@ export function isSidebarYieldedToMap(): boolean {
  * Closes a drawer that its layout no longer overlays. The desktop overlay
  * exists only while the map holds the column: collapsing the map, opening
  * export or widening the window puts the list back in its column, and a scrim
- * left open would block the whole viewer.
+ * left open would block the whole viewer. Fullscreen closes any drawer: the
+ * fullscreen player lives inside the viewer the open drawer marks inert.
  */
 export function closeStrandedDrawer(): void {
     if (dom.sidebar.dataset.drawerOpen !== "true") return;
-    if (isMobileViewport() || isSidebarYieldedToMap()) return;
+    if (!isPlayerExpanded() && (isMobileLayout() || isDesktopListOverlay())) return;
     setDrawerOpen(false);
 }
 
@@ -84,7 +90,7 @@ export function syncDrawerA11y(): void {
         document.body.classList.contains("browsing") && !document.body.classList.contains("preparing-trip");
     const open = dom.sidebar.dataset.drawerOpen === "true";
     setInert(dom.sidebar, mobile ? !browsing && !open : state.exportModeOpen);
-    setInert(dom.viewer, open && (mobile || isSidebarYieldedToMap()));
+    setInert(dom.viewer, open && (mobile || isDesktopListOverlay()));
 }
 
 /**
@@ -190,12 +196,13 @@ export function setDrawerOpen(open: boolean): void {
     // sidebar root), return to the control that opens it on close. Restore only
     // when this was a genuine close of an open drawer that is now off screen,
     // and focus is still inside the drawer (don't steal it if the user moved
-    // on). A list back in its desktop column keeps focus where it is.
+    // on). A list back in its desktop column keeps focus where it is, and a
+    // fullscreen player owns focus itself - both openers sit outside it.
     if (open && !wasOpen) {
         (focusableWithin(dom.sidebar)[0] ?? dom.sidebar).focus({ preventScroll: true });
-    } else if (!open && wasOpen && dom.sidebar.contains(document.activeElement)) {
+    } else if (!open && wasOpen && !isPlayerExpanded() && dom.sidebar.contains(document.activeElement)) {
         if (isMobileViewport()) dom.topbarBurger.focus();
-        else if (isSidebarYieldedToMap()) dom.sidebarToggle.focus();
+        else if (isDesktopListOverlay()) dom.sidebarToggle.focus();
     }
 }
 

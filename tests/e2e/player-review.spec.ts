@@ -426,10 +426,31 @@ test("expanded map narrows a hand-widened sidebar instead of hiding the video", 
     await expect(page.locator("body")).not.toHaveClass(/map-morphing/);
     // The list gives up only what keeps the player at desktop width, so the
     // pwrap takeover never swallows the video (sidebar.css).
-    await expect.poll(async () => (await boxOf(page, "#sidebar")).width).toBeCloseTo(viewportWidth - 772, 0);
+    const capped = viewportWidth - 772;
+    await expect.poll(async () => (await boxOf(page, "#sidebar")).width).toBeCloseTo(capped, 0);
     expect((await boxOf(page, ".viewer")).width).toBeGreaterThanOrEqual(767.5);
     await expect(page.locator(".video-frame")).toBeVisible();
     await expect(page.locator(".map-wrap")).toBeVisible();
+
+    // The handle reports and stops at the visible edge, and growing there does
+    // not overwrite the saved width - the map's cap is temporary.
+    const handle = page.locator("#sidebar-resize");
+    await expect(handle).toHaveAttribute("aria-valuemax", String(capped));
+    await handle.press("ArrowRight");
+    await handle.press("End");
+    expect(await page.evaluate(() => localStorage.getItem("everydashcam:sidebar-width"))).toBe("600");
+    expect((await boxOf(page, "#sidebar")).width).toBeCloseTo(capped, 0);
+
+    // The docked GPS sync panel takes exactly the narrowed column, not the
+    // saved width over the video.
+    await page.locator("#map-settings-toggle").click();
+    await page.locator("#map-gps-sync-btn").click();
+    const panel = page.locator("#gps-sync-modal");
+    await expect(panel).toHaveClass(/is-modeless/);
+    expect((await boxOf(page, "#gps-sync-modal")).width).toBeCloseTo(capped, 0);
+    await page.locator("#gps-sync-close").click();
+    await expect(panel).toBeHidden();
+
     await page.locator("#map-collapse").click();
     await expect.poll(async () => (await boxOf(page, "#sidebar")).width, "dragged width returns").toBeCloseTo(600, 0);
 });

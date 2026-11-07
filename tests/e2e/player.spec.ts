@@ -1879,13 +1879,36 @@ test.describe("player", () => {
         const video = await boxOf(page, ".video-frame");
         expect(overlay.x + overlay.width, "the list covers part of the player").toBeGreaterThan(video.x + 100);
         expect(video.width, "the player keeps its desktop column under the list").toBeGreaterThan(400);
+        await expect(page.locator(".viewer"), "Tab cannot leave the drawer").toHaveAttribute("inert", "");
+        // It is on top for the pointer too: a control over the player takes the click.
+        const rows = page.locator('#trip-density [data-density="rows"]');
+        await rows.click();
+        await expect(rows).toHaveAttribute("aria-pressed", "true");
+        await page.locator('#trip-density [data-density="cards"]').click();
         await page.keyboard.press("Escape");
         await expect(page.locator("#sidebar")).toBeHidden();
         await expect(toggle, "focus returns to the toggle").toBeFocused();
+        await expect(page.locator(".viewer")).not.toHaveAttribute("inert", "");
+
+        // Fullscreen closes it: the fullscreen player lives inside the viewer
+        // an open drawer marks inert.
+        await toggle.click();
+        await expect(page.locator("#sidebar")).toHaveAttribute("data-drawer-open", "true");
+        await page.keyboard.press("f");
+        await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
+        await expect(page.locator("#sidebar")).not.toHaveAttribute("data-drawer-open", "true");
+        await expect(page.locator(".viewer")).not.toHaveAttribute("inert", "");
+        await expect(page.locator("#drawer-scrim")).toBeHidden();
+        await page.evaluate(() => document.exitFullscreen());
+        await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+        await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
+        await expect(page.locator("#sidebar")).toBeHidden();
 
         // The scrim closes it too.
         await toggle.click();
         await expect(page.locator("#sidebar")).toBeVisible();
+        // The scrim takes pointers once its show frame adds .open.
+        await expect(page.locator("#drawer-scrim")).toHaveClass(/open/);
         await page.mouse.click(860, 400);
         await expect(page.locator("#sidebar")).toBeHidden();
         await expect(page.locator("#drawer-scrim")).toBeHidden();
@@ -1907,6 +1930,18 @@ test.describe("player", () => {
         await expect(page.locator("#player-wrap")).not.toHaveClass(/map-expanded/);
         await expect(page.locator("#sidebar")).toBeVisible();
         await expect(page.locator("#mini-map")).toBeVisible();
+
+        // So does hiding the map from the keyboard while the drawer is open,
+        // and the drawer closes with it.
+        await page.locator("#mini-map").click();
+        await expect(page.locator("#player-wrap")).toHaveClass(/map-expanded/);
+        await toggle.click();
+        await expect(page.locator("#sidebar")).toHaveAttribute("data-drawer-open", "true");
+        await page.keyboard.press("m");
+        await expect(page.locator("#player-wrap")).not.toHaveClass(/map-expanded/);
+        await expect(page.locator("#sidebar")).not.toHaveAttribute("data-drawer-open", "true");
+        await expect(page.locator("#drawer-scrim")).toBeHidden();
+        await expect(page.locator("#sidebar")).toBeVisible();
     });
 
     test("expanded map on a mid-width window keeps the trip list beside the video", async ({ page }) => {
