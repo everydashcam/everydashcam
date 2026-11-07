@@ -120,7 +120,7 @@ export async function setOverlayAllowed(page: Page, allowed: boolean): Promise<v
 /** The toggle in the open menu that reflects `channel` along `axis`. */
 export function cameraFlipToggle(page: Page, channel: CameraChannel, axis: "horizontal" | "vertical"): Locator {
     return page.locator(
-        `#player-cameras-section .cameras-menu__flip[data-channel="${channel}"] .cameras-menu__flip-axis[data-flip="${axis}"]`,
+        `#player-cameras-section .cameras-menu__camera[data-channel="${channel}"] .cameras-menu__flip-axis[data-flip="${axis}"]`,
     );
 }
 

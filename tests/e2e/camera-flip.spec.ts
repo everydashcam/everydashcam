@@ -138,8 +138,8 @@ test.describe("camera reflection", () => {
         await loadTrip(page, SAMPLE_70MAI);
         await openCamerasMenu(page);
         for (const [axis, label] of [
-            ["horizontal", "Отразить по горизонтали"],
-            ["vertical", "Отразить по вертикали"],
+            ["horizontal", /^Отразить по горизонтали: /],
+            ["vertical", /^Отразить по вертикали: /],
         ] as const) {
             const toggle = cameraFlipToggle(page, "front", axis);
             await expect(toggle).toHaveAccessibleName(label);

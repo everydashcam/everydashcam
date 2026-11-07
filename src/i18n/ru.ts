@@ -32,10 +32,11 @@ export const ruDict = {
     "topbar.langMenu.title": "Язык интерфейса",
     "topbar.more": "Ещё",
     "topbar.more.title": "Дополнительные действия",
-    "player.camera.flip.title": "Отражение",
     "player.camera.flip.horizontal": "Отразить по горизонтали",
     "player.camera.flip.vertical": "Отразить по вертикали",
-    "player.camera.flip.hint": "Для просмотра и экспорта. Сохраняется для каждой камеры в этом браузере.",
+    "player.camera.flip.horizontalAria": "Отразить по горизонтали: {ch}",
+    "player.camera.flip.verticalAria": "Отразить по вертикали: {ch}",
+    "player.camera.flip.hint": "Для просмотра и экспорта. Сохраняется для этой камеры в этом браузере.",
 
     "player.more": "Другие действия",
 

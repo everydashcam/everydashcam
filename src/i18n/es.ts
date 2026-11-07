@@ -27,10 +27,11 @@ export const esDict = {
     "topbar.langMenu.title": "Idioma de la interfaz",
     "topbar.more": "Más",
     "topbar.more.title": "Más acciones",
-    "player.camera.flip.title": "Voltear",
     "player.camera.flip.horizontal": "Voltear horizontalmente",
     "player.camera.flip.vertical": "Voltear verticalmente",
-    "player.camera.flip.hint": "Se aplica a la reproducción y la exportación. Se guarda para cada cámara en este navegador.",
+    "player.camera.flip.horizontalAria": "Voltear {ch} horizontalmente",
+    "player.camera.flip.verticalAria": "Voltear {ch} verticalmente",
+    "player.camera.flip.hint": "Se aplica a la reproducción y la exportación. Se guarda para esta cámara en este navegador.",
 
     "player.more": "Más controles",
 

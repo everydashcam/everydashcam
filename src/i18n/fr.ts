@@ -27,10 +27,11 @@ export const frDict = {
     "topbar.langMenu.title": "Langue de l'interface",
     "topbar.more": "Plus",
     "topbar.more.title": "Plus d'actions",
-    "player.camera.flip.title": "Retourner",
     "player.camera.flip.horizontal": "Retourner horizontalement",
     "player.camera.flip.vertical": "Retourner verticalement",
-    "player.camera.flip.hint": "Pour la lecture et l’export. Mémorisé pour chaque caméra dans ce navigateur.",
+    "player.camera.flip.horizontalAria": "Retourner {ch} horizontalement",
+    "player.camera.flip.verticalAria": "Retourner {ch} verticalement",
+    "player.camera.flip.hint": "Pour la lecture et l’export. Mémorisé pour cette caméra dans ce navigateur.",
 
     "player.more": "Plus de commandes",
 

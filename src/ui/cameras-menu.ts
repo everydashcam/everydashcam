@@ -1,11 +1,11 @@
 // Cameras section of the View menu: arrangement mode, overlay permission,
 // which cameras show and in what order, the main camera and the sound source
-// on trips with several cameras, then the reflection of each shown camera on
-// every trip. Viewing and export share the arrangement and the reflection, so
-// this is the one place to set them. Arrangement changes go through
-// camera-arrangement.ts, reflection through player-camera-flip.ts. The View
-// menu (view-menu.ts) owns the dialog and its lifecycle; the orchestrator
-// renders this section when it opens.
+// on trips with several cameras, and each camera's reflection on every trip.
+// Viewing and export share the arrangement and the reflection, so this is the
+// one place to set them. Arrangement changes go through camera-arrangement.ts,
+// reflection through player-camera-flip.ts. The View menu (view-menu.ts) owns
+// the dialog and its lifecycle; the orchestrator renders this section when it
+// opens.
 //
 // Native controls rather than menu items: the section mixes radios,
 // checkboxes, a select and drag handles, which menu semantics cannot express.
@@ -125,7 +125,12 @@ function renderOverlayToggle(): HTMLElement {
     return label;
 }
 
-function renderCameraRow(channel: Channel): HTMLElement {
+/**
+ * One camera's row. With several cameras it carries the reorder handle, the
+ * visibility checkbox and the Main button; with one camera just its name.
+ * The reflection toggles close every row.
+ */
+function renderCameraRow(channel: Channel, isArrangeable: boolean): HTMLElement {
     const trip = activeTrip();
     const name = trip ? channelDisplayLabel(channel, trip) : channel;
     const c = state.composition;
@@ -135,6 +140,17 @@ function renderCameraRow(channel: Channel): HTMLElement {
     row.className = "cameras-menu__camera";
     row.dataset.channel = channel;
     row.classList.toggle("is-hidden", !visible);
+    if (!isArrangeable) {
+        row.classList.add("cameras-menu__camera--single");
+        const show = document.createElement("span");
+        show.className = "cameras-menu__show";
+        const text = document.createElement("span");
+        text.className = "cameras-menu__name";
+        text.textContent = name;
+        show.append(text);
+        row.append(show, ...renderFlipToggles(channel, name));
+        return row;
+    }
 
     const handle = document.createElement("button");
     handle.type = "button";
@@ -181,7 +197,7 @@ function renderCameraRow(channel: Channel): HTMLElement {
     main.setAttribute("aria-label", t("player.cameras.makeMainAria", { ch: name }));
     main.addEventListener("click", () => makeMainCamera(channel));
 
-    row.append(handle, label, main);
+    row.append(handle, label, main, ...renderFlipToggles(channel, name));
     return row;
 }
 
@@ -217,62 +233,40 @@ function flipIcon(axis: CameraFlipAxis): string {
     return `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><g${axis === "vertical" ? ' transform="rotate(90 10 10)"' : ""}><path d="M10 2v16" stroke-dasharray="2 2"/><path d="M3 5v10l4-2V7z"/><path d="M17 5v10l-4-2V7z" fill="currentColor" fill-opacity=".25"/></g></svg>`;
 }
 
-/** The reflection block: one row per shown camera with a toggle per axis.
- *  Each row is a group named after its camera, so the toggles can keep the
- *  short axis names. */
-function renderFlips(): HTMLElement {
-    const trip = activeTrip();
-    const block = document.createElement("div");
-    block.className = "cameras-menu__flips";
-    block.setAttribute("role", "group");
-    const title = header("player.camera.flip.title");
-    title.id = "cameras-menu-flip-title";
-    const hint = document.createElement("div");
-    hint.id = "cameras-menu-flip-hint";
-    hint.className = "view-menu-row__description cameras-menu__flip-hint";
-    hint.textContent = t("player.camera.flip.hint");
-    block.setAttribute("aria-labelledby", title.id);
-    block.setAttribute("aria-describedby", hint.id);
-    block.append(title, hint);
-    for (const channel of visibleChannels()) {
-        const row = document.createElement("div");
-        row.className = "cameras-menu__flip";
-        row.dataset.channel = channel;
-        row.setAttribute("role", "group");
-        const name = document.createElement("span");
-        name.id = `cameras-menu-flip-${channel}`;
-        name.className = "cameras-menu__name";
-        name.textContent = trip ? channelDisplayLabel(channel, trip) : channel;
-        row.setAttribute("aria-labelledby", name.id);
-        row.append(name);
-        for (const axis of FLIP_AXES) {
-            const toggle = document.createElement("button");
-            toggle.type = "button";
-            toggle.className = "cameras-menu__flip-axis";
-            toggle.dataset.flip = axis;
-            toggle.dataset.focusKey = `flip:${channel}:${axis}`;
-            toggle.title = t(`player.camera.flip.${axis}`);
-            toggle.setAttribute("aria-label", toggle.title);
-            toggle.innerHTML = flipIcon(axis);
-            toggle.addEventListener("click", () => toggleCameraFlip(channel, axis));
-            row.append(toggle);
-        }
-        block.append(row);
-    }
-    syncFlipToggles(block);
-    return block;
+/** The two reflection toggles of a camera row. The visible hint lives in
+ *  their tooltip and description: one block of text for every row would
+ *  push the rest of the menu down. */
+function renderFlipToggles(channel: Channel, name: string): HTMLButtonElement[] {
+    const hint = t("player.camera.flip.hint");
+    const toggles = FLIP_AXES.map((axis) => {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "cameras-menu__flip-axis";
+        toggle.dataset.flip = axis;
+        toggle.dataset.focusKey = `flip:${channel}:${axis}`;
+        toggle.title = `${t(`player.camera.flip.${axis}`)}\n${hint}`;
+        toggle.setAttribute("aria-label", t(`player.camera.flip.${axis}Aria`, { ch: name }));
+        toggle.setAttribute("aria-description", hint);
+        toggle.innerHTML = flipIcon(axis);
+        toggle.addEventListener("click", () => toggleCameraFlip(channel, axis));
+        syncFlipToggle(toggle, channel, axis);
+        return toggle;
+    });
+    return toggles;
 }
 
-/** Brings the reflection toggles in `root` to the remembered reflection and
+function syncFlipToggle(toggle: HTMLButtonElement, channel: Channel, axis: CameraFlipAxis): void {
+    toggle.setAttribute("aria-pressed", String(cameraFlipForChannel(channel)[axis]));
+    toggle.disabled = isCameraFlipLocked();
+}
+
+/** Brings the section's reflection toggles to the remembered reflection and
  *  the export lock, in place, so focus stays on the toggle just pressed. */
-function syncFlipToggles(root: ParentNode = dom.camerasSection): void {
-    const isLocked = isCameraFlipLocked();
-    for (const toggle of root.querySelectorAll<HTMLButtonElement>(".cameras-menu__flip-axis")) {
-        const channel = toggle.closest<HTMLElement>(".cameras-menu__flip")?.dataset.channel as Channel | undefined;
+function syncFlipToggles(): void {
+    for (const toggle of dom.camerasSection.querySelectorAll<HTMLButtonElement>(".cameras-menu__flip-axis")) {
+        const channel = toggle.closest<HTMLElement>(".cameras-menu__camera")?.dataset.channel as Channel | undefined;
         const axis = toggle.dataset.flip as CameraFlipAxis | undefined;
-        if (!channel || !axis) continue;
-        toggle.setAttribute("aria-pressed", String(cameraFlipForChannel(channel)[axis]));
-        toggle.disabled = isLocked;
+        if (channel && axis) syncFlipToggle(toggle, channel, axis);
     }
 }
 
@@ -286,17 +280,16 @@ export function renderCamerasMenu(): void {
     if (drag || !hasCameras()) return;
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.focusKey;
     section.replaceChildren();
-    if (hasSeveralCameras()) {
-        // The segmented control explains itself; its group carries the
-        // "Layout" name for screen readers, and the menu stays one header
-        // shorter.
-        section.append(header("player.cameras.title"), renderModes(), renderOverlayToggle());
-        const list = document.createElement("ul");
-        list.className = "cameras-menu__cameras";
-        for (const channel of state.composition.order) list.append(renderCameraRow(channel));
-        section.append(list, renderAudio());
-    }
-    section.append(renderFlips());
+    const isArrangeable = hasSeveralCameras();
+    section.append(header("player.cameras.title"));
+    // The segmented control explains itself; its group carries the "Layout"
+    // name for screen readers, and the menu stays one header shorter.
+    if (isArrangeable) section.append(renderModes(), renderOverlayToggle());
+    const list = document.createElement("ul");
+    list.className = "cameras-menu__cameras";
+    for (const channel of state.composition.order) list.append(renderCameraRow(channel, isArrangeable));
+    section.append(list);
+    if (isArrangeable) section.append(renderAudio());
     if (focused) section.querySelector<HTMLElement>(`[data-focus-key="${focused}"]`)?.focus();
 }
 

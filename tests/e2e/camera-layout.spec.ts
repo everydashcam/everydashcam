@@ -23,6 +23,7 @@ import {
     chooseArrangementMode,
     closeCamerasMenu,
     makeMainFromMenu,
+    openCamerasMenu,
     setOverlayAllowed,
     settleCameraLayout,
     visibleCameraOrder,
@@ -362,7 +363,7 @@ test("the View menu starts with the cameras on a multi-camera trip", async ({ pa
     await expect(page.locator("#player-view-menu")).toBeFocused();
 });
 
-test("a single-camera trip has only the reflection in the View menu's cameras section", async ({ page }) => {
+test("a single-camera trip lists its camera with only the reflection in the View menu", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);
     await gotoApp(page);
@@ -372,9 +373,12 @@ test("a single-camera trip has only the reflection in the View menu's cameras se
     await expect(page.getByRole("dialog", { name: "View" })).toBeVisible();
     const section = page.locator("#player-cameras-section");
     await expect(section).toBeVisible();
-    await expect(section.locator("[data-camera-mode], .cameras-menu__camera, .cameras-menu__audio")).toHaveCount(0);
-    await expect(section.locator(".cameras-menu__flip")).toHaveCount(1);
-    await expect(section.getByRole("group", { name: "Flip" })).toBeVisible();
+    await expect(section.locator(".cameras-menu__camera")).toHaveCount(1);
+    await expect(
+        section.locator(
+            "[data-camera-mode], .cameras-menu__handle, .cameras-menu__visible, .cameras-menu__main, .cameras-menu__audio",
+        ),
+    ).toHaveCount(0);
     await expect(section.locator(".cameras-menu__flip-axis").first()).toBeFocused();
 });
 
@@ -395,6 +399,32 @@ test.describe("on a touch phone", () => {
         await expect(tiles.locator(".channel-label:visible")).toHaveCount(count);
         await shot(page, "camera-layout-09-touch-tiles");
     });
+
+    // 360 px is a common narrow Android width: the menu is capped by the
+    // screen there and the longest Russian names wrap instead of fitting.
+    for (const width of [MOBILE.width, 360]) {
+        test(`the cameras menu keeps whole camera names next to the reflection toggles at ${width} px`, async ({
+            page,
+        }) => {
+            await presetLocalStorage(page, { lang: "ru" });
+            await page.setViewportSize({ width, height: MOBILE.height });
+            await gotoApp(page, "ru");
+            await loadTrip(page, SAMPLE_70MAI);
+            await pausePlayback(page);
+            await openCamerasMenu(page);
+            const names = page.locator("#player-cameras-section .cameras-menu__name");
+            await expect(names).toHaveCount(3);
+            const clipped = await names.evaluateAll((elements) =>
+                elements
+                    .filter((el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)
+                    .map((el) => el.textContent),
+            );
+            expect(clipped, "names cut by the row").toEqual([]);
+            const toggles = page.locator("#player-cameras-section .cameras-menu__flip-axis");
+            for (const toggle of await toggles.all()) await expect(toggle).toBeInViewport({ ratio: 1 });
+            await shot(page, `camera-layout-10-touch-menu-ru-${width}`);
+        });
+    }
 });
 
 /** A front camera recording 6 s and a rear camera that stops after 2.4 s. */
