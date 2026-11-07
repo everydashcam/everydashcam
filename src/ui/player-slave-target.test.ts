@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pairedTailHold, resolveSlaveTarget } from "./player-slave-target.js";
+import { nativeSlaveSyncStep, pairedTailHold, resolveSlaveTarget } from "./player-slave-target.js";
 import type { Channel } from "../parsers/types.js";
 import { groupTrips, type TripFrame, type VideoCandidate } from "../trips.js";
 
@@ -288,5 +288,66 @@ describe("pairedTailHold", () => {
             mediaOffsetSec: { rear: 60 },
         };
         expect(pairedTailHold(frame, "front")).toBeNull();
+    });
+});
+
+describe("nativeSlaveSyncStep", () => {
+    const TOLERANCE_SEC = 0.15;
+    const playing = { currentTime: 30, duration: 60, paused: false, ended: false };
+
+    it("leaves a slave within the tolerance alone", () => {
+        expect(nativeSlaveSyncStep(30.1, playing, TOLERANCE_SEC)).toEqual({
+            shouldPause: false,
+            seekSec: null,
+            shouldResume: false,
+        });
+    });
+
+    it("seeks a slave that drifted past the tolerance", () => {
+        expect(nativeSlaveSyncStep(31, playing, TOLERANCE_SEC)).toEqual({
+            shouldPause: false,
+            seekSec: 31,
+            shouldResume: false,
+        });
+    });
+
+    it("holds the boundary frame where no file serves the moment", () => {
+        expect(nativeSlaveSyncStep(61, { ...playing, currentTime: 59.5 }, TOLERANCE_SEC), "past the end").toEqual({
+            shouldPause: true,
+            seekSec: 60,
+            shouldResume: false,
+        });
+        expect(nativeSlaveSyncStep(-1, { ...playing, currentTime: 0.1 }, TOLERANCE_SEC), "before the start").toEqual({
+            shouldPause: true,
+            seekSec: null,
+            shouldResume: false,
+        });
+    });
+
+    it("resumes a slave whose moment is back inside its file", () => {
+        expect(nativeSlaveSyncStep(30, { ...playing, paused: true }, TOLERANCE_SEC)).toEqual({
+            shouldPause: false,
+            seekSec: null,
+            shouldResume: true,
+        });
+    });
+
+    it("keeps an ended slave that ran ahead of its master on its last frame", () => {
+        const ended = { currentTime: 60, duration: 60, paused: true, ended: true };
+        expect(nativeSlaveSyncStep(59.9, ended, TOLERANCE_SEC)).toEqual({
+            shouldPause: false,
+            seekSec: null,
+            shouldResume: false,
+        });
+    });
+
+    it("seeks an ended slave back before resuming it", () => {
+        // play() on an ended element would restart its file from 0.
+        const ended = { currentTime: 60, duration: 60, paused: true, ended: true };
+        expect(nativeSlaveSyncStep(12, ended, TOLERANCE_SEC)).toEqual({
+            shouldPause: false,
+            seekSec: 12,
+            shouldResume: true,
+        });
     });
 });

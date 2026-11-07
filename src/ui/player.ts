@@ -98,7 +98,7 @@ import {
     videoAttachedFile,
     videoOwnedBlobUrl,
 } from "./player-video-src.js";
-import { pairedTailHold, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
+import { nativeSlaveSyncStep, pairedTailHold, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
 import {
     applyVideoZoom,
     consumeDragClickSuppress,
@@ -2280,22 +2280,13 @@ export function driftSyncSlaves(): void {
             return;
         }
         if (s.readyState < 2) return;
-        const duration = Number.isFinite(s.duration) ? s.duration : Number.POSITIVE_INFINITY;
-        // No neighbour file can serve this moment (trip edge, missing or
-        // MSE-only neighbour) - hold the boundary frame instead of
-        // stutter-looping between the boundary and the resync threshold.
-        if (target.positionSec < 0 || target.positionSec > duration) {
-            const boundary = target.positionSec < 0 ? 0 : duration;
-            if (!s.paused) s.pause();
-            if (Math.abs(s.currentTime - boundary) > SLAVE_DRIFT_MAX_SEC) s.currentTime = boundary;
-            return;
-        }
-        // Leaving a hold window: the play/pause proxy only mirrors master
-        // EVENTS, so a slave paused by the hold above must be resumed here.
-        if (s.paused) s.play().catch(() => {});
-        if (Math.abs(s.currentTime - target.positionSec) > SLAVE_DRIFT_MAX_SEC) {
-            s.currentTime = target.positionSec;
-        }
+        // Holds the boundary frame where no file serves the moment (trip edge,
+        // missing or MSE-only neighbour). Leaving such a hold resumes the
+        // slave here: the play/pause proxy only mirrors master EVENTS.
+        const step = nativeSlaveSyncStep(target.positionSec, s, SLAVE_DRIFT_MAX_SEC);
+        if (step.shouldPause) s.pause();
+        if (step.seekSec !== null) s.currentTime = step.seekSec;
+        if (step.shouldResume) s.play().catch(() => {});
     });
 }
 

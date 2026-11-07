@@ -107,6 +107,52 @@ export function pairedTailHold(frame: TripFrame, channel: Channel): VideoCandida
     return heldSec <= PAIRED_TAIL_HOLD_MAX_SEC ? cand : null;
 }
 
+/** The element state nativeSlaveSyncStep decides from (a subset of
+ *  HTMLVideoElement, so the rule runs without a DOM). */
+export interface SlaveElementState {
+    currentTime: number;
+    duration: number;
+    paused: boolean;
+    ended: boolean;
+}
+
+/** What one drift-sync pass does to a native slave, applied in this order:
+ *  pause, then seek, then resume. */
+export interface SlaveSyncStep {
+    shouldPause: boolean;
+    seekSec: number | null;
+    shouldResume: boolean;
+}
+
+/**
+ * One drift-sync pass for a native slave whose element already holds the
+ * target's file. `targetSec` is the resolved file position (resolveSlaveTarget),
+ * possibly outside the file when no file holds the moment: the slave then
+ * pauses on the nearest boundary frame instead of stutter-looping between the
+ * boundary and the resync threshold. Inside the file it seeks only past
+ * `toleranceSec` and resumes when paused, after the seek, because play() on an
+ * ended element restarts its file from the start. A slave that ran ahead of
+ * its master within the tolerance and already ended stays on its last frame.
+ */
+export function nativeSlaveSyncStep(
+    targetSec: number,
+    element: SlaveElementState,
+    toleranceSec: number,
+): SlaveSyncStep {
+    const duration = Number.isFinite(element.duration) ? element.duration : Number.POSITIVE_INFINITY;
+    if (targetSec < 0 || targetSec > duration) {
+        const boundarySec = targetSec < 0 ? 0 : duration;
+        return {
+            shouldPause: !element.paused,
+            seekSec: Math.abs(element.currentTime - boundarySec) > toleranceSec ? boundarySec : null,
+            shouldResume: false,
+        };
+    }
+    const seekSec = Math.abs(element.currentTime - targetSec) > toleranceSec ? targetSec : null;
+    if (element.ended && seekSec === null) return { shouldPause: false, seekSec: null, shouldResume: false };
+    return { shouldPause: false, seekSec, shouldResume: element.paused };
+}
+
 function isNativeNeighbour(cand: VideoCandidate | undefined): cand is VideoCandidate {
     if (cand === undefined) return false;
     return cand.canPlay && !requiresMseBackend(cand);
