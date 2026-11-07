@@ -156,29 +156,27 @@ export function applyVideoZoom(): void {
     // Badge sync runs first so it is hidden in export mode too (the early return
     // below would otherwise leave a stale badge on screen).
     syncZoomBadge();
-    // In export mode the crop preview owns the main-video transform (player-crop
-    // writes the same --video-view-transform). Bail so this never resets/overwrites
-    // it - including from the ResizeObserver below. Digital zoom is a casual
-    // viewing aid; export mode is for configuring the output.
+    // Reset all slots + tiles (8 videos, 4 tiles). Apply zoom only to the
+    // active master <video> and its tile. Two-pass is simpler than computing
+    // "keep or reset" in one pass. The export crop preview writes its own
+    // variable, so neither feature clears the other's transform.
+    forEachVideoSlot((v) => {
+        v.style.removeProperty("--video-zoom-transform");
+    });
+    for (const ch of ALL_CHANNELS) {
+        channelTileFor(ch).classList.remove("zoomed");
+    }
+    // Digital zoom is a casual viewing aid; export mode is for configuring the
+    // output, so the zoom stays off there.
     if (state.exportModeOpen) {
         hideMinimap();
         return;
     }
     const z = state.videoZoom;
-    // Reset all slots + tiles (8 videos, 4 tiles). Apply zoom only to the
-    // active master <video> and its tile. Two-pass is simpler than computing
-    // "keep or reset" in one pass.
-    forEachVideoSlot((v) => {
-        v.style.removeProperty("--video-view-transform");
-    });
-    for (const ch of ALL_CHANNELS) {
-        channelTileFor(ch).classList.remove("zoomed");
-    }
     if (z.scale > 1) {
         const master = activePlayer();
-        master.style.transformOrigin = "0 0";
         master.style.setProperty(
-            "--video-view-transform",
+            "--video-zoom-transform",
             `translate(${z.offsetX}px, ${z.offsetY}px) scale(${z.scale})`,
         );
         master.parentElement?.classList.add("zoomed");

@@ -26,9 +26,10 @@
 // We deliberately do NOT use CSS object-view-box: it is effectively unsupported
 // on <video> (spec/impl target <img>; Chromium leaves the video uncropped), so
 // it set the property but never rendered the crop. transform + clip-path work
-// on video (same mechanism as the digital-zoom feature). Because both write
-// --video-view-transform, digital zoom is suspended in export mode (player-zoom
-// bails on state.exportModeOpen) - the crop preview owns the transform here.
+// on video (same mechanism as the digital-zoom feature). The crop preview owns
+// --video-crop-transform and digital zoom owns --video-zoom-transform, so a
+// crop sync never clears a zoom. Zoom is reset and suspended in export mode,
+// so the two transforms never stack.
 
 import { flipCropRect } from "../camera-flip.js";
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
@@ -169,7 +170,7 @@ function applyCropPreviewToChannel(ch: Channel, crop: CropRect | null): void {
     const v = channelPlayers[ch];
     if (!v) return;
     if (!crop) {
-        v.style.removeProperty("--video-view-transform");
+        v.style.removeProperty("--video-crop-transform");
         v.style.removeProperty("transform-origin");
         v.style.removeProperty("clip-path");
         return;
@@ -185,7 +186,7 @@ function applyCropPreviewToChannel(ch: Channel, crop: CropRect | null): void {
     const subW = crop.wPct * disp.w;
     const subH = crop.hPct * disp.h;
     if (tileW <= 0 || tileH <= 0 || subW <= 0 || subH <= 0) {
-        v.style.removeProperty("--video-view-transform");
+        v.style.removeProperty("--video-crop-transform");
         v.style.removeProperty("clip-path");
         return;
     }
@@ -206,7 +207,7 @@ function applyCropPreviewToChannel(ch: Channel, crop: CropRect | null): void {
     const bottom = tileH - top - subH;
     v.style.transformOrigin = "0 0";
     v.style.setProperty(
-        "--video-view-transform",
+        "--video-crop-transform",
         `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale.toFixed(4)})`,
     );
     v.style.clipPath = `inset(${top.toFixed(2)}px ${right.toFixed(2)}px ${bottom.toFixed(2)}px ${left.toFixed(2)}px)`;

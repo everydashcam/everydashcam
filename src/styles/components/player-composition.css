@@ -20,9 +20,13 @@
 
 /* === Output letterbox === */
 
+/* Digital zoom (player-zoom.ts) and the export crop preview (player-crop.ts)
+   each own one variable, so neither clears the other. Zoom is off in export
+   mode, so at most one of them is set at a time. */
 .video-tile > video:not(.tile-blur-bg) {
     transform-origin: 0 0;
-    transform: var(--video-view-transform, translate(0)) var(--camera-flip, translate(0));
+    transform: var(--video-zoom-transform, translate(0)) var(--video-crop-transform, translate(0))
+        var(--camera-flip, translate(0));
 }
 
 /* The tile only exposes a small overflow affordance; its popover is a pair
