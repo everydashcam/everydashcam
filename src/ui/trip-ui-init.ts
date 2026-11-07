@@ -16,7 +16,6 @@
 // renders against a half-initialized viewer.
 
 import { applyChartLayout, initChart, loadChart, setHoverCursorRelSec } from "./chart.js";
-import { dom } from "./dom.js";
 import {
     applyMapLayout,
     ensureMap,
@@ -43,6 +42,7 @@ import {
 import { syncRangeZoomBridge } from "./export-trim-bar.js";
 import { initPlayerBarOverflow } from "./player-bar-overflow.js";
 import { initPlayerResize } from "./player-resize.js";
+import { pausePlayback } from "./playback-pause.js";
 import { syncTimelineRange } from "./timeline-range.js";
 
 let initPromise: Promise<void> | null = null;
@@ -89,9 +89,7 @@ async function runTripUiInit(): Promise<void> {
     initChart({
         getTripCurrentTime,
         onSeekTripTime: seekTripTime,
-        onPause: () => {
-            if (dom.player) dom.player.pause();
-        },
+        onPause: pausePlayback,
         // On any visible-window change (zoom / reset / programmatic zoom)
         // refresh the export button AND re-position the range pull-tabs:
         // their pixel anchors move with the chart's zoomed x-window, so a

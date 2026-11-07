@@ -18,6 +18,7 @@ import { dom } from "./dom.js";
 import { cancelActiveExport } from "./export-flow.js";
 import { closeExportMode, exportPanelState, subscribeExportState } from "./export-state.js";
 import { maybeRunExportTour } from "./onboarding.js";
+import { pausePlayback } from "./playback-pause.js";
 import { state } from "./state.js";
 
 /**
@@ -137,7 +138,5 @@ function syncExportModeChrome(): void {
     // Pause playback on entering export mode: the user is configuring, and
     // background audio is distracting. Matches the previous modal behavior
     // (export-modal.ts paused dom.player on openExportClick).
-    if (isOpening && dom.player && !dom.player.paused) {
-        dom.player.pause();
-    }
+    if (isOpening) pausePlayback();
 }

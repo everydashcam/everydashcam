@@ -194,3 +194,52 @@ describe("managed buffer removal", () => {
         expect(backend.isFailed).toBe(false);
     });
 });
+
+describe("seek resume", () => {
+    /** A playing element: seekTo() pauses it for its own reseek. */
+    function playingVideo() {
+        const listeners = new Map<string, () => void>();
+        const video = {
+            currentTime: 15,
+            paused: false,
+            ended: false,
+            plays: 0,
+            pause() {
+                this.paused = true;
+            },
+            async play() {
+                this.plays++;
+                this.paused = false;
+                listeners.get("play")?.();
+            },
+            addEventListener(type: string, listener: () => void) {
+                listeners.set(type, listener);
+            },
+            removeEventListener(type: string) {
+                listeners.delete(type);
+            },
+        };
+        return video;
+    }
+
+    it.each([
+        [false, 1],
+        [true, 0],
+    ])("resumes after its own reseek unless the user paused meanwhile (paused=%s)", async (userPaused, plays) => {
+        const { backend, removed } = managedSeekHarness();
+        const video = playingVideo();
+        backend["video"] = video as unknown as HTMLVideoElement;
+        const seek = backend.seekTo(3);
+        expect(video.paused, "held for the reseek").toBe(true);
+        expect(backend.isPausedBySeek).toBe(true);
+        // The element is already paused: a user pause emits no event and
+        // must cancel the deferred resume explicitly.
+        if (userPaused) backend.cancelSeekResume();
+        removed(10, 20);
+        await seek;
+        await backend["pendingSeekPromise"];
+        expect(video.plays).toBe(plays);
+        expect(video.paused).toBe(userPaused);
+        expect(backend.isPausedBySeek).toBe(false);
+    });
+});

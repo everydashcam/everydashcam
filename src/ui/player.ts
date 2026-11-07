@@ -79,6 +79,7 @@ import {
 import { channelDisplayLabel, formatDuration, formatTime } from "./format.js";
 import { registerGpsSyncRefreshListener } from "./gps-sync-refresh.js";
 import { notify } from "./notifications.js";
+import { pausePlayback, registerPauseIntent } from "./playback-pause.js";
 import { ensureMarkerLoop, refreshMap, resetFollowInteractionPause, smoothCameraToActiveFrameOffset } from "./map.js";
 import { setDrawerOpen, syncBrowseState } from "./mobile-drawer.js";
 import { captureCurrentFrame, syncCaptureButton } from "./player-capture.js";
@@ -2466,7 +2467,7 @@ export function playTripEvent(tripIdx: number, eventIndex: number): void {
         // would even reset playback to the file start). seekTripTime handles
         // both backends; pause first to honor the "pauses so the user can
         // orient" contract above.
-        if (!dom.player.paused) dom.player.pause();
+        pausePlayback();
         seekTripTime(target);
         return;
     }
@@ -2612,6 +2613,17 @@ export function syncPlayButton(): void {
  */
 export function initPlayer(): void {
     initPlayerFrameTimes();
+    // A user pause also cancels what playback deferred for itself: the
+    // resume after a source load (pendingPlay), after a landing seek, and
+    // after an MSE backend's own reseek. See playback-pause.ts.
+    registerPauseIntent(() => {
+        isPlaybackIntended = false;
+        pendingPlay = false;
+        disarmResumeAfterSeek();
+        for (const ch of ALL_CHANNELS) state.channelBackends[ch]?.cancelSeekResume();
+        syncPreviewThrottle();
+        syncPlayButton();
+    });
     registerGpsSyncRefreshListener(() => {
         renderTrips();
         const trip = activeTrip();

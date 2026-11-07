@@ -4,6 +4,7 @@
 
 import type { Channel } from "../parsers/types.js";
 import { activePlayer, dom, forEachVideoSlot, isActiveSlot, onActivePlayerEvent } from "./dom.js";
+import { pausePlayback } from "./playback-pause.js";
 import { activeTrip, setLayoutAndChannels, state } from "./state.js";
 
 interface TileInputDeps {
@@ -108,7 +109,7 @@ export function initPlayerTileInput(deps: TileInputDeps): void {
             scheduleSingleClick(() => {
                 if (v !== activePlayer() || state.composition.channelOrder.length > 1) return;
                 if (dom.player.paused) dom.player.play().catch(() => {});
-                else dom.player.pause();
+                else pausePlayback();
                 deps.flashPlaybackToggle();
             });
         });

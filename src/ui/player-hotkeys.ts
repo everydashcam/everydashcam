@@ -10,6 +10,7 @@ import { dom } from "./dom.js";
 import { exportPanelState, setRangeEdge, toggleExportMode } from "./export-state.js";
 import { isAnyModalOpen } from "./modal-helper.js";
 import { stepFrame } from "./player-frame-step.js";
+import { pausePlayback } from "./playback-pause.js";
 import { getSeekStepSec, getSeekStepShiftSec } from "./seek-step-pref.js";
 import { activeCandidate, state } from "./state.js";
 import { flashRangeTab } from "./timeline-range.js";
@@ -83,7 +84,7 @@ export function initPlayerHotkeys(deps: HotkeyDeps): void {
             }
             dom.player.play().catch(() => {});
         } else {
-            dom.player.pause();
+            pausePlayback();
         }
     });
 
@@ -149,7 +150,7 @@ export function initPlayerHotkeys(deps: HotkeyDeps): void {
                 }
                 dom.player.play().catch(() => {});
             } else {
-                dom.player.pause();
+                pausePlayback();
             }
             deps.flashPlaybackToggle();
             return;

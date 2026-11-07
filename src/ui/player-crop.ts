@@ -42,6 +42,7 @@ import { prefersReducedMotion } from "./media-queries.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { containRect, type Rect } from "./video-geometry.js";
 import { notifyExportStateChanged, subscribeExportState } from "./export-state.js";
+import { pausePlayback } from "./playback-pause.js";
 import { mainChannel, state } from "./state.js";
 
 const MIN_CROP = 0.05; // smallest crop dimension as a fraction of source
@@ -261,7 +262,7 @@ function enterCropEdit(ch: Channel): void {
     // Start unlocked: a fresh editor session does not infer a lock from the
     // stored rect (a square crop is indistinguishable from a 1:1-locked one).
     editingAspect = null;
-    if (dom.player && !dom.player.paused) dom.player.pause();
+    pausePlayback();
     const tile = channelTileFor(ch);
     editorEl = buildEditor(ch);
     tile.appendChild(editorEl);

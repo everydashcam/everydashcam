@@ -627,6 +627,48 @@ test("pauses a camera that is still finishing its last frames in a paired tail",
     expect(front.remainingSec, "front stopped short of its end").toBeCloseTo(0.1, 2);
 });
 
+test("keeps playback paused when a frame step interrupts a seek into the next clip", async ({ page }) => {
+    // A seek into another file holds playback paused until that file lands,
+    // then resumes it. A frame step meanwhile meets an element that is
+    // already paused, so it emits no pause event; the deferred resume must
+    // not start playback behind the user's back.
+    const clips = await Promise.all([
+        createMseFixture({ format: "mp4", gopCount: 6 }),
+        createMseFixture({ format: "mp4", gopCount: 7 }),
+    ]);
+    await page.locator("#file-input").setInputFiles([
+        { name: "20260904_202849F.MP4", mimeType: "video/mp4", buffer: Buffer.from(clips[0]) },
+        { name: "20260904_202855F.MP4", mimeType: "video/mp4", buffer: Buffer.from(clips[1]) },
+    ]);
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.dom.player.currentTime)).toBeGreaterThan(1.5);
+    // Both keys in one task: the step lands before the next file can load.
+    await page.evaluate(() => {
+        for (const code of ["ArrowRight", "Period"]) {
+            const key = code === "Period" ? "." : code;
+            document.dispatchEvent(new KeyboardEvent("keydown", { key, code, bubbles: true }));
+        }
+    });
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(1);
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const video = window.__everydashcam.dom.player;
+                return video.readyState >= 2 && !video.seeking;
+            }),
+        )
+        .toBe(true);
+    const before = await page.evaluate(() => window.__everydashcam.dom.player.currentTime);
+    await page.waitForTimeout(1000);
+    const after = await page.evaluate(() => ({
+        paused: window.__everydashcam.dom.player.paused,
+        currentTime: window.__everydashcam.dom.player.currentTime,
+    }));
+    expect(after, "playback stays where the step left it").toEqual({ paused: true, currentTime: before });
+});
+
 test("retargets a prewarmed worker when the user seeks into the next clip", async ({ page }) => {
     const clips = await Promise.all([
         createMseFixture({ format: "mpegts", gopCount: 6, audioDurationSec: 6 }),

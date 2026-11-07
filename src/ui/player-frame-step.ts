@@ -7,6 +7,7 @@ import { activeCandidate, state } from "./state.js";
 import { dom } from "./dom.js";
 import { FRAME_STEP_HOLD_DELAY_MS, FRAME_STEP_REPEAT_MS, heldFrameStepCount } from "./frame-step-repeat.js";
 import { initButtonRepeat } from "./player-button-repeat.js";
+import { pausePlayback } from "./playback-pause.js";
 
 interface FrameStepDeps {
     getTripCurrentTime: () => number;
@@ -36,7 +37,7 @@ let deps: FrameStepDeps | null = null;
  *  paused-only). No-op before initFrameStep or with no active trip. */
 export function stepFrame(direction: 1 | -1): void {
     if (!deps || !state.active) return;
-    if (!dom.player.paused) dom.player.pause();
+    pausePlayback();
     deps.seekTripTime(deps.getTripCurrentTime() + direction * frameStepSeconds(activeCandidate()?.fps ?? null));
 }
 
@@ -48,7 +49,7 @@ function wireStepButton(btn: HTMLButtonElement, direction: 1 | -1): void {
         start: () => {
             if (!deps || !state.active) return null;
             const trip = state.trips[state.active.trip];
-            if (!dom.player.paused) dom.player.pause();
+            pausePlayback();
             const baseTime = deps.getTripCurrentTime();
             const stepSeconds = frameStepSeconds(activeCandidate()?.fps ?? null);
             let appliedSteps = 1;
@@ -57,7 +58,7 @@ function wireStepButton(btn: HTMLButtonElement, direction: 1 | -1): void {
                 if (!deps || !state.active || state.trips[state.active.trip] !== trip) return false;
                 const requestedSteps = heldFrameStepCount(elapsedMs);
                 if (requestedSteps <= appliedSteps) return;
-                if (!dom.player.paused) dom.player.pause();
+                pausePlayback();
                 deps.seekTripTime(baseTime + direction * requestedSteps * stepSeconds);
                 appliedSteps = requestedSteps;
             };

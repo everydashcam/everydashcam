@@ -81,6 +81,7 @@ import {
 } from "./in-memory-file.js";
 import { notify } from "./notifications.js";
 import { clipBasename, formatBytes, randomFilenameSuffix } from "./format.js";
+import { pausePlayback } from "./playback-pause.js";
 import { activeTrip, activeTripHasGps, state, mainChannel } from "./state.js";
 import {
     type BeforeCommitHook,
@@ -909,7 +910,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
         overlays === null &&
         !anyRegionOnChannels(manualBlurRegions, channelOrder);
 
-    if (dom.player && !dom.player.paused) dom.player.pause();
+    pausePlayback();
 
     const basename = `${clipBasename(trip, startTripSec, endTripSec)}_${randomFilenameSuffix()}`;
     const fileName = `${basename}.mp4`;

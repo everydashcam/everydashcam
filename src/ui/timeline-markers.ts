@@ -17,6 +17,7 @@ import { getTimelineView, timelineSecToFracInView } from "./chart.js";
 import { dom } from "./dom.js";
 import { syncMarkerListButton } from "./marker-list-modal.js";
 import { openMarkerModal } from "./marker-modal.js";
+import { pausePlayback } from "./playback-pause.js";
 import { getTripCurrentTime, seekTripTime } from "./player.js";
 import { activeTrip } from "./state.js";
 
@@ -34,7 +35,7 @@ export function initTimelineMarkers(): void {
         // built. Playback resumes on close, so the pause is not a state the
         // user has to undo - and a paused player is left paused.
         const wasPlaying = !dom.player.paused;
-        if (wasPlaying) dom.player.pause();
+        if (wasPlaying) pausePlayback();
         const contentSec = getTripCurrentTime();
         const utcMs = contentToWallUtc(trip.timeline, contentSec) * 1000;
         const marker = addMarker(trip, utcMs, "");

@@ -336,6 +336,17 @@ export class PerFileMseBackend {
     }
 
     /**
+     * Drops the resume that seekTo() deferred for its own pause: the user
+     * paused while the seek ran. Pausing an element that the seek already
+     * holds paused emits no 'pause' event, so the caller states the intent
+     * here. The element stays paused when the seek lands. No-op without a
+     * seek in flight.
+     */
+    cancelSeekResume(): void {
+        this.pausedBySeek = false;
+    }
+
+    /**
      * Spawns the worker, opens MediaSource + SourceBuffer on the main thread,
      * lets the worker drive demux+mux+feed via wire messages. Resolves once
      * MediaSource is open AND the worker has reported its codec mime - at
