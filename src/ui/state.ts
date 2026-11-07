@@ -410,6 +410,23 @@ export function moveChannelInOrder(order: Channel[], ch: Channel, toIndex: numbe
 }
 
 /**
+ * Swap-reorder: `a` and `b` trade places and every other channel stays put.
+ * Making a smaller camera the main one swaps it with the main camera - an
+ * insert would also shift the cameras between them ([A,B,C] with C to the
+ * front becomes [C,B,A], not [C,A,B]). Pure; returns a copy unchanged when
+ * either channel is absent.
+ */
+export function swapChannelsInOrder(order: readonly Channel[], a: Channel, b: Channel): Channel[] {
+    const next = order.slice();
+    const ia = next.indexOf(a);
+    const ib = next.indexOf(b);
+    if (ia < 0 || ib < 0) return next;
+    next[ia] = b;
+    next[ib] = a;
+    return next;
+}
+
+/**
  * Mutates state.composition atomically. Callsites that change layout /
  * channelOrder / audioChannel MUST go through this helper so per-slot arrays
  * get resized in sync with layout. Per-slot arrays preserve entries by

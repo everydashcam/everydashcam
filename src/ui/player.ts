@@ -101,7 +101,8 @@ import {
     videoAttachedFile,
     videoOwnedBlobUrl,
 } from "./player-video-src.js";
-import { nativeSlaveSyncStep, pairedTailHold, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
+import { nativeSlaveSyncStep, resolveSlaveTarget, type SlaveTarget } from "./player-slave-target.js";
+import { pairedTailHold } from "../camera-availability.js";
 import { applyVideoZoom, consumeDragClickSuppress, initPlayerZoom, resetVideoZoom } from "./player-zoom.js";
 import { initPlayerMetrics, refreshMetricsFromActiveFrame, resyncMetricsForTrip } from "./player-metrics.js";
 import { isPreloadReadyForPromotion } from "./player-preload.js";

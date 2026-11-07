@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Channel } from "../parsers/types.js";
-import { moveChannelInOrder } from "./state.js";
+import { moveChannelInOrder, swapChannelsInOrder } from "./state.js";
 
 describe("moveChannelInOrder", () => {
     const order: Channel[] = ["front", "rear", "interior"];
@@ -42,5 +42,24 @@ describe("moveChannelInOrder", () => {
         const input: Channel[] = ["front", "rear", "interior"];
         moveChannelInOrder(input, "front", 2);
         expect(input).toEqual(["front", "rear", "interior"]);
+    });
+});
+
+describe("swapChannelsInOrder", () => {
+    const order: Channel[] = ["front", "rear", "interior"];
+
+    it("trades two places and leaves the cameras between them alone", () => {
+        expect(swapChannelsInOrder(order, "interior", "front")).toEqual(["interior", "rear", "front"]);
+        expect(moveChannelInOrder(order, "interior", 0), "insert shifts them instead").toEqual([
+            "interior",
+            "front",
+            "rear",
+        ]);
+    });
+
+    it("returns an unchanged copy for a missing channel or a self-swap", () => {
+        expect(swapChannelsInOrder(order, "side", "front")).toEqual(order);
+        expect(swapChannelsInOrder(order, "rear", "rear")).toEqual(order);
+        expect(swapChannelsInOrder(order, "rear", "front")).not.toBe(order);
     });
 });

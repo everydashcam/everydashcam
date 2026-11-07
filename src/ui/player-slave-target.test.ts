@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { nativeSlaveSyncStep, pairedTailHold, resolveSlaveTarget } from "./player-slave-target.js";
+import { nativeSlaveSyncStep, resolveSlaveTarget } from "./player-slave-target.js";
 import type { Channel } from "../parsers/types.js";
-import { groupTrips, type TripFrame, type VideoCandidate } from "../trips.js";
+import type { TripFrame, VideoCandidate } from "../trips.js";
 
 function makeCandidate(opts: {
     name: string;
@@ -208,105 +208,6 @@ describe("resolveSlaveTarget", () => {
         const fromRear = resolveSlaveTarget(frames, 1, "rear", "front", 10 - lead);
         expect(fromFront?.positionSec).toBeCloseTo(10 - lead, 9);
         expect(fromRear?.positionSec).toBeCloseTo(10, 9);
-    });
-});
-
-describe("pairedTailHold", () => {
-    function pair(startUtc: number, frontDur: number, rearDur: number): VideoCandidate[] {
-        return [
-            makeCandidate({ name: `${startUtc}F.ts`, startUtc, durationSec: frontDur, channel: "front" }),
-            makeCandidate({ name: `${startUtc}R.ts`, startUtc, durationSec: rearDur, channel: "rear" }),
-        ];
-    }
-
-    it("holds the shorter channel's last frame through its sibling's tail", () => {
-        const [front, rear] = pair(1000, 60.08, 60.091);
-        const frames = groupTrips([front!, rear!])[0]!.frames;
-        expect(frames.map((frame) => Object.keys(frame.channels))).toEqual([["front", "rear"], ["rear"]]);
-        expect(pairedTailHold(frames[1]!, "front")).toBe(front);
-        expect(pairedTailHold(frames[1]!, "rear"), "present channel").toBeNull();
-        expect(pairedTailHold(frames[0]!, "front"), "first frame").toBeNull();
-    });
-
-    it("holds each pair's shorter channel between sequential pairs", () => {
-        const first = pair(1000, 60, 60.5);
-        const second = pair(1060, 35.56, 35.2);
-        const frames = groupTrips([...first, ...second])[0]!.frames;
-        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual([
-            "front+rear",
-            "rear",
-            "front+rear",
-            "front",
-        ]);
-        expect(pairedTailHold(frames[1]!, "front")).toBe(first[0]);
-        expect(pairedTailHold(frames[2]!, "front"), "channel back in the next pair").toBeNull();
-        expect(pairedTailHold(frames[3]!, "rear")).toBe(second[1]);
-    });
-
-    it("holds through consecutive tails of a three-camera set", () => {
-        const front = makeCandidate({ name: "1000F.ts", startUtc: 1000, durationSec: 60, channel: "front" });
-        const rear = makeCandidate({ name: "1000R.ts", startUtc: 1000, durationSec: 60.2, channel: "rear" });
-        const interior = makeCandidate({ name: "1000I.ts", startUtc: 1000, durationSec: 60.4, channel: "interior" });
-        const frames = groupTrips([front, rear, interior])[0]!.frames;
-        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual([
-            "front+interior+rear",
-            "interior+rear",
-            "interior",
-        ]);
-        expect(pairedTailHold(frames[1]!, "front")).toBe(front);
-        expect(pairedTailHold(frames[2]!, "front"), "second tail").toBe(front);
-        expect(pairedTailHold(frames[2]!, "rear")).toBe(rear);
-    });
-
-    it("stops holding once the tails outlast the hold limit", () => {
-        const front = makeCandidate({ name: "1000F.ts", startUtc: 1000, durationSec: 60, channel: "front" });
-        const rear = makeCandidate({ name: "1000R.ts", startUtc: 1000, durationSec: 61.5, channel: "rear" });
-        const interior = makeCandidate({ name: "1000I.ts", startUtc: 1000, durationSec: 62.5, channel: "interior" });
-        const frames = groupTrips([front, rear, interior])[0]!.frames;
-        expect(frames).toHaveLength(3);
-        expect(pairedTailHold(frames[1]!, "front"), "1.5 s tail").toBe(front);
-        expect(pairedTailHold(frames[2]!, "front"), "2.5 s of tails").toBeNull();
-        expect(pairedTailHold(frames[2]!, "rear"), "1 s tail").toBe(rear);
-    });
-
-    it("holds a pair's shorter channel when another camera is cut independently", () => {
-        // One interior file spans both pairs, so the trip goes through the
-        // independent-cut splitter rather than splitting pair by pair.
-        const first = pair(1000, 60, 60.5);
-        const second = pair(1060.5, 60, 60.5);
-        const interior = makeCandidate({ name: "1000I.ts", startUtc: 1000, durationSec: 121, channel: "interior" });
-        const frames = groupTrips([...first, ...second, interior])[0]!.frames;
-        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual([
-            "front+interior+rear",
-            "interior+rear",
-            "front+interior+rear",
-            "interior+rear",
-        ]);
-        expect(pairedTailHold(frames[1]!, "front")).toBe(first[0]);
-        expect(pairedTailHold(frames[3]!, "front")).toBe(second[0]);
-        expect(pairedTailHold(frames[2]!, "front"), "front back in the next pair").toBeNull();
-        expect(pairedTailHold(frames[3]!, "interior"), "independent camera still plays").toBeNull();
-    });
-
-    it("shows nothing for a camera that stopped long before its sibling", () => {
-        const [front, rear] = pair(1000, 30, 60);
-        const frames = groupTrips([front!, rear!])[0]!.frames;
-        expect(frames.map((frame) => Object.keys(frame.channels).sort().join("+"))).toEqual(["front+rear", "rear"]);
-        expect(pairedTailHold(frames[1]!, "front")).toBeNull();
-    });
-
-    it("holds nothing in an interval the trip did not mark as a paired tail", () => {
-        // An independently cut camera or a recording gap: the interval lacks
-        // the front, but no pair ended into it.
-        const rear = makeCandidate({ name: "0R.mp4", startUtc: 0, durationSec: 61, channel: "rear" });
-        const frame: TripFrame = {
-            startUtc: 60,
-            durationSec: 1,
-            wallDurationSec: 1,
-            channels: { rear },
-            mediaOffsetSec: { rear: 60 },
-        };
-        expect(pairedTailHold(frame, "front")).toBeNull();
     });
 });
 
