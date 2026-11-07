@@ -669,6 +669,108 @@ test("keeps playback paused when a frame step interrupts a seek into the next cl
     expect(after, "playback stays where the step left it").toEqual({ paused: true, currentTime: before });
 });
 
+for (const format of ["mp4", "mpegts"] as const) {
+    test(`keeps playing through repeated backward seeks across ${format} clips`, async ({ page }) => {
+        // Each arrow press seeks 5 s back. A press while the previous seek's
+        // file still loads meets an element that the load holds paused; the
+        // user never paused, so playback must continue after the last seek.
+        const clips = await Promise.all([6, 6, 6].map((gopCount) => createMseFixture({ format, gopCount })));
+        const extension = format === "mpegts" ? "ts" : "MP4";
+        const mimeType = format === "mpegts" ? "video/mp2t" : "video/mp4";
+        await page.locator("#file-input").setInputFiles(
+            ["20260904_202849F", "20260904_202855F", "20260904_202901F"].map((name, index) => ({
+                name: `${name}.${extension}`,
+                mimeType,
+                buffer: Buffer.from(clips[index]!),
+            })),
+        );
+        const trips = page.locator("li.trip:not(.unindexed-note)");
+        await expect(trips).toHaveCount(1);
+        await trips.first().click();
+        await expect(page.locator("#player-total")).toHaveText("0:18");
+        const bar = (await page.locator("#player-mini-progress").boundingBox())!;
+        await page.mouse.click(bar.x + (bar.width * 13) / 18, bar.y + bar.height / 2);
+        await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(2);
+        await page.evaluate(() => {
+            const video = window.__everydashcam.dom.player;
+            if (video.paused) video.play().catch(() => {});
+        });
+        await expect
+            .poll(() => page.evaluate(() => window.__everydashcam.dom.player.currentTime), { timeout: 10_000 })
+            .toBeGreaterThan(1.5);
+        // Two presses in one task: the second lands before the first file loads.
+        await page.evaluate(() => {
+            // A focused slider takes the arrows itself.
+            (document.activeElement as HTMLElement | null)?.blur();
+            for (let press = 0; press < 2; press++) {
+                document.dispatchEvent(
+                    new KeyboardEvent("keydown", { key: "ArrowLeft", code: "ArrowLeft", bubbles: true }),
+                );
+            }
+        });
+        await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(0);
+        await expect
+            .poll(() => page.evaluate(() => window.__everydashcam.dom.player.currentTime), {
+                message: "playback continues after the last seek",
+                timeout: 10_000,
+            })
+            .toBeGreaterThan(4);
+        expect(await page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(false);
+    });
+}
+
+test("lands a second backward seek inside the clip the first one is still loading", async ({ page }) => {
+    // The first press seeks into the previous clip, the second one 5 s
+    // further back inside that same clip. The clip's metadata arrives after
+    // both: it must apply the second press's position, not the first's.
+    const clips = await Promise.all([6, 6, 6].map((gopCount) => createMseFixture({ format: "mp4", gopCount })));
+    await page.locator("#file-input").setInputFiles(
+        ["20260904_202849F", "20260904_202855F", "20260904_202901F"].map((name, index) => ({
+            name: `${name}.MP4`,
+            mimeType: "video/mp4",
+            buffer: Buffer.from(clips[index]!),
+        })),
+    );
+    const trips = page.locator("li.trip:not(.unindexed-note)");
+    await expect(trips).toHaveCount(1);
+    await trips.first().click();
+    await expect(page.locator("#player-total")).toHaveText("0:18");
+    const bar = (await page.locator("#player-mini-progress").boundingBox())!;
+    await page.mouse.click(bar.x + (bar.width * 16.3) / 18, bar.y + bar.height / 2);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(2);
+    await page.evaluate(() => {
+        const video = window.__everydashcam.dom.player;
+        if (video.paused) video.play().catch(() => {});
+    });
+    await expect
+        .poll(() => page.evaluate(() => window.__everydashcam.dom.player.currentTime), { timeout: 10_000 })
+        .toBeGreaterThan(4.3);
+    const pressedAtSec = await page.evaluate(() => {
+        const video = window.__everydashcam.dom.player;
+        const atSec = 12 + video.currentTime;
+        (document.activeElement as HTMLElement | null)?.blur();
+        for (let press = 0; press < 2; press++) {
+            document.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "ArrowLeft", code: "ArrowLeft", bubbles: true }),
+            );
+        }
+        return atSec;
+    });
+    expect(pressedAtSec - 10, "the second press stays inside the middle clip").toBeGreaterThan(6);
+    await expect.poll(() => page.evaluate(() => window.__everydashcam.state.active?.frame)).toBe(1);
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const video = window.__everydashcam.dom.player;
+                return video.readyState >= 2 && !video.seeking;
+            }),
+        )
+        .toBe(true);
+    const landedSec = await page.evaluate(() => 6 + window.__everydashcam.dom.player.currentTime);
+    expect(landedSec, "playback resumes from the second press's target").toBeGreaterThan(pressedAtSec - 10.1);
+    expect(landedSec).toBeLessThan(pressedAtSec - 10 + 1.5);
+});
+
 test("retargets a prewarmed worker when the user seeks into the next clip", async ({ page }) => {
     const clips = await Promise.all([
         createMseFixture({ format: "mpegts", gopCount: 6, audioDurationSec: 6 }),

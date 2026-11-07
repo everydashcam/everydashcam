@@ -188,7 +188,7 @@ export function reconcileActiveTripAfterRegroup(): void {
             return attachedFile !== (frame.channels[channel] ?? heldTailCandidate(frame, channel))?.file;
         });
         if (target.trip !== state.active.trip || target.frame !== state.active.frame || hasChangedMedia) {
-            playFrame(target.trip, target.frame, target.offsetInFrame, pendingPlay || !previousVideo.paused);
+            playFrame(target.trip, target.frame, target.offsetInFrame, isPlaybackIntended);
         }
     }
     const trip = state.trips[state.active.trip];
@@ -2540,21 +2540,23 @@ export function seekTripTime(targetSec: number, precision: SeekPrecision = "exac
     const frame = trip.frames[frameIdx]!;
     const masterOffsetSec = offsetInFrame + frameMediaOffset(frame, effectiveMasterChannel());
 
+    // Playback continues after the seek when the user wants it to, not when
+    // the element happens to play: a source load or seek still in flight from
+    // an earlier press holds it paused, and a quick second arrow press would
+    // read that as a stop.
+    const shouldPlay = isPlaybackIntended;
     if (state.active.frame !== frameIdx) {
-        // Save current play state - if playing, continue after the frame switch.
-        const wasPlaying = !dom.player.paused;
         // Cross-file seek = a new <video> src that must load (slow on SD cards).
         // Pin the playhead to the target so it lands on the click immediately
         // instead of bouncing to the new file's start (currentTime=0) first.
         setPendingSeek(target);
-        playFrame(state.active.trip, frameIdx, offsetInFrame, wasPlaying);
+        playFrame(state.active.trip, frameIdx, offsetInFrame, shouldPlay);
         return;
     }
     // Same frame. If an active MSE backend exists and the target is outside its buffered range,
     // a feed restart is required (see reattachBackendsAtOffset). For pure native channels,
     // writing currentTime is sufficient - the browser handles the seek natively.
-    const wasPlaying = !dom.player.paused;
-    const reattachedChannels = reattachBackendsAtOffset(frame, offsetInFrame, wasPlaying);
+    const reattachedChannels = reattachBackendsAtOffset(frame, offsetInFrame, shouldPlay);
     if (reattachedChannels.size > 0) {
         // MSE re-attach reloads the backend (slow) - pin the playhead to target
         // like the cross-file path so it does not bounce to the frame start.
@@ -2584,7 +2586,12 @@ export function seekTripTime(targetSec: number, precision: SeekPrecision = "exac
         keyframeSeekPinned = true;
         dom.player.fastSeek(masterOffsetSec);
     } else {
+        // A cross-file seek from an earlier press may still be loading this
+        // file. Its pin would hold the playhead on the old target, and its
+        // loadedmetadata would apply the old offset over this one.
         if (keyframeSeekPinned) clearPendingSeek();
+        else if (pendingSeekTripSec !== null) setPendingSeek(target);
+        if (dom.player.readyState < HTMLMediaElement.HAVE_METADATA) pendingFileOffset = masterOffsetSec;
         dom.player.currentTime = masterOffsetSec;
     }
     updatePlayerProgressUi();
