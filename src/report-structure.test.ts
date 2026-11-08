@@ -30,7 +30,7 @@ describe("looksLikeRecordings", () => {
 describe("buildStructureReport", () => {
     it("includes header, extension histogram and the file listing", () => {
         const report = buildStructureReport([
-            vf("Front/FILE0001.MP4", { size: 3_200_000, mtime: Date.UTC(2024, 5, 14, 16, 16) }),
+            vf("Front/FILE0001.MP4", { size: 3_200_000, mtime: Date.UTC(2024, 5, 14, 16, 16, 42) }),
             vf("Front/FILE0002.MP4", { size: 3_100_000 }),
             vf("info.txt", { size: 40 }),
         ]);
@@ -41,7 +41,7 @@ describe("buildStructureReport", () => {
         expect(report).toMatch(/\.txt\s+1/);
         // File listing carries the paths and the UTC modified time.
         expect(report).toContain("Front/FILE0001.MP4");
-        expect(report).toContain("2024-06-14 16:16");
+        expect(report).toContain("2024-06-14 16:16:42Z");
         // Privacy reassurance line is part of the body.
         expect(report).toContain("No video, no GPS coordinates");
     });

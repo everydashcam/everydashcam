@@ -76,11 +76,14 @@ function humanSize(bytes: number): string {
     return `${n.toFixed(n < 10 ? 1 : 0)} ${units[i]}`;
 }
 
-/** UTC "YYYY-MM-DD HH:MM" from an epoch-ms timestamp. Deterministic (UTC, not
- *  locale) so two reports of the same card read identically. */
+/** UTC "YYYY-MM-DD HH:MM:SSZ" from an epoch-ms timestamp. Deterministic (UTC, not
+ *  locale) so two reports of the same card read identically; the Z keeps it from
+ *  being mistaken for the camera's local clock in the filenames. Seconds stay
+ *  because paired channels' close times are how a file-span drift between
+ *  channels is diagnosed, and FAT already rounds them to 2 s. */
 function fmtMtime(ms: number): string {
     if (!Number.isFinite(ms) || ms <= 0) return "-";
-    return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
+    return `${new Date(ms).toISOString().slice(0, 19).replace("T", " ")}Z`;
 }
 
 // Separate budgets keep excluded paths and directory names visible even when
