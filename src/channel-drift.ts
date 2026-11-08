@@ -107,6 +107,13 @@ function correctChain(chain: TripFrame[]): void {
     const front = tail.channels.front;
     if (!front || front.durationSec <= 1 || !hasMeasuredDuration(front)) return;
     // A time-lapse tail has no wall-true durations to compare.
+    // TODO: 70mai time-lapse channels can drift by tens of minutes, not
+    // seconds: in darkness the A810 Lite front sensor drops to 0.75 fps while
+    // files are still cut at a fixed frame count under the shared schedule
+    // names. A linear content-axis lead cannot express that - the lead grows
+    // inside a file and can exceed a whole file. The candidate fix is
+    // per-channel wall placement from each channel's chain of file close
+    // times (File.lastModified); deferred until a second report shows demand.
     if (front.wallDurationSec !== null) return;
 
     for (const channel of Object.keys(tail.channels) as Channel[]) {
