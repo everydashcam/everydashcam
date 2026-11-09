@@ -482,6 +482,7 @@ export const enDict = {
     "tripMap.place.handle": "Drag to change the radius",
     "tripMap.pass.one": "pass at {time}",
     "tripMap.pass.many": "{n, plural, one {# pass} other {# passes}}: {times}",
+    "tripMap.backToVideo": "Back to video",
     "sidebar.filter.inMapArea": "in the map area",
     "sidebar.filter.untracked": "No GPS track, not on the map: {n}",
     "sidebar.filter.emptyPlace": "No trips pass through this place. Try a bigger circle.",

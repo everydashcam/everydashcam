@@ -338,6 +338,9 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
         // localStorage preference for invisible panels; the user later opens
         // the first trip and sees panels arbitrarily disabled.
         if (document.body.classList.contains("no-trips")) return;
+        // Same for panels under a surface laid over the player (the map of
+        // all trips), which marks the player inert.
+        if (opts.button.closest<HTMLElement>(".player-wrap")?.inert) return;
         for (const panel of PANELS) {
             if (e.code === HOTKEY_BY_PANEL[panel]) {
                 e.preventDefault();

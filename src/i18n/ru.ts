@@ -486,6 +486,7 @@ export const ruDict = {
     "tripMap.place.handle": "Потяни, чтобы изменить радиус",
     "tripMap.pass.one": "проезд в {time}",
     "tripMap.pass.many": "{n, plural, one {# проезд} few {# проезда} other {# проездов}}: {times}",
+    "tripMap.backToVideo": "Вернуться к видео",
     "sidebar.filter.inMapArea": "в области карты",
     "sidebar.filter.untracked": "Без трека, не на карте: {n}",
     "sidebar.filter.emptyPlace": "Через это место поездок нет. Попробуй увеличить круг.",

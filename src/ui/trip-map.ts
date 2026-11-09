@@ -3,6 +3,8 @@
 // trips too small to read fold into counted dots, and the camera starts on the
 // whole library. A click on a road chooses a place; the list then keeps the
 // trips through it (trip-map-search.ts) and the map stresses their corridors.
+// Over an open trip the button by the search lays the same map over the
+// player, which stays mounted, paused and inert until the map closes.
 // Track geometry comes from trip-map-library.ts; style, provider and recovery
 // are shared with the other viewer maps through the registry. The map
 // instance lives only while the surface is shown.
@@ -32,12 +34,15 @@ import {
 } from "../trip-map/world.js";
 import { getUnits, subscribeUnitsChange } from "../units-pref.js";
 import { dom } from "./dom.js";
+import { subscribeExportState } from "./export-state.js";
 import { formatShortDistance } from "./format.js";
 import { MapAttributionControl } from "./map-attribution-control.js";
 import { getMapProvider } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { TRACK_HALO_WIDTH_PX, TRACK_OUTLINE_WIDTH_PX } from "./map-track.js";
 import { isMobileLayout, MOBILE_LAYOUT_QUERY, prefersReducedMotion } from "./media-queries.js";
+import { isAnyModalOpen } from "./modal-helper.js";
+import { pausePlayback } from "./playback-pause.js";
 import { state } from "./state.js";
 import { subscribeThemeChange, themeColors } from "./theme.js";
 import { subscribeTripMapLibrary, syncTripMapLibrary, tripMapEntries } from "./trip-map-library.js";
@@ -161,6 +166,10 @@ let creation = 0;
 let isUnavailable = false;
 /** Trip index under the pointer in the list, drawn on top of everything. */
 let highlightedTrip: number | null = null;
+/** The button by the search laid the map over the open trip. */
+let isOverTrip = false;
+/** Viewer layers this map made inert while it covers the open trip. */
+let coveredLayers: HTMLElement[] = [];
 
 /** The surface can exist here: a WebGL context works and the layout is not the phone one. */
 export function isTripMapAvailable(): boolean {
@@ -168,26 +177,32 @@ export function isTripMapAvailable(): boolean {
 }
 
 function shouldShowTripMap(): boolean {
-    return (
-        isTripMapAvailable() &&
-        state.trips.length > 0 &&
-        state.active === null &&
-        getTripMapPreferences().isShownWithoutTrip
-    );
+    if (!isTripMapAvailable() || state.trips.length === 0) return false;
+    if (state.active === null) return getTripMapPreferences().isShownWithoutTrip;
+    return isOverTrip;
 }
 
 /**
- * Shows or hides the map in the empty viewer and keeps its tracks current.
- * Idempotent; called whenever the trips, the open trip or the preference
- * change.
+ * Shows or hides the map in the viewer and keeps its tracks current.
+ * Idempotent; called whenever the trips, the open trip, export mode or the
+ * preference change.
  */
 export function syncTripMap(): void {
+    // The map over a trip belongs to that trip outside export: without an
+    // open trip, in export or on the phone layout it is gone for good.
+    if (state.active === null || state.exportModeOpen || !isTripMapAvailable()) isOverTrip = false;
     const isShown = shouldShowTripMap();
+    const isCoveringTrip = isShown && state.active !== null;
     dom.viewer.classList.toggle("has-trip-map", isShown);
-    // The button switches the empty viewer between the map and its card; an
-    // open trip has the viewer to itself.
-    dom.tripMapToggle.hidden = !isTripMapAvailable() || state.active !== null;
+    dom.viewer.classList.toggle("has-trip-map-over-trip", isCoveringTrip);
+    coverTrip(isCoveringTrip);
+    dom.tripMapToggle.hidden = !isTripMapAvailable();
+    // Export owns the open trip's viewer.
+    dom.tripMapToggle.disabled = state.active !== null && state.exportModeOpen;
     dom.tripMapToggle.setAttribute("aria-pressed", String(isShown));
+    const closeLabel = t(isCoveringTrip ? "tripMap.backToVideo" : "tripMap.close");
+    dom.tripMapClose.title = closeLabel;
+    dom.tripMapClose.setAttribute("aria-label", closeLabel);
     // A chosen place keeps filtering the list while the map is hidden, so
     // its tracks must follow the trips either way.
     if (isShown || tripMapPlace()) syncTripMapLibrary(state.trips);
@@ -197,6 +212,51 @@ export function syncTripMap(): void {
     }
     if (view) syncCounter();
     else void createView();
+}
+
+/**
+ * The map over the trip makes the rest of the viewer inert: the player stays
+ * laid out underneath (no resize, no reload) but takes no focus, pointer or
+ * keys. Playback pauses once, when the map comes up.
+ */
+function coverTrip(isCovering: boolean): void {
+    if (isCovering === coveredLayers.length > 0) return;
+    if (!isCovering) {
+        for (const layer of coveredLayers) layer.inert = false;
+        coveredLayers = [];
+        return;
+    }
+    for (const layer of dom.viewer.children) {
+        // A layer inert for another owner stays theirs to release.
+        if (!(layer instanceof HTMLElement) || layer === dom.tripMapState || layer.inert) continue;
+        layer.inert = true;
+        coveredLayers.push(layer);
+    }
+    pausePlayback();
+}
+
+/** Takes the map off the open trip, if it covers one. Opening another trip starts here. */
+export function closeTripMapOverTrip(): void {
+    if (!isOverTrip) return;
+    isOverTrip = false;
+    syncTripMap();
+}
+
+/**
+ * Esc, the close button or the button by the search give the video back.
+ * Focus leaving the hidden map returns to that button; focus in the list
+ * stays where the user works.
+ */
+function returnToVideo(): void {
+    const focused = document.activeElement;
+    const shouldMoveFocus = focused === null || focused === document.body || dom.tripMapState.contains(focused);
+    closeTripMapOverTrip();
+    if (shouldMoveFocus) dom.tripMapToggle.focus({ preventScroll: true });
+}
+
+function isTextEntry(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    return target.isContentEditable || target.matches("input, textarea, select");
 }
 
 /** "Show all" from outside the map: the whole library, following again. */
@@ -935,14 +995,33 @@ export function initTripMap(cb: TripMapCallbacks): void {
     subscribeThemeChange(() => {
         if (view) applyThemeColors(view);
     });
+    subscribeExportState(syncTripMap);
 
     dom.tripMapToggle.addEventListener("click", () => {
-        setShownWithoutTrip(!shouldShowTripMap());
+        if (state.active === null) {
+            setShownWithoutTrip(!shouldShowTripMap());
+        } else if (isOverTrip) {
+            returnToVideo();
+        } else {
+            isOverTrip = true;
+            syncTripMap();
+        }
     });
     dom.tripMapClose.addEventListener("click", () => {
+        if (state.active !== null) {
+            returnToVideo();
+            return;
+        }
         setShownWithoutTrip(false);
         // The placeholder card offers the way back; the closed map's button is gone.
         document.querySelector<HTMLElement>('[data-action="show-trip-map"]')?.focus({ preventScroll: true });
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || event.defaultPrevented || !isOverTrip || isAnyModalOpen()) return;
+        // Escape in the search clears the search.
+        if (isTextEntry(event.target)) return;
+        event.preventDefault();
+        returnToVideo();
     });
     document.getElementById("empty-state-card")?.addEventListener("click", (event) => {
         if (event.target instanceof Element && event.target.closest('[data-action="show-trip-map"]'))

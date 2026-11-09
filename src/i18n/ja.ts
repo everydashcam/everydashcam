@@ -491,6 +491,7 @@ export const jaDict = {
     "tripMap.place.handle": "ドラッグして半径を変更",
     "tripMap.pass.one": "{time} に通過",
     "tripMap.pass.many": "{n} 回通過：{times}",
+    "tripMap.backToVideo": "動画に戻る",
     "sidebar.filter.inMapArea": "地図の範囲内",
     "sidebar.filter.untracked": "GPS トラックがなく地図にない：{n}",
     "sidebar.filter.emptyPlace": "ここを通った走行はありません。円を大きくしてみてください。",

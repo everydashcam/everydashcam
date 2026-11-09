@@ -481,6 +481,7 @@ export const frDict = {
     "tripMap.place.handle": "Fais glisser pour changer le rayon",
     "tripMap.pass.one": "passage à {time}",
     "tripMap.pass.many": "{n, plural, one {# passage} other {# passages}} : {times}",
+    "tripMap.backToVideo": "Retour à la vidéo",
     "sidebar.filter.inMapArea": "dans la zone de la carte",
     "sidebar.filter.untracked": "Sans trace GPS, absents de la carte : {n}",
     "sidebar.filter.emptyPlace": "Aucun trajet ne passe par cet endroit. Essaie un cercle plus grand.",

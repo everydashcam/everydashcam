@@ -479,6 +479,7 @@ export const deDict = {
     "tripMap.place.handle": "Zieh, um den Radius zu ändern",
     "tripMap.pass.one": "Durchfahrt um {time}",
     "tripMap.pass.many": "{n, plural, one {# Durchfahrt} other {# Durchfahrten}}: {times}",
+    "tripMap.backToVideo": "Zurück zum Video",
     "sidebar.filter.inMapArea": "im Kartenausschnitt",
     "sidebar.filter.untracked": "Ohne GPS-Track, nicht auf der Karte: {n}",
     "sidebar.filter.emptyPlace": "Durch diese Stelle führt keine Fahrt. Versuch einen größeren Kreis.",

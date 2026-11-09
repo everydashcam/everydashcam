@@ -647,6 +647,7 @@ export type I18nKey =
     | "tripMap.place.handle"
     | "tripMap.pass.one"
     | "tripMap.pass.many"
+    | "tripMap.backToVideo"
     | "sidebar.filter.inMapArea"
     | "sidebar.filter.untracked"
     | "sidebar.filter.emptyPlace"

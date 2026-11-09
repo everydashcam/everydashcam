@@ -1,7 +1,8 @@
 /* =========================================================================
    MAP OF ALL TRIPS (src/ui/trip-map.ts)
    Fills the empty viewer instead of the placeholder card while the
-   preference is on. Corner controls reuse the trip map's control buttons.
+   preference is on, or covers an open trip on demand. Corner controls reuse
+   the trip map's control buttons.
    ========================================================================= */
 .trip-map-state {
     position: relative;
@@ -13,6 +14,16 @@
 }
 .viewer.empty.has-trip-map .trip-map-state {
     display: block;
+}
+/* Over an open trip the player stays laid out underneath, paused and inert.
+   The viewer's container type makes it its own stacking context, so this
+   only has to clear the player's layers; its transient menus close on the
+   click that brought the map up. */
+.viewer.has-trip-map-over-trip .trip-map-state {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: var(--dc-z-drawer);
 }
 .viewer.empty.has-trip-map .empty-state,
 .viewer.preparing .trip-map-state {
@@ -123,6 +134,13 @@
 }
 .trip-map-toggle[hidden] {
     display: none;
+}
+/* Export owns the open trip's viewer. */
+.trip-map-toggle:disabled {
+    border-color: var(--border);
+    color: var(--fg-dim);
+    opacity: 0.3;
+    cursor: default;
 }
 
 .empty-state-map {

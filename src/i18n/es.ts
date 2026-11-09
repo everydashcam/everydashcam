@@ -481,6 +481,7 @@ export const esDict = {
     "tripMap.place.handle": "Arrastra para cambiar el radio",
     "tripMap.pass.one": "paso a las {time}",
     "tripMap.pass.many": "{n, plural, one {# paso} other {# pasos}}: {times}",
+    "tripMap.backToVideo": "Volver al vídeo",
     "sidebar.filter.inMapArea": "en la zona del mapa",
     "sidebar.filter.untracked": "Sin track GPS, fuera del mapa: {n}",
     "sidebar.filter.emptyPlace": "Ningún trayecto pasa por este lugar. Prueba con un círculo más grande.",

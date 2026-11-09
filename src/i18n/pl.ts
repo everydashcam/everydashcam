@@ -481,6 +481,7 @@ export const plDict = {
     "tripMap.place.handle": "Przeciągnij, aby zmienić promień",
     "tripMap.pass.one": "przejazd o {time}",
     "tripMap.pass.many": "{n, plural, one {# przejazd} few {# przejazdy} many {# przejazdów} other {# przejazdu}}: {times}",
+    "tripMap.backToVideo": "Wróć do wideo",
     "sidebar.filter.inMapArea": "w obszarze mapy",
     "sidebar.filter.untracked": "Bez śladu GPS, poza mapą: {n}",
     "sidebar.filter.emptyPlace": "Żaden przejazd nie prowadzi przez to miejsce. Spróbuj większego okręgu.",

@@ -490,6 +490,7 @@ export const koDict = {
     "tripMap.place.handle": "끌어서 반경 바꾸기",
     "tripMap.pass.one": "{time} 통과",
     "tripMap.pass.many": "{n}번 통과: {times}",
+    "tripMap.backToVideo": "영상으로 돌아가기",
     "sidebar.filter.inMapArea": "지도 범위 안",
     "sidebar.filter.untracked": "GPS 트랙이 없어 지도에 없음: {n}",
     "sidebar.filter.emptyPlace": "이곳을 지난 주행이 없어요. 원을 더 크게 해 보세요.",

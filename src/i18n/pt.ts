@@ -481,6 +481,7 @@ export const ptDict = {
     "tripMap.place.handle": "Arraste para mudar o raio",
     "tripMap.pass.one": "passagem às {time}",
     "tripMap.pass.many": "{n, plural, one {# passagem} other {# passagens}}: {times}",
+    "tripMap.backToVideo": "Voltar ao vídeo",
     "sidebar.filter.inMapArea": "na área do mapa",
     "sidebar.filter.untracked": "Sem trilha GPS, fora do mapa: {n}",
     "sidebar.filter.emptyPlace": "Nenhuma viagem passa por este lugar. Tente um círculo maior.",

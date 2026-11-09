@@ -96,7 +96,7 @@ import {
     prepareTripForPlayback,
 } from "./ui/progressive-ingest.js";
 import { initTripPreparation } from "./ui/trip-preparation.js";
-import { initTripMap } from "./ui/trip-map.js";
+import { closeTripMapOverTrip, initTripMap } from "./ui/trip-map.js";
 import { subscribeTripMapSearch, tripMapPassesFor } from "./ui/trip-map-search.js";
 import { initHotkeysModal } from "./ui/hotkeys-modal.js";
 import { initWhatsNewModal } from "./ui/whats-new-modal.js";
@@ -713,9 +713,15 @@ async function prepareTripOpen(
     }
 }
 
+/** Every user open of a trip starts here: the map laid over the previous trip gives the viewer back first. */
+function beginTripOpen(target: TripOpenTarget | null): number {
+    closeTripMapOverTrip();
+    return takeTripOpenToken(target?.tripKeys);
+}
+
 async function openTripFrame(tripIdx: number, requestedFrameIdx?: number): Promise<void> {
     const target = captureTripOpenTarget(state.trips, tripIdx, requestedFrameIdx);
-    const openToken = takeTripOpenToken(target?.tripKeys);
+    const openToken = beginTripOpen(target);
     if (!target) {
         reportTripOpenFailure(openToken, tripIdx);
         return;
@@ -744,7 +750,7 @@ async function openTripFrame(tripIdx: number, requestedFrameIdx?: number): Promi
 
 async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = false): Promise<void> {
     const target = captureTripOpenTarget(state.trips, tripIdx, undefined, eventIndex);
-    const openToken = takeTripOpenToken(target?.tripKeys);
+    const openToken = beginTripOpen(target);
     if (!target) {
         reportTripOpenFailure(openToken, tripIdx);
         return;
@@ -781,7 +787,7 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
 /** Opens the trip paused at a moment on its clock, such as a pass through a place. */
 async function openTripAtMoment(tripIdx: number, momentUtc: number): Promise<void> {
     const target = captureTripMomentTarget(state.trips, tripIdx, momentUtc);
-    const openToken = takeTripOpenToken(target?.tripKeys);
+    const openToken = beginTripOpen(target);
     if (!target) {
         reportTripOpenFailure(openToken, tripIdx);
         return;

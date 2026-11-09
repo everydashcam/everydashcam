@@ -111,6 +111,9 @@ export function initPlayerHotkeys(deps: HotkeyDeps): void {
         // arrows) would otherwise reach here and mutate the player behind the
         // backdrop - e.g. F focused on a modal button toggles fullscreen.
         if (isAnyModalOpen()) return;
+        // A surface laid over the player (the map of all trips) marks it
+        // inert; Space must not start a video nobody can see.
+        if (dom.playerWrap.inert) return;
 
         // Skip when focus is in an editable control.
         if (e.target instanceof HTMLElement && isEditableTarget(e.target)) return;

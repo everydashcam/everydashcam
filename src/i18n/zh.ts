@@ -479,6 +479,7 @@ export const zhDict = {
     "tripMap.place.handle": "拖动以调整半径",
     "tripMap.pass.one": "{time} 经过",
     "tripMap.pass.many": "经过 {n} 次：{times}",
+    "tripMap.backToVideo": "返回视频",
     "sidebar.filter.inMapArea": "在地图范围内",
     "sidebar.filter.untracked": "没有 GPS 轨迹、不在地图上：{n}",
     "sidebar.filter.emptyPlace": "没有行程经过这里。试试把圆圈放大。",
