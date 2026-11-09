@@ -825,8 +825,11 @@ initSidebar({
     onPlayTripEvent: openTripEvent,
 });
 // The map of all trips replaces the empty-viewer card; turning it on or off
-// re-renders that card.
-initTripMap({ onSurfaceChange: syncEmptyState });
+// re-renders that card. Its trip markers open their trip at their moment.
+initTripMap({
+    onSurfaceChange: syncEmptyState,
+    onOpenMoment: (tripIdx, momentUtc) => void openTripAtMoment(tripIdx, momentUtc),
+});
 // The place and the map frame filter the list; it follows their results.
 subscribeTripMapSearch(renderTrips);
 

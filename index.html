@@ -1331,6 +1331,12 @@
                     </span>
                 </div>
                 <div class="trip-map-corner trip-map-corner--end">
+                    <button id="trip-map-markers" class="map-control-btn" type="button" aria-pressed="true"
+                            data-i18n-attr="aria-label:tripMap.markers,title:tripMap.markers"
+                            aria-label="My markers on the map" title="My markers on the map">
+                        <!-- lucide: bookmark -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+                    </button>
                     <button id="trip-map-fit" class="map-control-btn" type="button"
                             data-i18n-attr="aria-label:tripMap.fit,title:tripMap.fit"
                             aria-label="Show all trips" title="Show all trips">
@@ -2791,6 +2797,14 @@
                         <span class="settings-toggle-label" data-i18n="tripMap.toggle">Trip map</span>
                     </label>
                     <p id="settings-trip-map-description" class="settings-toggle-desc" data-i18n="settings.tripMap.description">Show a map of all your trips until you pick one. The map button next to the search opens it any time.</p>
+                </div>
+                <div class="settings-row">
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="settings-trip-map-markers-toggle" aria-describedby="settings-trip-map-markers-description">
+                        <span class="settings-toggle-slider" aria-hidden="true"></span>
+                        <span class="settings-toggle-label" data-i18n="settings.tripMap.markers">Markers on the trip map</span>
+                    </label>
+                    <p id="settings-trip-map-markers-description" class="settings-toggle-desc" data-i18n="settings.tripMap.markers.description">Show the markers you added in your trips.</p>
                 </div>
                 <div class="settings-row">
                     <span class="settings-select-label" data-i18n="settings.map.marker.label">Map marker</span>

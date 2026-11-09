@@ -485,16 +485,19 @@ export function initSettingsModal(): void {
 
     // The trip map's close button writes the same preference.
     const tripMapToggle = document.getElementById("settings-trip-map-toggle") as HTMLInputElement | null;
-    if (tripMapToggle) {
-        const syncTripMapToggle = (preferences: TripMapPreferences): void => {
-            tripMapToggle.checked = preferences.isShownWithoutTrip;
-        };
-        syncTripMapToggle(getTripMapPreferences());
-        subscribeTripMapPreferences(syncTripMapToggle);
-        tripMapToggle.addEventListener("change", () => {
-            setTripMapPreferences({ ...getTripMapPreferences(), isShownWithoutTrip: tripMapToggle.checked });
-        });
-    }
+    const tripMapMarkersToggle = document.getElementById("settings-trip-map-markers-toggle") as HTMLInputElement | null;
+    const syncTripMapToggles = (preferences: TripMapPreferences): void => {
+        if (tripMapToggle) tripMapToggle.checked = preferences.isShownWithoutTrip;
+        if (tripMapMarkersToggle) tripMapMarkersToggle.checked = preferences.shouldShowMarkers;
+    };
+    syncTripMapToggles(getTripMapPreferences());
+    subscribeTripMapPreferences(syncTripMapToggles);
+    tripMapToggle?.addEventListener("change", () => {
+        setTripMapPreferences({ ...getTripMapPreferences(), isShownWithoutTrip: tripMapToggle.checked });
+    });
+    tripMapMarkersToggle?.addEventListener("change", () => {
+        setTripMapPreferences({ ...getTripMapPreferences(), shouldShowMarkers: tripMapMarkersToggle.checked });
+    });
 
     subscribeMapProvider((provider) => {
         for (const id of ["settings-map-label-scale-select", "settings-map-street-names-select"]) {

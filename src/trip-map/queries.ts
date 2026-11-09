@@ -1,6 +1,7 @@
 // Place queries over simplified trip tracks: which trips cross the visible map
-// area, and when a trip passed through a chosen circle. Cheap enough for the
-// main thread: every query first rejects trips by their bounding box.
+// area, when a trip passed through a chosen circle, and where it was at a given
+// moment. Cheap enough for the main thread: the area and circle queries first
+// reject trips by their bounding box.
 
 import { segmentDistanceSquared, type TripMapTrack } from "./track-geometry.js";
 import { groundMetersPerWorldUnit, type WorldBounds } from "./world.js";
@@ -18,6 +19,40 @@ export interface PlaceCircle {
     x: number;
     y: number;
     radiusMeters: number;
+}
+
+/**
+ * Where the trip was at `unixSeconds` on its drawn route: interpolated along
+ * the segment that spans the moment, at the nearer vertex across a gap, and
+ * at the route's end outside the recorded span. Null for a track without
+ * vertices.
+ */
+export function trackPositionAt(track: TripMapTrack, unixSeconds: number): { x: number; y: number } | null {
+    const { times, points, breaks } = track;
+    const count = times.length;
+    if (count === 0) return null;
+    const vertex = (index: number) => ({ x: points[index * 2]!, y: points[index * 2 + 1]! });
+    if (unixSeconds <= times[0]!) return vertex(0);
+    if (unixSeconds >= times[count - 1]!) return vertex(count - 1);
+    // First vertex at or after the moment; times are non-decreasing.
+    let low = 1;
+    let high = count - 1;
+    while (low < high) {
+        const middle = (low + high) >> 1;
+        if (times[middle]! < unixSeconds) low = middle + 1;
+        else high = middle;
+    }
+    const before = low - 1;
+    const startSec = times[before]!;
+    const endSec = times[low]!;
+    // A gap has no drawn line between its ends: stay on the nearer one.
+    if (breaks[before] === 1 || endSec <= startSec) {
+        return unixSeconds - startSec <= endSec - unixSeconds ? vertex(before) : vertex(low);
+    }
+    const share = (unixSeconds - startSec) / (endSec - startSec);
+    const from = vertex(before);
+    const to = vertex(low);
+    return { x: from.x + (to.x - from.x) * share, y: from.y + (to.y - from.y) * share };
 }
 
 /** The circle's radius in world units at its own latitude. */

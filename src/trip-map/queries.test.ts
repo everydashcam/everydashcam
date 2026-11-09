@@ -9,7 +9,7 @@ import {
     trackFromFixes,
     type LocalFix,
 } from "./__fixtures__/tracks.js";
-import { trackIntersectsArea, tripPassesThroughCircle, type PlaceCircle } from "./queries.js";
+import { trackIntersectsArea, trackPositionAt, tripPassesThroughCircle, type PlaceCircle } from "./queries.js";
 import { buildTripMapTrack } from "./track-geometry.js";
 import { groundMetersPerWorldUnit, worldToLon, worldX, worldY } from "./world.js";
 
@@ -149,5 +149,75 @@ describe("trackIntersectsArea", () => {
         expect(trackIntersectsArea(track, { minX: -0.000001, minY: y - 0.001, maxX: 0.000001, maxY: y + 0.001 })).toBe(
             true,
         );
+    });
+});
+
+describe("trackPositionAt", () => {
+    it("places a moment on the drawn route between its vertices", () => {
+        const track = trackFromFixes(
+            driveThrough(
+                [
+                    [0, 0],
+                    [1000, 0],
+                ],
+                { speedMs: 10 },
+            ),
+        );
+        const position = trackPositionAt(track, START_SEC + 25)!;
+        const y = worldY(latForNorth(0));
+        expect(eastForLon(worldToLon(position.x))).toBeCloseTo(250, 0);
+        expect(position.y).toBeCloseTo(y, 9);
+    });
+
+    it("clamps moments outside the recording to the route's ends", () => {
+        const track = trackFromFixes(
+            driveThrough(
+                [
+                    [0, 0],
+                    [1000, 0],
+                ],
+                { speedMs: 10 },
+            ),
+        );
+        expect(eastForLon(worldToLon(trackPositionAt(track, START_SEC - 60)!.x))).toBeCloseTo(0, 0);
+        expect(eastForLon(worldToLon(trackPositionAt(track, START_SEC + 600)!.x))).toBeCloseTo(1000, 0);
+    });
+
+    it("stays on the nearer end of a gap instead of crossing it", () => {
+        const fixes: LocalFix[] = [
+            ...driveThrough(
+                [
+                    [0, 0],
+                    [100, 0],
+                ],
+                { speedMs: 10 },
+            ),
+            ...driveThrough(
+                [
+                    [5000, 0],
+                    [5100, 0],
+                ],
+                { speedMs: 10, startSec: START_SEC + 300 },
+            ),
+        ];
+        const track = trackFromFixes(fixes);
+        const nearStart = eastForLon(worldToLon(trackPositionAt(track, START_SEC + 60)!.x));
+        const nearEnd = eastForLon(worldToLon(trackPositionAt(track, START_SEC + 280)!.x));
+        expect(nearStart).toBeCloseTo(100, 0);
+        expect(nearEnd).toBeCloseTo(5000, 0);
+    });
+
+    it("has no position on an empty track", () => {
+        expect(
+            trackPositionAt(
+                {
+                    points: new Float64Array(),
+                    times: new Float64Array(),
+                    breaks: new Uint8Array(),
+                    bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+                },
+                START_SEC,
+            ),
+        ).toBeNull();
     });
 });

@@ -4,7 +4,8 @@
 // whole library. A click on a road chooses a place; the list then keeps the
 // trips through it (trip-map-search.ts) and the map stresses their corridors.
 // Over an open trip the button by the search lays the same map over the
-// player, which stays mounted, paused and inert until the map closes.
+// player, which stays mounted, paused and inert until the map closes. The
+// user's trip markers sit on the routes and open their trip at their moment.
 // Track geometry comes from trip-map-library.ts; style, provider and recovery
 // are shared with the other viewer maps through the registry. The map
 // instance lives only while the surface is shown.
@@ -18,7 +19,7 @@ import { createLogger } from "../log.js";
 import { bundleStepForZoom, type TripBundle } from "../trip-map/bundle.js";
 import { farDotRadiusPx, foldFarTrips, type FarDot } from "../trip-map/far-dots.js";
 import { FOLLOW_FIT_DURATION_MS, FOLLOW_FIT_PADDING_PX, shouldReframe, type ScreenBox } from "../trip-map/follow.js";
-import { placeRadiusWorld, type PlaceCircle } from "../trip-map/queries.js";
+import { placeRadiusWorld, trackPositionAt, type PlaceCircle } from "../trip-map/queries.js";
 import type { TripMapTrack } from "../trip-map/track-geometry.js";
 import { tripNeedsRecordingMetadata } from "../trips.js";
 import {
@@ -34,9 +35,10 @@ import {
     type WorldBounds,
 } from "../trip-map/world.js";
 import { getUnits, subscribeUnitsChange } from "../units-pref.js";
+import { markersWithTrips, subscribeMarkers } from "./annotations.js";
 import { dom } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
-import { formatShortDistance } from "./format.js";
+import { formatMarkerMoment, formatShortDistance } from "./format.js";
 import { MapAttributionControl } from "./map-attribution-control.js";
 import { getMapProvider } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
@@ -126,6 +128,9 @@ const DIMMED_CORE_MIN_WIDTH_PX = 1.2;
 const DIMMED_CORE_WIDTH_SHARE = 0.4;
 const HIGHLIGHT_OUTLINE_WIDTH_PX = 7;
 const HIGHLIGHT_CORE_WIDTH_PX = 3.6;
+// lucide: bookmark, filled for the marker's white glyph.
+const USER_MARKER_ICON =
+    '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>';
 
 interface ReadyTrack {
     id: number;
@@ -139,6 +144,9 @@ interface TripMapView {
     bundle: TripBundle | null;
     matchedBundle: TripBundle | null;
     dots: maplibregl.Marker[];
+    /** The user's trip markers on their routes. */
+    userMarkers: maplibregl.Marker[];
+    markerPopup: maplibregl.Popup | null;
     placeHandle: maplibregl.Marker | null;
     isDraggingHandle: boolean;
     /** The camera has shown the library at least once since following started. */
@@ -158,9 +166,11 @@ interface TripMapView {
 interface TripMapCallbacks {
     /** The map was turned on or off or became unavailable: the viewer placeholder must follow. */
     onSurfaceChange: () => void;
+    /** Opens the trip at `tripIndex` paused at a moment on its clock, such as a marker's. */
+    onOpenMoment: (tripIndex: number, unixSeconds: number) => void;
 }
 
-let callbacks: TripMapCallbacks = { onSurfaceChange: () => {} };
+let callbacks: TripMapCallbacks = { onSurfaceChange: () => {}, onOpenMoment: () => {} };
 let view: TripMapView | null = null;
 // Bumped by every creation attempt and teardown, so a creation still waiting
 // for maplibre-gl gives up when the surface was hidden in the meantime.
@@ -172,6 +182,8 @@ let isUnavailable = false;
 let highlightedTrip: number | null = null;
 /** The button by the search laid the map over the open trip. */
 let isOverTrip = false;
+/** The marker whose card is open, for focus when Escape closes the card. */
+let markerCardOpener: HTMLElement | null = null;
 /** Viewer layers this map made inert while it covers the open trip. */
 let coveredLayers: HTMLElement[] = [];
 
@@ -333,6 +345,8 @@ async function createView(): Promise<void> {
         bundle: null,
         matchedBundle: null,
         dots: [],
+        userMarkers: [],
+        markerPopup: null,
         placeHandle: null,
         isDraggingHandle: false,
         hasFramed: false,
@@ -372,7 +386,9 @@ async function createView(): Promise<void> {
     map.on("moveend", () => scheduleAreaUpdate(current));
     map.on("resize", () => scheduleAreaUpdate(current));
     map.on("mousemove", (event) => {
-        current.probePoint = { point: event.point, lngLat: event.lngLat };
+        // Over a dot, a marker or the radius handle the pointer means that control.
+        const isOverRoads = event.originalEvent.target === map.getCanvas();
+        current.probePoint = isOverRoads ? { point: event.point, lngLat: event.lngLat } : null;
         if (!current.probeFrame) current.probeFrame = requestAnimationFrame(() => updateProbe(current));
     });
     map.on("mouseout", () => {
@@ -392,6 +408,7 @@ async function createView(): Promise<void> {
     scheduleBundle(current);
     syncTripMapStatus();
     renderPlace(current);
+    renderUserMarkers(current);
 }
 
 function destroyView(): void {
@@ -404,6 +421,8 @@ function destroyView(): void {
     if (current.areaTimer !== null) clearTimeout(current.areaTimer);
     if (current.probeFrame) cancelAnimationFrame(current.probeFrame);
     for (const marker of current.dots) marker.remove();
+    for (const marker of current.userMarkers) marker.remove();
+    current.markerPopup?.remove();
     current.placeHandle?.remove();
     hideProbe(current);
     // remove() also takes the map out of the viewer map registry.
@@ -771,6 +790,90 @@ function renderDots(current: TripMapView, dots: readonly FarDot[]): void {
     });
 }
 
+/**
+ * The user's markers of the drawn trips, each on its trip's route at the
+ * marker's moment. Rebuilt whenever markers, tracks or the list's scope
+ * change; a library holds tens of markers, not thousands.
+ */
+function renderUserMarkers(current: TripMapView): void {
+    for (const marker of current.userMarkers) marker.remove();
+    current.userMarkers = [];
+    const isShown = getTripMapPreferences().shouldShowMarkers;
+    dom.tripMapMarkers.setAttribute("aria-pressed", String(isShown));
+    if (!isShown) {
+        current.markerPopup?.remove();
+        return;
+    }
+    const indexByTrip = new Map(state.trips.map((trip, index) => [trip, index]));
+    const inScope = new Set(tripMapScope());
+    const entries = tripMapEntries();
+    for (const { marker, trip } of markersWithTrips()) {
+        const index = indexByTrip.get(trip);
+        const track = index === undefined || !inScope.has(index) ? null : entries[index]?.track;
+        if (!track) continue;
+        const position = trackPositionAt(track, marker.utc / 1000);
+        if (!position) continue;
+        const text = marker.text || t("marker.untitled");
+        const moment = formatMarkerMoment(trip, marker.utc / 1000);
+        const element = document.createElement("button");
+        element.type = "button";
+        element.className = "trip-map-user-marker";
+        element.title = `${text} · ${moment.date}`;
+        element.setAttribute("aria-label", element.title);
+        element.innerHTML = USER_MARKER_ICON;
+        const lngLat: [number, number] = [worldToLon(position.x), worldToLat(position.y)];
+        element.addEventListener("click", (event) => {
+            // The map's own click would close the card this opens.
+            event.stopPropagation();
+            openMarkerCard(current, marker.id, lngLat, element);
+        });
+        current.userMarkers.push(new current.maplibre.Marker({ element }).setLngLat(lngLat).addTo(current.map));
+    }
+}
+
+/** A marker's card: its text, its moment in the trip, and a button that opens the trip there. */
+function openMarkerCard(current: TripMapView, markerId: string, lngLat: [number, number], opener: HTMLElement): void {
+    const located = markersWithTrips().find((item) => item.marker.id === markerId);
+    if (!located) return;
+    const { marker, trip } = located;
+    const moment = formatMarkerMoment(trip, marker.utc / 1000);
+    const card = document.createElement("div");
+    card.className = "trip-map-marker-card";
+    const title = document.createElement("strong");
+    title.textContent = marker.text || t("marker.untitled");
+    const detail = document.createElement("p");
+    detail.textContent = moment.detail;
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "dc-btn dc-btn--primary";
+    open.textContent = t("tripMap.marker.open", { time: moment.clock });
+    card.append(title, detail, open);
+    current.markerPopup?.remove();
+    const popup = new current.maplibre.Popup({
+        className: "ez-popup trip-map-marker-popup",
+        closeButton: false,
+        maxWidth: "none",
+        offset: 14,
+    })
+        .setLngLat(lngLat)
+        .setDOMContent(card)
+        .addTo(current.map);
+    current.markerPopup = popup;
+    hideProbe(current);
+    popup.on("close", () => {
+        if (current.markerPopup === popup) current.markerPopup = null;
+    });
+    open.addEventListener("click", () => {
+        popup.remove();
+        // Regrouping can move the marker to another trip index since the card opened.
+        const latest = markersWithTrips().find((item) => item.marker.id === markerId);
+        const tripIndex = latest ? state.trips.indexOf(latest.trip) : -1;
+        if (latest && tripIndex >= 0) callbacks.onOpenMoment(tripIndex, latest.marker.utc / 1000);
+    });
+    markerCardOpener = opener;
+    open.focus({ preventScroll: true });
+}
+
 function zoomToDot(current: TripMapView, dot: FarDot): void {
     stopFollowing(current);
     const { bounds } = dot;
@@ -807,7 +910,7 @@ function hideProbe(current: TripMapView): void {
 function updateProbe(current: TripMapView): void {
     current.probeFrame = 0;
     const probe = current.probePoint;
-    if (view !== current || !probe || tripMapPlace()) {
+    if (view !== current || !probe || tripMapPlace() || current.markerPopup) {
         hideProbe(current);
         return;
     }
@@ -1005,6 +1108,7 @@ function onLibraryChange(): void {
     scheduleBundle(current);
     syncTripMapStatus();
     renderHighlight();
+    renderUserMarkers(current);
 }
 
 function onSearchChange(): void {
@@ -1035,6 +1139,10 @@ export function initTripMap(cb: TripMapCallbacks): void {
     subscribeTripMapPreferences(() => {
         syncTripMap();
         callbacks.onSurfaceChange();
+        if (view) renderUserMarkers(view);
+    });
+    subscribeMarkers(() => {
+        if (view) renderUserMarkers(view);
     });
     window.matchMedia?.(MOBILE_LAYOUT_QUERY).addEventListener("change", () => {
         syncTripMap();
@@ -1070,9 +1178,16 @@ export function initTripMap(cb: TripMapCallbacks): void {
         document.querySelector<HTMLElement>('[data-action="show-trip-map"]')?.focus({ preventScroll: true });
     });
     document.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" || event.defaultPrevented || !isOverTrip || isAnyModalOpen()) return;
+        if (event.key !== "Escape" || event.defaultPrevented || isAnyModalOpen()) return;
+        if (view?.markerPopup) {
+            event.preventDefault();
+            view.markerPopup.remove();
+            if (markerCardOpener?.isConnected) markerCardOpener.focus({ preventScroll: true });
+            markerCardOpener = null;
+            return;
+        }
         // Escape in the search clears the search.
-        if (isTextEntry(event.target)) return;
+        if (!isOverTrip || isTextEntry(event.target)) return;
         event.preventDefault();
         returnToVideo();
     });
@@ -1081,6 +1196,10 @@ export function initTripMap(cb: TripMapCallbacks): void {
             showTripMapFromCard();
     });
     dom.tripMapFit.addEventListener("click", showAllTripsOnMap);
+    dom.tripMapMarkers.addEventListener("click", () => {
+        const preferences = getTripMapPreferences();
+        setTripMapPreferences({ ...preferences, shouldShowMarkers: !preferences.shouldShowMarkers });
+    });
     dom.tripMapZoomIn.addEventListener("click", () => {
         if (!view) return;
         stopFollowing(view);

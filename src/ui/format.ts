@@ -332,6 +332,28 @@ export function formatTripPasses(trip: Trip, passes: readonly { unixSeconds: num
     return t("tripMap.pass.many", { n: times.length, times: shown });
 }
 
+/**
+ * A trip marker's moment on the display clock for the map of all trips: the
+ * date for its tooltip ("Aug 12"), the date and time with the trip's span for
+ * its card ("Aug 12, 08:14 · trip 08:00 → 08:40") and the exact second it
+ * opens at ("08:14:05"). The year shows outside the current year, like trip
+ * titles.
+ */
+export function formatMarkerMoment(
+    trip: Trip,
+    unixSeconds: number,
+    now: Date = new Date(),
+): { date: string; detail: string; clock: string } {
+    const moment = displayClockDate(unixSeconds, trip.cameraTzSec);
+    const year = showsTripYear(moment, moment, now);
+    const range = formatTimeRange(trip.startUtc, trip.endUtc, trip.cameraTzSec);
+    return {
+        date: formatDate(moment, { year }),
+        detail: `${formatDateTime(moment, { year })} · ${t("tripMap.marker.trip", { range })}`,
+        clock: formatClock(moment, { seconds: true }),
+    };
+}
+
 const FEET_PER_METER = 3.28084;
 const FEET_PER_MILE = 5280;
 

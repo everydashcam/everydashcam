@@ -271,6 +271,7 @@ export const dom = {
     tripMapCounterText: $id<HTMLElement>("trip-map-counter-text"),
     tripMapCounterBar: $id<HTMLElement>("trip-map-counter-bar"),
     tripMapCounterFill: $id<HTMLElement>("trip-map-counter-fill"),
+    tripMapMarkers: $id<HTMLButtonElement>("trip-map-markers"),
     tripMapFit: $id<HTMLButtonElement>("trip-map-fit"),
     tripMapZoomIn: $id<HTMLButtonElement>("trip-map-zoom-in"),
     tripMapZoomOut: $id<HTMLButtonElement>("trip-map-zoom-out"),

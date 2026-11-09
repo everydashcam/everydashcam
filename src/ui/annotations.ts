@@ -6,6 +6,7 @@
 
 import { createLogger } from "../log.js";
 import { captureSentryMessage } from "../sentry.js";
+import { createSubscribers } from "../subscribers.js";
 import {
     compareAnnotationVersions,
     loadAllAnnotations,
@@ -124,8 +125,29 @@ export function initAnnotations(onLoaded?: () => void): void {
         });
 }
 
+// Every marker change passes through indexRecord: loads, merges, edits,
+// deletions and re-stamps. Surfaces that show all markers at once (the map of
+// all trips) hear about them once per task.
+const markerListeners = createSubscribers<[]>("markers");
+let isMarkerEmitQueued = false;
+
+function noteMarkersChanged(): void {
+    if (isMarkerEmitQueued) return;
+    isMarkerEmitQueued = true;
+    queueMicrotask(() => {
+        isMarkerEmitQueued = false;
+        markerListeners.emit();
+    });
+}
+
+/** Fires after markers were added, edited, moved or removed; at most once per task. */
+export function subscribeMarkers(listener: () => void): () => void {
+    return markerListeners.subscribe(listener);
+}
+
 function indexRecord(record: AnnotationRecord): void {
     const previous = recordsById.get(record.id);
+    if (previous?.kind === "marker" || record.kind === "marker") noteMarkersChanged();
     if (previous?.kind === "tripMeta") {
         const bucket = tripMetasByAnchor.get(previous.anchor.fileIdentityKey);
         bucket?.delete(previous.id);
@@ -597,6 +619,27 @@ function folderIdsForTrip(trip: Trip): Set<string> {
     );
 }
 
+export interface MarkerWithTrip {
+    /** The marker with its UTC projected onto the trip's current timeline. */
+    marker: MarkerAnnotation;
+    trip: Trip;
+}
+
+/**
+ * Every live marker that belongs to exactly one loaded trip, oldest first,
+ * with that trip. Same ownership rules as markersForTrip, without asking
+ * trip by trip.
+ */
+export function markersWithTrips(): MarkerWithTrip[] {
+    const result: MarkerWithTrip[] = [];
+    for (const marker of markersById.values()) {
+        const trip = marker.anchor ? uniqueTripForMarkerAnchor(marker) : uniqueTripForLegacyMarker(marker);
+        if (!trip) continue;
+        result.push({ marker: marker.anchor ? markerAtAnchoredUtc(marker, trip) : marker, trip });
+    }
+    return result.sort((a, b) => a.marker.utc - b.marker.utc);
+}
+
 /** A marker by id, or null (deleted/unknown). */
 export function markerById(id: string): MarkerAnnotation | null {
     return markersById.get(id) ?? null;
@@ -764,6 +807,8 @@ export function _resetForTests(): void {
     recordsById.clear();
     tripMetasByAnchor.clear();
     markersById.clear();
+    markerListeners.clear();
+    isMarkerEmitQueued = false;
     provisionalMarkerAnchors.clear();
     isStoreAvailable = true;
     hasOpenedStore = false;

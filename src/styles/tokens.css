@@ -72,6 +72,8 @@
     --dc-track-halo: var(--dc-white);
     /* Routes of the whole library on the trip map: one colour, width counts trips. */
     --dc-track-corridor: var(--dc-orange);
+    /* The user's trip markers on that map: blue stands apart from the orange routes. */
+    --dc-trip-map-marker: var(--dc-blue);
 
     /* ----- TYPE ----- */
     --dc-font-brand: "Chakra Petch", "Inter", var(--dc-font-local);

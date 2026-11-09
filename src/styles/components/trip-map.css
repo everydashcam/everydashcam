@@ -164,6 +164,49 @@
     outline-offset: 2px;
 }
 
+/* The user's trip markers: a blue disc with a white bookmark, above the
+   folded-trip dots. */
+.trip-map-user-marker {
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 2px solid var(--bg-elev);
+    border-radius: 50%;
+    background: var(--dc-trip-map-marker);
+    box-shadow: var(--dc-shadow-card);
+    color: var(--dc-white);
+    cursor: pointer;
+}
+.trip-map-user-marker:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* A marker's card (MapLibre popup with the shared .ez-popup look). */
+.trip-map-marker-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    width: 232px;
+    color: var(--fg-dim);
+    font-size: var(--dc-text-xs);
+}
+.trip-map-marker-card strong {
+    color: var(--fg);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+.trip-map-marker-card p {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Search-bar toggle. */
 .trip-map-toggle[aria-pressed="true"] {
     border-color: var(--accent);
