@@ -13,8 +13,11 @@ export interface TripOpenTarget {
     tripKeys: string[];
     /** Exact clip rows must not silently fall back to another frame. */
     exactFrame: boolean;
-    /** Event time survives event-list rebuilds and trip renumbering. */
-    eventUtc: number | null;
+    /**
+     * The moment to open at, an event or a pass through a place. Survives
+     * event-list rebuilds and trip renumbering.
+     */
+    momentUtc: number | null;
 }
 
 export interface ResolvedTripOpen {
@@ -50,9 +53,19 @@ export function captureTripOpenTarget(
                   ),
               ];
     if (keys.length === 0) return null;
-    const eventUtc = eventIndex === undefined ? null : (trip.events[eventIndex]?.unixSeconds ?? null);
-    if (eventIndex !== undefined && eventUtc === null) return null;
-    return { keys, tripKeys, exactFrame: frameIdx !== undefined, eventUtc };
+    const momentUtc = eventIndex === undefined ? null : (trip.events[eventIndex]?.unixSeconds ?? null);
+    if (eventIndex !== undefined && momentUtc === null) return null;
+    return { keys, tripKeys, exactFrame: frameIdx !== undefined, momentUtc };
+}
+
+/** A whole trip opened at a moment on its clock, such as a pass through a place. */
+export function captureTripMomentTarget(
+    trips: readonly Trip[],
+    tripIdx: number,
+    momentUtc: number,
+): TripOpenTarget | null {
+    const target = captureTripOpenTarget(trips, tripIdx);
+    return target && { ...target, momentUtc };
 }
 
 export function withPreparedRecordingKeys(target: TripOpenTarget, recordingKeys: readonly string[]): TripOpenTarget {
@@ -63,7 +76,7 @@ export function withPreparedRecordingKeys(target: TripOpenTarget, recordingKeys:
         // recording first even when another camera spans an earlier interval.
         keys: [...new Set([...target.keys.filter((key) => prepared.has(key)), ...recordingKeys])],
         exactFrame: true,
-        eventUtc: null,
+        momentUtc: null,
     };
 }
 
@@ -75,7 +88,7 @@ export function resolveTripOpenTarget(trips: readonly Trip[], target: TripOpenTa
         return location ? [location] : [];
     });
     if (matches.length === 0) return null;
-    if (target.eventUtc === null) {
+    if (target.momentUtc === null) {
         const first = matches[0]!;
         return { tripIdx: first.tripIdx, frameIdx: first.frameIdx };
     }
@@ -89,10 +102,10 @@ export function resolveTripOpenTarget(trips: readonly Trip[], target: TripOpenTa
         const trip = trips[match.tripIdx];
         if (!trip) continue;
         const distance =
-            target.eventUtc < trip.startUtc
-                ? trip.startUtc - target.eventUtc
-                : target.eventUtc > trip.endUtc
-                  ? target.eventUtc - trip.endUtc
+            target.momentUtc < trip.startUtc
+                ? trip.startUtc - target.momentUtc
+                : target.momentUtc > trip.endUtc
+                  ? target.momentUtc - trip.endUtc
                   : 0;
         if (distance < bestDistance) {
             bestDistance = distance;

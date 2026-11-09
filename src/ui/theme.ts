@@ -115,6 +115,7 @@ interface ThemeColors {
     track: [string, string, string, string, string]; // --dc-track-1..5 (slow → fast gradient)
     trackOutline: string;
     trackHalo: string;
+    trackCorridor: string; // --dc-track-corridor (routes on the map of all trips)
     chartSpeed: string; // --dc-blue
     chartAccel: string; // --dc-orange
     chartCursor: string; // --dc-red
@@ -167,6 +168,7 @@ export function themeColors(): ThemeColors {
         ],
         trackOutline: getCssVar("--dc-track-outline"),
         trackHalo: getCssVar("--dc-track-halo"),
+        trackCorridor: getCssVar("--dc-track-corridor"),
         chartSpeed: getCssVar("--dc-blue"),
         chartAccel: getCssVar("--dc-orange"),
         chartCursor: getCssVar("--dc-red"),

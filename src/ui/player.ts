@@ -2159,19 +2159,27 @@ function resumePlaybackIfSeekLanded(): void {
  * (same pattern as drag-zoom).
  */
 export function playTripEvent(tripIdx: number, eventIndex: number): void {
+    const ev = state.trips[tripIdx]?.events[eventIndex];
+    if (!ev) return;
+    // ev.relSec is on the footage axis.
+    openTripAtContentSec(tripIdx, Math.max(0, ev.relSec - 5));
+}
+
+/**
+ * Opens the trip paused at `contentSec` on its footage axis, so the user can
+ * orient before playing: an event, or a pass through a place on the map of all
+ * trips.
+ */
+export function openTripAtContentSec(tripIdx: number, contentSec: number): void {
     const trip = state.trips[tripIdx];
     if (!trip) return;
-    const ev = trip.events[eventIndex];
-    if (!ev) return;
-    // ev.relSec is on the footage axis; contentToFrame maps it to (frame, offset).
-    const target = Math.max(0, ev.relSec - 5);
+    const target = Math.max(0, contentSec);
     if (state.active && state.active.trip === tripIdx) {
         // Trip already active: playFrame would silently NOT seek on a
         // same-file target - its offset is consumed by loadedmetadata, which
         // never fires without a src change (and the MSE same-file branch
         // would even reset playback to the file start). seekTripTime handles
-        // both backends; pause first to honor the "pauses so the user can
-        // orient" contract above.
+        // both backends; pause first so the user can orient.
         pausePlayback();
         seekTripTime(target);
         return;

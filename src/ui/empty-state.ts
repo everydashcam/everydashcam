@@ -6,6 +6,8 @@ import type { VideoCodec } from "mediabunny";
 import { identifyBrowser } from "../capabilities.js";
 import { dom } from "./dom.js";
 import { state } from "./state.js";
+import { isTripMapAvailable, syncTripMap } from "./trip-map.js";
+import { getTripMapPreferences } from "./trip-map-pref.js";
 
 // Official Microsoft Store listing of the "HEVC Video Extensions" add-on - the
 // one Microsoft's own Edge troubleshooting doc links to. Linked directly so
@@ -39,12 +41,14 @@ export function codecPlaybackAdviceHtml(codec: VideoCodec | null): string {
  * Toggles empty-state vs player-wrap visibility and fills the placeholder text.
  * Empty-state is shown while nothing is selected (state.active === null):
  *  - Before any ingest: product screenshot (UX-03).
- *  - Trips loaded but none selected: "pick one on the left" hint.
+ *  - Trips loaded but none selected: the map of all trips, or a "pick one on
+ *    the left" hint with a way back to the map when the user turned it off.
  */
 export function syncEmptyState(): void {
     if (!dom.viewer) return;
     const isEmpty = !state.active;
     dom.viewer.classList.toggle("empty", isEmpty);
+    syncTripMap();
     if (!isEmpty) return;
     const card = document.getElementById("empty-state-card");
     if (!card) return;
@@ -64,9 +68,14 @@ export function syncEmptyState(): void {
         // .feedback-link opens the feedback form (delegated in feedback.ts) -
         // the escape hatch for "a trip loaded, but recognition looks wrong"
         // (front/rear swapped, mode missing), which the zero-trips path misses.
+        const showMap =
+            isTripMapAvailable() && !getTripMapPreferences().isShownWithoutTrip
+                ? `<button type="button" class="dc-btn dc-btn--primary empty-state-map" data-action="show-trip-map">${t("tripMap.show")}</button>`
+                : "";
         card.innerHTML = `
             <div class="empty-state-title">${t("emptyState.withTrips.title")}</div>
             <div class="empty-state-hint">${t("emptyState.withTrips.hint", { n: state.trips.length })}</div>
+            ${showMap}
             <button type="button" class="empty-state-report feedback-link" data-feedback-preset="other">${t("emptyState.withTrips.report")}</button>
         `;
     }

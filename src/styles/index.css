@@ -36,6 +36,7 @@
 @import "./components/map-marker-control.css";
 @import "./components/gps-sync.css";
 @import "./components/empty-state.css";
+@import "./components/trip-map.css";
 @import "./components/landing.css";
 @import "./components/recent-folders.css";
 @import "./components/folder-sources.css";

@@ -4,6 +4,8 @@ import { hasTripFilters, matchesTripFilters } from "../trip-filters.js";
 import type { TripFilterFacts, TripFilterKind, TripToggleFilter } from "../trip-filters.js";
 import { dom } from "./dom.js";
 import { state } from "./state.js";
+import { showAllTripsOnMap } from "./trip-map.js";
+import { setTripMapPlace } from "./trip-map-search.js";
 
 const kindLabels: Record<TripFilterKind, I18nKey> = {
     all: "sidebar.filter.all",
@@ -93,6 +95,10 @@ export function initSidebarFilters(onChange: () => void): void {
 }
 
 export function resetTripFilters(): void {
+    // The place belongs to the map of all trips; the map also shows the whole
+    // library again, which ends the area filter once the camera rests.
+    setTripMapPlace(null);
+    showAllTripsOnMap();
     state.tripFilters.kind = "all";
     state.tripFilters.event = false;
     state.tripFilters.manual = false;
@@ -138,11 +144,20 @@ export function syncSidebarFilters(facts: readonly TripFilterFacts[]): void {
         dom.tripFilterOptions.querySelectorAll<HTMLButtonElement>("button"),
     ).every((button) => button.hidden);
     const shown = facts.filter((fact) => matchesTripFilters(fact, state.tripFilters)).length;
-    const result = t("sidebar.filter.result", { shown, total: facts.length });
+    const counted = t("sidebar.filter.result", { shown, total: facts.length });
+    const result = state.tripFilters.mapArea ? `${counted} · ${t("sidebar.filter.inMapArea")}` : counted;
     if (dom.tripFilterResult.textContent !== result) dom.tripFilterResult.textContent = result;
     dom.tripFilterReset.textContent = t("sidebar.filter.reset");
     dom.tripFilterReset.hidden = !hasTripFilters(state.tripFilters);
     dom.tripFilterResult.parentElement!.hidden = !hasTripFilters(state.tripFilters);
+    // Map filters drop trips without a route; say how many, so they are not lost silently.
+    const isMapFiltered = state.tripFilters.mapArea || state.tripFilters.place;
+    const withoutMapFilters = { ...state.tripFilters, mapArea: false, place: false };
+    const untracked = isMapFiltered
+        ? facts.filter((fact) => !fact.hasTrack && matchesTripFilters(fact, withoutMapFilters)).length
+        : 0;
+    dom.tripFilterUntracked.hidden = untracked === 0;
+    if (untracked > 0) dom.tripFilterUntracked.textContent = t("sidebar.filter.untracked", { n: untracked });
     // Chip filters only: the query is visible in its own field.
     const { kind, event, manual, notes, favorites } = state.tripFilters;
     const activeChips = Number(kind !== "all") + Number(event) + Number(manual) + Number(notes) + Number(favorites);

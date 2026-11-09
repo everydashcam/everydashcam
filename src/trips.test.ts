@@ -111,6 +111,8 @@ function makeCandidate(opts: {
 
 describe("trip recording filters", () => {
     const noAnnotations = { notes: false, favorites: false };
+    const noMapFilters = { mapArea: false, place: false };
+    const noMapFacts = { hasTrack: false, inMapArea: false, passesPlace: false };
     it("finds event recordings on another camera without changing the trip kind", () => {
         const trips = groupTrips([
             makeCandidate({ name: "front.mp4", startUtc: 1000, channel: "front", recordingMode: "normal" }),
@@ -119,6 +121,7 @@ describe("trip recording filters", () => {
         expect(trips).toHaveLength(1);
         expect(tripFilterFacts(trips[0]!)).toEqual({
             ...noAnnotations,
+            ...noMapFacts,
             searchText: "",
             kind: "normal",
             event: true,
@@ -134,12 +137,33 @@ describe("trip recording filters", () => {
         ]);
         expect(trips).toHaveLength(1);
         const facts = tripFilterFacts(trips[0]!);
-        expect(facts).toEqual({ ...noAnnotations, searchText: "", kind: "parking", event: true, manual: true });
+        expect(facts).toEqual({
+            ...noAnnotations,
+            ...noMapFacts,
+            searchText: "",
+            kind: "parking",
+            event: true,
+            manual: true,
+        });
         expect(
-            matchesTripFilters(facts, { ...noAnnotations, query: "", kind: "parking", event: true, manual: false }),
+            matchesTripFilters(facts, {
+                ...noAnnotations,
+                ...noMapFilters,
+                query: "",
+                kind: "parking",
+                event: true,
+                manual: false,
+            }),
         ).toBe(true);
         expect(
-            matchesTripFilters(facts, { ...noAnnotations, query: "", kind: "normal", event: true, manual: false }),
+            matchesTripFilters(facts, {
+                ...noAnnotations,
+                ...noMapFilters,
+                query: "",
+                kind: "normal",
+                event: true,
+                manual: false,
+            }),
         ).toBe(false);
     });
 
@@ -148,14 +172,29 @@ describe("trip recording filters", () => {
         const facts = tripFilterFacts(trip);
         expect(facts.kind).toBeNull();
         expect(
-            matchesTripFilters(facts, { ...noAnnotations, query: "", kind: "normal", event: false, manual: false }),
+            matchesTripFilters(facts, {
+                ...noAnnotations,
+                ...noMapFilters,
+                query: "",
+                kind: "normal",
+                event: false,
+                manual: false,
+            }),
         ).toBe(false);
         expect(
-            matchesTripFilters(facts, { ...noAnnotations, query: "", kind: "all", event: false, manual: false }),
+            matchesTripFilters(facts, {
+                ...noAnnotations,
+                ...noMapFilters,
+                query: "",
+                kind: "all",
+                event: false,
+                manual: false,
+            }),
         ).toBe(true);
         expect(
             matchesTripFilters(facts, {
                 ...noAnnotations,
+                ...noMapFilters,
                 query: "",
                 kind: "all",
                 event: mode === "event",
@@ -171,6 +210,7 @@ describe("trip recording filters", () => {
         expect(
             matchesTripFilters(facts, {
                 ...noAnnotations,
+                ...noMapFilters,
                 query: "",
                 kind: "all",
                 event: false,
@@ -185,6 +225,7 @@ describe("trip recording filters", () => {
         expect(
             matchesTripFilters(tripFilterFacts(trip), {
                 ...noAnnotations,
+                ...noMapFilters,
                 query: "",
                 kind: "all",
                 event: true,
@@ -194,8 +235,15 @@ describe("trip recording filters", () => {
     });
 
     it("includes either selected recording type and excludes ordinary-only trips", () => {
-        const filters = { ...noAnnotations, query: "", kind: "all", event: true, manual: true } as const;
-        const facts = { ...noAnnotations, searchText: "" };
+        const filters = {
+            ...noAnnotations,
+            ...noMapFilters,
+            query: "",
+            kind: "all",
+            event: true,
+            manual: true,
+        } as const;
+        const facts = { ...noAnnotations, ...noMapFacts, searchText: "" };
         expect(matchesTripFilters({ ...facts, kind: "normal", event: false, manual: true }, filters)).toBe(true);
         expect(matchesTripFilters({ ...facts, kind: "parking", event: true, manual: false }, filters)).toBe(true);
         expect(matchesTripFilters({ ...facts, kind: "normal", event: false, manual: false }, filters)).toBe(false);
@@ -203,7 +251,16 @@ describe("trip recording filters", () => {
 
     it("combines notes and favorites while ignoring blank notes", () => {
         const trip = groupTrips([makeCandidate({ name: "normal.mp4", startUtc: 1000, recordingMode: "normal" })])[0]!;
-        const filters = { kind: "all", event: false, manual: false, notes: true, favorites: true, query: "" } as const;
+        const filters = {
+            kind: "all",
+            event: false,
+            manual: false,
+            notes: true,
+            favorites: true,
+            query: "",
+            mapArea: false,
+            place: false,
+        } as const;
         expect(matchesTripFilters(tripFilterFacts(trip, { note: "  ", isFavorite: true }), filters)).toBe(false);
         expect(matchesTripFilters(tripFilterFacts(trip, { note: "Roadworks", isFavorite: false }), filters)).toBe(
             false,

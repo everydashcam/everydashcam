@@ -806,6 +806,18 @@
                                data-i18n-attr="placeholder:sidebar.search.placeholder,aria-label:sidebar.search.label"
                                placeholder="Name, note, date or file" aria-label="Search trips">
                     </label>
+                    <!-- Shows the map of all trips in the viewer (src/ui/trip-map.ts). -->
+                    <button id="trip-map-toggle" class="sort-btn trip-map-toggle" type="button" hidden
+                            aria-pressed="false" aria-controls="trip-map-state"
+                            data-i18n-attr="aria-label:tripMap.toggle,title:tripMap.toggle"
+                            aria-label="Trip map" title="Trip map">
+                        <!-- lucide: map -->
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/>
+                            <path d="M15 5.764v15"/><path d="M9 3.236v15"/>
+                        </svg>
+                    </button>
                     <!-- Jump to a date: a month calendar of the days in the list. Date sort only. -->
                     <button id="trip-jump" class="sort-btn trip-jump-toggle" type="button" hidden
                             aria-expanded="false" aria-controls="trip-jump-panel" aria-haspopup="dialog"
@@ -832,6 +844,22 @@
                         <span id="trip-filter-count" class="trip-filter-toggle__count" aria-hidden="true" hidden></span>
                     </button>
                 </div>
+                <!-- The place chosen on the map of all trips (src/ui/trip-map.ts). -->
+                <div id="trip-place-bar" class="trip-place-bar" hidden>
+                    <!-- lucide: map-pin -->
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>
+                        <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span class="trip-place-bar__title" data-i18n="tripMap.place.title">Place on the map</span>
+                    <span id="trip-place-radius" class="trip-place-bar__radius"></span>
+                    <button id="trip-place-clear" class="trip-place-bar__clear" type="button"
+                            data-i18n-attr="aria-label:tripMap.place.clear,title:tripMap.place.clear"
+                            aria-label="Remove place" title="Remove place">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
                 <div id="trip-filter-tray" class="trip-filter-tray" hidden>
                     <div id="trip-filter-kinds" class="trip-filter-kinds" role="group"></div>
                     <div id="trip-filter-options" class="trip-filter-options" role="group"></div>
@@ -839,6 +867,7 @@
                 <div class="trip-filter-summary">
                     <span id="trip-filter-result" role="status" aria-live="polite" aria-atomic="true"></span>
                     <button id="trip-filter-reset" class="trip-filter-reset" type="button" hidden></button>
+                    <span id="trip-filter-untracked" class="trip-filter-untracked" hidden></span>
                 </div>
             </div>
             <section id="trip-analysis-status" class="trip-analysis-status" hidden
@@ -1288,6 +1317,53 @@
             <div class="empty-state" id="empty-state" role="status" aria-live="polite">
                 <div class="empty-state-card" id="empty-state-card"></div>
             </div>
+            <!-- The map of all trips takes the empty viewer while no trip is open.
+                 Shown via .viewer.has-trip-map, see src/ui/trip-map.ts. -->
+            <section class="trip-map-state" id="trip-map-state" tabindex="-1"
+                     data-i18n-attr="aria-label:tripMap.toggle" aria-label="Trip map">
+                <div id="trip-map" class="trip-map-canvas"></div>
+                <div class="trip-map-corner trip-map-corner--start">
+                    <span id="trip-map-counter" class="trip-map-counter"></span>
+                </div>
+                <div class="trip-map-corner trip-map-corner--end">
+                    <button id="trip-map-fit" class="map-control-btn" type="button"
+                            data-i18n-attr="aria-label:tripMap.fit,title:tripMap.fit"
+                            aria-label="Show all trips" title="Show all trips">
+                        <!-- lucide: scan -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                    </button>
+                    <div class="trip-map-zoom">
+                        <button id="trip-map-zoom-in" class="map-control-btn" type="button"
+                                data-i18n-attr="aria-label:map.ctrl.zoomIn,title:map.ctrl.zoomIn"
+                                aria-label="Zoom in" title="Zoom in">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                        </button>
+                        <button id="trip-map-zoom-out" class="map-control-btn" type="button"
+                                data-i18n-attr="aria-label:map.ctrl.zoomOut,title:map.ctrl.zoomOut"
+                                aria-label="Zoom out" title="Zoom out">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+                        </button>
+                    </div>
+                    <button id="trip-map-close" class="map-control-btn" type="button"
+                            data-i18n-attr="aria-label:tripMap.close,title:tripMap.close"
+                            aria-label="Hide trip map" title="Hide trip map">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <div id="trip-map-hint" class="trip-map-hint" data-i18n="tripMap.hint">Click a road to find the trips that passed through it</div>
+                <!-- Pointer probe: the circle a click would choose and how many trips pass it. -->
+                <div id="trip-map-probe" class="trip-map-probe" hidden aria-hidden="true"></div>
+                <div id="trip-map-tip" class="trip-map-tip" hidden aria-hidden="true"></div>
+                <div id="trip-map-style-error" class="map-style-error trip-map-style-error" hidden role="status" aria-live="polite">
+                    <span class="map-style-error-text" data-i18n="map.styleError.text">Map background unavailable</span>
+                    <button id="trip-map-style-retry" class="map-style-error-btn" type="button" data-i18n="map.styleError.retry">Retry</button>
+                    <button id="trip-map-style-dismiss" class="map-style-error-close" type="button"
+                            data-i18n-attr="aria-label:map.styleError.dismiss,title:map.styleError.dismiss"
+                            aria-label="Dismiss" title="Dismiss">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+            </section>
             <!-- A clicked trip owns the viewer until its video and GPS data are
                  both ready. This in-place state keeps the rest of the app usable
                  and avoids starting a half-populated player. -->
@@ -2703,6 +2779,14 @@
             <div class="export-modal-section">
                 <h3 class="settings-section-title" data-i18n="settings.map.section">Map</h3>
                 <div id="settings-map-view-control" class="settings-row"></div>
+                <div class="settings-row">
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="settings-trip-map-toggle" aria-describedby="settings-trip-map-description">
+                        <span class="settings-toggle-slider" aria-hidden="true"></span>
+                        <span class="settings-toggle-label" data-i18n="tripMap.toggle">Trip map</span>
+                    </label>
+                    <p id="settings-trip-map-description" class="settings-toggle-desc" data-i18n="settings.tripMap.description">Show a map of all your trips until you pick one. The map button next to the search opens it any time.</p>
+                </div>
                 <div class="settings-row">
                     <span class="settings-select-label" data-i18n="settings.map.marker.label">Map marker</span>
                     <div id="settings-map-marker-control"></div>

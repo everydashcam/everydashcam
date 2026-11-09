@@ -70,7 +70,7 @@ export const test = base.extend<{ requests: string[] }>({
             )
                 return;
             if (
-                /^\[map\] maplibre (mini )?error /.test(text) &&
+                /^\[map\] maplibre (?:mini |trips )?error /.test(text) &&
                 (/\bAbortError\b/.test(text) ||
                     [...text.matchAll(/https:\/\/[^\s)]+/g)].some(([url]) => isPortableMapRequest(url)))
             )

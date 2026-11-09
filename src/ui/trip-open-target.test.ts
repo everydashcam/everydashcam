@@ -4,6 +4,7 @@ import type { Trip, VideoCandidate } from "../trips.js";
 import { vendorFileKey } from "../vendor-file-key.js";
 
 import {
+    captureTripMomentTarget,
     captureTripOpenTarget,
     closestEventIndex,
     resolveTripOpenTarget,
@@ -112,6 +113,20 @@ describe("trip-open target identity", () => {
         const second = candidate(new File(["b"], "b.mp4"), "b.mp4");
         const target = captureTripOpenTarget([trip([first, second], { eventUtc: 1_050 })], 0, undefined, 0);
         expect(target).not.toBeNull();
+
+        const split = [
+            trip([first], { startUtc: 100, endUtc: 200 }),
+            trip([second], { startUtc: 1_000, endUtc: 1_100 }),
+        ];
+        expect(resolveTripOpenTarget(split, target!)).toEqual({ tripIdx: 1, frameIdx: 0 });
+    });
+
+    it("opens a place pass in the rebuilt trip that contains its moment", () => {
+        const first = candidate(new File(["a"], "a.mp4"), "a.mp4");
+        const second = candidate(new File(["b"], "b.mp4"), "b.mp4");
+        const target = captureTripMomentTarget([trip([first, second])], 0, 1_020);
+        expect(target?.momentUtc).toBe(1_020);
+        expect(target?.exactFrame).toBe(false);
 
         const split = [
             trip([first], { startUtc: 100, endUtc: 200 }),

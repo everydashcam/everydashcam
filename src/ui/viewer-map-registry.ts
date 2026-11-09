@@ -40,7 +40,7 @@ import type { MapStyleId, MapTheme } from "./theme.js";
 import { createYandexMapStyle } from "./yandex-map.js";
 
 // Shares the trip map's logger name: browser tests recognize the
-// "[map] maplibre [mini ]error" lines by it.
+// "[map] maplibre [mini |trips ]error" lines by it.
 const log = createLogger("map");
 
 // --- lazy maplibre-gl loading (T9) ---
@@ -290,8 +290,8 @@ export function loadMapStyle(
     return promise;
 }
 
-/** A viewer map that follows the shared style. "main" is the trip's large map. */
-export type ViewerMapSurface = "main" | "mini";
+/** A viewer map that follows the shared style. "main" is the trip's large map, "trips" the map of all trips. */
+export type ViewerMapSurface = "main" | "mini" | "trips";
 
 export interface ViewerMap {
     map: maplibregl.Map;

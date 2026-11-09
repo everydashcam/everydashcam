@@ -163,6 +163,8 @@ export interface AppState {
     startMarker: maplibregl.Marker | null;
     endMarker: maplibregl.Marker | null;
     miniMap: maplibregl.Map | null;
+    /** The map of all trips while it is shown (src/ui/trip-map.ts). */
+    tripMap: maplibregl.Map | null;
     miniMapReady: boolean;
     miniMapMarker: maplibregl.Marker | null;
     miniMapData: MiniMapData | null;
@@ -437,7 +439,16 @@ export const state: AppState = {
     tripSortKey: "date",
     tripSortDir: "desc",
     tripListDensity: "cards",
-    tripFilters: { kind: "all", event: false, manual: false, notes: false, favorites: false, query: "" },
+    tripFilters: {
+        kind: "all",
+        event: false,
+        manual: false,
+        notes: false,
+        favorites: false,
+        query: "",
+        mapArea: false,
+        place: false,
+    },
     preferredPlaybackRate: 1,
     preferredVolume: 1,
     preferredMuted: false,
@@ -448,6 +459,7 @@ export const state: AppState = {
     startMarker: null,
     endMarker: null,
     miniMap: null,
+    tripMap: null,
     miniMapReady: false,
     miniMapMarker: null,
     miniMapData: null,

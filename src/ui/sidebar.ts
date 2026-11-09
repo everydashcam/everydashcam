@@ -17,6 +17,8 @@ import { formatMonthYear, subscribeDateFormatChange } from "./date-format.js";
 import { buildEventList } from "./event-list.js";
 import { dom } from "./dom.js";
 import { syncEmptyState } from "./empty-state.js";
+import { syncTripMap } from "./trip-map.js";
+import { tripMapFactsFor, tripMapPassesFor } from "./trip-map-search.js";
 import { buildFileDetailsHtml } from "./file-details.js";
 import { vendorFileKey } from "./ingest-candidate.js";
 import { exitLanding } from "./landing.js";
@@ -38,6 +40,7 @@ import {
     formatTripDistance,
     formatTripStartTitle,
     formatTripTitle,
+    formatTripPasses,
     recordingModeLabel,
 } from "./format.js";
 import type { TripLoadingState } from "./format.js";
@@ -203,7 +206,7 @@ export function renderTrips(): void {
     // The physical order of state.trips is NOT changed - state.active.trip and state.expandedTrips indices depend on it.
     renderedFilterFacts.clear();
     const entries = state.trips.map((trip, idx) => {
-        const facts = filterFactsFor(trip);
+        const facts = filterFactsFor(trip, idx);
         renderedFilterFacts.set(idx, facts);
         return { trip, idx, facts };
     });
@@ -215,7 +218,13 @@ export function renderTrips(): void {
         const empty = document.createElement("li");
         empty.className = "trip-filter-empty";
         const message = document.createElement("p");
-        message.textContent = t("sidebar.filter.empty");
+        message.textContent = t(
+            state.tripFilters.place
+                ? "sidebar.filter.emptyPlace"
+                : state.tripFilters.mapArea
+                  ? "sidebar.filter.emptyArea"
+                  : "sidebar.filter.empty",
+        );
         const reset = document.createElement("button");
         reset.type = "button";
         reset.className = "trip-filter-reset";
@@ -885,6 +894,10 @@ function buildTripCard(trip: Trip, tripIdx: number, dayKey: string | null): HTML
     if (loadingState === "gps-pending" || loadingState === "gps-inflight") {
         metaText.classList.add(`load-${loadingState}`);
     }
+    // Under a place filter the row says when the trip passed the place; a
+    // click opens it at the first pass.
+    const passes = tripMapPassesFor(tripIdx);
+    if (passes.length > 0) metaText.prepend(textSpan("trip-meta-pass", formatTripPasses(trip, passes)), " · ");
     meta.appendChild(metaText);
     header.appendChild(meta);
 
@@ -1085,9 +1098,14 @@ function buildTripFileList(trip: Trip, tripIdx: number): HTMLUListElement {
  * Filter facts for one trip. The search text costs several date formats per
  * trip, so it is built only while a search is active.
  */
-function filterFactsFor(trip: Trip): TripFilterFacts {
+function filterFactsFor(trip: Trip, tripIdx: number): TripFilterFacts {
     const meta = tripMetaFor(trip);
-    return tripFilterFacts(trip, meta, state.tripFilters.query.trim() ? tripSearchText(trip, meta) : "");
+    return tripFilterFacts(
+        trip,
+        meta,
+        state.tripFilters.query.trim() ? tripSearchText(trip, meta) : "",
+        tripMapFactsFor(tripIdx),
+    );
 }
 
 /**
@@ -1099,7 +1117,7 @@ export function refreshTripCard(tripIdx: number): void {
     const trip = state.trips[tripIdx];
     if (!trip) return;
     const before = renderedFilterFacts.get(tripIdx);
-    const after = filterFactsFor(trip);
+    const after = filterFactsFor(trip, tripIdx);
     // Metadata can establish a recording mode after the card first appears.
     // Reconcile even hidden trips so counts and membership stay current.
     if (
@@ -1115,6 +1133,9 @@ export function refreshTripCard(tripIdx: number): void {
         return;
     }
     refreshTripAnalysisStatus();
+    // Background GPS reads land here without a full render; the map of all
+    // trips picks the new track up.
+    syncTripMap();
     const oldLi = dom.list.querySelector<HTMLElement>(`li.trip[data-trip-index="${tripIdx}"]`);
     if (!oldLi) return;
     const focus = captureListFocus(oldLi);

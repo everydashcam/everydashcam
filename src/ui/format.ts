@@ -13,7 +13,7 @@ import {
     type Trip,
     type VideoCandidate,
 } from "../trips.js";
-import { formatDistanceFromKm } from "../units-pref.js";
+import { formatDistanceFromKm, getUnits } from "../units-pref.js";
 
 import { formatClock, formatDate, formatDateTime, formatWeekday } from "./date-format.js";
 import type { TripSortKey } from "./state.js";
@@ -319,6 +319,35 @@ export function formatTripDistance(km: number): string {
     const rounded = formatNumber(value, value < 10 ? 1 : 0, 0);
     const distance = value > 0 && value < 0.1 ? `<${formatNumber(0.1, 1)}` : rounded;
     return `${distance} ${t(unitKey)}`;
+}
+
+/**
+ * When a trip passed the chosen place, on the trip's own clock: "pass at
+ * 08:14", or "2 passes: 08:14, 18:40" with any further passes elided.
+ */
+export function formatTripPasses(trip: Trip, passes: readonly { unixSeconds: number }[]): string {
+    const times = passes.map((pass) => formatClock(displayClockDate(pass.unixSeconds, trip.cameraTzSec)));
+    if (times.length === 1) return t("tripMap.pass.one", { time: times[0]! });
+    const shown = `${times.slice(0, 2).join(", ")}${times.length > 2 ? "…" : ""}`;
+    return t("tripMap.pass.many", { n: times.length, times: shown });
+}
+
+const FEET_PER_METER = 3.28084;
+const FEET_PER_MILE = 5280;
+
+/**
+ * A short distance such as a search radius: metres below about a kilometre,
+ * rounded to tens ("450 m"), then kilometres with one decimal ("1.1 km");
+ * feet and miles the same way in imperial units.
+ */
+export function formatShortDistance(meters: number): string {
+    if (getUnits() === "imperial") {
+        const feet = meters * FEET_PER_METER;
+        if (feet < 950) return `${formatNumber(Math.round(feet / 10) * 10)} ${t("units.foot")}`;
+        return `${formatNumber(feet / FEET_PER_MILE, 1)} ${t("units.mi")}`;
+    }
+    if (meters < 950) return `${formatNumber(Math.round(meters / 10) * 10)} ${t("units.meter")}`;
+    return `${formatNumber(meters / 1000, 1)} ${t("units.km")}`;
 }
 
 /** Human-readable file size: bytes → KB/MB/GB via localized unit keys. */

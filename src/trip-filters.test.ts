@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hasTripFilters, matchesTripSearch, normalizeSearchText } from "./trip-filters.js";
+import { hasTripFilters, matchesTripFilters, matchesTripSearch, normalizeSearchText } from "./trip-filters.js";
+import type { TripFilterFacts, TripFilters } from "./trip-filters.js";
 
 describe("trip search", () => {
     const text = normalizeSearchText("Ёлки на Café street | 31 октября 2026 | NO20261031-080000-000001F.MP4");
@@ -37,8 +38,64 @@ describe("trip search", () => {
 
     it("treats a blank query as no search", () => {
         expect(matchesTripSearch("", "   ")).toBe(true);
-        const filters = { kind: "all", event: false, manual: false, notes: false, favorites: false } as const;
+        const filters = {
+            kind: "all",
+            event: false,
+            manual: false,
+            notes: false,
+            favorites: false,
+            mapArea: false,
+            place: false,
+        } as const;
         expect(hasTripFilters({ ...filters, query: "  " })).toBe(false);
         expect(hasTripFilters({ ...filters, query: "oct" })).toBe(true);
+    });
+});
+
+describe("map filters", () => {
+    const filters: TripFilters = {
+        kind: "all",
+        event: false,
+        manual: false,
+        notes: false,
+        favorites: false,
+        query: "",
+        mapArea: false,
+        place: false,
+    };
+    const facts: TripFilterFacts = {
+        kind: "normal",
+        event: false,
+        manual: false,
+        notes: false,
+        favorites: false,
+        searchText: "",
+        hasTrack: false,
+        inMapArea: false,
+        passesPlace: false,
+    };
+
+    it("keeps trips without a route while the map frame cuts nothing", () => {
+        expect(matchesTripFilters(facts, filters)).toBe(true);
+        expect(hasTripFilters(filters)).toBe(false);
+    });
+
+    it("keeps only routes crossing the frame once the frame cuts some out", () => {
+        const area = { ...filters, mapArea: true };
+        expect(hasTripFilters(area)).toBe(true);
+        expect(matchesTripFilters({ ...facts, hasTrack: true, inMapArea: true }, area)).toBe(true);
+        expect(matchesTripFilters({ ...facts, hasTrack: true }, area), "route outside the frame").toBe(false);
+        expect(matchesTripFilters(facts, area), "trip without a route").toBe(false);
+    });
+
+    it("keeps only trips passing the chosen place, combined with the other filters", () => {
+        const place = { ...filters, place: true, kind: "normal" as const };
+        expect(hasTripFilters(place)).toBe(true);
+        expect(matchesTripFilters({ ...facts, hasTrack: true, passesPlace: true }, place)).toBe(true);
+        expect(matchesTripFilters({ ...facts, hasTrack: true }, place)).toBe(false);
+        expect(
+            matchesTripFilters({ ...facts, kind: "parking", hasTrack: true, passesPlace: true }, place),
+            "a parking trip through the place",
+        ).toBe(false);
     });
 });

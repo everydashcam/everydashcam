@@ -57,6 +57,12 @@ import { getMapMarkerAppearance, setMapMarkerAppearance } from "./map-marker-pre
 import { getMapProvider, subscribeMapProvider } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { initMapViewControls } from "./map-view-controls.js";
+import {
+    getTripMapPreferences,
+    setTripMapPreferences,
+    subscribeTripMapPreferences,
+    type TripMapPreferences,
+} from "./trip-map-pref.js";
 import { activateModal, deactivateModal, wireBackdropDismiss } from "./modal-helper.js";
 import { notify } from "./notifications.js";
 import { initMigrationBanner, migrationAddress, migrationRecoveryUrl } from "./migration-banner.js";
@@ -476,6 +482,19 @@ export function initSettingsModal(): void {
 
     const mapViewControl = document.getElementById("settings-map-view-control");
     if (mapViewControl) initMapViewControls(mapViewControl, "settings-map");
+
+    // The trip map's close button writes the same preference.
+    const tripMapToggle = document.getElementById("settings-trip-map-toggle") as HTMLInputElement | null;
+    if (tripMapToggle) {
+        const syncTripMapToggle = (preferences: TripMapPreferences): void => {
+            tripMapToggle.checked = preferences.isShownWithoutTrip;
+        };
+        syncTripMapToggle(getTripMapPreferences());
+        subscribeTripMapPreferences(syncTripMapToggle);
+        tripMapToggle.addEventListener("change", () => {
+            setTripMapPreferences({ ...getTripMapPreferences(), isShownWithoutTrip: tripMapToggle.checked });
+        });
+    }
 
     subscribeMapProvider((provider) => {
         for (const id of ["settings-map-label-scale-select", "settings-map-street-names-select"]) {

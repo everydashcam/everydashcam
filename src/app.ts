@@ -96,6 +96,8 @@ import {
     prepareTripForPlayback,
 } from "./ui/progressive-ingest.js";
 import { initTripPreparation } from "./ui/trip-preparation.js";
+import { initTripMap } from "./ui/trip-map.js";
+import { subscribeTripMapSearch, tripMapPassesFor } from "./ui/trip-map-search.js";
 import { initHotkeysModal } from "./ui/hotkeys-modal.js";
 import { initWhatsNewModal } from "./ui/whats-new-modal.js";
 import { openExportMode, setRange } from "./ui/export-state.js";
@@ -130,13 +132,16 @@ import { registerRegroupAppliedListener } from "./ui/apply-regroup.js";
 import {
     applyComposition,
     getTripCurrentTime,
+    openTripAtContentSec,
     playFrame,
     playTripEvent,
     reconcileActiveTripAfterRegroup,
     seekThenPlay,
 } from "./ui/player.js";
 import { initTripUi } from "./ui/trip-ui-init.js";
+import { wallToContentSec } from "./trips.js";
 import {
+    captureTripMomentTarget,
     captureTripOpenTarget,
     closestEventIndex,
     resolveTripOpenTarget,
@@ -752,7 +757,8 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
         // event against the final event list produced by that data.
         const resolved = resolveTripOpenTarget(state.trips, target);
         const trip = resolved ? state.trips[resolved.tripIdx] : null;
-        const nextEventIndex = trip && target.eventUtc !== null ? closestEventIndex(trip.events, target.eventUtc) : -1;
+        const nextEventIndex =
+            trip && target.momentUtc !== null ? closestEventIndex(trip.events, target.momentUtc) : -1;
         if (!resolved || nextEventIndex < 0) {
             reportTripOpenFailure(openToken, tripIdx);
             return;
@@ -772,12 +778,51 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
     }
 }
 
+/** Opens the trip paused at a moment on its clock, such as a pass through a place. */
+async function openTripAtMoment(tripIdx: number, momentUtc: number): Promise<void> {
+    const target = captureTripMomentTarget(state.trips, tripIdx, momentUtc);
+    const openToken = takeTripOpenToken(target?.tripKeys);
+    if (!target) {
+        reportTripOpenFailure(openToken, tripIdx);
+        return;
+    }
+    try {
+        const prepared = await prepareTripOpen(target, tripIdx, openToken);
+        if (!prepared) return;
+        // Preparation can regroup trips; find the moment's trip again and
+        // place the moment on its final timeline.
+        const resolved = resolveTripOpenTarget(state.trips, target);
+        const trip = resolved ? state.trips[resolved.tripIdx] : null;
+        if (!resolved || !trip) {
+            reportTripOpenFailure(openToken, tripIdx);
+            return;
+        }
+        openTripAtContentSec(resolved.tripIdx, wallToContentSec(trip.timeline, momentUtc));
+        notifyUnmatchedDirectoryGps(activeTrip(), openGpsSync);
+        // Seeking inside the already-active trip does not call playFrame.
+        clearOpeningTrip();
+    } catch (err) {
+        reportTripOpenFailure(openToken, tripIdx, err);
+    }
+}
+
+/** Under a place filter a trip opens at its first pass through the place. */
+function openTripFromList(tripIdx: number): Promise<void> {
+    const pass = tripMapPassesFor(tripIdx)[0];
+    return pass ? openTripAtMoment(tripIdx, pass.unixSeconds) : openTripFrame(tripIdx);
+}
+
 initSidebar({
     onEditTripMeta: openTripMetaModal,
-    onPlayTrip: openTripFrame,
+    onPlayTrip: openTripFromList,
     onPlayFrame: openTripFrame,
     onPlayTripEvent: openTripEvent,
 });
+// The map of all trips replaces the empty-viewer card; turning it on or off
+// re-renders that card.
+initTripMap({ onSurfaceChange: syncEmptyState });
+// The place and the map frame filter the list; it follows their results.
+subscribeTripMapSearch(renderTrips);
 
 // Sort-controls and empty-state sync on sidebar DOM nodes (visible in
 // landing mode via their own styles, but body.no-trips hides the sidebar

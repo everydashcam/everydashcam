@@ -1,0 +1,272 @@
+/* =========================================================================
+   MAP OF ALL TRIPS (src/ui/trip-map.ts)
+   Fills the empty viewer instead of the placeholder card while the
+   preference is on. Corner controls reuse the trip map's control buttons.
+   ========================================================================= */
+.trip-map-state {
+    position: relative;
+    flex: 1;
+    display: none;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg);
+}
+.viewer.empty.has-trip-map .trip-map-state {
+    display: block;
+}
+.viewer.empty.has-trip-map .empty-state,
+.viewer.preparing .trip-map-state {
+    display: none;
+}
+/* A programmatic focus target after the card's "show" button disappears. */
+.trip-map-state:focus {
+    outline: none;
+}
+
+/* Two classes: MapLibre's own .maplibregl-map makes the container relative,
+   which would collapse it to no height. */
+.trip-map-state > .trip-map-canvas {
+    position: absolute;
+    inset: 0;
+}
+
+.trip-map-corner {
+    position: absolute;
+    top: 12px;
+    z-index: 3;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+.trip-map-corner--start {
+    left: 12px;
+}
+.trip-map-corner--end {
+    right: 12px;
+}
+
+.trip-map-counter {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--dc-iconbtn);
+    padding: 0 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-pill);
+    background: var(--bg-elev);
+    box-shadow: var(--dc-shadow-card);
+    color: var(--fg);
+    font-family: var(--dc-font-body);
+    font-size: var(--dc-text-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.trip-map-counter:empty {
+    display: none;
+}
+/* Some trips have no route on the map yet or at all. */
+.trip-map-counter.has-untracked::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warn-ink);
+}
+
+.trip-map-zoom {
+    display: flex;
+    flex-direction: column;
+}
+.trip-map-zoom .map-control-btn:first-child {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.trip-map-zoom .map-control-btn:last-child {
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* The top edge belongs to the corner controls. */
+.trip-map-style-error {
+    top: auto;
+    bottom: 40px;
+}
+
+/* Trips too small to read at this zoom, folded into one counted dot. Drawn in
+   the route colours so a dot reads as "more routes here". */
+.trip-map-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trip-map-dot-size);
+    height: var(--trip-map-dot-size);
+    padding: 0;
+    border: 1.2px solid var(--dc-track-outline);
+    border-radius: 50%;
+    background: var(--dc-track-corridor);
+    box-shadow: 0 0 0 1.5px var(--dc-track-halo);
+    color: var(--dc-track-outline);
+    font: 700 10.5px / 1 var(--dc-font-body);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.trip-map-dot:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Search-bar toggle. */
+.trip-map-toggle[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+.trip-map-toggle[hidden] {
+    display: none;
+}
+
+.empty-state-map {
+    display: block;
+    margin-top: var(--dc-space-4);
+}
+
+/* "Click a road" hint while no place is chosen. */
+.trip-map-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 40px;
+    z-index: 2;
+    max-width: calc(100% - 24px);
+    padding: 5px 13px;
+    border-radius: var(--dc-radius-pill);
+    background: color-mix(in srgb, var(--fg) 88%, transparent);
+    color: var(--bg);
+    font-family: var(--dc-font-body);
+    font-size: var(--dc-text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.trip-map-hint[hidden] {
+    display: none;
+}
+
+/* Pointer probe: the circle a click would choose, positioned from JS. */
+.trip-map-probe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    width: var(--trip-map-probe-size);
+    height: var(--trip-map-probe-size);
+    border: 1.2px dashed var(--fg);
+    border-radius: 50%;
+    opacity: 0.6;
+    pointer-events: none;
+}
+.trip-map-tip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 5;
+    padding: 4px 8px;
+    border-radius: var(--dc-radius-md);
+    background: var(--fg);
+    color: var(--bg);
+    font-family: var(--dc-font-body);
+    font-size: var(--dc-text-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.trip-map-probe[hidden],
+.trip-map-tip[hidden] {
+    display: none;
+}
+
+/* Radius handle of the chosen place: a MapLibre draggable marker. */
+.trip-map-place-handle {
+    width: 12px;
+    height: 12px;
+    border: 1.6px solid var(--fg);
+    border-radius: 50%;
+    background: var(--bg-elev);
+    cursor: grab;
+    /* A larger invisible target than the visible dot. */
+    box-shadow: 0 0 0 7px transparent;
+}
+.maplibregl-marker-dragging .trip-map-place-handle,
+.trip-map-place-handle:active {
+    cursor: grabbing;
+}
+
+/* The chosen place under the search: what filters the list and how to remove it. */
+.trip-place-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--dc-space-1);
+    padding: 3px 4px 3px 8px;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+    border-radius: var(--dc-radius-md);
+    background: color-mix(in srgb, var(--accent) 9%, var(--bg-elev));
+    color: var(--fg);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+}
+.trip-place-bar[hidden] {
+    display: none;
+}
+.trip-place-bar > svg {
+    flex-shrink: 0;
+    color: var(--accent-ink);
+}
+.trip-place-bar__radius {
+    color: var(--fg-mute);
+    font-size: var(--dc-text-xs);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+.trip-place-bar__clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--fg-dim);
+    cursor: pointer;
+}
+.trip-place-bar__clear:hover {
+    background: var(--bg-hover);
+    color: var(--fg);
+}
+.trip-place-bar__clear:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Pass times in a trip row under a place filter. Over a card's preview the
+   text sits on the dark scrim, where only the bright accent reads. */
+.trip-meta-pass {
+    color: var(--accent-ink);
+    font-weight: 600;
+}
+.trip-header.has-preview .trip-meta-pass {
+    color: var(--accent);
+}
+
+/* Trips the map filters drop because they have no route. */
+.trip-filter-untracked {
+    flex-basis: 100%;
+    color: var(--fg-mute);
+}
+.trip-filter-untracked[hidden] {
+    display: none;
+}

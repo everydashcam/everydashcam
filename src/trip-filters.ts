@@ -13,9 +13,28 @@ export interface TripFilters {
     favorites: boolean;
     /** Free-text search; every word must appear in the trip's search text. */
     query: string;
+    /**
+     * The map of all trips is visible and leaves some routes outside its
+     * frame: only trips whose route crosses the frame stay.
+     */
+    mapArea: boolean;
+    /** A place is chosen on the map: only trips passing through it stay. */
+    place: boolean;
 }
 
-export interface TripFilterFacts {
+/** What the map of all trips knows about one trip; all false without the map. */
+export interface TripMapFacts {
+    /** The trip has a route on the map. */
+    hasTrack: boolean;
+    /** The route crosses the map's current frame. */
+    inMapArea: boolean;
+    /** The route passes through the chosen place. */
+    passesPlace: boolean;
+}
+
+export const NO_TRIP_MAP_FACTS: Readonly<TripMapFacts> = { hasTrack: false, inMapArea: false, passesPlace: false };
+
+export interface TripFilterFacts extends TripMapFacts {
     kind: Exclude<TripFilterKind, "all"> | null;
     event: boolean;
     manual: boolean;
@@ -57,11 +76,13 @@ export function matchesTripSearch(searchText: string, query: string): boolean {
 /**
  * Filter facts for one trip. `searchText` is built by the UI, which owns the
  * locale-dependent date wording; callers without an active search pass "".
+ * `mapFacts` come from the map of all trips.
  */
 export function tripFilterFacts(
     trip: Trip,
     meta?: Pick<TripMetaAnnotation, "note" | "isFavorite"> | null,
     searchText = "",
+    mapFacts: TripMapFacts = NO_TRIP_MAP_FACTS,
 ): TripFilterFacts {
     const candidates = tripAllCandidates(trip);
     return {
@@ -76,6 +97,9 @@ export function tripFilterFacts(
         notes: Boolean(meta?.note?.trim()),
         favorites: meta?.isFavorite === true,
         searchText,
+        hasTrack: mapFacts.hasTrack,
+        inMapArea: mapFacts.inMapArea,
+        passesPlace: mapFacts.passesPlace,
     };
 }
 
@@ -85,7 +109,9 @@ export function matchesTripFilters(facts: TripFilterFacts, filters: TripFilters)
         (!filters.notes || facts.notes) &&
         (!filters.favorites || facts.favorites) &&
         matchesTripSearch(facts.searchText, filters.query) &&
-        ((!filters.event && !filters.manual) || (filters.event && facts.event) || (filters.manual && facts.manual))
+        ((!filters.event && !filters.manual) || (filters.event && facts.event) || (filters.manual && facts.manual)) &&
+        (!filters.mapArea || facts.inMapArea) &&
+        (!filters.place || facts.passesPlace)
     );
 }
 
@@ -96,6 +122,8 @@ export function hasTripFilters(filters: TripFilters): boolean {
         filters.manual ||
         filters.notes ||
         filters.favorites ||
-        filters.query.trim() !== ""
+        filters.query.trim() !== "" ||
+        filters.mapArea ||
+        filters.place
     );
 }

@@ -86,7 +86,7 @@ function isBenignConsole(text: string, url: string): boolean {
     // trusting it in the url - a tile server being unreachable IS the invariant.
     if (/openfreemap\.org|(?:tile|vector)\.openstreetmap\.org|tiles\.api-maps\.yandex\.ru/i.test(text)) return true;
     // src/ui/viewer-map-registry.ts mirrors each viewer map's on("error")
-    // through the app logger as "[map] maplibre [mini ]error <cause>".
+    // through the app logger as "[map] maplibre [mini |trips ]error <cause>".
     // Tolerate ONLY the causes
     // the aborted tile server actually produces (verified by capturing every
     // console.error across the suite):
@@ -99,7 +99,7 @@ function isBenignConsole(text: string, url: string): boolean {
     // A maplibre error with any other cause - and any app error that merely
     // mentions "tile" or "AbortError" outside this exact logger line (e.g. a
     // video-tile feature, an export/ingest cancel) - is NOT masked.
-    const isMaplibreLogLine = /^\[map\] maplibre (mini )?error /.test(text);
+    const isMaplibreLogLine = /^\[map\] maplibre (?:mini |trips )?error /.test(text);
     if (
         isMaplibreLogLine &&
         /openfreemap\.org|(?:tile|vector)\.openstreetmap\.org|tiles\.api-maps\.yandex\.ru/i.test(text)
@@ -117,7 +117,7 @@ function isBenignConsole(text: string, url: string): boolean {
     // AbortError forms already caught above. Same hermetic cause (we abort
     // openfreemap.org), different engine wording. Match the bare generic form
     // only - a maplibre error carrying a real message/name is still NOT masked.
-    if (/^\[map] maplibre (mini )?error Error$/.test(text)) return true;
+    if (/^\[map] maplibre (?:mini |trips )?error Error$/.test(text)) return true;
     // Expected only when the onboarding fail-open spec deliberately injects a
     // fault: the engine logs at error level as it tears the broken tour down.
     // Other specs suppress tours, so these never fire there.
