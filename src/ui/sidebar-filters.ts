@@ -1,6 +1,6 @@
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
-import { hasTripFilters, matchesTripFilters } from "../trip-filters.js";
+import { hasTripFilters, matchesTripFilters, withoutTripMapFilters } from "../trip-filters.js";
 import type { TripFilterFacts, TripFilterKind, TripToggleFilter } from "../trip-filters.js";
 import { dom } from "./dom.js";
 import { state } from "./state.js";
@@ -152,9 +152,9 @@ export function syncSidebarFilters(facts: readonly TripFilterFacts[]): void {
     dom.tripFilterResult.parentElement!.hidden = !hasTripFilters(state.tripFilters);
     // Map filters drop trips without a route; say how many, so they are not lost silently.
     const isMapFiltered = state.tripFilters.mapArea || state.tripFilters.place;
-    const withoutMapFilters = { ...state.tripFilters, mapArea: false, place: false };
+    const listFilters = withoutTripMapFilters(state.tripFilters);
     const untracked = isMapFiltered
-        ? facts.filter((fact) => !fact.hasTrack && matchesTripFilters(fact, withoutMapFilters)).length
+        ? facts.filter((fact) => !fact.hasTrack && matchesTripFilters(fact, listFilters)).length
         : 0;
     dom.tripFilterUntracked.hidden = untracked === 0;
     if (untracked > 0) dom.tripFilterUntracked.textContent = t("sidebar.filter.untracked", { n: untracked });

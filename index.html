@@ -1323,7 +1323,12 @@
                      data-i18n-attr="aria-label:tripMap.toggle" aria-label="Trip map">
                 <div id="trip-map" class="trip-map-canvas"></div>
                 <div class="trip-map-corner trip-map-corner--start">
-                    <span id="trip-map-counter" class="trip-map-counter"></span>
+                    <span id="trip-map-counter" class="trip-map-counter" hidden>
+                        <span id="trip-map-counter-text"></span>
+                        <span id="trip-map-counter-bar" class="trip-map-counter__bar" hidden aria-hidden="true">
+                            <span id="trip-map-counter-fill" class="trip-map-counter__fill"></span>
+                        </span>
+                    </span>
                 </div>
                 <div class="trip-map-corner trip-map-corner--end">
                     <button id="trip-map-fit" class="map-control-btn" type="button"

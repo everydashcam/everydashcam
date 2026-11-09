@@ -6,19 +6,19 @@
 import { t } from "../i18n/index.js";
 import { recordsHaveGps } from "../parser.js";
 import { recordingAnalysisPercent } from "../recording-analysis-progress.js";
-import { hasTripFilters, matchesTripFilters, tripFilterFacts } from "../trip-filters.js";
+import { hasTripFilters, matchesTripFilters, tripFilterFacts, withoutTripMapFilters } from "../trip-filters.js";
 import type { TripFilterFacts } from "../trip-filters.js";
 import { subscribeUnitsChange } from "../units-pref.js";
 import type { Channel } from "../parsers/types.js";
 import type { Trip, VideoCandidate } from "../trips.js";
-import { frameChannels, needsRecordingMetadata, tripAllCandidates } from "../trips.js";
+import { frameChannels, tripAllCandidates, tripNeedsRecordingMetadata } from "../trips.js";
 
 import { formatMonthYear, subscribeDateFormatChange } from "./date-format.js";
 import { buildEventList } from "./event-list.js";
 import { dom } from "./dom.js";
 import { syncEmptyState } from "./empty-state.js";
-import { syncTripMap } from "./trip-map.js";
-import { tripMapFactsFor, tripMapPassesFor } from "./trip-map-search.js";
+import { syncTripMap, syncTripMapStatus } from "./trip-map.js";
+import { setTripMapScope, tripMapFactsFor, tripMapPassesFor } from "./trip-map-search.js";
 import { buildFileDetailsHtml } from "./file-details.js";
 import { vendorFileKey } from "./ingest-candidate.js";
 import { exitLanding } from "./landing.js";
@@ -211,6 +211,9 @@ export function renderTrips(): void {
         return { trip, idx, facts };
     });
     syncSidebarFilters(entries.map((entry) => entry.facts));
+    // The text query and the chips narrow what the map of all trips draws too.
+    const listFilters = withoutTripMapFilters(state.tripFilters);
+    setTripMapScope(entries.filter((entry) => matchesTripFilters(entry.facts, listFilters)).map((entry) => entry.idx));
     let displayed = entries.filter((entry) => matchesTripFilters(entry.facts, state.tripFilters));
     if (displayed.length > 0) {
         dom.list.appendChild(buildSummaryItem(displayed.map((entry) => entry.trip)));
@@ -336,7 +339,7 @@ export function renderTrips(): void {
     restoreListFocus(focus, dom.list);
 
     // Tell assistive tech the list is still updating while any card is provisional.
-    dom.list.setAttribute("aria-busy", state.trips.some(tripHasPending) ? "true" : "false");
+    dom.list.setAttribute("aria-busy", state.trips.some(tripNeedsRecordingMetadata) ? "true" : "false");
     scheduleRecognitionHelp();
 }
 
@@ -1148,11 +1151,12 @@ export function refreshTripCard(tripIdx: number): void {
     if (seededHeight) card.style.setProperty(CARD_HEIGHT_PROPERTY, seededHeight);
     oldLi.replaceWith(card);
     restoreListFocus(focus, dom.list);
-    dom.list.setAttribute("aria-busy", state.trips.some(tripHasPending) ? "true" : "false");
+    dom.list.setAttribute("aria-busy", state.trips.some(tripNeedsRecordingMetadata) ? "true" : "false");
 }
 
-/** Paints the one shared background-work status above the trip list. */
+/** Paints the one shared background-work status above the trip list and on the map of all trips. */
 export function refreshTripAnalysisStatus(): void {
+    syncTripMapStatus();
     const progress = state.recordingAnalysisProgress;
     if (!progress || progress.total <= 0) {
         dom.tripAnalysisStatus.hidden = true;
@@ -1340,10 +1344,6 @@ function computeTripLoadingState(trip: Trip, tripIdx: number): TripLoadingState 
 }
 
 /** Whether any clip still has provisional byte-derived metadata. */
-function tripHasPending(trip: Trip): boolean {
-    return tripAllCandidates(trip).some(needsRecordingMetadata);
-}
-
 /** Whether any displayed duration/end/GPS fact is still provisional. */
 function tripHasProvisionalFacts(trip: Trip): boolean {
     return tripAllCandidates(trip).some((candidate) => candidate.metadataReady === false);

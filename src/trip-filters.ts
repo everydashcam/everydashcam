@@ -34,6 +34,11 @@ export interface TripMapFacts {
 
 export const NO_TRIP_MAP_FACTS: Readonly<TripMapFacts> = { hasTrack: false, inMapArea: false, passesPlace: false };
 
+/** The list's own filters without the two the map of all trips sets: what the map itself draws. */
+export function withoutTripMapFilters(filters: TripFilters): TripFilters {
+    return { ...filters, mapArea: false, place: false };
+}
+
 export interface TripFilterFacts extends TripMapFacts {
     kind: Exclude<TripFilterKind, "all"> | null;
     event: boolean;

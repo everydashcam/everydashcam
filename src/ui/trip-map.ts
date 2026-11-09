@@ -20,6 +20,7 @@ import { farDotRadiusPx, foldFarTrips, type FarDot } from "../trip-map/far-dots.
 import { FOLLOW_FIT_DURATION_MS, FOLLOW_FIT_PADDING_PX, shouldReframe, type ScreenBox } from "../trip-map/follow.js";
 import { placeRadiusWorld, type PlaceCircle } from "../trip-map/queries.js";
 import type { TripMapTrack } from "../trip-map/track-geometry.js";
+import { tripNeedsRecordingMetadata } from "../trips.js";
 import {
     emptyBounds,
     extendBounds,
@@ -51,10 +52,13 @@ import {
     countTripsThrough,
     setTripMapFrame,
     setTripMapPlace,
+    subscribeTripMapScope,
     subscribeTripMapSearch,
     tripMapPassesFor,
     tripMapPlace,
     tripMapPlaceIds,
+    tripMapScope,
+    tripMapTracksInScope,
 } from "./trip-map-search.js";
 import { requestTripMapBundle } from "./trip-map-worker-client.js";
 import {
@@ -210,7 +214,7 @@ export function syncTripMap(): void {
         destroyView();
         return;
     }
-    if (view) syncCounter();
+    if (view) syncTripMapStatus();
     else void createView();
 }
 
@@ -263,6 +267,8 @@ function isTextEntry(target: EventTarget | null): boolean {
 export function showAllTripsOnMap(): void {
     if (!view) return;
     view.isFollowing = true;
+    syncTripMapStatus();
+    scheduleAreaUpdate(view);
     if (fitWorldBounds(view, libraryBounds(readyTracks()), FRAME_PADDING_PX, FOLLOW_FIT_DURATION_MS))
         view.hasFramed = true;
 }
@@ -350,15 +356,15 @@ async function createView(): Promise<void> {
         addLayers(current);
     });
     const noteUserMove = (event: { originalEvent?: unknown }): void => {
-        if (event.originalEvent) current.isFollowing = false;
+        if (event.originalEvent) stopFollowing(current);
     };
     map.on("dragstart", noteUserMove);
     map.on("zoomstart", noteUserMove);
     map.on("wheel", () => {
-        current.isFollowing = false;
+        stopFollowing(current);
     });
     map.on("dblclick", () => {
-        current.isFollowing = false;
+        stopFollowing(current);
     });
     map.on("zoom", () => {
         if (bundleStepForZoom(map.getZoom()) !== current.requestedStep) scheduleBundle(current);
@@ -376,7 +382,7 @@ async function createView(): Promise<void> {
     map.on("click", (event) => {
         // Markers sit in the canvas container; their own handlers own their clicks.
         if (event.originalEvent.target !== map.getCanvas()) return;
-        current.isFollowing = false;
+        stopFollowing(current);
         const circle = circleAt(current, event.lngLat);
         setTripMapPlace(countTripsThrough(circle) > 0 ? circle : null);
         hideProbe(current);
@@ -384,7 +390,7 @@ async function createView(): Promise<void> {
     registerViewerMap({ map, surface: "trips", attribution });
     followLibrary(current);
     scheduleBundle(current);
-    syncCounter();
+    syncTripMapStatus();
     renderPlace(current);
 }
 
@@ -414,13 +420,17 @@ function markUnavailable(error?: unknown): void {
     callbacks.onSurfaceChange();
 }
 
-/** Distinct library tracks that the worker already simplified, in id order. */
+/** Distinct simplified tracks of the trips the list's query and chips keep, in id order. */
 function readyTracks(): ReadyTrack[] {
-    const byId = new Map<number, TripMapTrack>();
-    for (const entry of tripMapEntries()) {
-        if (entry?.track) byId.set(entry.id, entry.track);
-    }
-    return [...byId].sort(([a], [b]) => a - b).map(([id, track]) => ({ id, track }));
+    return [...tripMapTracksInScope()].sort(([a], [b]) => a - b).map(([id, track]) => ({ id, track }));
+}
+
+/** A user touch ends following until "show all". */
+function stopFollowing(current: TripMapView): void {
+    if (!current.isFollowing) return;
+    current.isFollowing = false;
+    syncTripMapStatus();
+    scheduleAreaUpdate(current);
 }
 
 function libraryBounds(tracks: readonly ReadyTrack[]): WorldBounds {
@@ -495,8 +505,19 @@ function viewFrame(current: TripMapView): WorldBounds {
     };
 }
 
+/**
+ * The list follows the frame only after the user has touched the map. While
+ * the camera follows the library, tracks arriving past the edge are in
+ * flight to the frame, and trips must not leave the list without a user
+ * action.
+ */
 function scheduleAreaUpdate(current: TripMapView): void {
     if (current.areaTimer !== null) clearTimeout(current.areaTimer);
+    current.areaTimer = null;
+    if (current.isFollowing) {
+        setTripMapFrame(null);
+        return;
+    }
     current.areaTimer = setTimeout(() => {
         current.areaTimer = null;
         if (view === current) setTripMapFrame(viewFrame(current));
@@ -751,7 +772,7 @@ function renderDots(current: TripMapView, dots: readonly FarDot[]): void {
 }
 
 function zoomToDot(current: TripMapView, dot: FarDot): void {
-    current.isFollowing = false;
+    stopFollowing(current);
     const { bounds } = dot;
     const marginX = (bounds.maxX - bounds.minX) * DOT_ZOOM_MARGIN;
     const marginY = (bounds.maxY - bounds.minY) * DOT_ZOOM_MARGIN;
@@ -842,7 +863,7 @@ function createPlaceHandle(current: TripMapView): maplibregl.Marker {
     const handle = new current.maplibre.Marker({ element, draggable: true });
     handle.on("dragstart", () => {
         current.isDraggingHandle = true;
-        current.isFollowing = false;
+        stopFollowing(current);
     });
     handle.on("drag", () => {
         const place = tripMapPlace();
@@ -928,12 +949,42 @@ function renderHighlight(): void {
     view.map.getSource<GeoJSONSource>(HIGHLIGHT_SOURCE_ID)?.setData(highlightData());
 }
 
-function syncCounter(): void {
-    const total = state.trips.length;
+/**
+ * The counter and the "show all" button. While recordings are still being
+ * read the counter shows how many trips are read, and "show all" is pressed
+ * while the camera follows the arriving tracks; afterwards the counter says
+ * how many trips have a route on the map.
+ */
+export function syncTripMapStatus(): void {
+    if (!view) return;
+    const scope = tripMapScope();
+    const entries = tripMapEntries();
     let onMap = 0;
-    for (const entry of tripMapEntries()) if (entry?.track) onMap++;
-    dom.tripMapCounter.textContent = t("tripMap.counter", { n: onMap, total });
-    dom.tripMapCounter.classList.toggle("has-untracked", onMap < total);
+    let read = 0;
+    for (const index of scope) {
+        const hasRoute = Boolean(entries[index]?.track);
+        if (hasRoute) onMap++;
+        // A route can arrive from a GPS file before the video's own read ends.
+        const trip = state.trips[index];
+        if (hasRoute || (trip && !tripNeedsRecordingMetadata(trip))) read++;
+    }
+    const total = scope.length;
+    const isReading = state.recordingAnalysisProgress !== null && read < total;
+    dom.tripMapCounter.hidden = false;
+    dom.tripMapCounterText.textContent = isReading
+        ? t("tripMap.reading", { n: read, total })
+        : t("tripMap.counter", { n: onMap, total });
+    dom.tripMapCounter.classList.toggle("has-untracked", !isReading && onMap < total);
+    dom.tripMapCounter.classList.toggle("is-reading", isReading);
+    dom.tripMapCounterBar.hidden = !isReading;
+    dom.tripMapCounterFill.style.transform = `scaleX(${total > 0 ? read / total : 0})`;
+    const isFollowingReads = isReading && view.isFollowing;
+    // A toggle only while there is something to follow.
+    if (isReading) dom.tripMapFit.setAttribute("aria-pressed", String(isFollowingReads));
+    else dom.tripMapFit.removeAttribute("aria-pressed");
+    const fitLabel = t(isFollowingReads ? "tripMap.fit.following" : isReading ? "tripMap.fit.resume" : "tripMap.fit");
+    dom.tripMapFit.title = fitLabel;
+    dom.tripMapFit.setAttribute("aria-label", fitLabel);
 }
 
 /** The place bar under the search and the map's own hint follow the chosen place. */
@@ -952,7 +1003,7 @@ function onLibraryChange(): void {
     if (!current) return;
     followLibrary(current);
     scheduleBundle(current);
-    syncCounter();
+    syncTripMapStatus();
     renderHighlight();
 }
 
@@ -990,6 +1041,8 @@ export function initTripMap(cb: TripMapCallbacks): void {
         callbacks.onSurfaceChange();
     });
     subscribeTripMapLibrary(onLibraryChange);
+    // The list's query and chips changed what the map draws.
+    subscribeTripMapScope(onLibraryChange);
     subscribeTripMapSearch(onSearchChange);
     subscribeUnitsChange(syncPlaceControls);
     subscribeThemeChange(() => {
@@ -1030,12 +1083,12 @@ export function initTripMap(cb: TripMapCallbacks): void {
     dom.tripMapFit.addEventListener("click", showAllTripsOnMap);
     dom.tripMapZoomIn.addEventListener("click", () => {
         if (!view) return;
-        view.isFollowing = false;
+        stopFollowing(view);
         view.map.zoomIn({ duration: prefersReducedMotion() ? 0 : 250 });
     });
     dom.tripMapZoomOut.addEventListener("click", () => {
         if (!view) return;
-        view.isFollowing = false;
+        stopFollowing(view);
         view.map.zoomOut({ duration: prefersReducedMotion() ? 0 : 250 });
     });
     dom.tripPlaceClear.addEventListener("click", () => {

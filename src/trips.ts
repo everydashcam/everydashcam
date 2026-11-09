@@ -228,6 +228,11 @@ export function needsRecordingMetadata(candidate: VideoCandidate): boolean {
     return candidate.metadataReady === false && candidate.metadataFailed !== true;
 }
 
+/** Whether any recording of the trip still waits for its mandatory metadata read. */
+export function tripNeedsRecordingMetadata(trip: Trip): boolean {
+    return tripAllCandidates(trip).some(needsRecordingMetadata);
+}
+
 /**
  * Frame - a set of synchronized files for one trip moment across channels
  * (front + rear + interior for three-channel models). Single-channel models

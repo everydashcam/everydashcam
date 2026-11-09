@@ -1,8 +1,9 @@
 // What the map of all trips filters the trip list by: the chosen place with
 // every trip's passes through it, and the routes crossing the map's frame.
 // Owns `state.tripFilters.place` and `.mapArea`; the list asks it for each
-// trip's facts and pass times. No MapLibre and no DOM, so the list can use it
-// while the map itself is hidden.
+// trip's facts and pass times. The list's text query and chips set the scope:
+// only trips inside it are drawn, framed, counted and searched. No MapLibre
+// and no DOM, so the list can use it while the map itself is hidden.
 
 import { createSubscribers } from "../subscribers.js";
 import { NO_TRIP_MAP_FACTS, type TripMapFacts } from "../trip-filters.js";
@@ -13,8 +14,10 @@ import { state } from "./state.js";
 import { subscribeTripMapLibrary, tripMapEntries } from "./trip-map-library.js";
 
 let place: PlaceCircle | null = null;
+/** Trip indices passing the list's own filters; null until the list first renders: every trip. */
+let scope: readonly number[] | null = null;
 let passesById = new Map<number, TripPass[]>();
-/** The map's frame while the map is visible; null otherwise. */
+/** The map's frame once the user has moved the map; null while it is hidden or follows the library. */
 let frame: WorldBounds | null = null;
 /** Track ids crossing the frame, or null while the frame cuts nothing. */
 let areaIds: Set<number> | null = null;
@@ -22,15 +25,26 @@ let resultKey = "";
 let isEmitQueued = false;
 let isLibrarySubscribed = false;
 const listeners = createSubscribers<[]>("trip-map-search");
+const scopeListeners = createSubscribers<[]>("trip-map-scope");
 
-function readyTracks(): Map<number, TripMapTrack> {
+/** Trip indices in the scope, in `state.trips` order. */
+export function tripMapScope(): readonly number[] {
+    return scope ?? state.trips.map((_, index) => index);
+}
+
+/** Distinct simplified tracks of the trips in the scope, by track id. */
+export function tripMapTracksInScope(): Map<number, TripMapTrack> {
+    const entries = tripMapEntries();
     const tracks = new Map<number, TripMapTrack>();
-    for (const entry of tripMapEntries()) if (entry?.track) tracks.set(entry.id, entry.track);
+    for (const index of tripMapScope()) {
+        const entry = entries[index];
+        if (entry?.track) tracks.set(entry.id, entry.track);
+    }
     return tracks;
 }
 
 function recompute(): void {
-    const tracks = readyTracks();
+    const tracks = tripMapTracksInScope();
     passesById = new Map();
     if (place) {
         for (const [id, track] of tracks) {
@@ -85,7 +99,24 @@ export function setTripMapPlace(next: PlaceCircle | null): void {
     update();
 }
 
-/** The map's visible frame in world coordinates; null when the map is not visible. */
+/**
+ * The trips the list's text query and chips keep, by index in `state.trips`.
+ * The list sets it on every render; an unchanged scope costs nothing.
+ */
+export function setTripMapScope(tripIndices: readonly number[]): void {
+    if (scope && scope.length === tripIndices.length && scope.every((index, at) => index === tripIndices[at])) return;
+    scope = [...tripIndices];
+    update();
+    // The map only redraws; nothing here renders the list, so no microtask.
+    scopeListeners.emit();
+}
+
+/** Fires when the scope changes: the map draws, frames and counts another set of trips. */
+export function subscribeTripMapScope(listener: () => void): () => void {
+    return scopeListeners.subscribe(listener);
+}
+
+/** The map's visible frame in world coordinates; null when the frame must not filter the list. */
 export function setTripMapFrame(next: WorldBounds | null): void {
     frame = next;
     update();
@@ -118,19 +149,21 @@ export function tripMapPlaceIds(): ReadonlySet<number> {
     return new Set(passesById.keys());
 }
 
-/** How many library trips pass within the circle, for the pointer probe. */
+/** How many trips in the scope pass within the circle, for the pointer probe. */
 export function countTripsThrough(circle: PlaceCircle): number {
     let count = 0;
-    for (const track of readyTracks().values()) if (tripPassesThroughCircle(track, circle).length > 0) count++;
+    for (const track of tripMapTracksInScope().values()) if (tripPassesThroughCircle(track, circle).length > 0) count++;
     return count;
 }
 
 export function _resetForTests(): void {
     place = null;
+    scope = null;
     passesById = new Map();
     frame = null;
     areaIds = null;
     resultKey = "";
     isEmitQueued = false;
     listeners.clear();
+    scopeListeners.clear();
 }
