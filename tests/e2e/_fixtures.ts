@@ -85,8 +85,9 @@ function isBenignConsole(text: string, url: string): boolean {
     // because WE abort every request to it, so trusting it in text is as safe as
     // trusting it in the url - a tile server being unreachable IS the invariant.
     if (/openfreemap\.org|(?:tile|vector)\.openstreetmap\.org|tiles\.api-maps\.yandex\.ru/i.test(text)) return true;
-    // src/ui/map.ts mirrors map.on("error") / mini.on("error") through the app
-    // logger as "[map] maplibre [mini ]error <cause>". Tolerate ONLY the causes
+    // src/ui/viewer-map-registry.ts mirrors each viewer map's on("error")
+    // through the app logger as "[map] maplibre [mini ]error <cause>".
+    // Tolerate ONLY the causes
     // the aborted tile server actually produces (verified by capturing every
     // console.error across the suite):
     //  - Chromium: MapLibre AJAXError "Failed to fetch (0): https://tiles.

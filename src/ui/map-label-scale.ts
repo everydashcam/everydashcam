@@ -2,10 +2,10 @@
 //
 // MapLibre has no global text-scale knob - label sizes are baked into each
 // style layer's layout["text-size"]. We fetch the style JSON ourselves
-// (loadMapStyle in map.ts), so the viewer scales a CLONE of the cached style
-// right before setStyle; the cache itself stays pristine, because the export
-// snapshotter reads the same cache and applies its own independent factor
-// (exportPanelState.overlayMap.labelScalePct).
+// (loadMapStyle in viewer-map-registry.ts), so the viewer scales a CLONE of the
+// cached style right before setStyle; the cache itself stays pristine, because
+// the export snapshotter reads the same cache and applies its own independent
+// factor (exportPanelState.overlayMap.labelScalePct).
 
 import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import type { StyleSpecification } from "maplibre-gl";
@@ -34,7 +34,8 @@ export function getMapLabelScale(): MapLabelScale {
 }
 
 /** Persists the label-scale preference. The caller re-applies the style to the
- *  live maps (reapplyMapLabelPrefs in map.ts) - there are no subscribers. */
+ *  live maps (reapplyMapLabelPrefs in viewer-map-registry.ts) - there are no
+ *  subscribers. */
 export function setMapLabelScale(scale: MapLabelScale): void {
     sessionLabelScale = scale;
     writeLocalStorage(STORAGE_KEY, String(scale));
@@ -79,7 +80,7 @@ export function getStreetLabelDensity(): StreetLabelDensity {
 }
 
 /** Persists the street-name density preference. The caller re-applies the
- *  style to the live maps (reapplyMapLabelPrefs in map.ts). */
+ *  style to the live maps (reapplyMapLabelPrefs in viewer-map-registry.ts). */
 export function setStreetLabelDensity(density: StreetLabelDensity): void {
     sessionStreetLabelDensity = density;
     writeLocalStorage(DENSITY_STORAGE_KEY, density);

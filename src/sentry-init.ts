@@ -124,7 +124,7 @@ export function initSentryClient(opts: SentryClientOptions): SentryClient {
             // only before compileShader (webgl/program.ts), so it stays racy.
             // A real driver failure carries a non-empty info log and still gets
             // through. The episode itself stays observable via the curated
-            // "map webgl context lost/restored" messages (src/ui/map.ts).
+            // "map webgl context lost/restored" messages (src/ui/viewer-map-registry.ts).
             /^Could not compile (fragment|vertex) shader: (null)?$/,
             /^Program failed to link: (null)?$/,
         ],

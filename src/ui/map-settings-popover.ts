@@ -25,7 +25,7 @@ import { getMapMarkerAppearance, setMapMarkerAppearance } from "./map-marker-pre
 import { getMapProvider, subscribeMapProvider } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { initMapViewControls } from "./map-view-controls.js";
-import { reapplyMapLabelPrefs } from "./map.js";
+import { reapplyMapLabelPrefs } from "./viewer-map-registry.js";
 
 // Segment buttons carry their preset in data-value; a click persists it,
 // restyles the live maps, and re-marks the pressed button. Selection keeps

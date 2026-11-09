@@ -34,14 +34,8 @@ import { isValidGpsFix } from "../parser.js";
 import type { GpsRecord } from "../parsers/types.js";
 import type { MapStyleId } from "./theme.js";
 import { buildMercatorCumulativeDistances, buildSpeedGradient } from "./speed-gradient.js";
-import {
-    addBuildings3dLayer,
-    EMPTY_MAP_STYLE,
-    loadMaplibre,
-    loadMapStyle,
-    type MapLoadSource,
-    removeBuildings3dLayer,
-} from "./map.js";
+import { addBuildings3dLayer, removeBuildings3dLayer } from "./map.js";
+import { EMPTY_MAP_STYLE, loadMaplibre, loadMapStyle, type MapLoadSource } from "./viewer-map-registry.js";
 import { applyStreetLabelDensity, scaleStyleTextSizes, type StreetLabelDensity } from "./map-label-scale.js";
 import { DEFAULT_MAP_MARKER_APPEARANCE, type MapMarkerAppearance, mapMarkerSizeScale } from "./map-marker-pref.js";
 import { drawMapMarker } from "./map-marker-renderer.js";

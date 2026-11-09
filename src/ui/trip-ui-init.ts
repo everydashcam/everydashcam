@@ -16,15 +16,8 @@
 // renders against a half-initialized viewer.
 
 import { applyChartLayout, initChart, loadChart, setHoverCursorRelSec } from "./chart.js";
-import {
-    applyMapLayout,
-    ensureMap,
-    ensureMiniMap,
-    initMap,
-    loadMaplibre,
-    startMarkerLoop,
-    syncMapFollowButton,
-} from "./map.js";
+import { applyMapLayout, ensureMap, ensureMiniMap, initMap, startMarkerLoop, syncMapFollowButton } from "./map.js";
+import { loadMaplibre } from "./viewer-map-registry.js";
 import {
     getTripCurrentTime,
     initPlayer,

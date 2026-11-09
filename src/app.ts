@@ -19,6 +19,7 @@ import { initMobileViewNav } from "./ui/mobile-view-nav.js";
 //   ui/ingest.ts       - discovery/sidecars plus progressive recording ingest
 //   ui/file-sources.ts - <input webkitdirectory> + DnD
 //   ui/map.ts          - map, mini-map, markers, popup, expand/collapse, marker rAF
+//   ui/viewer-map-registry.ts - maplibre loading, shared map style, recovery
 //   ui/chart.ts        - chart.js strip, cursor plugin, no-gps tooltip
 //   ui/export-panel.ts - inline range-export panel (options/progress/done/error)
 //   ui/player.ts       - playFrame, multichannel grid, toolbar, keyboard, scrubber
@@ -118,7 +119,8 @@ import { prewarmIndexer } from "./indexer.js";
 import { loadChart } from "./ui/chart.js";
 import { prewarmGpsExtract } from "./ui/gps-extract-shim.js";
 import { prewarmIngest } from "./ui/ingest-shim.js";
-import { isMapAvailable, loadMaplibre, reloadMapStyleForCurrentTheme } from "./ui/map.js";
+import { isMapAvailable } from "./ui/map.js";
+import { loadMaplibre, reloadMapStyleForCurrentTheme } from "./ui/viewer-map-registry.js";
 import { forceMapProvider, type MapProvider } from "./ui/map-provider.js";
 import { getSharedMapTileCacheStats, type SharedTileCacheStats } from "./ui/map-tile-cache.js";
 import { prewarmPreview } from "./ui/trip-preview.js";

@@ -9,7 +9,7 @@ import { projectTrackToViewport, unwrapTrackCoordinates } from "../coordinates.j
 import { createLogger } from "../log.js";
 import { isValidGpsFix } from "../parser.js";
 import type { GpsRecord } from "../parsers/types.js";
-import { applyViewerMapStyle, loadMaplibre, loadMapStyle } from "./map.js";
+import { applyViewerMapStyle, loadMaplibre, loadMapStyle } from "./viewer-map-registry.js";
 import { MapAttributionControl } from "./map-attribution-control.js";
 import { getMapProvider, mapProviderErrorKey } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";

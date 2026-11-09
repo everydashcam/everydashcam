@@ -42,7 +42,8 @@ import {
 } from "./annotations-sidecar.js";
 import { commitRecordingTripsWhilePreservingIngest } from "./ingest-regroup.js";
 import { formatBytes } from "./format.js";
-import { reapplyMapLabelPrefs, refreshMap } from "./map.js";
+import { refreshMap } from "./map.js";
+import { reapplyMapLabelPrefs } from "./viewer-map-registry.js";
 import {
     getMapLabelScale,
     getStreetLabelDensity,
