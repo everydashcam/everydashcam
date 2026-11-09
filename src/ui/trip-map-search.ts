@@ -144,6 +144,18 @@ export function tripMapPassesFor(tripIndex: number): readonly TripPass[] {
     return (entry && passesById.get(entry.id)) ?? [];
 }
 
+/** How many trips in the scope cross the map's frame while the frame filters the list; null otherwise. */
+export function tripMapAreaCount(): number | null {
+    if (!areaIds) return null;
+    const entries = tripMapEntries();
+    let count = 0;
+    for (const index of tripMapScope()) {
+        const entry = entries[index];
+        if (entry?.track && areaIds.has(entry.id)) count++;
+    }
+    return count;
+}
+
 /** Track ids passing through the chosen place. */
 export function tripMapPlaceIds(): ReadonlySet<number> {
     return new Set(passesById.keys());

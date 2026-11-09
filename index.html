@@ -793,6 +793,16 @@
                 </div>
             </div>
             <div id="trip-filters" class="trip-filters" hidden>
+                <!-- Phones only: the list or the map of all trips in this panel
+                     (src/ui/trip-map.ts). The search and filters serve both. -->
+                <div id="trip-view-tabs" class="trip-view-tabs" role="tablist" hidden
+                     data-i18n-attr="aria-label:tripMap.tabs" aria-label="Trips view">
+                    <button id="trip-view-list" class="trip-view-tabs__tab" type="button" role="tab"
+                            aria-selected="true" aria-controls="trip-list" data-i18n="tripMap.tab.list">List</button>
+                    <button id="trip-view-map" class="trip-view-tabs__tab" type="button" role="tab"
+                            aria-selected="false" aria-controls="trip-map-panel" tabindex="-1"
+                            data-i18n="tripMap.tab.map">Map</button>
+                </div>
                 <!-- Search stays in view; the filter chips live in a tray behind the
                      toggle, which counts the active ones while the tray is closed. -->
                 <div class="trip-search-bar">
@@ -888,6 +898,16 @@
                 </p>
             </section>
             <ul id="trip-list" class="trip-list"></ul>
+            <!-- Phones: the map tab. The map surface (#trip-map-state) moves in
+                 here from the viewer; on a chosen place the sheet holds the same
+                 #trip-list and the place bar. -->
+            <section id="trip-map-panel" class="trip-map-panel" hidden role="tabpanel" aria-labelledby="trip-view-map">
+                <div id="trip-map-sheet" class="trip-map-sheet">
+                    <div id="trip-map-sheet-head" class="trip-map-sheet__head"></div>
+                    <p id="trip-map-sheet-idle" class="trip-map-sheet__idle"></p>
+                    <div id="trip-map-sheet-list" class="trip-map-sheet__list" hidden></div>
+                </div>
+            </section>
         </aside>
 
         <div id="sidebar-resize" class="sidebar-resize" role="separator" aria-orientation="vertical"

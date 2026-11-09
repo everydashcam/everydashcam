@@ -10,6 +10,7 @@
 // (browse -> watch) collapses that full-screen list into the topbar trips icon
 // via a FLIP, teaching where the list now lives. See syncBrowseState.
 
+import { createSubscribers } from "../subscribers.js";
 import { dom } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { flipCollapse } from "./flip.js";
@@ -19,6 +20,24 @@ import { state } from "./state.js";
 
 const COLLAPSE_MS = 380;
 const COLLAPSE_EASE = "cubic-bezier(0.22, 1, 0.36, 1)"; // ease-out-quint
+
+const placementListeners = createSubscribers<[]>("trip-list-placement");
+
+/**
+ * The trip list panel is on screen: always on desktop; on phones while it is
+ * the full-screen browse list or the open drawer.
+ */
+export function isTripListOnScreen(): boolean {
+    if (!isMobileViewport()) return true;
+    const browsing =
+        document.body.classList.contains("browsing") && !document.body.classList.contains("preparing-trip");
+    return browsing || dom.sidebar.dataset.drawerOpen === "true";
+}
+
+/** Fires whenever the drawer's state is reconciled; isTripListOnScreen may have changed. */
+export function subscribeTripListPlacement(listener: () => void): () => void {
+    return placementListeners.subscribe(listener);
+}
 
 // Once-per-session guard: the teaching collapse runs only on the first
 // browse -> watch transition. Later trip switches happen from the open drawer,
@@ -91,6 +110,7 @@ export function syncDrawerA11y(): void {
     const open = dom.sidebar.dataset.drawerOpen === "true";
     setInert(dom.sidebar, mobile ? !browsing && !open : state.exportModeOpen);
     setInert(dom.viewer, open && (mobile || isDesktopListOverlay()));
+    placementListeners.emit();
 }
 
 /**

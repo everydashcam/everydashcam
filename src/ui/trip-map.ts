@@ -4,8 +4,10 @@
 // whole library. A click on a road chooses a place; the list then keeps the
 // trips through it (trip-map-search.ts) and the map stresses their corridors.
 // Over an open trip the button by the search lays the same map over the
-// player, which stays mounted, paused and inert until the map closes. The
-// user's trip markers sit on the routes and open their trip at their moment.
+// player, which stays mounted, paused and inert until the map closes. On
+// phones the map is a tab of the trip list panel instead, with a sheet that
+// holds the list once a place is chosen. The user's trip markers sit on the
+// routes and open their trip at their moment.
 // Track geometry comes from trip-map-library.ts; style, provider and recovery
 // are shared with the other viewer maps through the registry. The map
 // instance lives only while the surface is shown.
@@ -44,6 +46,7 @@ import { getMapProvider } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { TRACK_HALO_WIDTH_PX, TRACK_OUTLINE_WIDTH_PX } from "./map-track.js";
 import { isMobileLayout, MOBILE_LAYOUT_QUERY, prefersReducedMotion } from "./media-queries.js";
+import { isTripListOnScreen, subscribeTripListPlacement } from "./mobile-drawer.js";
 import { isAnyModalOpen } from "./modal-helper.js";
 import { pausePlayback } from "./playback-pause.js";
 import { state } from "./state.js";
@@ -59,6 +62,7 @@ import {
     tripMapPassesFor,
     tripMapPlace,
     tripMapPlaceIds,
+    tripMapAreaCount,
     tripMapScope,
     tripMapTracksInScope,
 } from "./trip-map-search.js";
@@ -107,8 +111,10 @@ const HIGHLIGHT_POINTS_LAYER_ID = "trip-map-highlight-points";
 // arriving or the zoom keeps changing; each run costs up to a second of
 // worker time on a large library.
 const BUNDLE_MIN_INTERVAL_MS = 500;
-// The start view and "show all" leave this much room around the library.
+// The start view and "show all" leave this much room around the library; a
+// phone has little screen to spare.
 const FRAME_PADDING_PX = 60;
+const PHONE_FRAME_PADDING_PX = 24;
 // A library of one short trip must not open at building level.
 const FRAME_MAX_ZOOM = 15;
 const DOT_ZOOM_PADDING_PX = 50;
@@ -186,14 +192,18 @@ let isOverTrip = false;
 let markerCardOpener: HTMLElement | null = null;
 /** Viewer layers this map made inert while it covers the open trip. */
 let coveredLayers: HTMLElement[] = [];
+/** On phones the trip list panel shows the list or the map; not remembered between sessions. */
+let phoneTab: "list" | "map" = "list";
 
-/** The surface can exist here: a WebGL context works and the layout is not the phone one. */
+/** The viewer surface can exist here: a WebGL context works and the layout is not the phone one. */
 export function isTripMapAvailable(): boolean {
     return !isUnavailable && !isMobileLayout();
 }
 
 function shouldShowTripMap(): boolean {
-    if (!isTripMapAvailable() || state.trips.length === 0) return false;
+    if (isUnavailable || state.trips.length === 0) return false;
+    // A map in a closed drawer would only hold a graphics context.
+    if (isMobileLayout()) return phoneTab === "map" && isTripListOnScreen();
     if (state.active === null) return getTripMapPreferences().isShownWithoutTrip;
     return isOverTrip;
 }
@@ -204,14 +214,18 @@ function shouldShowTripMap(): boolean {
  * preference change.
  */
 export function syncTripMap(): void {
+    const isPhone = isMobileLayout();
     // The map over a trip belongs to that trip outside export: without an
     // open trip, in export or on the phone layout it is gone for good.
     if (state.active === null || state.exportModeOpen || !isTripMapAvailable()) isOverTrip = false;
+    placeSurface(isPhone);
     const isShown = shouldShowTripMap();
-    const isCoveringTrip = isShown && state.active !== null;
-    dom.viewer.classList.toggle("has-trip-map", isShown);
+    const isInViewer = isShown && !isPhone;
+    const isCoveringTrip = isInViewer && state.active !== null;
+    dom.viewer.classList.toggle("has-trip-map", isInViewer);
     dom.viewer.classList.toggle("has-trip-map-over-trip", isCoveringTrip);
     coverTrip(isCoveringTrip);
+    syncPhoneView(isPhone);
     dom.tripMapToggle.hidden = !isTripMapAvailable();
     // Export owns the open trip's viewer.
     dom.tripMapToggle.disabled = state.active !== null && state.exportModeOpen;
@@ -251,6 +265,65 @@ function coverTrip(isCovering: boolean): void {
     pausePlayback();
 }
 
+/**
+ * The map surface lives in the viewer on desktop and in the trip list panel
+ * on phones. A MapLibre instance does not survive its container moving, so a
+ * layout change recreates it.
+ */
+function placeSurface(isPhone: boolean): void {
+    const host = isPhone ? dom.tripMapPanel : dom.viewer;
+    if (dom.tripMapState.parentElement === host) return;
+    destroyView();
+    if (isPhone) dom.tripMapPanel.prepend(dom.tripMapState);
+    else dom.tripPreparation.before(dom.tripMapState);
+}
+
+/**
+ * Phone tabs and the sheet. On the map tab the list and the place bar move
+ * into the sheet: the same elements, so their delegated handlers and the
+ * list's renders keep working without a copy.
+ */
+function syncPhoneView(isPhone: boolean): void {
+    const hasTabs = isPhone && !isUnavailable;
+    dom.tripViewTabs.hidden = !hasTabs;
+    const isMapTab = hasTabs && phoneTab === "map";
+    for (const [tab, isSelected] of [
+        [dom.tripViewList, !isMapTab],
+        [dom.tripViewMap, isMapTab],
+    ] as const) {
+        tab.setAttribute("aria-selected", String(isSelected));
+        tab.tabIndex = isSelected ? 0 : -1;
+    }
+    dom.sidebar.classList.toggle("is-trip-map-view", isMapTab);
+    dom.tripMapPanel.hidden = !isMapTab;
+    if (isMapTab) {
+        if (dom.list.parentElement !== dom.tripMapSheetList) dom.tripMapSheetList.append(dom.list);
+        if (dom.tripPlaceBar.parentElement !== dom.tripMapSheetHead) dom.tripMapSheetHead.append(dom.tripPlaceBar);
+    } else {
+        if (dom.list.parentElement !== dom.sidebar) dom.tripAnalysisStatus.after(dom.list);
+        if (dom.tripPlaceBar.parentElement !== dom.tripFilters) dom.tripFilterTray.before(dom.tripPlaceBar);
+    }
+    syncSheet();
+}
+
+/** Without a place the sheet invites a tap; with one it holds the list of trips through it. */
+function syncSheet(): void {
+    const place = tripMapPlace();
+    dom.tripMapSheet.classList.toggle("has-place", place !== null);
+    dom.tripMapSheetIdle.hidden = place !== null;
+    dom.tripMapSheetList.hidden = place === null;
+    if (place) return;
+    const inArea = tripMapAreaCount();
+    const hint = t("tripMap.sheet.hint");
+    dom.tripMapSheetIdle.textContent = inArea === null ? hint : `${t("tripMap.sheet.inArea", { n: inArea })} ${hint}`;
+}
+
+function setPhoneTab(tab: "list" | "map"): void {
+    if (phoneTab === tab) return;
+    phoneTab = tab;
+    syncTripMap();
+}
+
 /** Takes the map off the open trip, if it covers one. Opening another trip starts here. */
 export function closeTripMapOverTrip(): void {
     if (!isOverTrip) return;
@@ -281,7 +354,7 @@ export function showAllTripsOnMap(): void {
     view.isFollowing = true;
     syncTripMapStatus();
     scheduleAreaUpdate(view);
-    if (fitWorldBounds(view, libraryBounds(readyTracks()), FRAME_PADDING_PX, FOLLOW_FIT_DURATION_MS))
+    if (fitWorldBounds(view, libraryBounds(readyTracks()), framePadding(), FOLLOW_FIT_DURATION_MS))
         view.hasFramed = true;
 }
 
@@ -465,11 +538,28 @@ function lngLatBounds(bounds: WorldBounds): maplibregl.LngLatBoundsLike {
     ];
 }
 
+/** The part of the map the phone sheet covers at the bottom; 0 on desktop. */
+function sheetOverlapPx(): number {
+    return isMobileLayout() ? dom.tripMapSheet.offsetHeight : 0;
+}
+
+/** Room around the framed library: the sheet's height comes on top at the bottom. */
+function framePadding(desktopPx = FRAME_PADDING_PX): Required<maplibregl.PaddingOptions> {
+    const base = isMobileLayout() ? PHONE_FRAME_PADDING_PX : desktopPx;
+    return { top: base, right: base, bottom: base + sheetOverlapPx(), left: base };
+}
+
 /** Fits `bounds` when the container is large enough to hold the padding. */
-function fitWorldBounds(current: TripMapView, bounds: WorldBounds, padding: number, durationMs: number): boolean {
+function fitWorldBounds(
+    current: TripMapView,
+    bounds: WorldBounds,
+    padding: Required<maplibregl.PaddingOptions>,
+    durationMs: number,
+): boolean {
     if (isEmptyBounds(bounds)) return false;
     const container = current.map.getContainer();
-    if (container.clientWidth <= padding * 2 || container.clientHeight <= padding * 2) return false;
+    if (container.clientWidth <= padding.left + padding.right || container.clientHeight <= padding.top + padding.bottom)
+        return false;
     current.map.fitBounds(lngLatBounds(bounds), {
         padding,
         maxZoom: FRAME_MAX_ZOOM,
@@ -505,11 +595,11 @@ function followLibrary(current: TripMapView): void {
         hasFramed: current.hasFramed,
         tracksOnScreen: screenBox(current, bounds),
         viewportWidth: container.clientWidth,
-        viewportHeight: container.clientHeight,
+        viewportHeight: container.clientHeight - sheetOverlapPx(),
     });
     if (!isNeeded) return;
     const isStart = !current.hasFramed;
-    const padding = isStart ? FRAME_PADDING_PX : FOLLOW_FIT_PADDING_PX;
+    const padding = framePadding(isStart ? FRAME_PADDING_PX : FOLLOW_FIT_PADDING_PX);
     if (fitWorldBounds(current, bounds, padding, isStart ? 0 : FOLLOW_FIT_DURATION_MS)) current.hasFramed = true;
 }
 
@@ -852,6 +942,8 @@ function openMarkerCard(current: TripMapView, markerId: string, lngLat: [number,
     const popup = new current.maplibre.Popup({
         className: "ez-popup trip-map-marker-popup",
         closeButton: false,
+        // Any camera move puts the card away, the way the prototype does.
+        closeOnMove: true,
         maxWidth: "none",
         offset: 14,
     })
@@ -887,7 +979,7 @@ function zoomToDot(current: TripMapView, dot: FarDot): void {
             maxX: bounds.maxX + marginX,
             maxY: bounds.maxY + marginY,
         },
-        DOT_ZOOM_PADDING_PX,
+        framePadding(DOT_ZOOM_PADDING_PX),
         0,
     );
 }
@@ -1113,6 +1205,7 @@ function onLibraryChange(): void {
 
 function onSearchChange(): void {
     syncPlaceControls();
+    syncSheet();
     const current = view;
     if (!current) return;
     renderPlace(current);
@@ -1147,6 +1240,21 @@ export function initTripMap(cb: TripMapCallbacks): void {
     window.matchMedia?.(MOBILE_LAYOUT_QUERY).addEventListener("change", () => {
         syncTripMap();
         callbacks.onSurfaceChange();
+    });
+    // On phones the map lives in the drawer: it exists only while the drawer
+    // or the browse list is on screen.
+    subscribeTripListPlacement(syncTripMap);
+    dom.tripViewList.addEventListener("click", () => setPhoneTab("list"));
+    dom.tripViewMap.addEventListener("click", () => setPhoneTab("map"));
+    // Arrow keys move between the two tabs (WAI-ARIA tabs pattern).
+    dom.tripViewTabs.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End")
+            return;
+        event.preventDefault();
+        const next = phoneTab === "list" ? "map" : "list";
+        const target = event.key === "Home" ? "list" : event.key === "End" ? "map" : next;
+        setPhoneTab(target);
+        (target === "map" ? dom.tripViewMap : dom.tripViewList).focus({ preventScroll: true });
     });
     subscribeTripMapLibrary(onLibraryChange);
     // The list's query and chips changed what the map draws.

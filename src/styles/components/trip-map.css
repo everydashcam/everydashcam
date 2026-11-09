@@ -368,3 +368,144 @@
 .trip-filter-untracked[hidden] {
     display: none;
 }
+
+/* ---- Phones: the map as a tab of the trip list panel (syncPhoneView) ---- */
+.trip-view-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: var(--dc-space-2);
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-md);
+    background: var(--bg);
+}
+.trip-view-tabs[hidden] {
+    display: none;
+}
+.trip-view-tabs__tab {
+    flex: 1;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--dc-radius-sm);
+    background: transparent;
+    color: var(--fg-dim);
+    font-family: var(--dc-font-body);
+    font-size: var(--dc-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+.trip-view-tabs__tab[aria-selected="true"] {
+    background: var(--accent);
+    color: var(--accent-contrast);
+}
+.trip-view-tabs__tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* On the map tab the panel stops scrolling as a whole: the head stays, the
+   map takes the rest, and only the sheet's list scrolls. Folder management
+   and the reading status belong to the list tab. */
+.sidebar.is-trip-map-view {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.sidebar.is-trip-map-view > .sidebar-sources,
+.sidebar.is-trip-map-view > .trip-analysis-status {
+    display: none;
+}
+.trip-map-panel {
+    position: relative;
+    flex: 1;
+    min-height: 240px;
+    /* Edge to edge: cancel the panel's own padding. */
+    margin: 0 calc(-1 * var(--dc-space-3)) calc(-1 * max(var(--dc-space-3), env(safe-area-inset-bottom)))
+        calc(-1 * max(var(--dc-space-3), env(safe-area-inset-left)));
+    overflow: hidden;
+}
+.trip-map-panel[hidden] {
+    display: none;
+}
+.trip-map-panel > .trip-map-state {
+    display: block;
+    position: absolute;
+    inset: 0;
+}
+/* No close button and no bottom hint on the phone: the tab closes the map and
+   the sheet carries the hint. The end corner stacks into a column. */
+.trip-map-panel .trip-map-hint,
+.trip-map-panel #trip-map-close {
+    display: none;
+}
+.trip-map-panel .trip-map-corner--end {
+    flex-direction: column;
+    align-items: flex-end;
+}
+.trip-map-panel .trip-map-style-error {
+    top: 52px;
+    bottom: auto;
+}
+
+.trip-map-sheet {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    max-height: 52%;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--border-strong);
+    border-radius: 16px 16px 0 0;
+    background: var(--bg-elev);
+    box-shadow: var(--dc-shadow-popup);
+}
+/* A chosen place lifts the sheet to half the map with its list. No dragging. */
+.trip-map-sheet.has-place {
+    height: 52%;
+}
+.trip-map-sheet::before {
+    content: "";
+    flex: none;
+    width: 36px;
+    height: 4px;
+    margin: 7px auto 2px;
+    border-radius: 2px;
+    background: var(--border-strong);
+}
+.trip-map-sheet__head {
+    flex: none;
+    padding: 4px var(--dc-space-3) 0;
+}
+.trip-map-sheet__head:empty {
+    display: none;
+}
+.trip-map-sheet__head > .trip-place-bar {
+    margin: 0 0 var(--dc-space-2);
+}
+.trip-map-sheet__idle {
+    margin: 0;
+    padding: 4px 14px 14px;
+    color: var(--fg-dim);
+    font-size: var(--dc-text-sm);
+}
+.trip-map-sheet__list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 var(--dc-space-3) var(--dc-space-3);
+}
+.trip-map-sheet__idle[hidden],
+.trip-map-sheet__list[hidden] {
+    display: none;
+}
+/* The sheet's short scroll box needs no sticky date headers. Inside the fixed
+   panel Chromium composited them as an empty black band over the map, well
+   above the sheet. */
+.trip-map-sheet__list .trip-group__header {
+    position: static;
+}
