@@ -123,6 +123,10 @@ const BUNDLE_MIN_INTERVAL_MS = 500;
 // phone has little screen to spare.
 const FRAME_PADDING_PX = 60;
 const PHONE_FRAME_PADDING_PX = 24;
+// Following the arriving tracks on a phone. Like FOLLOW_FIT_PADDING_PX on
+// desktop it stays above the "still fits" margin of follow.ts (24 px): a fit
+// that lands on that margin moves the camera again for every new track.
+const PHONE_FOLLOW_FIT_PADDING_PX = 40;
 // A library of one short trip must not open at building level.
 const FRAME_MAX_ZOOM = 15;
 const DOT_ZOOM_PADDING_PX = 50;
@@ -513,7 +517,12 @@ async function createView(): Promise<void> {
         else if (zoomStepForZoom(zoom) !== current.dotStep) renderDots(current);
     });
     map.on("moveend", () => scheduleAreaUpdate(current));
-    map.on("resize", () => scheduleAreaUpdate(current));
+    map.on("resize", () => {
+        // A map created while the trip preparation hid it had no size to
+        // frame the library in; it frames it once it shows.
+        if (!current.hasFramed) followLibrary(current);
+        scheduleAreaUpdate(current);
+    });
     map.on("mousemove", (event) => {
         // Over a dot, a marker or the radius handle the pointer means that control.
         const isOverRoads = event.originalEvent.target === map.getCanvas();
@@ -610,8 +619,11 @@ function sheetOverlapPx(): number {
 }
 
 /** Room around the framed library: the sheet's height comes on top at the bottom. */
-function framePadding(desktopPx = FRAME_PADDING_PX): Required<maplibregl.PaddingOptions> {
-    const base = isMobileLayout() ? PHONE_FRAME_PADDING_PX : desktopPx;
+function framePadding(
+    desktopPx = FRAME_PADDING_PX,
+    phonePx = PHONE_FRAME_PADDING_PX,
+): Required<maplibregl.PaddingOptions> {
+    const base = isMobileLayout() ? phonePx : desktopPx;
     return { top: base, right: base, bottom: base + sheetOverlapPx(), left: base };
 }
 
@@ -666,7 +678,7 @@ function followLibrary(current: TripMapView): void {
     });
     if (!isNeeded) return;
     const isStart = !current.hasFramed;
-    const padding = framePadding(isStart ? FRAME_PADDING_PX : FOLLOW_FIT_PADDING_PX);
+    const padding = isStart ? framePadding() : framePadding(FOLLOW_FIT_PADDING_PX, PHONE_FOLLOW_FIT_PADDING_PX);
     if (fitWorldBounds(current, bounds, padding, isStart ? 0 : FOLLOW_FIT_DURATION_MS)) current.hasFramed = true;
 }
 
