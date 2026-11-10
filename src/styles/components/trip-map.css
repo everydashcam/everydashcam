@@ -539,22 +539,45 @@
     background: var(--bg-elev);
     box-shadow: var(--dc-shadow-popup);
 }
-/* A chosen place lifts the sheet to half the map with its list. No dragging. */
+/* With a chosen place the sheet holds its list at one of three heights that
+   trip-map-sheet.ts sets and the grip and the place bar drag. */
 .trip-map-sheet.has-place {
-    height: 52%;
+    max-height: none;
 }
-.trip-map-sheet::before {
-    content: "";
+.trip-map-sheet__grip {
     flex: none;
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 6px;
+}
+.trip-map-sheet__grip::before {
+    content: "";
     width: 36px;
     height: 4px;
-    margin: 7px auto 2px;
     border-radius: 2px;
     background: var(--border-strong);
 }
+/* The hint alone has nowhere to move: no grip that promises a drag. */
+.trip-map-sheet:not(.has-place) > .trip-map-sheet__grip::before {
+    visibility: hidden;
+}
 .trip-map-sheet__head {
     flex: none;
-    padding: 4px var(--dc-space-3) 0;
+    padding: 0 var(--dc-space-3);
+}
+.trip-map-sheet.has-place > .trip-map-sheet__grip,
+.trip-map-sheet.has-place > .trip-map-sheet__head {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.trip-map-sheet.is-dragging > .trip-map-sheet__grip,
+.trip-map-sheet.is-dragging > .trip-map-sheet__head {
+    cursor: grabbing;
+}
+.trip-map-sheet.has-place > .trip-map-sheet__head button {
+    cursor: pointer;
 }
 .trip-map-sheet__head:empty {
     display: none;
@@ -574,6 +597,11 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 0 var(--dc-space-3) var(--dc-space-3);
+}
+/* Collapsed to its grip and place bar, the list keeps no padding that would
+   show a strip of trips above the bottom inset. */
+.trip-map-sheet[data-snap="collapsed"] .trip-map-sheet__list {
+    padding-bottom: 0;
 }
 .trip-map-sheet__idle[hidden],
 .trip-map-sheet__list[hidden] {

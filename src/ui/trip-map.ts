@@ -46,6 +46,7 @@ import { getMapProvider } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { TRACK_HALO_WIDTH_PX, TRACK_OUTLINE_WIDTH_PX } from "./map-track.js";
 import { isMobileLayout, MOBILE_LAYOUT_QUERY, prefersReducedMotion } from "./media-queries.js";
+import { initTripMapSheet, isTripMapSheetMoving, syncTripMapSheet } from "./trip-map-sheet.js";
 import { isTripListOnScreen, subscribeTripListPlacement } from "./mobile-drawer.js";
 import { isAnyModalOpen } from "./modal-helper.js";
 import { pausePlayback } from "./playback-pause.js";
@@ -362,6 +363,7 @@ function syncSheet(): void {
     dom.tripMapSheet.classList.toggle("has-place", place !== null);
     dom.tripMapSheetIdle.hidden = place !== null;
     dom.tripMapSheetList.hidden = place === null;
+    syncTripMapSheet(place !== null);
     if (place) return;
     const inArea = tripMapAreaCount();
     const hint = t("tripMap.sheet.hint");
@@ -1550,13 +1552,17 @@ export function initTripMap(cb: TripMapCallbacks): void {
         (target === "map" ? dom.tripViewMap : dom.tripViewList).focus({ preventScroll: true });
     });
     // The phone sheet covers the bottom of the map: the credits and the scale
-    // ride above it, and routes under it leave the area filter's frame.
-    new ResizeObserver(() => {
+    // ride above it, and routes under it leave the area filter's frame. While
+    // a finger drags the sheet only the credits follow; the place and the
+    // frame wait for it to rest instead of chasing every step.
+    const onSheetResize = (): void => {
         dom.tripMapPanel.style.setProperty("--trip-map-sheet-overlap", `${dom.tripMapSheet.offsetHeight}px`);
-        if (!view) return;
+        if (!view || isTripMapSheetMoving()) return;
         keepPlaceAboveSheet(view);
         scheduleAreaUpdate(view);
-    }).observe(dom.tripMapSheet);
+    };
+    new ResizeObserver(onSheetResize).observe(dom.tripMapSheet);
+    initTripMapSheet(onSheetResize);
     subscribeTripMapLibrary(onLibraryChange);
     // The list's query and chips changed what the map draws.
     subscribeTripMapScope(onLibraryChange);

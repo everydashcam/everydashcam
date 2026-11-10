@@ -213,4 +213,55 @@ test.describe("on a phone", () => {
         await page.locator("#trip-view-list").tap();
         await expect.poll(() => page.evaluate(() => window.__everydashcam.state.tripMap)).toBeNull();
     });
+
+    test("the sheet of a place drags between its heights and its grip steps up on a tap", {
+        tag: "@webkit-ui",
+    }, async ({ page }) => {
+        await openLibrary(page, writeTripLibrary({ roads: [EAST_ROAD, NORTH_ROAD, EAST_ROAD] }));
+        await page.locator("#trip-view-map").tap();
+        await expectRoutesDrawn(page);
+        const sheet = page.locator("#trip-map-sheet");
+        const grip = page.locator(".trip-map-sheet__grip");
+        await expect(sheet, "a hint alone has nothing to drag").not.toHaveAttribute("data-snap");
+
+        await zoomTo(page, 1500, 0);
+        const road = await mapPoint(page, 1500, 0);
+        await page.touchscreen.tap(road.x, road.y);
+        await expect(sheet).toHaveAttribute("data-snap", "half");
+        const panelHeight = await page.locator("#trip-map-panel").evaluate((panel) => panel.clientHeight);
+        const halfHeight = (await sheet.boundingBox())!.height;
+        expect(halfHeight).toBeCloseTo(panelHeight * 0.52, -1);
+
+        // Both drags pass the end heights, so the release speed cannot change
+        // where the sheet rests.
+        const dragGrip = async (rise: number): Promise<void> => {
+            const box = (await grip.boundingBox())!;
+            const x = box.x + box.width / 2;
+            const y = box.y + box.height / 2;
+            await page.mouse.move(x, y);
+            await page.mouse.down();
+            await page.mouse.move(x, y - rise, { steps: 12 });
+            await page.mouse.up();
+        };
+        await dragGrip(panelHeight);
+        await expect(sheet).toHaveAttribute("data-snap", "expanded");
+        await expect.poll(async () => (await sheet.boundingBox())!.height).toBeGreaterThan(halfHeight + 40);
+        // The place moves into the strip of map the raised sheet leaves.
+        await expect
+            .poll(async () => (await sheet.boundingBox())!.y - (await mapPoint(page, 1500, 0)).y)
+            .toBeGreaterThan(10);
+
+        await dragGrip(-panelHeight);
+        await expect(sheet).toHaveAttribute("data-snap", "collapsed");
+        await expect.poll(async () => (await sheet.boundingBox())!.height).toBeLessThan(100);
+        await expect(page.locator("#trip-place-bar")).toBeInViewport();
+
+        await grip.tap();
+        await expect(sheet).toHaveAttribute("data-snap", "half");
+        await expect.poll(async () => (await sheet.boundingBox())!.height).toBeCloseTo(halfHeight, 0);
+
+        // The clear button inside the dragged place bar keeps its tap.
+        await page.locator("#trip-place-clear").tap();
+        await expect(sheet).not.toHaveAttribute("data-snap");
+    });
 });
