@@ -127,6 +127,9 @@ const PHONE_FRAME_PADDING_PX = 24;
 // desktop it stays above the "still fits" margin of follow.ts (24 px): a fit
 // that lands on that margin moves the camera again for every new track.
 const PHONE_FOLLOW_FIT_PADDING_PX = 40;
+// MapLibre's default clickTolerance: a release further than this from its
+// press ended a pan.
+const MAP_CLICK_TOLERANCE_PX = 3;
 // A library of one short trip must not open at building level.
 const FRAME_MAX_ZOOM = 15;
 const DOT_ZOOM_PADDING_PX = 50;
@@ -999,6 +1002,27 @@ function renderLines(current: TripMapView): void {
     map.getSource<GeoJSONSource>(MATCHED_LAYERS.source)?.setData(linesData(current.matchedBundle));
 }
 
+/**
+ * Calls `onPress` for a click on a dot or a marker that was not a pan. MapLibre
+ * starts dragging the map from a press anywhere in its canvas container, the
+ * element rides along under the pointer, and the release still clicks it; the
+ * map's own click drops such a release by its travel, and so does this.
+ */
+function onPressWithoutPan(element: HTMLElement, onPress: (event: MouseEvent) => void): void {
+    let pressedAt: { x: number; y: number } | null = null;
+    element.addEventListener("pointerdown", (event) => {
+        pressedAt = { x: event.clientX, y: event.clientY };
+    });
+    element.addEventListener("click", (event) => {
+        const start = pressedAt;
+        pressedAt = null;
+        // A keyboard click (detail 0) has no press and no travel.
+        const travel = start && event.detail !== 0 ? Math.hypot(event.clientX - start.x, event.clientY - start.y) : 0;
+        if (travel >= MAP_CLICK_TOLERANCE_PX) return;
+        onPress(event);
+    });
+}
+
 /** Groups the trips the drawn lines left out into dots at the camera's own zoom step. */
 function renderDots(current: TripMapView): void {
     const zoomStep = zoomStepForZoom(current.map.getZoom());
@@ -1014,7 +1038,7 @@ function renderDots(current: TripMapView): void {
         const label = t("tripMap.dot", { n: count });
         element.title = label;
         element.setAttribute("aria-label", label);
-        element.addEventListener("click", (event) => {
+        onPressWithoutPan(element, (event) => {
             event.stopPropagation();
             zoomToDot(current, dot);
         });
@@ -1082,7 +1106,7 @@ function renderUserMarkers(current: TripMapView): void {
                 element,
                 lngLat: next.lngLat,
             };
-            element.addEventListener("click", (event) => {
+            onPressWithoutPan(element, (event) => {
                 // The map's own click would close the card this opens.
                 event.stopPropagation();
                 // A touch: arriving tracks must not move the camera and close the card.
