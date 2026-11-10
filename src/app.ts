@@ -815,6 +815,10 @@ async function openTripAtMoment(
         const finalMomentUtc = momentAfterPreparation?.(trip) ?? momentUtc;
         openTripAtContentSec(resolved.tripIdx, wallToContentSec(trip.timeline, finalMomentUtc));
         notifyUnmatchedDirectoryGps(activeTrip(), openGpsSync);
+        // First-run onboarding as on any trip open. The trip stays paused at
+        // its moment afterwards: there is no playback to resume.
+        const tour = pickTripOpenTour(trip);
+        if (tour) runTripOpenTour(tour, () => {});
         // Seeking inside the already-active trip does not call playFrame.
         clearOpeningTrip();
     } catch (err) {
