@@ -200,6 +200,25 @@ describe("trip map reading", () => {
         expect(trackReadProgress()).toBeNull();
     });
 
+    it("offers no second read of a trip its read left pending, unlike a cancelled one", async () => {
+        const candidates = ["A.MP4", "B.MP4"].map(buildCandidate);
+        state.trips = candidates.map((candidate) => buildTrip(candidate));
+        for (const candidate of candidates) markUnread(candidate);
+        // A read error puts the file back as pending without marking it failed.
+        const results: ("failed" | "cancelled")[] = ["failed", "cancelled"];
+        startReadingTracks(async () => results.shift()!);
+        await settle();
+
+        expect(untrackedTrips(), "the failed trip has no GPS from here on").toEqual({ withoutGps: 1, unread: 1 });
+        const asked: number[] = [];
+        startReadingTracks(async (tripIndex) => {
+            asked.push(tripIndex);
+            return "ready";
+        });
+        await settle();
+        expect(asked, "only the cancelled trip is read again").toEqual([1]);
+    });
+
     it("stops on request and passes the stop to the read in flight", async () => {
         const candidates = ["A.MP4", "B.MP4"].map(buildCandidate);
         state.trips = candidates.map((candidate) => buildTrip(candidate));

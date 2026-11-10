@@ -37,12 +37,18 @@ interface ReadRun extends TrackReadProgress {
 
 let run: ReadRun | null = null;
 const listeners = createSubscribers<[]>("trip-map-read");
+/**
+ * Recordings a read from here finished with and left pending. Not every
+ * failure reaches `state.failedEmbeddedGps`: a read error or a crashed
+ * dispatch puts the file back as pending, for the trip's own retry.
+ */
+const triedKeys = new Set<string>();
 
 /** Whether the recording's GPS track still waits inside the video for a read from here. */
 function isUnread(key: string): boolean {
     // A failed read stays pending for a retry from the trip itself; reading
     // it again from here would only fail the same way.
-    return state.pendingHeavyEmbeddedGps.has(key) && !state.failedEmbeddedGps.has(key);
+    return state.pendingHeavyEmbeddedGps.has(key) && !state.failedEmbeddedGps.has(key) && !triedKeys.has(key);
 }
 
 /** Keys of the trip's recordings whose GPS track still waits inside the video. */
@@ -133,11 +139,15 @@ async function readQueue(current: ReadRun, queue: readonly string[][], readTrip:
             // Whatever the read's outcome, this trip's recordings are not
             // tried again in this run; every round drops at least one key,
             // so the walk ends even when a read leaves its files pending.
+            const tripKeys = unreadKeys(state.trips[tripIndex]!);
             for (const candidate of tripAllCandidates(state.trips[tripIndex]!))
                 remaining.delete(vendorFileKey(candidate));
             const result = await readTrip(tripIndex, current.controller.signal);
             if (result === "cancelled" || result === "busy") return;
-            // "failed" leaves the trip's files pending as failed; the rest still get read.
+            // A finished read that left files pending will not do better on
+            // the next "Read now": they count as without GPS from here on,
+            // and the rest still get read.
+            for (const key of tripKeys) if (state.pendingHeavyEmbeddedGps.has(key)) triedKeys.add(key);
         }
         current.done++;
         listeners.emit();
@@ -147,5 +157,6 @@ async function readQueue(current: ReadRun, queue: readonly string[][], readTrip:
 export function _resetForTests(): void {
     run?.controller.abort();
     run = null;
+    triedKeys.clear();
     listeners.clear();
 }
