@@ -19,9 +19,10 @@ import {
 } from "./state.js";
 
 interface ArrangementDeps {
-    /** Re-applies the composition to the grid; `animate` moves the tiles to
-     *  their new places instead of jumping. */
-    apply: (opts: { animate: boolean }) => void;
+    /** Re-applies the composition to the grid. Tiles jump to their new places
+     *  without a transition: switching cameras is used to compare views, and
+     *  any motion between them gets in the way of that. */
+    apply: () => void;
     /** Resets the digital zoom: a restaged grid would leave the zoom on a tile
      *  that changed size or camera. */
     resetZoom: () => void;
@@ -33,10 +34,11 @@ export function initCameraArrangement(opts: ArrangementDeps): void {
     deps = opts;
 }
 
-function commit(opts: { restage: boolean; persist: boolean }): void {
-    if (opts.restage) deps.resetZoom();
-    deps.apply({ animate: opts.restage });
-    if (opts.persist) persistCurrentArrangement();
+/** Restages the grid after an arrangement change and remembers it. */
+function commit(): void {
+    deps.resetZoom();
+    deps.apply();
+    persistCurrentArrangement();
     notifyExportStateChanged();
 }
 
@@ -48,7 +50,7 @@ export function makeMainCamera(channel: Channel): void {
     const main = mainChannel();
     if (channel === main && state.composition.mode === "main") return;
     updateComposition({ mode: "main", order: swapChannelsInOrder(state.composition.order, channel, main) });
-    commit({ restage: true, persist: true });
+    commit();
 }
 
 /** The camera after the current main one becomes the main camera (the hotkey
@@ -63,13 +65,13 @@ export function cycleMainCamera(): void {
         state.composition.hidden.includes(channel) ? channel : rotated[next++]!,
     );
     updateComposition({ mode: "main", order });
-    commit({ restage: true, persist: true });
+    commit();
 }
 
 export function setArrangementMode(mode: CameraArrangementMode): void {
     if (state.composition.mode === mode) return;
     updateComposition({ mode });
-    commit({ restage: true, persist: true });
+    commit();
 }
 
 export function toggleArrangementMode(): void {
@@ -83,7 +85,7 @@ export function setCameraHidden(channel: Channel, hidden: boolean): void {
     if (!c.order.includes(channel) || c.hidden.includes(channel) === hidden) return;
     if (hidden && visibleChannels().length <= 1) return;
     updateComposition({ hidden: hidden ? [...c.hidden, channel] : c.hidden.filter((ch) => ch !== channel) });
-    commit({ restage: true, persist: true });
+    commit();
 }
 
 /** Moves `channel` to the place of `target` (insert: the cameras between them
@@ -93,7 +95,7 @@ export function moveCamera(channel: Channel, target: Channel): void {
     const targetIndex = order.indexOf(target);
     if (targetIndex < 0 || channel === target) return;
     updateComposition({ order: moveChannelInOrder(order, channel, targetIndex) });
-    commit({ restage: true, persist: true });
+    commit();
 }
 
 /** Size of the smaller cameras; null returns to the automatic size. A live
@@ -101,7 +103,7 @@ export function moveCamera(channel: Channel, target: Channel): void {
 export function setThumbScale(scale: number | null, opts: { persist: boolean } = { persist: true }): void {
     if (state.composition.thumbScale !== scale) {
         updateComposition({ thumbScale: scale });
-        deps.apply({ animate: false });
+        deps.apply();
     }
     if (opts.persist) {
         persistCurrentArrangement();
@@ -112,7 +114,7 @@ export function setThumbScale(scale: number | null, opts: { persist: boolean } =
 export function setAllowOverlay(allow: boolean): void {
     if (state.composition.allowOverlay === allow) return;
     updateComposition({ allowOverlay: allow });
-    commit({ restage: true, persist: true });
+    commit();
 }
 
 /** Moves an overlay window; same live-drag contract as setThumbScale. */
@@ -122,7 +124,7 @@ export function setOverlayPosition(
     opts: { persist: boolean } = { persist: true },
 ): void {
     updateComposition({ overlayPositions: { ...state.composition.overlayPositions, [channel]: position } });
-    deps.apply({ animate: false });
+    deps.apply();
     if (opts.persist) {
         persistCurrentArrangement();
         notifyExportStateChanged();
@@ -134,6 +136,6 @@ export function setOverlayPosition(
 export function setAudioSource(source: AudioSource): void {
     if (state.composition.audio === source) return;
     updateComposition({ audio: source });
-    deps.apply({ animate: false });
+    deps.apply();
     notifyExportStateChanged();
 }

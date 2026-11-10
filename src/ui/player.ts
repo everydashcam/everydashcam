@@ -1556,12 +1556,7 @@ function isHeldTailChannel(ch: Channel): boolean {
  *
  * Does NOT touch <video>.src / backends - only syncFrameToGrid attaches media.
  */
-function applyTileLayoutRoles(
-    frame: TripFrame,
-    activeCh: Channel,
-    masterOffsetSec = activePlayer().currentTime,
-    opts: { animate?: boolean } = {},
-): void {
+function applyTileLayoutRoles(frame: TripFrame, activeCh: Channel, masterOffsetSec = activePlayer().currentTime): void {
     syncCameraFlips();
     const visible = visibleChannels();
     const availability = frameCameraAvailability(frame, visible, state.composition.mode);
@@ -1609,7 +1604,7 @@ function applyTileLayoutRoles(
         // Only a playable tile can be the active (master) one.
         tile.classList.toggle("active", inComposition && playable && ch === activeCh);
     }
-    applyCameraLayout(availability.order, opts);
+    applyCameraLayout(availability.order);
     syncCamerasMenu();
 }
 
@@ -1813,8 +1808,8 @@ function flashPlaybackToggle(forcePlaying?: boolean): void {
  * frame without the main channel, passing the main one would leave no tile
  * active.
  */
-function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel, opts: { animate?: boolean } = {}): void {
-    applyTileLayoutRoles(frame, activeCh, activePlayer().currentTime, opts);
+function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel): void {
+    applyTileLayoutRoles(frame, activeCh, activePlayer().currentTime);
     const picked = pickFrameChannel(frame, activeCh);
     if (picked && runtimePlaybackFailures.has(picked.candidate)) {
         showRuntimePlaybackFailure(picked.candidate, picked.channel);
@@ -1828,16 +1823,16 @@ function syncGridLayoutOnly(frame: TripFrame, activeCh: Channel, opts: { animate
  * Re-applies state.composition to the live DOM video grid - tile places and
  * looks, audio routing, the View menu cameras. Idempotent and cheap; called after
  * every arrangement change (camera-arrangement.ts) and export setting that
- * reshapes the preview. `animate` slides the tiles to their new places.
+ * reshapes the preview.
  *
  * Does NOT change <video>.src: an arrangement change moves tiles and may hand
  * the master clock to another already-playing camera, but every camera keeps
  * its file. Without an active frame this is a no-op.
  */
-export function applyComposition(opts: { animate?: boolean } = {}): void {
+export function applyComposition(): void {
     const af = activeFrame();
     if (af) {
-        syncGridLayoutOnly(af.frame, effectiveMasterChannel(), opts);
+        syncGridLayoutOnly(af.frame, effectiveMasterChannel());
         syncAudioRouting();
     }
     syncCamerasMenu();
@@ -2365,7 +2360,7 @@ export function initPlayer(): void {
 
     initPlayerLayout();
     initCameraArrangement({
-        apply: ({ animate }) => applyComposition({ animate }),
+        apply: applyComposition,
         resetZoom: resetVideoZoom,
     });
 

@@ -4,7 +4,7 @@
 
 import type { Page } from "@playwright/test";
 import { createMseFixture } from "../helpers/mse-fixtures.js";
-import { chooseArrangementMode, makeMainFromMenu, setCameraShown, settleCameraLayout } from "./_cameras.js";
+import { chooseArrangementMode, makeMainFromMenu, setCameraShown } from "./_cameras.js";
 import {
     DESKTOP,
     SAMPLE_70MAI,
@@ -80,7 +80,6 @@ async function exportedFirstFrameColors(page: Page, regions: Region[]): Promise<
 
 /** Each visible tile as a fraction of the output frame the editor shows. */
 async function previewTiles(page: Page): Promise<Record<string, Region>> {
-    await settleCameraLayout(page);
     return page.evaluate(() => {
         const grid = document.querySelector("#video-grid")!.getBoundingClientRect();
         const tiles: Record<string, { x: number; y: number; w: number; h: number }> = {};

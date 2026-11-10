@@ -25,7 +25,6 @@ import {
     makeMainFromMenu,
     openCamerasMenu,
     setOverlayAllowed,
-    settleCameraLayout,
     visibleCameraOrder,
 } from "./_cameras.js";
 
@@ -42,7 +41,6 @@ interface TileBox {
 
 /** Visible tiles relative to the grid's top-left corner. */
 async function tileBoxes(page: Page): Promise<TileBox[]> {
-    await settleCameraLayout(page);
     return page.locator("#video-grid > .video-tile:not([hidden])").evaluateAll((tiles: HTMLElement[]) => {
         const grid = tiles[0]!.parentElement!.getBoundingClientRect();
         return tiles.map((tile) => {
@@ -391,7 +389,6 @@ test.describe("on a touch phone", () => {
         await gotoApp(page);
         await loadTrip(page, SAMPLE_70MAI);
         await pausePlayback(page);
-        await settleCameraLayout(page);
         const tiles = page.locator("#video-grid > .video-tile:not([hidden])");
         const count = await tiles.count();
         expect(count).toBeGreaterThan(1);

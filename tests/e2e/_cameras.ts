@@ -19,15 +19,6 @@ export function cameraCheckbox(page: Page, channel: CameraChannel): Locator {
     );
 }
 
-/** Waits for the tiles to finish sliding into their new places: an arrangement
- *  change animates them, and a box read mid-slide is neither place. */
-export async function settleCameraLayout(page: Page): Promise<void> {
-    await page.evaluate(async () => {
-        const tiles = [...document.querySelectorAll<HTMLElement>("#video-grid > .video-tile")];
-        await Promise.all(tiles.flatMap((tile) => tile.getAnimations().map((animation) => animation.finished)));
-    });
-}
-
 /** Opens the View menu, whose cameras section is the cameras menu. The View
  *  button never folds into the overflow menu. */
 export async function openCamerasMenu(page: Page): Promise<void> {
@@ -43,7 +34,6 @@ export async function closeCamerasMenu(page: Page): Promise<void> {
     if (!(await panel.isVisible())) return;
     await page.keyboard.press("Escape");
     await expect(panel).toBeHidden();
-    await settleCameraLayout(page);
 }
 
 /** Flips one checkbox through a click. The menu re-renders on every change,

@@ -35,7 +35,6 @@ import { setOverlayPosition, setThumbScale } from "./camera-arrangement.js";
 import { cameraLayoutAspect } from "./camera-aspect.js";
 import { ALL_CHANNELS, channelTileFor, dom, forEachVideoSlot } from "./dom.js";
 import { resolveOutputDims } from "./export-flow.js";
-import { prefersReducedMotion } from "./media-queries.js";
 import { isCropDragging } from "./player-crop.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { state } from "./state.js";
@@ -49,7 +48,6 @@ interface PlacedLayout {
     scale: number;
 }
 
-const FLIP_DURATION_MS = 180;
 const DIVIDER_KEY_STEP = 0.05;
 /** Overlay windows snap to the main picture's edge margin within this many px. */
 const OVERLAY_SNAP_PX = 12;
@@ -126,15 +124,13 @@ function tileRect(tile: CameraTileLayout, scale: number): LayoutRect {
 
 /**
  * Lays out the tiles of `order` (visible cameras in layout order, placeholders
- * included) and clears the geometry of every other tile. `animate` slides the
- * tiles from their previous places (an arrangement change, not a resize).
+ * included) and clears the geometry of every other tile.
  */
-export function applyCameraLayout(order: readonly Channel[], opts: { animate?: boolean } = {}): void {
+export function applyCameraLayout(order: readonly Channel[]): void {
     placedOrder = [...order];
     // A crop drag reshapes the dragged tile's picture on every move; keep the
     // tiles still until the drag ends instead of reflowing under the pointer.
     if (isCropDragging() && placed) return;
-    const before = opts.animate && !prefersReducedMotion() ? tileBoxes() : null;
     placed = computePlacement(order);
     const grid = dom.videoGrid;
     grid.dataset.mode = state.composition.mode;
@@ -167,7 +163,6 @@ export function applyCameraLayout(order: readonly Channel[], opts: { animate?: b
         tile.classList.remove("tile-overlay");
     }
     syncDivider();
-    if (before) animateFromBoxes(before);
 }
 
 /**
@@ -223,39 +218,6 @@ function scheduleRelayout(): void {
         relayoutFrame = 0;
         relayoutCameras();
     });
-}
-
-/* ------------------------------ tile animation ----------------------------- */
-
-function tileBoxes(): Map<Channel, DOMRect> {
-    const boxes = new Map<Channel, DOMRect>();
-    for (const channel of placedOrder) {
-        const tile = channelTileFor(channel);
-        if (!tile.hidden && tile.style.width) boxes.set(channel, tile.getBoundingClientRect());
-    }
-    return boxes;
-}
-
-/** FLIP: each tile starts drawn at its old box and eases into the new one. */
-function animateFromBoxes(before: Map<Channel, DOMRect>): void {
-    for (const [channel, old] of before) {
-        const tile = channelTileFor(channel);
-        if (tile.hidden || typeof tile.animate !== "function") continue;
-        const now = tile.getBoundingClientRect();
-        if (now.width <= 0 || now.height <= 0) continue;
-        const dx = old.left - now.left;
-        const dy = old.top - now.top;
-        const sx = old.width / now.width;
-        const sy = old.height / now.height;
-        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
-        tile.animate(
-            [
-                { transformOrigin: "0 0", transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
-                { transformOrigin: "0 0", transform: "none" },
-            ],
-            { duration: FLIP_DURATION_MS, easing: "cubic-bezier(0.2, 0, 0, 1)" },
-        );
-    }
 }
 
 /* --------------------------------- divider --------------------------------- */
