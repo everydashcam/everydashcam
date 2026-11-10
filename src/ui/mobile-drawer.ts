@@ -243,6 +243,9 @@ export function initMobileDrawer(): void {
     document.addEventListener("keydown", (e) => {
         // A layer inside the drawer (the trip map's card) may have taken this Escape.
         if (e.key === "Escape" && !e.defaultPrevented && dom.sidebar.dataset.drawerOpen === "true") {
+            // One Escape closes one layer: the map laid over the trip under
+            // the desktop list drawer stays.
+            e.preventDefault();
             setDrawerOpen(false);
         }
     });
