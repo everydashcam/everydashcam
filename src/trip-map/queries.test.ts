@@ -135,6 +135,49 @@ describe("tripPassesThroughCircle", () => {
         ]);
         expect(tripPassesThroughCircle(track, place(200, 100, 20))).toEqual([]);
     });
+
+    it("matches a lone fix between gaps by its point", () => {
+        const fixes: LocalFix[] = [
+            ...driveThrough([
+                [0, 0],
+                [600, 0],
+            ]),
+            // Lost signal on both sides: the fix is a piece of its own.
+            { eastM: 3000, northM: 0, unixSeconds: START_SEC + 200 },
+            ...driveThrough(
+                [
+                    [6000, 0],
+                    [6600, 0],
+                ],
+                { startSec: START_SEC + 400 },
+            ),
+        ];
+        const track = trackFromFixes(fixes);
+        expect(
+            Array.from(track.breaks).filter((isBreak) => isBreak === 1),
+            "both gaps are cut",
+        ).toHaveLength(2);
+
+        expect(tripPassesThroughCircle(track, place(3010, 0, 20))).toEqual([
+            expect.objectContaining({ unixSeconds: START_SEC + 200 }),
+        ]);
+        expect(tripPassesThroughCircle(track, place(3100, 0, 20))).toEqual([]);
+    });
+
+    it("matches both fixes of a two-fix trip split by a gap", () => {
+        const track = trackFromFixes([
+            { eastM: 0, northM: 0, unixSeconds: START_SEC },
+            { eastM: 2000, northM: 0, unixSeconds: START_SEC + 600 },
+        ]);
+
+        expect(tripPassesThroughCircle(track, place(0, 0, 20))).toEqual([
+            expect.objectContaining({ unixSeconds: START_SEC }),
+        ]);
+        expect(tripPassesThroughCircle(track, place(2000, 0, 20))).toEqual([
+            expect.objectContaining({ unixSeconds: START_SEC + 600 }),
+        ]);
+        expect(tripPassesThroughCircle(track, place(1000, 0, 20)), "the gap is no pass").toEqual([]);
+    });
 });
 
 describe("trackIntersectsArea", () => {

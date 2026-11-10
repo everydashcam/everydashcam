@@ -150,8 +150,9 @@ function segmentCrossesBox(
 /**
  * Passes of one trip through the circle. A pass is a continuous run of drawn
  * segments closer than the radius; a gap ends it. Each pass reports its
- * closest point and the time there. A one-vertex trip passes when that vertex
- * is inside. Returns passes in time order, empty when the trip never enters.
+ * closest point and the time there. A vertex with a gap or the track's end on
+ * both sides is a point of its own and passes when it is inside. Returns
+ * passes in time order, empty when the trip never enters.
  */
 export function tripPassesThroughCircle(track: TripMapTrack, place: PlaceCircle): TripPass[] {
     const radius = placeRadiusWorld(place);
@@ -188,11 +189,6 @@ function collectPasses(track: TripMapTrack, cx: number, cy: number, radius: numb
     const times = track.times;
     const vertices = times.length;
     const radiusSquared = radius * radius;
-    if (vertices === 1) {
-        if ((points[0]! - cx) ** 2 + (points[1]! - cy) ** 2 <= radiusSquared)
-            out.push({ unixSeconds: times[0]!, x: points[0]!, y: points[1]! });
-        return;
-    }
     // Long simplified segments can touch the circle on both legs of an
     // out-and-back drive, with the turn outside it: there the pass ends at
     // the shared vertex. A plain corner can leave its vertex outside a circle
@@ -202,9 +198,15 @@ function collectPasses(track: TripMapTrack, cx: number, cy: number, radius: numb
     let isInsideAtVertex = false;
     let previousDx = 0;
     let previousDy = 0;
-    for (let i = 0; i < vertices - 1; i++) {
+    for (let i = 0; i < vertices; i++) {
         const ax = points[i * 2]!;
         const ay = points[i * 2 + 1]!;
+        // A lone fix between gaps (or a parked trip's only one) has no
+        // segment to be near; the gaps around it already ended any pass.
+        const isLoneVertex = (i === 0 || track.breaks[i - 1] === 1) && (i === vertices - 1 || track.breaks[i] === 1);
+        if (isLoneVertex && (ax - cx) ** 2 + (ay - cy) ** 2 <= radiusSquared)
+            out.push({ unixSeconds: times[i]!, x: ax, y: ay });
+        if (i === vertices - 1) break;
         const bx = points[i * 2 + 2]!;
         const by = points[i * 2 + 3]!;
         const distance = track.breaks[i] === 1 ? Infinity : segmentDistanceSquared(cx, cy, ax, ay, bx, by);
