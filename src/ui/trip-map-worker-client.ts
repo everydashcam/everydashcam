@@ -12,7 +12,9 @@ import { createLogger } from "../log.js";
 const log = createLogger("trip-map");
 
 // A worker that cannot even load (its chunk gone after a deploy) would crash
-// on every resend; past this many crashes the tracks stay lost until reload.
+// on every resend. Past this many crashes the tracks are not resent: a later
+// request starts a fresh worker for its own track only, so the lines show the
+// trips read since then and the rest stay off them until reload.
 const MAX_CRASH_RESENDS = 3;
 
 let client: TypedWorkerClient<TripMapWorkerContract> | null = null;
