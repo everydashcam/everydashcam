@@ -666,7 +666,11 @@ function scheduleAreaUpdate(current: TripMapView): void {
     }
     current.areaTimer = setTimeout(() => {
         current.areaTimer = null;
-        if (view === current) setTripMapFrame(viewFrame(current));
+        // Hidden while a trip is prepared: the collapsed canvas is no frame,
+        // and the list keeps the last one until the map shows again.
+        const container = current.map.getContainer();
+        if (view !== current || container.clientWidth === 0 || container.clientHeight === 0) return;
+        setTripMapFrame(viewFrame(current));
     }, AREA_SETTLE_MS);
 }
 
@@ -1423,6 +1427,8 @@ export function initTripMap(cb: TripMapCallbacks): void {
     subscribeExportState(syncTripMap);
 
     dom.tripMapToggle.addEventListener("click", () => {
+        // The trip being prepared owns the viewer; its card keeps the Cancel button.
+        if (dom.viewer.classList.contains("preparing")) return;
         if (state.active === null) {
             setShownWithoutTrip(!shouldShowTripMap());
         } else if (isOverTrip) {

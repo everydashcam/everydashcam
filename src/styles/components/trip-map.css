@@ -12,21 +12,21 @@
     overflow: hidden;
     background: var(--bg);
 }
-.viewer.empty.has-trip-map .trip-map-state {
+/* A trip being prepared owns the viewer: the map stays mounted but hidden. */
+.viewer.empty.has-trip-map:not(.preparing) .trip-map-state {
     display: block;
 }
 /* Over an open trip the player stays laid out underneath, paused and inert.
    The viewer's container type makes it its own stacking context, so this
    only has to clear the player's layers; its transient menus close on the
    click that brought the map up. */
-.viewer.has-trip-map-over-trip .trip-map-state {
+.viewer.has-trip-map-over-trip:not(.preparing) .trip-map-state {
     display: block;
     position: absolute;
     inset: 0;
     z-index: var(--dc-z-drawer);
 }
-.viewer.empty.has-trip-map .empty-state,
-.viewer.preparing .trip-map-state {
+.viewer.empty.has-trip-map .empty-state {
     display: none;
 }
 /* A programmatic focus target after the card's "show" button disappears. */
