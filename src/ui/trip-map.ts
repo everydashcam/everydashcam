@@ -54,6 +54,14 @@ import { subscribeThemeChange, themeColors } from "./theme.js";
 import { subscribeTripMapLibrary, syncTripMapLibrary, tripMapEntries } from "./trip-map-library.js";
 import { getTripMapPreferences, setTripMapPreferences, subscribeTripMapPreferences } from "./trip-map-pref.js";
 import {
+    startReadingTracks,
+    stopReadingTracks,
+    subscribeTrackRead,
+    trackReadProgress,
+    untrackedTrips,
+    type TripGpsReader,
+} from "./trip-map-read.js";
+import {
     countTripsThrough,
     setTripMapFrame,
     setTripMapPlace,
@@ -174,9 +182,15 @@ interface TripMapCallbacks {
     onSurfaceChange: () => void;
     /** Opens the trip at `tripIndex` paused at a moment on its clock, such as a marker's. */
     onOpenMoment: (tripIndex: number, unixSeconds: number) => void;
+    /** Reads a trip's GPS track that waits inside its videos, for "Read now". */
+    readTripGps: TripGpsReader;
 }
 
-let callbacks: TripMapCallbacks = { onSurfaceChange: () => {}, onOpenMoment: () => {} };
+let callbacks: TripMapCallbacks = {
+    onSurfaceChange: () => {},
+    onOpenMoment: () => {},
+    readTripGps: async () => "busy",
+};
 let view: TripMapView | null = null;
 // Bumped by every creation attempt and teardown, so a creation still waiting
 // for maplibre-gl gives up when the surface was hidden in the meantime.
@@ -498,6 +512,7 @@ function destroyView(): void {
     current.markerPopup?.remove();
     current.placeHandle?.remove();
     hideProbe(current);
+    closeReadPanel();
     // remove() also takes the map out of the viewer map registry.
     current.map.remove();
     // A hidden map no longer frames the list.
@@ -1148,7 +1163,9 @@ function renderHighlight(): void {
  * The counter and the "show all" button. While recordings are still being
  * read the counter shows how many trips are read, and "show all" is pressed
  * while the camera follows the arriving tracks; afterwards the counter says
- * how many trips have a route on the map.
+ * how many trips have a route on the map. With trips missing from the map the
+ * counter opens a panel that says why and offers "Read now"; while that reads,
+ * the counter shows its progress.
  */
 export function syncTripMapStatus(): void {
     if (!view) return;
@@ -1164,15 +1181,26 @@ export function syncTripMapStatus(): void {
         if (hasRoute || (trip && !tripNeedsRecordingMetadata(trip))) read++;
     }
     const total = scope.length;
-    const isReading = state.recordingAnalysisProgress !== null && read < total;
+    const isReadingRecordings = state.recordingAnalysisProgress !== null && read < total;
+    const readNow = isReadingRecordings ? null : trackReadProgress();
+    const isReading = isReadingRecordings || readNow !== null;
     dom.tripMapCounter.hidden = false;
-    dom.tripMapCounterText.textContent = isReading
-        ? t("tripMap.reading", { n: read, total })
-        : t("tripMap.counter", { n: onMap, total });
+    dom.tripMapCounterText.textContent = readNow
+        ? t("tripMap.reading", { n: readNow.done, total: readNow.total })
+        : isReadingRecordings
+          ? t("tripMap.reading", { n: read, total })
+          : t("tripMap.counter", { n: onMap, total });
     dom.tripMapCounter.classList.toggle("has-untracked", !isReading && onMap < total);
     dom.tripMapCounter.classList.toggle("is-reading", isReading);
     dom.tripMapCounterBar.hidden = !isReading;
-    dom.tripMapCounterFill.style.transform = `scaleX(${total > 0 ? read / total : 0})`;
+    const share = readNow ? readNow.done / readNow.total : total > 0 ? read / total : 0;
+    dom.tripMapCounterFill.style.transform = `scaleX(${share})`;
+    // The recordings' own read settles most missing routes by itself; the
+    // panel only has something to say once it is over.
+    const canExplain = !isReadingRecordings && (readNow !== null || onMap < total);
+    dom.tripMapCounter.disabled = !canExplain;
+    if (canExplain) syncReadPanel();
+    else closeReadPanel();
     const isFollowingReads = isReading && view.isFollowing;
     // A toggle only while there is something to follow.
     if (isReading) dom.tripMapFit.setAttribute("aria-pressed", String(isFollowingReads));
@@ -1180,6 +1208,48 @@ export function syncTripMapStatus(): void {
     const fitLabel = t(isFollowingReads ? "tripMap.fit.following" : isReading ? "tripMap.fit.resume" : "tripMap.fit");
     dom.tripMapFit.title = fitLabel;
     dom.tripMapFit.setAttribute("aria-label", fitLabel);
+}
+
+function isReadPanelOpen(): boolean {
+    return !dom.tripMapReadPanel.hidden;
+}
+
+function openReadPanel(): void {
+    dom.tripMapReadPanel.hidden = false;
+    dom.tripMapCounter.setAttribute("aria-expanded", "true");
+    syncReadPanel();
+}
+
+/** Closes the panel; focus inside it goes back to the counter, or to the map once the counter has nothing to open. */
+function closeReadPanel(): void {
+    if (!isReadPanelOpen()) return;
+    const hadFocus = dom.tripMapReadPanel.contains(document.activeElement);
+    dom.tripMapReadPanel.hidden = true;
+    dom.tripMapCounter.setAttribute("aria-expanded", "false");
+    if (!hadFocus) return;
+    (dom.tripMapCounter.disabled ? dom.tripMapState : dom.tripMapCounter).focus({ preventScroll: true });
+}
+
+/** Why trips are missing from the map, and "Read now" (or "Stop" while it reads). */
+function syncReadPanel(): void {
+    if (!isReadPanelOpen()) return;
+    const counts = untrackedTrips();
+    const isRunning = trackReadProgress() !== null;
+    if (!isRunning && counts.withoutGps === 0 && counts.unread === 0) {
+        closeReadPanel();
+        return;
+    }
+    dom.tripMapReadNoGps.hidden = counts.withoutGps === 0;
+    dom.tripMapReadNoGps.textContent = t("tripMap.read.noGps", { n: counts.withoutGps });
+    dom.tripMapReadUnread.hidden = counts.unread === 0;
+    dom.tripMapReadUnread.textContent = t("tripMap.read.unread", { n: counts.unread });
+    const isButtonGone = !isRunning && counts.unread === 0;
+    if (isButtonGone && document.activeElement === dom.tripMapReadNow)
+        dom.tripMapCounter.focus({ preventScroll: true });
+    dom.tripMapReadNow.hidden = isButtonGone;
+    dom.tripMapReadNow.textContent = t(isRunning ? "tripMap.read.stop" : "tripMap.read.now");
+    dom.tripMapReadNow.classList.toggle("dc-btn--primary", !isRunning);
+    dom.tripMapReadNow.classList.toggle("dc-btn--secondary", isRunning);
 }
 
 /** The place bar under the search and the map's own hint follow the chosen place. */
@@ -1287,6 +1357,11 @@ export function initTripMap(cb: TripMapCallbacks): void {
     });
     document.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || event.defaultPrevented || isAnyModalOpen()) return;
+        if (isReadPanelOpen()) {
+            event.preventDefault();
+            closeReadPanel();
+            return;
+        }
         if (view?.markerPopup) {
             event.preventDefault();
             view.markerPopup.remove();
@@ -1302,6 +1377,21 @@ export function initTripMap(cb: TripMapCallbacks): void {
     document.getElementById("empty-state-card")?.addEventListener("click", (event) => {
         if (event.target instanceof Element && event.target.closest('[data-action="show-trip-map"]'))
             showTripMapFromCard();
+    });
+    subscribeTrackRead(syncTripMapStatus);
+    dom.tripMapCounter.addEventListener("click", () => {
+        if (isReadPanelOpen()) closeReadPanel();
+        else openReadPanel();
+    });
+    dom.tripMapReadNow.addEventListener("click", () => {
+        if (trackReadProgress()) stopReadingTracks();
+        else startReadingTracks(callbacks.readTripGps);
+    });
+    // A press anywhere else puts the panel away, the way a menu goes.
+    document.addEventListener("pointerdown", (event) => {
+        if (!isReadPanelOpen() || !(event.target instanceof Node)) return;
+        if (dom.tripMapReadPanel.contains(event.target) || dom.tripMapCounter.contains(event.target)) return;
+        closeReadPanel();
     });
     dom.tripMapFit.addEventListener("click", showAllTripsOnMap);
     dom.tripMapMarkers.addEventListener("click", () => {

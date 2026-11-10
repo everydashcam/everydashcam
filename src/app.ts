@@ -87,6 +87,7 @@ import { initWebglEnableModal } from "./ui/webgl-enable-modal.js";
 import {
     abortDeferredGpsForTripOpen,
     loadDeferredGpsForTrip,
+    loadDeferredGpsInBackground,
     isCurrentTripOpen,
     takeTripOpenToken,
 } from "./ui/deferred-gps.js";
@@ -829,6 +830,8 @@ initSidebar({
 initTripMap({
     onSurfaceChange: syncEmptyState,
     onOpenMoment: (tripIdx, momentUtc) => void openTripAtMoment(tripIdx, momentUtc),
+    readTripGps: (tripIdx, signal) =>
+        loadDeferredGpsInBackground(tripIdx, { signal, concurrency: getDeferredGpsConcurrency() }),
 });
 // The place and the map frame filter the list; it follows their results.
 subscribeTripMapSearch(renderTrips);

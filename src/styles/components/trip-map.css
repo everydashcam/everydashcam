@@ -49,8 +49,10 @@
     align-items: flex-start;
     gap: 6px;
 }
+/* The counter with its panel underneath. */
 .trip-map-corner--start {
     left: 12px;
+    flex-direction: column;
 }
 .trip-map-corner--end {
     right: 12px;
@@ -71,9 +73,45 @@
     font-size: var(--dc-text-sm);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    cursor: pointer;
 }
 .trip-map-counter[hidden] {
     display: none;
+}
+.trip-map-counter:hover:not(:disabled) {
+    border-color: var(--border-strong);
+}
+.trip-map-counter:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+/* Nothing to open: the counter is only a status. */
+.trip-map-counter:disabled {
+    cursor: default;
+}
+
+.trip-map-read-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    width: 270px;
+    max-width: calc(100vw - 48px);
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--dc-radius-md);
+    background: var(--bg-elev);
+    box-shadow: var(--dc-shadow-popup);
+    color: var(--fg-dim);
+    font-size: var(--dc-text-sm);
+    line-height: var(--dc-leading-snug);
+}
+.trip-map-read-panel[hidden],
+.trip-map-read-panel p[hidden] {
+    display: none;
+}
+.trip-map-read-panel p {
+    margin: 0;
 }
 /* Some trips have no route on the map yet or at all. */
 .trip-map-counter.has-untracked::before {

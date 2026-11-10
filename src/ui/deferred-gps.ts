@@ -82,7 +82,7 @@ export function cancelDeferredGpsLoad(): void {
  */
 export async function loadDeferredGpsForTrip(
     tripIdx: number,
-    options: { showProgress?: boolean; concurrency?: number } = {},
+    options: DeferredGpsLoadOptions = {},
 ): Promise<DeferredGpsLoadResult> {
     // Read (do NOT mint) the current trip-open token: the caller minted it at the
     // top of the chain via takeTripOpenToken, so a click that superseded this
@@ -158,6 +158,7 @@ export async function loadDeferredGpsForTrip(
     if (targets.length === 0) return tripOpenSequence === mySeq ? "ready" : "cancelled";
 
     const controller = new AbortController();
+    options.signal?.addEventListener("abort", () => controller.abort(), { once: true, signal: controller.signal });
     const session: DeferredGpsSession = {
         controller,
         startedTripIdx: tripIdx,
@@ -175,6 +176,29 @@ export async function loadDeferredGpsForTrip(
     if (tripOpenSequence !== mySeq) return "cancelled";
     if (result !== "ready") return result;
     return hasUnresolvedTargets(session.targetKeys) ? "failed" : "ready";
+}
+
+interface DeferredGpsLoadOptions {
+    showProgress?: boolean;
+    concurrency?: number;
+    /** Cancels a read this call starts; a joined read belongs to the call that started it. */
+    signal?: AbortSignal;
+}
+
+/**
+ * Reads the pending embedded GPS of the trip at `tripIdx` as background work
+ * the user asked for. Unlike a trip open it never takes storage from another
+ * read: while any read runs it returns "busy" and starts nothing. Aborting
+ * `signal` cancels the read and returns its files to pending. A trip open or an
+ * ingest returns "cancelled", even when it joined the read and kept its result.
+ */
+export async function loadDeferredGpsInBackground(
+    tripIdx: number,
+    options: { signal: AbortSignal; concurrency: number },
+): Promise<DeferredGpsLoadResult | "busy"> {
+    if (options.signal.aborted) return "cancelled";
+    if (currentDeferredGpsSession) return "busy";
+    return loadDeferredGpsForTrip(tripIdx, { ...options, showProgress: false });
 }
 
 function hasUnresolvedTargets(keys: ReadonlySet<string>): boolean {

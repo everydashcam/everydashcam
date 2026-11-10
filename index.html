@@ -1343,12 +1343,19 @@
                      data-i18n-attr="aria-label:tripMap.toggle" aria-label="Trip map">
                 <div id="trip-map" class="trip-map-canvas"></div>
                 <div class="trip-map-corner trip-map-corner--start">
-                    <span id="trip-map-counter" class="trip-map-counter" hidden>
+                    <button id="trip-map-counter" class="trip-map-counter" type="button" hidden disabled
+                            aria-expanded="false" aria-controls="trip-map-read-panel">
                         <span id="trip-map-counter-text"></span>
                         <span id="trip-map-counter-bar" class="trip-map-counter__bar" hidden aria-hidden="true">
                             <span id="trip-map-counter-fill" class="trip-map-counter__fill"></span>
                         </span>
-                    </span>
+                    </button>
+                    <!-- Why trips are missing from the map, and "Read now" (src/ui/trip-map-read.ts). -->
+                    <div id="trip-map-read-panel" class="trip-map-read-panel" hidden>
+                        <p id="trip-map-read-no-gps"></p>
+                        <p id="trip-map-read-unread"></p>
+                        <button id="trip-map-read-now" class="dc-btn dc-btn--primary" type="button"></button>
+                    </div>
                 </div>
                 <div class="trip-map-corner trip-map-corner--end">
                     <button id="trip-map-markers" class="map-control-btn" type="button" aria-pressed="true"
