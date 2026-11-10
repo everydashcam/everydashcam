@@ -1,6 +1,6 @@
 // The waiting worker is always the next release, so it must keep accepting this
-// request. A request it does not recognise goes unanswered, and the window stays
-// open instead of restarting.
+// request. A request it does not recognise goes unanswered; the window then
+// reloads without activating the update and loses its open recordings.
 export const UPDATE_MESSAGE = "everydashcam:update-v1";
 export type UpdateResult = "updating" | "otherWindows";
 export interface UpdateRequest {
