@@ -186,9 +186,18 @@ interface TripMapView {
     hasFramed: boolean;
     /** No user touch since the start or the last "show all": new tracks may move the camera. */
     isFollowing: boolean;
-    /** Latest corridor request; older answers are dropped. */
-    bundleRequest: number;
+    /**
+     * A corridor request is in the worker. One at a time: a run can take
+     * longer than the throttle, and requests queued behind it would each be
+     * stale by the time they ran, holding the drawn lines back until the
+     * library stops changing.
+     */
+    isBundleRunning: boolean;
+    /** What changed while a request ran: it runs again once the answer is back. */
+    bundleRerun: "none" | "throttled" | "urgent";
     requestedStep: number | null;
+    /** The trips through the place the last request stressed, as a comparable key. */
+    requestedPlaceKey: string;
     bundleTimer: ReturnType<typeof setTimeout> | null;
     lastBundleAt: number;
     areaTimer: ReturnType<typeof setTimeout> | null;
@@ -465,8 +474,10 @@ async function createView(): Promise<void> {
         isDraggingHandle: false,
         hasFramed: false,
         isFollowing: true,
-        bundleRequest: 0,
+        isBundleRunning: false,
+        bundleRerun: "none",
         requestedStep: null,
+        requestedPlaceKey: "",
         bundleTimer: null,
         lastBundleAt: 0,
         areaTimer: null,
@@ -701,6 +712,11 @@ function scheduleAreaUpdate(current: TripMapView): void {
 }
 
 function scheduleBundle(current: TripMapView, isUrgent = false): void {
+    if (current.isBundleRunning) {
+        if (isUrgent) current.bundleRerun = "urgent";
+        else if (current.bundleRerun === "none") current.bundleRerun = "throttled";
+        return;
+    }
     if (current.bundleTimer !== null) {
         if (!isUrgent) return;
         clearTimeout(current.bundleTimer);
@@ -712,9 +728,31 @@ function scheduleBundle(current: TripMapView, isUrgent = false): void {
     }, wait);
 }
 
-/** Recomputes corridor lines and far dots for the current zoom step, library and place. */
+/** The trips through the chosen place, as a key that changes only when they do. */
+function placeKey(): string {
+    if (!tripMapPlace()) return "-";
+    return [...tripMapPlaceIds()].sort((a, b) => a - b).join(",");
+}
+
 async function refreshBundle(current: TripMapView): Promise<void> {
     if (view !== current) return;
+    current.isBundleRunning = true;
+    try {
+        await computeBundle(current);
+    } finally {
+        current.isBundleRunning = false;
+        const rerun = current.bundleRerun;
+        current.bundleRerun = "none";
+        if (rerun !== "none" && view === current) scheduleBundle(current, rerun === "urgent");
+    }
+}
+
+/**
+ * Recomputes corridor lines and far dots for the current zoom step, library
+ * and place. An answer that arrives after something changed is still drawn:
+ * it is newer than what the map shows, and the rerun follows it.
+ */
+async function computeBundle(current: TripMapView): Promise<void> {
     current.lastBundleAt = performance.now();
     const step = bundleStepForZoom(current.map.getZoom());
     const tracks = readyTracks();
@@ -727,19 +765,19 @@ async function refreshBundle(current: TripMapView): Promise<void> {
     const ids = tracks.filter(({ id }) => !folded.has(id)).map(({ id }) => id);
     const placeIds = tripMapPlace() ? tripMapPlaceIds() : null;
     const matchedIds = placeIds ? ids.filter((id) => placeIds.has(id)) : [];
-    const request = ++current.bundleRequest;
     current.requestedStep = step;
+    current.requestedPlaceKey = placeKey();
     let bundle: TripBundle;
     let matchedBundle: TripBundle | null = null;
     try {
         bundle = await requestTripMapBundle(step, ids);
         if (matchedIds.length > 0) matchedBundle = await requestTripMapBundle(step, matchedIds);
     } catch (error) {
-        if (request === current.bundleRequest)
+        if (view === current)
             log.warn("trip map corridors failed", error instanceof Error ? error : { error: String(error) });
         return;
     }
-    if (view !== current || request !== current.bundleRequest) return;
+    if (view !== current) return;
     current.bundle = bundle;
     current.matchedBundle = matchedBundle;
     current.farTrips = far;
@@ -1426,8 +1464,10 @@ function onSearchChange(): void {
     if (!current) return;
     renderPlace(current);
     renderHighlight();
-    // The matched corridors depend on the place; recompute them now, not on the throttle.
-    scheduleBundle(current, true);
+    // The matched corridors depend on the trips through the place; recompute
+    // them now, not on the throttle. A pan that only changed the trips in
+    // frame leaves the lines as they are.
+    if (placeKey() !== current.requestedPlaceKey) scheduleBundle(current, true);
 }
 
 function showTripMapFromCard(): void {
