@@ -5,6 +5,7 @@ import { UPDATE_MESSAGE, isUpdateResult, type UpdateRequest, type UpdateResult }
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
 import { markIntentionalNavigation } from "./nav-intent.js";
 import { notify } from "./notifications.js";
+import { createUpdateObserver, type ObservedRegistration, type ObservedWorker } from "./sw-update-observer.js";
 
 const log = createLogger("sw-update");
 
@@ -60,12 +61,17 @@ function requestActivation(worker: ServiceWorker, timeoutMs = 10_000): Promise<U
  * outcome ends in a reload: the user has accepted the restart, a reload loads
  * the newest active release, and an update that is still waiting announces
  * itself again.
- * Returns the function that announces a waiting update.
+ * `loadController` is the worker that controlled the page when it loaded.
+ * Returns the function that hands each registration from register() to the
+ * update observer.
  */
 export function initServiceWorkerUpdates(options: {
+    container: ServiceWorkerContainer;
+    loadController: ServiceWorker | null;
     isBusy: () => boolean;
     saveNotes: () => Promise<boolean>;
-}): () => void {
+}): (registration: ObservedRegistration) => void {
+    const { container } = options;
     let isRestarting = false;
     let dialog: HTMLElement | null = null;
 
@@ -75,7 +81,7 @@ export function initServiceWorkerUpdates(options: {
     };
     // Reloading before the new worker controls this window could load the old
     // release again.
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
+    container.addEventListener("controllerchange", () => {
         if (isRestarting) reload();
     });
 
@@ -181,7 +187,7 @@ export function initServiceWorkerUpdates(options: {
             if (!(await saveNotesWithin(options.saveNotes, NOTES_SAVE_TIMEOUT_MS))) {
                 return stop("status.update.failed");
             }
-            const worker = (await navigator.serviceWorker.getRegistration())?.waiting;
+            const worker = (await container.getRegistration())?.waiting;
             const result = worker ? await requestActivation(worker) : null;
             if (result === "otherWindows") return stop("status.update.otherWindows");
             if (result !== "updating") {
@@ -197,5 +203,19 @@ export function initServiceWorkerUpdates(options: {
         }
     };
 
-    return () => announce();
+    let announcedSerial = 0;
+    const observer = createUpdateObserver({
+        loadController: options.loadController,
+        currentController: (): ObservedWorker | null => container.controller,
+        page: { window, document },
+        onChange: (state) => {
+            if (!state.waitingWorker || state.updateSerial === announcedSerial) return;
+            announcedSerial = state.updateSerial;
+            announce();
+        },
+    });
+    // An update installed by an earlier visit is already waiting now. Reading
+    // it here, not after the deferred register(), announces it without delay.
+    if (options.loadController) void observer.readAtLoad(() => container.getRegistration());
+    return (registration) => observer.adopt(registration);
 }

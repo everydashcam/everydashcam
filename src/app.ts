@@ -898,8 +898,9 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     // new install/update check starts. The scheduler bounds both the load and
     // idle waits, and retries registration on reconnect after a failed install.
     let registration: ServiceWorkerRegistration | undefined;
-    let hasNotifiedUpdate = false;
-    const announceUpdate = initServiceWorkerUpdates({
+    const adoptRegistration = initServiceWorkerUpdates({
+        container: navigator.serviceWorker,
+        loadController: navigator.serviceWorker.controller,
         // Any open Save clip panel counts: a finished clip may exist only in
         // memory there, and a download click cannot prove the file was kept.
         isBusy: () => state.exportModeOpen || exportPanelState.phase === "progress" || state.ingestController !== null,
@@ -911,25 +912,15 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
                 await registration.update();
                 return;
             } catch (err) {
-                // A failed first install removes its registration. Workbox
-                // registers once per instance, so reconnect needs a new one.
+                // A failed first install removes its registration, so
+                // reconnect needs a new one.
                 if (!(err instanceof DOMException && err.name === "InvalidStateError")) throw err;
                 registration = undefined;
             }
         }
-        const { Workbox } = await import("workbox-window");
-        const worker = new Workbox(swUrl, { updateViaCache: "none" });
-        worker.addEventListener("waiting", () => {
-            if (hasNotifiedUpdate) return;
-            hasNotifiedUpdate = true;
-            announceUpdate();
-        });
-        worker.addEventListener("installed", (event) => {
-            swLog.info("installed", { isUpdate: event.isUpdate === true });
-        });
-        worker.addEventListener("redundant", () => swLog.warn("worker became redundant"));
-        registration = await worker.register({ immediate: true });
-        swLog.info("registered", { scope: registration?.scope });
+        registration = await navigator.serviceWorker.register(swUrl, { updateViaCache: "none" });
+        adoptRegistration(registration);
+        swLog.info("registered", { scope: registration.scope });
     };
     scheduleServiceWorkerRegistration(registerSw);
 
