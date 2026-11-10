@@ -43,11 +43,11 @@ export interface UpdateObserver {
      *  through onChange and returns the current state. Idempotent. */
     refresh(): UpdateState;
     /**
-     * First read after page load, for a page loaded under a worker. Resolves
-     * whether an update was already waiting at that moment: only that fact may
-     * start an automatic restart. A failed lookup resolves false.
+     * First read after page load, for a page loaded under a worker: adopts its
+     * registration without waiting for the deferred register(), so an update
+     * installed by an earlier visit shows at once. A failed lookup is logged.
      */
-    readAtLoad(getRegistration: () => Promise<ObservedRegistration | undefined>): Promise<boolean>;
+    readAtLoad(getRegistration: () => Promise<ObservedRegistration | undefined>): Promise<void>;
 }
 
 /** Page lifecycle sources that prompt a re-read, plus the clock and connection
@@ -159,14 +159,13 @@ export function createUpdateObserver(options: {
         if ((event as PageTransitionEvent).persisted) refresh();
     });
 
-    const readAtLoad = async (getRegistration: () => Promise<ObservedRegistration | undefined>): Promise<boolean> => {
+    const readAtLoad = async (getRegistration: () => Promise<ObservedRegistration | undefined>): Promise<void> => {
         try {
             const found = await getRegistration();
             if (found) adopt(found);
         } catch (error) {
             log.warn("registration lookup failed", { error: error instanceof Error ? error.message : String(error) });
         }
-        return refresh().waitingWorker !== null;
     };
 
     return { adopt, refresh, readAtLoad };

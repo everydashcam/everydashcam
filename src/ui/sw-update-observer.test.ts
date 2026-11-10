@@ -108,21 +108,24 @@ describe("service worker update observer", () => {
 
     it("reports an update that was already waiting at load", async () => {
         const active = new FakeWorker("activated");
-        const { observer } = setup({ loadController: active });
+        const { observer, changes } = setup({ loadController: active });
         const registration = new FakeRegistration();
         registration.active = active;
         registration.waiting = new FakeWorker("installed");
 
-        await expect(observer.readAtLoad(async () => registration)).resolves.toBe(true);
+        await observer.readAtLoad(async () => registration);
+
+        expect(changes.at(-1)).toEqual({ waitingWorker: registration.waiting, isPageBehind: true, updateSerial: 1 });
     });
 
-    it("tells a later update apart from one waiting at load", async () => {
+    it("follows an update that arrives after the read at load", async () => {
         const active = new FakeWorker("activated");
         const { observer, changes } = setup({ loadController: active });
         const registration = new FakeRegistration();
         registration.active = active;
 
-        await expect(observer.readAtLoad(async () => registration)).resolves.toBe(false);
+        await observer.readAtLoad(async () => registration);
+        expect(changes, "nothing waits at load").toEqual([]);
         registration.installing = new FakeWorker("installing");
         registration.dispatchEvent(new Event("updatefound"));
         finishInstall(registration);
@@ -130,14 +133,16 @@ describe("service worker update observer", () => {
         expect(changes.at(-1)?.waitingWorker).toBe(registration.waiting);
     });
 
-    it("resolves false when the registration lookup fails", async () => {
-        const { observer } = setup({ loadController: new FakeWorker("activated") });
+    it("survives a failed registration lookup", async () => {
+        const { observer, changes } = setup({ loadController: new FakeWorker("activated") });
 
         await expect(
             observer.readAtLoad(async () => {
                 throw new Error("lookup failed");
             }),
-        ).resolves.toBe(false);
+        ).resolves.toBeUndefined();
+
+        expect(changes).toEqual([]);
     });
 
     it("re-reads the registration when the page returns from the back/forward cache", () => {
