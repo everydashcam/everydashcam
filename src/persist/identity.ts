@@ -28,19 +28,14 @@ export function parseFileIdentityKey(key: string): FileIdentity | null {
     const relativePath = parts[0]!;
     const sizeText = parts[1]!;
     const lastModifiedText = parts[2]!;
-    // fileIdentityKey emits canonical unsigned decimal integers. Number("")
-    // and Number("1e3") would otherwise accept malformed external anchors
-    // that no key produced by this app can contain.
-    if (!/^(0|[1-9]\d*)$/.test(sizeText) || !/^(0|[1-9]\d*)$/.test(lastModifiedText)) return null;
+    // fileIdentityKey emits canonical decimal integers. Number("") and
+    // Number("1e3") would otherwise accept malformed external anchors that no
+    // key produced by this app can contain. Only the time may be negative:
+    // Chromium reports a picked file without an OS time as 1601-01-01.
+    if (!/^(0|[1-9]\d*)$/.test(sizeText) || !/^(0|-?[1-9]\d*)$/.test(lastModifiedText)) return null;
     const size = Number(sizeText);
     const lastModified = Number(lastModifiedText);
-    if (
-        relativePath.length === 0 ||
-        !Number.isSafeInteger(size) ||
-        size < 0 ||
-        !Number.isSafeInteger(lastModified) ||
-        lastModified < 0
-    ) {
+    if (relativePath.length === 0 || !Number.isSafeInteger(size) || !Number.isSafeInteger(lastModified)) {
         return null;
     }
     return { relativePath, size, lastModified };

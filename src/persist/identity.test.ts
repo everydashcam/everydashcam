@@ -41,5 +41,12 @@ describe("fileIdentityKey", () => {
         expect(parseFileIdentityKey(["a.mp4", "", "2"].join(String.fromCharCode(0)))).toBeNull();
         expect(parseFileIdentityKey(["a.mp4", "1e2", "2"].join(String.fromCharCode(0)))).toBeNull();
         expect(parseFileIdentityKey(["a.mp4", "01", "2"].join(String.fromCharCode(0)))).toBeNull();
+        expect(parseFileIdentityKey(["a.mp4", "1", "-0"].join(String.fromCharCode(0)))).toBeNull();
+        expect(parseFileIdentityKey(["a.mp4", "1", "--2"].join(String.fromCharCode(0)))).toBeNull();
+    });
+
+    it("round-trips the 1601 time Chromium reports for a picked file without an OS time", () => {
+        const identity = { relativePath: "DCIM/FILE0001.MP4", size: 42, lastModified: -11_644_473_600_000 };
+        expect(parseFileIdentityKey(fileIdentityKey(identity))).toEqual(identity);
     });
 });
