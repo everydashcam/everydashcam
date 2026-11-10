@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createUpdateObserver, type ObservedWorker, type UpdateState } from "./sw-update-observer.js";
+import {
+    createUpdateObserver,
+    isUpdateCheckDue,
+    type ObservedWorker,
+    UPDATE_CHECK_INTERVAL_MS,
+    type UpdateState,
+} from "./sw-update-observer.js";
 
 class FakeWorker extends EventTarget implements ObservedWorker {
     state: ServiceWorkerState;
@@ -27,7 +33,13 @@ class FakeDocument extends EventTarget {
 
 function setup(options: { loadController: FakeWorker | null }) {
     const changes: UpdateState[] = [];
-    const page = { window: new EventTarget(), document: new FakeDocument() };
+    const clock = { nowMs: 1000, isOnline: true };
+    const page = {
+        window: new EventTarget(),
+        document: new FakeDocument(),
+        now: () => clock.nowMs,
+        isOnline: () => clock.isOnline,
+    };
     let controller: FakeWorker | null = options.loadController;
     const observer = createUpdateObserver({
         loadController: options.loadController,
@@ -39,6 +51,7 @@ function setup(options: { loadController: FakeWorker | null }) {
         observer,
         changes,
         page,
+        clock,
         setController: (next: FakeWorker | null) => {
             controller = next;
         },
@@ -207,5 +220,76 @@ describe("service worker update observer", () => {
             isPageBehind: true,
             updateSerial: 2,
         });
+    });
+});
+
+describe("update checks on return to the tab", () => {
+    function returnToTab(document: FakeDocument): void {
+        document.visibilityState = "hidden";
+        document.dispatchEvent(new Event("visibilitychange"));
+        document.visibilityState = "visible";
+        document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    it("is due only online and an interval after the previous check", () => {
+        expect(isUpdateCheckDue(UPDATE_CHECK_INTERVAL_MS - 1, 0, true), "too early").toBe(false);
+        expect(isUpdateCheckDue(UPDATE_CHECK_INTERVAL_MS, 0, true), "interval passed").toBe(true);
+        expect(isUpdateCheckDue(UPDATE_CHECK_INTERVAL_MS, 0, false), "offline").toBe(false);
+    });
+
+    it("skips a return within the interval after page load", () => {
+        const { observer, page, clock } = setup({ loadController: new FakeWorker("activated") });
+        const registration = new FakeRegistration();
+        observer.adopt(registration);
+        clock.nowMs += UPDATE_CHECK_INTERVAL_MS - 1;
+
+        returnToTab(page.document);
+
+        expect(registration.update).not.toHaveBeenCalled();
+    });
+
+    it("checks after the interval, then waits another interval", () => {
+        const { observer, page, clock } = setup({ loadController: new FakeWorker("activated") });
+        const registration = new FakeRegistration();
+        observer.adopt(registration);
+
+        clock.nowMs += UPDATE_CHECK_INTERVAL_MS;
+        returnToTab(page.document);
+        expect(registration.update, "first return after an hour").toHaveBeenCalledTimes(1);
+
+        clock.nowMs += UPDATE_CHECK_INTERVAL_MS - 1;
+        returnToTab(page.document);
+        expect(registration.update, "return within an hour of that check").toHaveBeenCalledTimes(1);
+
+        clock.nowMs += 1;
+        returnToTab(page.document);
+        expect(registration.update, "return an hour after that check").toHaveBeenCalledTimes(2);
+    });
+
+    it("does not check while offline", () => {
+        const { observer, page, clock } = setup({ loadController: new FakeWorker("activated") });
+        const registration = new FakeRegistration();
+        observer.adopt(registration);
+        clock.nowMs += UPDATE_CHECK_INTERVAL_MS;
+        clock.isOnline = false;
+
+        returnToTab(page.document);
+
+        expect(registration.update).not.toHaveBeenCalled();
+    });
+
+    it("keeps working after a failed check", async () => {
+        const { observer, page, clock } = setup({ loadController: new FakeWorker("activated") });
+        const registration = new FakeRegistration();
+        registration.update.mockRejectedValueOnce(new TypeError("failed to fetch"));
+        observer.adopt(registration);
+
+        clock.nowMs += UPDATE_CHECK_INTERVAL_MS;
+        returnToTab(page.document);
+        await Promise.resolve();
+        clock.nowMs += UPDATE_CHECK_INTERVAL_MS;
+        returnToTab(page.document);
+
+        expect(registration.update).toHaveBeenCalledTimes(2);
     });
 });

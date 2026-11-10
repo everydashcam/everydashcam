@@ -50,10 +50,26 @@ export interface UpdateObserver {
     readAtLoad(getRegistration: () => Promise<ObservedRegistration | undefined>): Promise<boolean>;
 }
 
-/** Page lifecycle sources that prompt a re-read. */
+/** Page lifecycle sources that prompt a re-read, plus the clock and connection
+ *  state that pace update checks. */
 export interface ObservedPage {
     window: EventTarget;
     document: EventTarget & { readonly visibilityState: DocumentVisibilityState };
+    /** Monotonic milliseconds, such as performance.now(). */
+    now: () => number;
+    isOnline: () => boolean;
+}
+
+// The browser checks for a new worker on every navigation, so only a tab kept
+// open for long misses releases. A return to the tab is the moment a new
+// release can still be useful; there is no timer for a tab nobody looks at.
+export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Whether a return to the tab should ask the browser for a new release:
+ *  online, and at least UPDATE_CHECK_INTERVAL_MS after the previous check or
+ *  page load, which the browser's own navigation check covers. */
+export function isUpdateCheckDue(nowMs: number, lastCheckMs: number, isOnline: boolean): boolean {
+    return isOnline && nowMs - lastCheckMs >= UPDATE_CHECK_INTERVAL_MS;
 }
 
 /**
@@ -62,6 +78,8 @@ export interface ObservedPage {
  * `currentController` reads the live controller. `onChange` receives every
  * state that differs from the previous one. The page re-reads on return to the
  * tab and on a back/forward cache restore: either may follow a missed event.
+ * A return to the tab also asks the browser for a new release when
+ * isUpdateCheckDue allows it.
  */
 export function createUpdateObserver(options: {
     loadController: ObservedWorker | null;
@@ -74,6 +92,7 @@ export function createUpdateObserver(options: {
     const watchedWorkers = new WeakSet<ObservedWorker>();
     const reportedWorkers = new WeakSet<ObservedWorker>();
     let state: UpdateState = { waitingWorker: null, isPageBehind: false, updateSerial: 0 };
+    let lastCheckMs = options.page.now();
 
     const watchWorker = (worker: ObservedWorker | null): void => {
         if (!worker || watchedWorkers.has(worker)) return;
@@ -122,8 +141,19 @@ export function createUpdateObserver(options: {
         refresh();
     };
 
+    const checkForUpdateIfDue = (): void => {
+        const nowMs = options.page.now();
+        if (!registration || !isUpdateCheckDue(nowMs, lastCheckMs, options.page.isOnline())) return;
+        lastCheckMs = nowMs;
+        registration.update().catch((error: unknown) => {
+            log.info("update check failed", { error: error instanceof Error ? error.message : String(error) });
+        });
+    };
+
     options.page.document.addEventListener("visibilitychange", () => {
-        if (options.page.document.visibilityState === "visible") refresh();
+        if (options.page.document.visibilityState !== "visible") return;
+        refresh();
+        checkForUpdateIfDue();
     });
     options.page.window.addEventListener("pageshow", (event) => {
         if ((event as PageTransitionEvent).persisted) refresh();

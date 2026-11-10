@@ -234,7 +234,7 @@ export function initServiceWorkerUpdates(options: {
     const observer = createUpdateObserver({
         loadController: options.loadController,
         currentController: (): ObservedWorker | null => container.controller,
-        page: { window, document },
+        page: { window, document, now: () => performance.now(), isOnline: () => navigator.onLine },
         onChange: (state) => {
             updateState = state;
             syncStatusLine();
