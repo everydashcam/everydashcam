@@ -17,6 +17,7 @@ import {
     resolveLogVideoTimingHints,
     settleFilenameAssociations,
 } from "../gps-association.js";
+import { pinUnknownFileMtimes } from "../file-mtime.js";
 import { dropDuplicateFiles } from "../ingest-dedup.js";
 import { mergeRecordingCopies } from "../recording-copies.js";
 import { ignoredRootSegments, isIgnoredPath } from "../ingest-filter.js";
@@ -209,6 +210,11 @@ async function ingestFilesInternal(
     // ms on a large mobile card. One forced frame here moves the whole stall
     // behind the visible "Classifying..." overlay.
     if (hasEligibleFiles) await nextPaint();
+
+    // Every stage below identifies files by metadata (vendorFileKey). Pin here,
+    // not in ingestFiles: an await before its controller check could let a
+    // later drop start first.
+    vfiles = await pinUnknownFileMtimes(vfiles);
 
     // Keep the observed structure even when every entry is excluded or unreadable.
     // Walkers supply names without opening excluded files; classic inputs supply

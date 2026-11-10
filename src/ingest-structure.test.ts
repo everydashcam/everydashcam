@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { UNKNOWN_FILE_MTIME } from "./file-mtime.js";
 import { snapshotIngestStructure, type IngestStructureEntry } from "./ingest-structure.js";
 
 describe("snapshotIngestStructure", () => {
@@ -27,15 +28,15 @@ describe("snapshotIngestStructure", () => {
     });
 
     it("infers parents for a classic folder input and falls back to a bare filename", () => {
-        const file = new File(["x"], "clip.mp4", { lastModified: 0 });
+        const file = new File(["x"], "clip.mp4", { lastModified: 7 });
         expect(snapshotIngestStructure([{ file, relativePath: "/SD//Normal\\Front/clip.mp4" }])).toEqual([
             { relativePath: "SD", kind: "directory" },
             { relativePath: "SD/Normal", kind: "directory" },
             { relativePath: "SD/Normal/Front", kind: "directory" },
-            { relativePath: "SD/Normal/Front/clip.mp4", kind: "file", size: 1, lastModified: 0 },
+            { relativePath: "SD/Normal/Front/clip.mp4", kind: "file", size: 1, lastModified: 7 },
         ]);
         expect(snapshotIngestStructure([{ file, relativePath: "" }])).toEqual([
-            { relativePath: "clip.mp4", kind: "file", size: 1, lastModified: 0 },
+            { relativePath: "clip.mp4", kind: "file", size: 1, lastModified: 7 },
         ]);
     });
 
@@ -90,6 +91,23 @@ describe("snapshotIngestStructure", () => {
         expect(snapshot.filter((entry) => entry.kind === "file")).toHaveLength(2);
         expect(snapshot.filter((entry) => entry.relativePath === "SD/.hidden")).toEqual([
             { relativePath: "SD/.hidden", kind: "directory", truncated: "entry limit" },
+        ]);
+    });
+
+    it("leaves the time of a file pinned as unknown absent, discarding the walker's reading", () => {
+        const pinned = new File(["x"], "clip.mp4", { lastModified: UNKNOWN_FILE_MTIME });
+        const snapshot = snapshotIngestStructure(
+            [
+                { file: pinned, relativePath: "SD/walked.mp4" },
+                { file: pinned, relativePath: "SD/picked.mp4" },
+            ],
+            // The walker read the browser's current-time answer before pinning.
+            [{ relativePath: "SD/walked.mp4", kind: "file", size: 1, lastModified: 1_794_321_014_990 }],
+        );
+
+        expect(snapshot.filter((entry) => entry.kind === "file")).toEqual([
+            { relativePath: "SD/walked.mp4", kind: "file", size: 1 },
+            { relativePath: "SD/picked.mp4", kind: "file", size: 1 },
         ]);
     });
 });

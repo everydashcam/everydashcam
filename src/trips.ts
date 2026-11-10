@@ -20,6 +20,7 @@ import type { GpsRecord, Channel, RecordingMode, VendorFile, VideoWithRecordingC
 import type { VideoCodec } from "mediabunny";
 import type { Mp4Rotation } from "./indexer.js";
 import { createLogger } from "./log.js";
+import { knownFileMtime } from "./file-mtime.js";
 import { classifyFilenameRecordingKey, classifyFilenameTime } from "./parsers/filename/index.js";
 import { findStaleGpsCandidates, usableCandidateRecords } from "./stale-gps.js";
 import { normalizeTripTrackSegments, type TripGpsSource } from "./trip-track-segments.js";
@@ -2712,8 +2713,12 @@ export function deriveStartUtc({
     }
     // Last resort - mtime minus duration. On 70mai x800 mtime can be off by hours;
     //    the UI marks this source as unreliable.
-    const mtimeUtc = file.file.lastModified / 1000;
-    return { startUtc: mtimeUtc - durationSec, source: "mtime" };
+    const mtimeMs = knownFileMtime(file.file);
+    // A recording with no time at all starts, rather than ends, at the epoch:
+    // stable across rebuilds, and its note anchors and markers stay within the
+    // non-negative times that persisted annotations accept.
+    if (mtimeMs === null) return { startUtc: 0, source: "mtime" };
+    return { startUtc: mtimeMs / 1000 - durationSec, source: "mtime" };
 }
 
 /**

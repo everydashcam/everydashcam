@@ -6,6 +6,7 @@
 // Also: a mixed folder (1ch + 2ch files) does not crash and trips stay separate.
 
 import { describe, it, expect } from "vitest";
+import { UNKNOWN_FILE_MTIME } from "./file-mtime.js";
 import { matchesTripFilters, tripFilterFacts } from "./trip-filters.js";
 import {
     applyTimelapseCadenceWallSpans,
@@ -4023,5 +4024,33 @@ describe("rederiveStartUtcForCandidates: ambiguous NVT-IM MOV modes", () => {
         rederiveStartUtcForCandidates([driving437, driving438], classifyFilenameTime, classifyFilenameClockTimelapse);
 
         expect(groupTrips([driving437, driving438])).toHaveLength(2);
+    });
+});
+
+describe("deriveStartUtc: file time fallback", () => {
+    function withoutOtherTime(file: File) {
+        return {
+            file: { file, relativePath: file.name },
+            fingerprint: "fp:none",
+            createdUtc: null,
+            durationSec: 60,
+            records: [],
+            fingerprintTz: null,
+            parseFilenameLocalTime: noFilenameTime,
+            preciseFilenameOffsetSec: null,
+            embeddedStartUtcHint: null,
+            isTimelapse: false,
+            wallDurationSec: null,
+        };
+    }
+
+    it("ends a recording at its file time", () => {
+        const file = new File([], "a.mp4", { lastModified: 1_700_000_060_000 });
+        expect(deriveStartUtc(withoutOtherTime(file))).toEqual({ startUtc: 1_700_000_000, source: "mtime" });
+    });
+
+    it("starts a recording without any time at the epoch so derived times stay non-negative", () => {
+        const file = new File([], "a.mp4", { lastModified: UNKNOWN_FILE_MTIME });
+        expect(deriveStartUtc(withoutOtherTime(file))).toEqual({ startUtc: 0, source: "mtime" });
     });
 });

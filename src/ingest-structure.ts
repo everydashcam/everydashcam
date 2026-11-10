@@ -1,3 +1,4 @@
+import { knownFileMtime } from "./file-mtime.js";
 import type { VendorFile } from "./parsers/types.js";
 
 /** Names observed during enumeration, including entries excluded from import.
@@ -63,11 +64,19 @@ export function snapshotIngestStructure(
         if (!path) continue;
         const samePath = readableFiles.get(path);
         const observed = samePath?.entries[samePath.next++];
+        const lastModified = knownFileMtime(file);
         if (observed) {
             observed.size = file.size;
-            observed.lastModified = file.lastModified;
+            // The walker read this time before ingest pinned an unknown one.
+            if (lastModified === null) delete observed.lastModified;
+            else observed.lastModified = lastModified;
         } else {
-            snapshot.push({ relativePath: path, kind: "file", size: file.size, lastModified: file.lastModified });
+            snapshot.push({
+                relativePath: path,
+                kind: "file",
+                size: file.size,
+                ...(lastModified === null ? {} : { lastModified }),
+            });
         }
     }
     return snapshot;
