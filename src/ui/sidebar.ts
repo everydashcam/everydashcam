@@ -215,7 +215,8 @@ export function renderTrips(): void {
     syncSidebarFilters(entries.map((entry) => entry.facts));
     // The text query and the chips narrow what the map of all trips draws too.
     const listFilters = withoutTripMapFilters(state.tripFilters);
-    setTripMapScope(entries.filter((entry) => matchesTripFilters(entry.facts, listFilters)).map((entry) => entry.idx));
+    const scope = entries.filter((entry) => matchesTripFilters(entry.facts, listFilters));
+    setTripMapScope(scope.map((entry) => entry.idx));
     let displayed = entries.filter((entry) => matchesTripFilters(entry.facts, state.tripFilters));
     if (displayed.length > 0) {
         dom.list.appendChild(buildSummaryItem(displayed.map((entry) => entry.trip)));
@@ -223,12 +224,16 @@ export function renderTrips(): void {
         const empty = document.createElement("li");
         empty.className = "trip-filter-empty";
         const message = document.createElement("p");
+        // Name the place or the map area only when the query and chips left
+        // trips for them to cut; otherwise a bigger circle would not help.
         message.textContent = t(
-            state.tripFilters.place
-                ? "sidebar.filter.emptyPlace"
-                : state.tripFilters.mapArea
-                  ? "sidebar.filter.emptyArea"
-                  : "sidebar.filter.empty",
+            scope.length === 0
+                ? "sidebar.filter.empty"
+                : state.tripFilters.place
+                  ? "sidebar.filter.emptyPlace"
+                  : state.tripFilters.mapArea
+                    ? "sidebar.filter.emptyArea"
+                    : "sidebar.filter.empty",
         );
         const reset = document.createElement("button");
         reset.type = "button";
