@@ -13,14 +13,7 @@ const ACTIVE_VIDEO = ".video-tile.active > video:not(.preload-slot)";
  * ahead. No container clock is available to reconcile the conflicting anchors. */
 async function loadPairedMediaTrip(page: Page): Promise<void> {
     const recordings = await Promise.all(
-        [45, 46].map(async (duration) => {
-            const bytes = Buffer.from(await createMseFixture({ gopCount: duration }));
-            const mvhd = bytes.indexOf("mvhd");
-            expect(mvhd).toBeGreaterThan(0);
-            expect(bytes[mvhd + 4]).toBe(0);
-            bytes.writeUInt32BE(0, mvhd + 8);
-            return bytes;
-        }),
+        [45, 46].map(async (duration) => Buffer.from(await createMseFixture({ gopCount: duration }))),
     );
     const rows = Array.from(
         { length: 47 },

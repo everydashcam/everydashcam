@@ -26,7 +26,10 @@ interface MseFixtureOptions {
     preserveFrameTiming?: boolean;
 }
 
-/** Retimes real encoded GoPro packets; no encoder or fabricated codec data is involved. */
+/**
+ * Retimes real encoded GoPro packets; no encoder or fabricated codec data is involved.
+ * The output carries no container creation time, so the filename anchors the clip.
+ */
 export async function createMseFixture(options: MseFixtureOptions = {}): Promise<Uint8Array<ArrayBuffer>> {
     const bytes = await readFile(new URL("../testdata/gopro-gpmf/hero5-trimmed.mp4", import.meta.url));
     const input = new Input({ source: new BufferSource(bytes), formats: [MP4] });
@@ -38,6 +41,11 @@ export async function createMseFixture(options: MseFixtureOptions = {}): Promise
               ? new MkvOutputFormat()
               : new Mp4OutputFormat();
     const output = new Output({ target, format });
+    // Mediabunny stamps the current time by default. The app prefers that
+    // stamp over the filename, so clips generated concurrently would share
+    // one start, or land a second apart when generation crosses a second
+    // boundary, and pair the wrong files.
+    output.setMetadataTags({ creationTime: null });
     try {
         const video = await input.getPrimaryVideoTrack();
         if (!video) throw new Error("fixture has no video track");
