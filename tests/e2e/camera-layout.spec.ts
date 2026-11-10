@@ -1,5 +1,5 @@
 // Camera layout in the viewer: the two arrangement modes, the divider between
-// the main camera and the smaller ones, overlay windows, the V/N shortcuts,
+// the main camera and the smaller ones, overlay windows, the V/N/Shift+N shortcuts,
 // placeholders for a camera without footage, and the phone frame height.
 
 import type { Page } from "@playwright/test";
@@ -149,6 +149,19 @@ test.describe("camera layout on a three-camera trip", () => {
         }
         expect(new Set(seen).size).toBe(first.length);
         expect(await visibleCameraOrder(page)).toEqual(first);
+    });
+
+    test("Shift+N undoes N and then hands the main place to the previous camera", async ({ page }) => {
+        const first = await visibleCameraOrder(page);
+        expect(first.length, "a three-camera trip").toBeGreaterThan(2);
+        await page.keyboard.press("n");
+        await expect.poll(() => visibleCameraOrder(page).then((order) => order[0])).toBe(first[1]);
+        await page.keyboard.press("Shift+N");
+        await expect.poll(() => visibleCameraOrder(page)).toEqual(first);
+        await page.keyboard.press("Shift+N");
+        const previous = first.at(-1)!;
+        await expect.poll(() => visibleCameraOrder(page).then((order) => order[0])).toBe(previous);
+        await expect(page.locator(`.video-tile[data-channel="${previous}"]`)).toHaveAttribute("data-role", "main");
     });
 
     test("the divider resizes the smaller cameras, survives a reload and resets on double-click", async ({ page }) => {

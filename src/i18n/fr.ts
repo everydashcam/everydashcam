@@ -308,7 +308,7 @@ export const frDict = {
     "player.cameras.audio.label": "Son",
     "player.cameras.audio.followMain": "Caméra principale",
     "hotkeys.action.cameraMode": "Principale + autres / toutes égales",
-    "hotkeys.action.nextCamera": "Caméra suivante en principale",
+    "hotkeys.action.nextCamera": "Caméra suivante / précédente en principale",
 
     "units.kmh": "km/h",
     "units.km": "km",

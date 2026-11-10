@@ -308,7 +308,7 @@ export const esDict = {
     "player.cameras.audio.label": "Sonido",
     "player.cameras.audio.followMain": "Cámara principal",
     "hotkeys.action.cameraMode": "Principal + resto / todas iguales",
-    "hotkeys.action.nextCamera": "Siguiente cámara como principal",
+    "hotkeys.action.nextCamera": "Cámara siguiente / anterior como principal",
 
     "units.kmh": "km/h",
     "units.km": "km",

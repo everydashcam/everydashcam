@@ -307,7 +307,7 @@ export const zhDict = {
     "player.cameras.audio.label": "声音",
     "player.cameras.audio.followMain": "主摄像头",
     "hotkeys.action.cameraMode": "主画面 + 其他 / 全部同样大小",
-    "hotkeys.action.nextCamera": "下一个摄像头设为主画面",
+    "hotkeys.action.nextCamera": "下一个 / 上一个摄像头设为主画面",
 
     "units.kmh": "km/h",
     "units.km": "km",

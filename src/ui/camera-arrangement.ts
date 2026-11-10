@@ -53,13 +53,15 @@ export function makeMainCamera(channel: Channel): void {
     commit();
 }
 
-/** The camera after the current main one becomes the main camera (the hotkey
- *  for stepping through cameras). The visible cameras rotate by one place, so
- *  repeated presses visit every camera; hidden ones keep their places. */
-export function cycleMainCamera(): void {
+/** The camera after (`direction` 1) or before (-1) the current main one
+ *  becomes the main camera (the hotkeys for stepping through cameras). The
+ *  visible cameras rotate by one place, so repeated presses visit every
+ *  camera and the opposite direction undoes a step exactly; hidden ones keep
+ *  their places. */
+export function cycleMainCamera(direction: 1 | -1): void {
     const visible = visibleChannels();
     if (visible.length <= 1) return;
-    const rotated = [...visible.slice(1), visible[0]!];
+    const rotated = direction === 1 ? [...visible.slice(1), visible[0]!] : [visible.at(-1)!, ...visible.slice(0, -1)];
     let next = 0;
     const order = state.composition.order.map((channel) =>
         state.composition.hidden.includes(channel) ? channel : rotated[next++]!,

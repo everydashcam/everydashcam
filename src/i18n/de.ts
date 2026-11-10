@@ -306,7 +306,7 @@ export const deDict = {
     "player.cameras.audio.label": "Ton",
     "player.cameras.audio.followMain": "Hauptkamera",
     "hotkeys.action.cameraMode": "Hauptkamera + weitere / alle gleich groß",
-    "hotkeys.action.nextCamera": "Nächste Kamera als Hauptkamera",
+    "hotkeys.action.nextCamera": "Nächste / vorherige Kamera als Hauptkamera",
 
     "units.kmh": "km/h",
     "units.km": "km",

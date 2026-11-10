@@ -313,7 +313,7 @@ export const ruDict = {
     "player.cameras.audio.label": "Звук",
     "player.cameras.audio.followMain": "С главной камеры",
     "hotkeys.action.cameraMode": "Главная + остальные / все поровну",
-    "hotkeys.action.nextCamera": "Следующая камера главной",
+    "hotkeys.action.nextCamera": "Следующая / предыдущая камера главной",
 
     "units.kmh": "км/ч",
     "units.km": "км",

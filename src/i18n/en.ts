@@ -309,7 +309,7 @@ export const enDict = {
     "player.cameras.audio.label": "Sound",
     "player.cameras.audio.followMain": "Main camera",
     "hotkeys.action.cameraMode": "Main camera + others / all equal",
-    "hotkeys.action.nextCamera": "Next camera as the main one",
+    "hotkeys.action.nextCamera": "Next / previous camera as the main one",
 
     "units.kmh": "km/h",
     "units.km": "km",

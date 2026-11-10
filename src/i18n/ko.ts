@@ -317,7 +317,7 @@ export const koDict = {
     "player.cameras.audio.label": "소리",
     "player.cameras.audio.followMain": "메인 카메라",
     "hotkeys.action.cameraMode": "메인 + 나머지 / 모두 같은 크기",
-    "hotkeys.action.nextCamera": "다음 카메라를 메인으로",
+    "hotkeys.action.nextCamera": "다음 / 이전 카메라를 메인으로",
 
     "units.kmh": "km/h",
     "units.km": "km",

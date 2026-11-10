@@ -4,7 +4,7 @@
 // [contenteditable]) so shortcuts don't break text input. Modifier combos
 // (Cmd/Ctrl/Alt) are not intercepted - Shift is the only modifier we use
 // (Shift+arrow = long seek step, Shift+. = >, Shift+I/O = jump to clip edge,
-// Shift+S = copy a still image).
+// Shift+S = copy a still image, Shift+N = previous camera as the main one).
 // Arrow seek steps are user-configurable in settings; defaults 5s / 30s.
 
 import { cycleMainCamera, toggleArrangementMode } from "./camera-arrangement.js";
@@ -212,14 +212,15 @@ export function initPlayerHotkeys(deps: HotkeyDeps): void {
             return;
         }
 
-        // V: main camera + others <-> all cameras equal. N: the next camera
-        // takes the main place. Both need two cameras on screen; with one,
-        // the key is left to the page.
+        // V: main camera + others <-> all cameras equal. N / Shift+N: the
+        // next / previous camera takes the main place, so with three cameras
+        // the pair flips back and forth between two of them. Both need two
+        // cameras on screen; with one, the key is left to the page.
         if (code === "KeyV" || code === "KeyN") {
             if (!hasActive || e.repeat || visibleChannels().length < 2) return;
             e.preventDefault();
             if (code === "KeyV") toggleArrangementMode();
-            else cycleMainCamera();
+            else cycleMainCamera(e.shiftKey ? -1 : 1);
             return;
         }
 

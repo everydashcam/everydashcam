@@ -318,7 +318,7 @@ export const jaDict = {
     "player.cameras.audio.label": "音声",
     "player.cameras.audio.followMain": "メインカメラ",
     "hotkeys.action.cameraMode": "メイン＋その他／すべて同じ大きさ",
-    "hotkeys.action.nextCamera": "次のカメラをメインに",
+    "hotkeys.action.nextCamera": "次／前のカメラをメインに",
 
     "units.kmh": "km/h",
     "units.km": "km",

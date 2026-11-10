@@ -308,7 +308,7 @@ export const plDict = {
     "player.cameras.audio.label": "Dźwięk",
     "player.cameras.audio.followMain": "Kamera główna",
     "hotkeys.action.cameraMode": "Główna + pozostałe / wszystkie równe",
-    "hotkeys.action.nextCamera": "Następna kamera jako główna",
+    "hotkeys.action.nextCamera": "Następna / poprzednia kamera jako główna",
 
     "units.kmh": "km/h",
     "units.km": "km",

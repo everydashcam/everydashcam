@@ -308,7 +308,7 @@ export const ptDict = {
     "player.cameras.audio.label": "Som",
     "player.cameras.audio.followMain": "Câmera principal",
     "hotkeys.action.cameraMode": "Principal + outras / todas iguais",
-    "hotkeys.action.nextCamera": "Próxima câmera como principal",
+    "hotkeys.action.nextCamera": "Câmera seguinte / anterior como principal",
 
     "units.kmh": "km/h",
     "units.km": "km",
