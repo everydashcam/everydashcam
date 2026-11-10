@@ -359,10 +359,10 @@ function syncBellVisibility(): void {
 
 function renderBellBadge(): void {
     if (!bellDot) return;
-    const unread =
+    const hasUnread =
         notifications.some((n) => !n.read) ||
         [...pinnedStatuses].some(([id, status]) => readPinnedRevisions.get(id) !== status.revision);
-    bellDot.hidden = !unread;
+    bellDot.hidden = !hasUnread;
 }
 
 function toggleDrawer(): void {

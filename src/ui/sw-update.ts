@@ -1,7 +1,7 @@
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
-import { markIntentionalNavigation } from "./nav-intent.js";
+import { clearIntentionalNavigation, markIntentionalNavigation } from "./nav-intent.js";
 import { notify, type PinnedStatusInput, setPinnedStatus } from "./notifications.js";
 import { canReloadWithoutAsking, isRestartLocked, subscribeRestartLock } from "./restart-gate.js";
 import { createRestartController, type UserRestartFailure } from "./sw-restart.js";
@@ -29,10 +29,10 @@ const FAILURE_MESSAGES: Record<UserRestartFailure, I18nKey> = {
  */
 export function updateStatusLine(
     state: UpdateState,
-    isRestartLocked: boolean,
+    isLocked: boolean,
     onAction: () => void,
 ): PinnedStatusInput | null {
-    if (!state.isPageBehind || isRestartLocked) return null;
+    if (!state.isPageBehind || isLocked) return null;
     return {
         severity: "info",
         messageKey: "status.update.pending",
@@ -74,7 +74,7 @@ export function initServiceWorkerUpdates(options: {
     // and cannot be dismissed. The worker-change rule reloads only a page with
     // nothing open, so its dialog has no warning about reopening recordings.
     const showDialog = (kind: "confirm" | "userRestart" | "unaskedReload"): void => {
-        const confirm = kind === "confirm";
+        const isConfirm = kind === "confirm";
         closeDialog();
         const root = document.createElement("div");
         root.id = "sw-update-modal";
@@ -89,7 +89,7 @@ export function initServiceWorkerUpdates(options: {
         const title = document.createElement("div");
         title.id = "sw-update-title";
         title.className = "export-modal-title";
-        title.textContent = t(confirm ? "status.update.confirm" : "status.update.restarting");
+        title.textContent = t(isConfirm ? "status.update.confirm" : "status.update.restarting");
         const section = document.createElement("div");
         section.className = "export-modal-section";
         const body = document.createElement("p");
@@ -98,7 +98,7 @@ export function initServiceWorkerUpdates(options: {
         body.textContent = t("status.update.body");
         if (kind !== "unaskedReload") section.append(body);
         let cancel: HTMLButtonElement | undefined;
-        if (confirm) {
+        if (isConfirm) {
             const actions = document.createElement("div");
             actions.className = "export-modal-actions";
             cancel = document.createElement("button");
@@ -123,7 +123,7 @@ export function initServiceWorkerUpdates(options: {
         dialog = root;
         activateModal(root, {
             onClose: () => {
-                if (confirm) closeDialog();
+                if (isConfirm) closeDialog();
             },
             initialFocus: cancel ?? root,
         });
@@ -182,6 +182,7 @@ export function initServiceWorkerUpdates(options: {
         canReloadWithoutAsking: () => canReloadWithoutAsking({ ...options.liveWork(), isModalOpen: isAnyModalOpen() }),
         reloadPage: () => location.reload(),
         markIntentionalNavigation,
+        clearIntentionalNavigation,
         onUserRestartFailed: (failure) => announce(FAILURE_MESSAGES[failure]),
     });
 

@@ -111,7 +111,7 @@ export interface RestartController {
  * the page when it loaded; `currentController` reads the live one.
  * `canReloadWithoutAsking` is the shared answer from restart-gate.ts. `reloadPage` performs the navigation;
  * `markIntentionalNavigation` silences the leave-page prompt for a reload the
- * user confirmed. `onUserRestartFailed` reports a stop that left the page as
+ * user confirmed; `clearIntentionalNavigation` re-arms it if the page survives. `onUserRestartFailed` reports a stop that left the page as
  * it was. `sendActivationRequest` exists for tests.
  */
 export function createRestartController(options: {
@@ -122,6 +122,7 @@ export function createRestartController(options: {
     canReloadWithoutAsking: () => boolean;
     reloadPage: () => void;
     markIntentionalNavigation: () => void;
+    clearIntentionalNavigation: () => void;
     onUserRestartFailed: (failure: UserRestartFailure) => void;
     sendActivationRequest?: typeof requestActivation;
 }): RestartController {
@@ -151,10 +152,13 @@ export function createRestartController(options: {
     // Reloading is a wait as well: the page lives on if the navigation does
     // not happen, and the lock must not outlive that.
     const reload = (): void => {
-        if (restartLockReason() === "user") options.markIntentionalNavigation();
+        const isUserReload = restartLockReason() === "user";
+        if (isUserReload) options.markIntentionalNavigation();
         isReloading = true;
         schedule(() => {
             log.warn("page stayed after reload", { reason: restartLockReason() });
+            // The page keeps working, so the leave-page prompt must guard it again.
+            if (isUserReload) options.clearIntentionalNavigation();
             release();
         }, RELOAD_TIMEOUT_MS);
         options.reloadPage();

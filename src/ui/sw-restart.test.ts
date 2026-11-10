@@ -48,6 +48,7 @@ function setup(page: { isControlled?: boolean; canReloadWithoutAsking?: boolean 
         canReloadWithoutAsking: vi.fn(() => page.canReloadWithoutAsking ?? true),
         reloadPage: vi.fn(),
         markIntentionalNavigation: vi.fn(),
+        clearIntentionalNavigation: vi.fn(),
         onUserRestartFailed: vi.fn(),
         sendActivationRequest: vi.fn(
             (_worker: Pick<ObservedWorker, "postMessage">, _reason: RestartReason, _timeoutMs: number) =>
@@ -202,6 +203,9 @@ describe("user restart", () => {
 
         expect(isRestartLocked()).toBe(false);
         expect(options.reloadPage).toHaveBeenCalledTimes(1);
+        expect(options.clearIntentionalNavigation, "the leave-page prompt guards the page again").toHaveBeenCalledTimes(
+            1,
+        );
     });
 
     it("ignores a second request while one runs", async () => {
@@ -289,13 +293,14 @@ describe("worker change rule", () => {
     });
 
     it("releases the lock when the page survives an unasked reload", async () => {
-        const { takeOver } = setup({ canReloadWithoutAsking: true });
+        const { options, takeOver } = setup({ canReloadWithoutAsking: true });
         takeOver();
 
         await vi.advanceTimersByTimeAsync(10_000);
 
         expect(isRestartLocked()).toBe(false);
         expect(claimImportGesture(), "imports work again").toBe(true);
+        expect(options.clearIntentionalNavigation, "nothing was silenced").not.toHaveBeenCalled();
     });
 });
 

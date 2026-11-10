@@ -7,14 +7,20 @@
 // browser's generic prompt on top would be a confusing double confirmation.
 // The switcher sets this flag right before location.assign; app.ts reads it.
 //
-// One-way latch: it is only ever set true, and immediately precedes a full
-// navigation that tears down the page, so there is nothing to reset.
+// It immediately precedes a full navigation that tears down the page. A page
+// that survives its navigation clears it, or the guard would stay off for the
+// rest of the page's life.
 
 let intentional = false;
 
 /** Call right before a deliberate full-page navigation. */
 export function markIntentionalNavigation(): void {
     intentional = true;
+}
+
+/** Re-arms the beforeunload guard after a deliberate navigation did not happen. */
+export function clearIntentionalNavigation(): void {
+    intentional = false;
 }
 
 /** True once markIntentionalNavigation() has run - the beforeunload guard skips. */
