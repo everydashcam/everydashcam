@@ -23,7 +23,7 @@ import { farDotRadiusPx, foldFarTrips, type FarDot } from "../trip-map/far-dots.
 import { FOLLOW_FIT_DURATION_MS, FOLLOW_FIT_PADDING_PX, shouldReframe, type ScreenBox } from "../trip-map/follow.js";
 import { placeRadiusWorld, trackPositionAt, type PlaceCircle } from "../trip-map/queries.js";
 import type { TripMapTrack } from "../trip-map/track-geometry.js";
-import { tripNeedsRecordingMetadata } from "../trips.js";
+import { tripNeedsRecordingMetadata, type Trip } from "../trips.js";
 import {
     emptyBounds,
     extendBounds,
@@ -209,8 +209,9 @@ let creation = 0;
 // No WebGL context: the map stays off for the session and the viewer keeps
 // its plain placeholder.
 let isUnavailable = false;
-/** Trip index under the pointer in the list, drawn on top of everything. */
-let highlightedTrip: number | null = null;
+/** The trip under the pointer in the list, drawn on top of everything. Held by
+ *  object: a regroup renumbers the trips while the pointer rests on a row. */
+let highlightedTrip: Trip | null = null;
 /** The button by the search laid the map over the open trip. */
 let isOverTrip = false;
 /** The marker whose card is open, for focus when Escape closes the card. */
@@ -393,7 +394,9 @@ async function createView(): Promise<void> {
     try {
         maplibre = await loadMaplibre();
     } catch (error) {
-        log.warn("trip map library failed to load", error instanceof Error ? error : { error: String(error) });
+        // Without the library there is no map this session: give the viewer
+        // its placeholder back instead of an empty surface.
+        markUnavailable(error, "trip map library failed to load");
         return;
     }
     if (generation !== creation || view || !shouldShowTripMap()) return;
@@ -473,7 +476,8 @@ async function createView(): Promise<void> {
     const noteUserMove = (event: { originalEvent?: unknown }): void => {
         if (event.originalEvent) stopFollowing(current);
     };
-    map.on("dragstart", noteUserMove);
+    // Drags, pinches and arrow-key pans all start a move with the user's event.
+    map.on("movestart", noteUserMove);
     map.on("zoomstart", noteUserMove);
     map.on("wheel", () => {
         stopFollowing(current);
@@ -504,7 +508,15 @@ async function createView(): Promise<void> {
         setTripMapPlace(countTripsThrough(circle) > 0 ? circle : null);
         hideProbe(current);
     });
-    registerViewerMap({ map, surface: "trips", attribution });
+    registerViewerMap({
+        map,
+        surface: "trips",
+        attribution,
+        // The style is gone with the context: writes wait for the restore's style.load.
+        onContextLost: () => {
+            current.isStyleReady = false;
+        },
+    });
     followLibrary(current);
     scheduleBundle(current);
     syncTripMapStatus();
@@ -534,10 +546,10 @@ function destroyView(): void {
     setTripMapFrame(null);
 }
 
-function markUnavailable(error?: unknown): void {
+function markUnavailable(error?: unknown, reason = "trip map unavailable: no WebGL context"): void {
     if (isUnavailable) return;
     isUnavailable = true;
-    log.warn("trip map unavailable: no WebGL context", error instanceof Error ? error : { error: String(error) });
+    log.warn(reason, error instanceof Error ? error : { error: String(error) });
     syncTripMap();
     callbacks.onSurfaceChange();
 }
@@ -799,8 +811,31 @@ function highlightColors(): { outline: string; core: string; start: string; end:
     };
 }
 
+/** This map's own layers, top first, then their sources. */
+function ownLayerIds(): { layers: string[]; sources: string[] } {
+    const corridor = (layers: CorridorLayers): string[] => [layers.core, layers.outline, layers.halo];
+    return {
+        layers: [
+            HIGHLIGHT_POINTS_LAYER_ID,
+            HIGHLIGHT_CORE_LAYER_ID,
+            HIGHLIGHT_OUTLINE_LAYER_ID,
+            PLACE_LINE_LAYER_ID,
+            PLACE_EDGE_LAYER_ID,
+            ...corridor(MATCHED_LAYERS),
+            PLACE_FILL_LAYER_ID,
+            ...corridor(BASE_LAYERS),
+        ],
+        sources: [HIGHLIGHT_SOURCE_ID, MATCHED_LAYERS.source, PLACE_SOURCE_ID, BASE_LAYERS.source],
+    };
+}
+
 function addLayers(current: TripMapView): void {
     const { map } = current;
+    // A restored WebGL context brings back the old style with these layers and
+    // their data from before the loss; rebuild them from the current results.
+    const own = ownLayerIds();
+    for (const id of own.layers) if (map.getLayer(id)) map.removeLayer(id);
+    for (const id of own.sources) if (map.getSource(id)) map.removeSource(id);
     addCorridorLayers(map, BASE_LAYERS, current.bundle);
     map.addSource(PLACE_SOURCE_ID, { type: "geojson", data: placeData() });
     const place = placeColors();
@@ -1201,8 +1236,9 @@ interface HighlightData {
 /** The hovered list trip: its own simplified route, its ends and its passes through the place. */
 function highlightData(): HighlightData {
     const empty: HighlightData = { type: "FeatureCollection", features: [] };
-    if (highlightedTrip === null) return empty;
-    const track = tripMapEntries()[highlightedTrip]?.track;
+    const tripIndex = highlightedTrip ? state.trips.indexOf(highlightedTrip) : -1;
+    if (tripIndex < 0) return empty;
+    const track = tripMapEntries()[tripIndex]?.track;
     if (!track || track.times.length === 0) return empty;
     const lngLat = (index: number): [number, number] => [
         worldToLon(track.points[index * 2]!),
@@ -1226,7 +1262,7 @@ function highlightData(): HighlightData {
             geometry: { type: "Point", coordinates: lngLat(track.times.length - 1) },
         },
     ];
-    for (const pass of tripMapPassesFor(highlightedTrip)) {
+    for (const pass of tripMapPassesFor(tripIndex)) {
         features.push({
             type: "Feature",
             properties: { kind: "pass" },
@@ -1372,9 +1408,9 @@ function showTripMapFromCard(): void {
     dom.tripMapState.focus({ preventScroll: true });
 }
 
-function setHighlightedTrip(tripIndex: number | null): void {
-    if (tripIndex === highlightedTrip) return;
-    highlightedTrip = tripIndex;
+function setHighlightedTrip(trip: Trip | null): void {
+    if (trip === highlightedTrip) return;
+    highlightedTrip = trip;
     renderHighlight();
 }
 
@@ -1517,7 +1553,7 @@ export function initTripMap(cb: TripMapCallbacks): void {
     dom.list.addEventListener("pointerover", (event) => {
         const row = event.target instanceof Element ? event.target.closest<HTMLElement>("li.trip") : null;
         const index = row?.dataset.tripIndex === undefined ? null : Number(row.dataset.tripIndex);
-        setHighlightedTrip(index !== null && Number.isInteger(index) ? index : null);
+        setHighlightedTrip(index !== null && Number.isInteger(index) ? (state.trips[index] ?? null) : null);
     });
     dom.list.addEventListener("pointerleave", () => setHighlightedTrip(null));
 
