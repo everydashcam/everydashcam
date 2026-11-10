@@ -1,10 +1,23 @@
-// The restart into a waiting worker. Every wait inside it is bounded and the
-// restart releases its own lock, so the dialog and the import refusal it holds
-// can never outlive it: no attempt survives its lock, and no watchdog or
-// attempt counter is needed.
+// The user's restart into a waiting worker, and the rule for a worker change the
+// page did not ask for. Every wait inside is bounded and the controller
+// releases its own lock, so the dialog and the import refusal it holds can
+// never outlive it: no attempt survives its lock, and no watchdog or attempt
+// counter is needed.
+//
+// The page never asks for activation by itself. Right after load it cannot do
+// so reliably: Chromium resolves skipWaiting() only on activation, and
+// activation stalled for over 80 s whenever the page's own startup requests
+// restarted the old worker Chromium had just stopped (about a third of e2e
+// runs of a restart at load). A user restart starts on an idle page.
 import { createLogger } from "../log.js";
 import { UPDATE_MESSAGE, isUpdateResult, type UpdateRequest, type UpdateResult } from "../sw-update-protocol.js";
-import { isRestartLocked, restartLockReason, tryLockRestart, unlockRestart } from "./restart-gate.js";
+import {
+    isRestartLocked,
+    type RestartReason,
+    restartLockReason,
+    tryLockRestart,
+    unlockRestart,
+} from "./restart-gate.js";
 import type { ObservedWorker } from "./sw-update-observer.js";
 
 const log = createLogger("sw-update");
@@ -41,13 +54,14 @@ async function saveNotesWithin(saveNotes: () => Promise<boolean>, timeoutMs: num
 }
 
 /**
- * Asks the waiting worker to take over. Resolves null when it does not answer
- * within `timeoutMs` or answers with a result this release does not know. A
- * null answer does not mean the request was cancelled: the worker may have
- * received it and still activate later.
+ * Asks the waiting worker to take over for `reason`. Resolves null when it does
+ * not answer within `timeoutMs` or answers with a result this release does not
+ * know. A null answer does not mean the request was cancelled: the worker may
+ * have received it and still activate later.
  */
 export function requestActivation(
     worker: Pick<ObservedWorker, "postMessage">,
+    reason: RestartReason,
     timeoutMs: number,
 ): Promise<UpdateResult | null> {
     return new Promise((resolve) => {
@@ -62,7 +76,7 @@ export function requestActivation(
             finish(isUpdateResult(event.data) ? event.data : null);
         };
         try {
-            worker.postMessage({ type: UPDATE_MESSAGE } satisfies UpdateRequest, [channel.port2]);
+            worker.postMessage({ type: UPDATE_MESSAGE, reason } satisfies UpdateRequest, [channel.port2]);
         } catch {
             finish(null);
         }
@@ -73,7 +87,10 @@ export interface RestartController {
     /**
      * Restarts the page into the waiting worker at the user's request. The
      * caller has already checked that no work would be lost and that the user
-     * confirmed. A no-op while another restart holds the lock.
+     * confirmed. A no-op while another restart holds the lock. Once notes are
+     * saved, any outcome other than another open window or a refusal ends in
+     * a reload: the user accepted the restart, and a reload loads the newest
+     * active release.
      */
     restart(): Promise<void>;
     /**
@@ -157,9 +174,15 @@ export function createRestartController(options: {
                 log.info("no waiting worker, reloading");
                 return reload();
             }
-            const result = await sendActivationRequest(worker, ACTIVATION_ANSWER_TIMEOUT_MS);
+            const result = await sendActivationRequest(worker, "user", ACTIVATION_ANSWER_TIMEOUT_MS);
             if (isReloading) return;
             if (result === "otherWindows") return fail("otherWindows");
+            if (result === "declined") {
+                // The protocol forbids declining a user request; stay rather
+                // than reload into the same release.
+                log.warn("worker declined a user restart");
+                return fail("failed");
+            }
             if (result === "updating") {
                 schedule(reload, TAKEOVER_TIMEOUT_MS);
                 return;

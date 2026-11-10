@@ -1,6 +1,8 @@
 // Workbox owns cache revisions, installation, routing and expiration. Updates
 // wait for every controlled window to close unless the only open window requests
-// a restart: local recordings cannot survive reload.
+// a restart: local recordings cannot survive reload. A page requests it only when
+// the user confirms (src/ui/sw-restart.ts). Closing every window is the path that
+// runs no page code at all; nothing here may disable it.
 import { clientsClaim, type RouteHandler, type RouteMatchCallback, type WorkboxPlugin } from "workbox-core";
 import { ExpirationPlugin } from "workbox-expiration";
 import { PrecacheController, PrecacheRoute, type PrecacheEntry } from "workbox-precaching";
@@ -32,11 +34,13 @@ function entryFor(request: Request): PrecacheEntry | undefined {
     return entries.get(url.href);
 }
 
-// A user-requested restart activates this waiting worker only from the sole open
-// window: any other app window may hold recordings and would otherwise run the
-// old release under the new worker. Static pages count too, because the offline
-// fallback below can open the app at their address. The requester has already
-// checked its own work and saved its notes.
+// A restart request activates this waiting worker only from the sole open
+// window, whatever its reason: any other app window may hold recordings and
+// would otherwise run the old release under the new worker. Static pages count
+// too, because the offline fallback below can open the app at their address.
+// The requester has already checked its own work and saved its notes. This
+// release never answers "declined", the remote switch described in
+// sw-update-protocol.ts.
 self.addEventListener("message", (event) => {
     const source = event.source;
     const port = event.ports[0];

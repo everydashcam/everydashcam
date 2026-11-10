@@ -9,11 +9,12 @@
 // import all leave the same answer, and the log and notifications of a failed
 // import are never wiped by a reload nobody asked for.
 import { createLogger } from "../log.js";
+import type { UpdateReason } from "../sw-update-protocol.js";
 
 const log = createLogger("restart-gate");
 
 /** Who asked for the restart: the user through the dialog, or the page itself. */
-export type RestartReason = "user" | "auto";
+export type RestartReason = UpdateReason;
 
 let hasImportGesture = false;
 let lockReason: RestartReason | null = null;

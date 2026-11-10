@@ -5,6 +5,7 @@ import {
     _resetForTests,
     claimImportGesture,
     isRestartLocked,
+    type RestartReason,
     restartLockReason,
     tryLockRestart,
 } from "./restart-gate.js";
@@ -49,7 +50,8 @@ function setup(page: { isControlled?: boolean; canReloadWithoutAsking?: boolean 
         markIntentionalNavigation: vi.fn(),
         onUserRestartFailed: vi.fn(),
         sendActivationRequest: vi.fn(
-            (_worker: Pick<ObservedWorker, "postMessage">, _timeoutMs: number) => answer.promise,
+            (_worker: Pick<ObservedWorker, "postMessage">, _reason: RestartReason, _timeoutMs: number) =>
+                answer.promise,
         ),
     };
     const restartController = createRestartController(options);
@@ -84,7 +86,7 @@ describe("user restart", () => {
         answer.resolve(null);
         await restart;
 
-        expect(options.sendActivationRequest).toHaveBeenCalledWith(worker, 10_000);
+        expect(options.sendActivationRequest).toHaveBeenCalledWith(worker, "user", 10_000);
         expect(options.markIntentionalNavigation).toHaveBeenCalledTimes(1);
         expect(options.reloadPage).toHaveBeenCalledTimes(1);
         expect(options.onUserRestartFailed).not.toHaveBeenCalled();
@@ -126,6 +128,18 @@ describe("user restart", () => {
 
         expect(options.reloadPage).not.toHaveBeenCalled();
         expect(options.onUserRestartFailed).toHaveBeenCalledWith("otherWindows");
+        expect(isRestartLocked()).toBe(false);
+    });
+
+    it("stops with a failure when the worker declines a user restart against the protocol", async () => {
+        const { controller, options, notes, answer } = setup();
+        const restart = controller.restart();
+        notes.resolve(true);
+        answer.resolve("declined");
+        await restart;
+
+        expect(options.reloadPage).not.toHaveBeenCalled();
+        expect(options.onUserRestartFailed).toHaveBeenCalledWith("failed");
         expect(isRestartLocked()).toBe(false);
     });
 
@@ -302,17 +316,17 @@ describe("activation request", () => {
     it("sends the update request and resolves the worker's answer", async () => {
         const worker = answeringWorker("otherWindows");
 
-        await expect(requestActivation(worker, 1000)).resolves.toBe("otherWindows");
+        await expect(requestActivation(worker, "auto", 1000)).resolves.toBe("otherWindows");
 
-        expect(worker.requests).toEqual([{ type: UPDATE_MESSAGE }]);
+        expect(worker.requests).toEqual([{ type: UPDATE_MESSAGE, reason: "auto" }]);
     });
 
     it("resolves null for an answer this release does not know", async () => {
-        await expect(requestActivation(answeringWorker("later"), 1000)).resolves.toBeNull();
+        await expect(requestActivation(answeringWorker("later"), "user", 1000)).resolves.toBeNull();
     });
 
     it("resolves null when the worker stays silent", async () => {
-        await expect(requestActivation({ postMessage: () => {} }, 20)).resolves.toBeNull();
+        await expect(requestActivation({ postMessage: () => {} }, "user", 20)).resolves.toBeNull();
     });
 
     it("resolves null when the request cannot be sent", async () => {
@@ -322,6 +336,6 @@ describe("activation request", () => {
             },
         };
 
-        await expect(requestActivation(worker, 1000)).resolves.toBeNull();
+        await expect(requestActivation(worker, "user", 1000)).resolves.toBeNull();
     });
 });
