@@ -305,9 +305,10 @@ export interface ViewerMap {
 
 // Insertion order is the order style swaps reach the maps.
 const viewerMaps = new Set<ViewerMap>();
-// Registration loads started per style, so a second map registering while the
-// first one's style is still on its way does not set the same style twice.
-const registrationLoads = new Set<MapStyleCacheKey>();
+// Registration loads started per style, with the maps waiting for it, so a
+// second map registering while the first one's style is still on its way does
+// not set the same style twice.
+const registrationLoads = new Map<MapStyleCacheKey, Set<ViewerMap>>();
 
 /**
  * Puts a freshly constructed map under the shared style: the current style is
@@ -327,16 +328,21 @@ export function registerViewerMap(viewerMap: ViewerMap): () => void {
     const theme = currentMapTheme();
     const provider = getMapProvider();
     const key = styleCacheKey(provider, theme);
-    const cached = cachedMapStyles.get(key);
-    if (registrationLoads.has(key)) {
-        // The pending load applies its style to every registered map.
+    // The route-only style needs no load and is never cached.
+    const cached = provider === "route-only" ? EMPTY_MAP_STYLE : cachedMapStyles.get(key);
+    const waiting = registrationLoads.get(key);
+    if (waiting) {
+        waiting.add(viewerMap);
     } else if (cached) {
         applyStyleTo(viewerMap, applyViewerMapStyle(cached), provider, false);
     } else {
-        registrationLoads.add(key);
+        const newcomers = new Set([viewerMap]);
+        registrationLoads.set(key, newcomers);
         void loadMapStyle(theme, false, "main", provider).then((style) => {
             registrationLoads.delete(key);
-            if (style) applyLoadedStyle(style, theme, provider);
+            // The maps already on screen lacked this style too (it was not
+            // cached) and take it as a recovery, keeping their camera.
+            if (style) applyLoadedStyle(style, theme, provider, true, newcomers);
         });
     }
     // Warm the alternate palette for map settings and export; background
@@ -371,6 +377,8 @@ function applyLoadedStyle(
     theme: MapStyleId,
     provider = getMapProvider(),
     shouldPreserveCamera = false,
+    /** Maps getting their first style: they have no camera to keep yet. */
+    newcomers: ReadonlySet<ViewerMap> = new Set(),
 ): void {
     // Only the live UI theme is ever applied to the on-screen maps. A retried
     // "neon" fetch (export-overlay failure) re-caches neon.json but never equals
@@ -385,7 +393,8 @@ function applyLoadedStyle(
     // export snapshotter reads the same cache with its own independent
     // per-export factor.
     const styled = applyViewerMapStyle(style);
-    for (const viewerMap of viewerMaps) applyStyleTo(viewerMap, styled, provider, shouldPreserveCamera);
+    for (const viewerMap of viewerMaps)
+        applyStyleTo(viewerMap, styled, provider, shouldPreserveCamera && !newcomers.has(viewerMap));
 }
 
 /**
