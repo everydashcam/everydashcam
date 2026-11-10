@@ -460,14 +460,16 @@ export function subscribeMapStyleError(listener: (isShown: boolean) => void): ()
 
 /**
  * The banner's retry: refreshes the failed style even when it is the export's
- * palette, then applies it if it is the one the viewer shows.
+ * palette, then applies it if it is the one the viewer shows. Any map's banner
+ * retries for all of them, so the cameras stay where the user left them, as
+ * after an automatic recovery.
  */
 export function retryMapStyle(): Promise<void> {
     const theme = lastFailedStyle?.theme ?? currentMapTheme();
     const provider = lastFailedStyle?.provider ?? getMapProvider();
     const source = lastFailedStyle?.source ?? "main";
     return loadMapStyle(theme, true, source, provider).then((style) => {
-        if (style) applyLoadedStyle(style, theme, provider);
+        if (style) applyLoadedStyle(style, theme, provider, true);
     });
 }
 
