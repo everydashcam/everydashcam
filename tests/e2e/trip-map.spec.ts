@@ -103,12 +103,16 @@ test.describe("with routes only", () => {
         await expect.poll(() => page.evaluate(() => window.__everydashcam.state.mapReady)).toBe(true);
         // The trip's own map keeps the user's view while another map registers.
         await page.evaluate(() => window.__everydashcam.state.map!.jumpTo({ zoom: 12.25 }));
+        // The clip lasts two seconds and may have ended by now; play it again,
+        // so the pause below is the map's doing.
+        await page.evaluate(() => window.__everydashcam.dom.player.play());
+        await expect.poll(() => page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(false);
 
         await page.locator("#trip-map-toggle").click();
         await expect(page.locator(".viewer")).toHaveClass(/has-trip-map-over-trip/);
         await expectRoutesDrawn(page);
         expect(await page.locator(".player-wrap").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
-        expect(await page.evaluate(() => document.querySelector("video")!.paused)).toBe(true);
+        expect(await page.evaluate(() => window.__everydashcam.dom.player.paused)).toBe(true);
         expect(await page.evaluate(() => window.__everydashcam.state.map!.getZoom())).toBeCloseTo(12.25, 2);
         await expect(page.locator("#trip-map-close")).toHaveAttribute("aria-label", "Back to video");
 
