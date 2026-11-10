@@ -7,6 +7,7 @@
 // for the Docker command to regenerate Linux baselines for CI.
 
 import { DESKTOP, MOBILE, expect, gotoApp, loadTrip, openExport, presetLocalStorage, test } from "./_fixtures.js";
+import { EAST_ROAD, NORTH_ROAD, writeTripLibrary } from "./_trip-library.js";
 
 // Fonts are self-hosted; wait for them so text metrics are stable before a shot.
 async function settle(page: import("@playwright/test").Page): Promise<void> {
@@ -73,6 +74,44 @@ test.describe("visual regression", () => {
         await expect(modal).toBeVisible();
         await settle(page);
         await expect(modal).toHaveScreenshot("gps-sync-modal.png");
+    });
+
+    test.describe("map of all trips (map canvas masked)", () => {
+        test.use({ viewerMap: "route-only" });
+
+        async function openLibrary(page: import("@playwright/test").Page): Promise<void> {
+            await gotoApp(page, "en");
+            const library = writeTripLibrary({ roads: [EAST_ROAD, NORTH_ROAD], withoutGps: 1, hasDeferredGps: true });
+            await page.locator("#folder-input").setInputFiles(library);
+            await expect(page.locator("li.trip:not(.unindexed-note)").first()).toBeVisible({ timeout: 30_000 });
+            await expect
+                .poll(() => page.evaluate(() => window.__everydashcam.state.recordingAnalysisProgress))
+                .toBeNull();
+        }
+
+        test("desktop with the reading panel", async ({ page }) => {
+            await page.setViewportSize(DESKTOP);
+            await openLibrary(page);
+            await expect(page.locator("#trip-map-counter-text")).toHaveText("2 of 4 on the map");
+            await page.locator("#trip-map-counter").click();
+            await expect(page.locator("#trip-map-read-now")).toBeVisible();
+            await settle(page);
+            await expect(page.locator("#trip-map-state")).toHaveScreenshot("trip-map-desktop.png", {
+                mask: [page.locator("#trip-map .maplibregl-canvas-container")],
+            });
+        });
+
+        test("phone map tab with its sheet", async ({ page }) => {
+            await page.setViewportSize(MOBILE);
+            await openLibrary(page);
+            await page.locator("#trip-view-map").click();
+            await expect(page.locator("#trip-map-panel #trip-map-state")).toBeVisible();
+            await expect(page.locator("#trip-map-counter-text")).toHaveText("2 of 4 on the map");
+            await settle(page);
+            await expect(page.locator("#sidebar")).toHaveScreenshot("trip-map-phone.png", {
+                mask: [page.locator("#trip-map .maplibregl-canvas-container")],
+            });
+        });
     });
 
     test("export panel options (video grid masked)", async ({ page }) => {
