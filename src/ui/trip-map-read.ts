@@ -38,16 +38,18 @@ interface ReadRun extends TrackReadProgress {
 let run: ReadRun | null = null;
 const listeners = createSubscribers<[]>("trip-map-read");
 
+/** Whether the recording's GPS track still waits inside the video for a read from here. */
+function isUnread(key: string): boolean {
+    // A failed read stays pending for a retry from the trip itself; reading
+    // it again from here would only fail the same way.
+    return state.pendingHeavyEmbeddedGps.has(key) && !state.failedEmbeddedGps.has(key);
+}
+
 /** Keys of the trip's recordings whose GPS track still waits inside the video. */
 function unreadKeys(trip: Trip): string[] {
-    const keys: string[] = [];
-    for (const candidate of tripAllCandidates(trip)) {
-        const key = vendorFileKey(candidate);
-        // A failed read stays pending for a retry from the trip itself;
-        // reading it again from here would only fail the same way.
-        if (state.pendingHeavyEmbeddedGps.has(key) && !state.failedEmbeddedGps.has(key)) keys.push(key);
-    }
-    return keys;
+    return tripAllCandidates(trip)
+        .map((candidate) => vendorFileKey(candidate))
+        .filter(isUnread);
 }
 
 function isBeingRead(trip: Trip): boolean {
@@ -111,18 +113,28 @@ export function stopReadingTracks(): void {
     run?.controller.abort();
 }
 
+/**
+ * Reads every trip that still holds an unread recording of each queued trip.
+ * Since the queue was built, an earlier read may have merged a queued trip
+ * into another one and read it along, and a new grouping interval may have
+ * split one into several trips: those are read one after another and count
+ * as one step of the progress.
+ */
 async function readQueue(current: ReadRun, queue: readonly string[][], readTrip: TripGpsReader): Promise<void> {
     for (const keys of queue) {
-        if (current.controller.signal.aborted) return;
-        // An earlier read may have merged this trip into another one and read it along.
-        const stillUnread = keys.filter((key) => state.pendingHeavyEmbeddedGps.has(key));
-        const tripIndex =
-            stillUnread.length === 0
-                ? -1
-                : state.trips.findIndex((trip) =>
-                      tripAllCandidates(trip).some((candidate) => stillUnread.includes(vendorFileKey(candidate))),
-                  );
-        if (tripIndex >= 0) {
+        const remaining = new Set(keys);
+        for (;;) {
+            if (current.controller.signal.aborted) return;
+            for (const key of remaining) if (!isUnread(key)) remaining.delete(key);
+            const tripIndex = state.trips.findIndex((trip) =>
+                tripAllCandidates(trip).some((candidate) => remaining.has(vendorFileKey(candidate))),
+            );
+            if (tripIndex < 0) break;
+            // Whatever the read's outcome, this trip's recordings are not
+            // tried again in this run; every round drops at least one key,
+            // so the walk ends even when a read leaves its files pending.
+            for (const candidate of tripAllCandidates(state.trips[tripIndex]!))
+                remaining.delete(vendorFileKey(candidate));
             const result = await readTrip(tripIndex, current.controller.signal);
             if (result === "cancelled" || result === "busy") return;
             // "failed" leaves the trip's files pending as failed; the rest still get read.

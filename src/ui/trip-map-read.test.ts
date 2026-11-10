@@ -139,6 +139,51 @@ describe("trip map reading", () => {
         expect(trackReadProgress()).toBeNull();
     });
 
+    it("reads every part of a queued trip that a new grouping interval split", async () => {
+        const first = buildCandidate("A.MP4");
+        const second = buildCandidate("B.MP4");
+        const third = buildCandidate("C.MP4");
+        state.trips = [buildTrip(first), buildTrip(second, third)];
+        for (const candidate of [first, second, third]) markUnread(candidate);
+        const progress: string[] = [];
+        subscribeTrackRead(() => {
+            const current = trackReadProgress();
+            if (current) progress.push(`${current.done}/${current.total}`);
+        });
+        const read: string[] = [];
+        const inner = readingReader(read);
+        let isFirstRead = true;
+        startReadingTracks(async (tripIndex, signal) => {
+            const result = await inner(tripIndex, signal);
+            if (isFirstRead) {
+                isFirstRead = false;
+                // A shorter interval set while the first trip was read splits the second one.
+                state.trips = [state.trips[0]!, buildTrip(second), buildTrip(third)];
+            }
+            return result;
+        });
+        await settle();
+
+        expect(read).toEqual(["A.MP4", "B.MP4", "C.MP4"]);
+        expect(state.pendingHeavyEmbeddedGps.size).toBe(0);
+        expect(progress, "the split trip is one step").toEqual(["0/2", "1/2", "2/2"]);
+    });
+
+    it("does not read a trip again when its read leaves the files pending", async () => {
+        const candidates = ["A.MP4", "B.MP4"].map(buildCandidate);
+        state.trips = [buildTrip(...candidates)];
+        for (const candidate of candidates) markUnread(candidate);
+        const asked: number[] = [];
+        startReadingTracks(async (tripIndex) => {
+            asked.push(tripIndex);
+            return "ready";
+        });
+        await settle();
+
+        expect(asked).toEqual([0]);
+        expect(trackReadProgress()).toBeNull();
+    });
+
     it("goes on past a failed trip and stops when a trip open takes over", async () => {
         const candidates = ["A.MP4", "B.MP4", "C.MP4"].map(buildCandidate);
         state.trips = candidates.map((candidate) => buildTrip(candidate));
