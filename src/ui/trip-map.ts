@@ -215,15 +215,15 @@ interface TripMapView {
 interface TripMapCallbacks {
     /** The map was turned on or off or became unavailable: the viewer placeholder must follow. */
     onSurfaceChange: () => void;
-    /** Opens the trip at `tripIndex` paused at a moment on its clock, such as a marker's. */
-    onOpenMoment: (tripIndex: number, unixSeconds: number) => void;
+    /** Opens the trip at `tripIndex` paused at the moment of its marker `markerId`. */
+    onOpenMarker: (tripIndex: number, markerId: string) => void;
     /** Reads a trip's GPS track that waits inside its videos, for "Read now". */
     readTripGps: TripGpsReader;
 }
 
 let callbacks: TripMapCallbacks = {
     onSurfaceChange: () => {},
-    onOpenMoment: () => {},
+    onOpenMarker: () => {},
     readTripGps: async () => "busy",
 };
 let view: TripMapView | null = null;
@@ -1167,7 +1167,7 @@ function openMarkerCard(current: TripMapView, markerId: string, lngLat: [number,
         // Regrouping can move the marker to another trip index since the card opened.
         const latest = markersWithTrips().find((item) => item.marker.id === markerId);
         const tripIndex = latest ? state.trips.indexOf(latest.trip) : -1;
-        if (latest && tripIndex >= 0) callbacks.onOpenMoment(tripIndex, latest.marker.utc / 1000);
+        if (latest && tripIndex >= 0) callbacks.onOpenMarker(tripIndex, markerId);
     });
     markerCardOpener = opener;
     open.focus({ preventScroll: true });

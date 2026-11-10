@@ -59,7 +59,7 @@ import { syncEmptyState } from "./ui/empty-state.js";
 import { initFileSources } from "./ui/file-sources.js";
 import { initFolderSources } from "./ui/folder-sources.js";
 import { initPersistentFolders } from "./ui/persistent-folders.js";
-import { initAnnotations, registerMarkersRestampedHook } from "./ui/annotations.js";
+import { initAnnotations, markersForTrip, registerMarkersRestampedHook } from "./ui/annotations.js";
 import { initTripMetaModal, openTripMetaModal } from "./ui/trip-meta-modal.js";
 import { initTimelineMarkers, refreshTimelineMarkers } from "./ui/timeline-markers.js";
 import { initMarkerListModal } from "./ui/marker-list-modal.js";
@@ -140,7 +140,7 @@ import {
     seekThenPlay,
 } from "./ui/player.js";
 import { initTripUi } from "./ui/trip-ui-init.js";
-import { wallToContentSec } from "./trips.js";
+import { type Trip, wallToContentSec } from "./trips.js";
 import {
     captureTripMomentTarget,
     captureTripOpenTarget,
@@ -785,8 +785,16 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
     }
 }
 
-/** Opens the trip paused at a moment on its clock, such as a pass through a place. */
-async function openTripAtMoment(tripIdx: number, momentUtc: number): Promise<void> {
+/**
+ * Opens the trip paused at a moment on its clock, such as a pass through a
+ * place. `momentAfterPreparation` gives the moment again once the trip is
+ * prepared, for a moment tied to a clip rather than to the GPS clock.
+ */
+async function openTripAtMoment(
+    tripIdx: number,
+    momentUtc: number,
+    momentAfterPreparation?: (trip: Trip) => number | null,
+): Promise<void> {
     const target = captureTripMomentTarget(state.trips, tripIdx, momentUtc);
     const openToken = beginTripOpen(target);
     if (!target) {
@@ -804,13 +812,29 @@ async function openTripAtMoment(tripIdx: number, momentUtc: number): Promise<voi
             reportTripOpenFailure(openToken, tripIdx);
             return;
         }
-        openTripAtContentSec(resolved.tripIdx, wallToContentSec(trip.timeline, momentUtc));
+        const finalMomentUtc = momentAfterPreparation?.(trip) ?? momentUtc;
+        openTripAtContentSec(resolved.tripIdx, wallToContentSec(trip.timeline, finalMomentUtc));
         notifyUnmatchedDirectoryGps(activeTrip(), openGpsSync);
         // Seeking inside the already-active trip does not call playFrame.
         clearOpeningTrip();
     } catch (err) {
         reportTripOpenFailure(openToken, tripIdx, err);
     }
+}
+
+/**
+ * Opens the trip at its marker. A marker sits at an offset inside its clip;
+ * preparing the trip can refine the clip's clock, so its moment is read again
+ * from the prepared trip.
+ */
+function openTripAtMarker(tripIdx: number, markerId: string): void {
+    const trip = state.trips[tripIdx];
+    const marker = trip ? markersForTrip(trip).find((item) => item.id === markerId) : undefined;
+    if (!marker) return;
+    void openTripAtMoment(tripIdx, marker.utc / 1000, (prepared) => {
+        const moved = markersForTrip(prepared).find((item) => item.id === markerId);
+        return moved ? moved.utc / 1000 : null;
+    });
 }
 
 /** Under a place filter a trip opens at its first pass through the place. */
@@ -829,7 +853,7 @@ initSidebar({
 // re-renders that card. Its trip markers open their trip at their moment.
 initTripMap({
     onSurfaceChange: syncEmptyState,
-    onOpenMoment: (tripIdx, momentUtc) => void openTripAtMoment(tripIdx, momentUtc),
+    onOpenMarker: openTripAtMarker,
     readTripGps: (tripIdx, signal) =>
         loadDeferredGpsInBackground(tripIdx, { signal, concurrency: getDeferredGpsConcurrency() }),
 });
