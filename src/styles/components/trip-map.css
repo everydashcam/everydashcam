@@ -335,12 +335,33 @@
     border-radius: 50%;
     background: var(--bg-elev);
     cursor: grab;
-    /* A larger invisible target than the visible dot. */
-    box-shadow: 0 0 0 7px transparent;
+}
+/* A larger invisible target than the visible dot. A pseudo-element, not a
+   shadow: MapLibre starts the drag only for a press inside the element's box,
+   and a press on its ::before is a press on the element. */
+.trip-map-place-handle::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
 }
 .maplibregl-marker-dragging .trip-map-place-handle,
 .trip-map-place-handle:active {
     cursor: grabbing;
+}
+/* Touch: the handle is the only way to change the radius, so it gets the
+   touch floor; a single-trip dot gets at least the 24 px one. The visible
+   sizes stay those of the prototype. */
+@media (pointer: coarse) {
+    .trip-map-place-handle::before {
+        inset: calc((12px - var(--dc-iconbtn-touch)) / 2);
+    }
+    .trip-map-dot::before {
+        content: "";
+        position: absolute;
+        inset: -7px;
+        border-radius: 50%;
+    }
 }
 
 /* The chosen place under the search: what filters the list and how to remove it. */
