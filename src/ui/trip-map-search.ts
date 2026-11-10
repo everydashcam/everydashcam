@@ -24,6 +24,12 @@ let areaIds: Set<number> | null = null;
 let resultKey = "";
 let isEmitQueued = false;
 let isLibrarySubscribed = false;
+// Tracks keep arriving while recordings are read, and every arrival inside the
+// frame or through the place changes the list. The list rebuilds whole, so
+// those changes reach it at most this often; the user's own changes at once.
+const LIBRARY_EMIT_INTERVAL_MS = 500;
+let libraryEmitTimer: ReturnType<typeof setTimeout> | null = null;
+let lastEmitAt = -Infinity;
 const listeners = createSubscribers<[]>("trip-map-search");
 const scopeListeners = createSubscribers<[]>("trip-map-scope");
 
@@ -78,12 +84,16 @@ function recompute(): void {
     }
 }
 
-/** Recomputes and tells listeners when the list's membership or pass times changed. */
-function update(): void {
+/**
+ * Recomputes and tells listeners when the list's membership or pass times
+ * changed. The facts are current at once either way: a list render for any
+ * other reason reads them.
+ */
+function update(isFromLibrary = false): void {
     if (!isLibrarySubscribed) {
         isLibrarySubscribed = true;
         subscribeTripMapLibrary(() => {
-            if (place || frame) update();
+            if (place || frame) update(true);
         });
     }
     recompute();
@@ -91,16 +101,34 @@ function update(): void {
     state.tripFilters.mapArea = areaIds !== null;
     const passKey = [...passesById].map(([id, passes]) => `${id}:${passes.map((pass) => pass.unixSeconds).join(",")}`);
     const key = `${place ? passKey.join(";") : "-"}|${areaIds ? [...areaIds].join(",") : "-"}`;
-    if (key === resultKey || isEmitQueued) {
-        resultKey = key;
+    const isChanged = key !== resultKey;
+    resultKey = key;
+    if (!isChanged || isEmitQueued) return;
+    if (!isFromLibrary) {
+        if (libraryEmitTimer !== null) clearTimeout(libraryEmitTimer);
+        libraryEmitTimer = null;
+        queueEmit();
         return;
     }
-    resultKey = key;
+    if (libraryEmitTimer !== null) return;
+    const wait = lastEmitAt + LIBRARY_EMIT_INTERVAL_MS - performance.now();
+    if (wait <= 0) {
+        queueEmit();
+        return;
+    }
+    libraryEmitTimer = setTimeout(() => {
+        libraryEmitTimer = null;
+        queueEmit();
+    }, wait);
+}
+
+function queueEmit(): void {
     // Updates arrive from inside list renders (the map hides when a trip
     // opens); a listener that renders the list must not run inside one.
     isEmitQueued = true;
     queueMicrotask(() => {
         isEmitQueued = false;
+        lastEmitAt = performance.now();
         listeners.emit();
     });
 }
@@ -192,6 +220,9 @@ export function _resetForTests(): void {
     areaIds = null;
     resultKey = "";
     isEmitQueued = false;
+    if (libraryEmitTimer !== null) clearTimeout(libraryEmitTimer);
+    libraryEmitTimer = null;
+    lastEmitAt = -Infinity;
     listeners.clear();
     scopeListeners.clear();
 }
