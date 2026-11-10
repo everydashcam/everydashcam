@@ -53,6 +53,7 @@ import {
 } from "./ingest-overlay.js";
 import { type IngestOrigin, state } from "./state.js";
 import { notify } from "./notifications.js";
+import { admitImportBatch } from "./restart-gate.js";
 import { countUnplayableByExtension, showUnsupportedFormatsModal } from "./unsupported-formats-modal.js";
 import { checkCanPlay, vendorFileKey } from "./ingest-candidate.js";
 import { cancelProgressiveIngest, resumeProgressiveIngest, startProgressiveIngest } from "./progressive-ingest.js";
@@ -103,6 +104,12 @@ export async function ingestFiles(
     origin: IngestOrigin | null = null,
     structure?: IngestStructureEntry[],
 ): Promise<void> {
+    if (!admitImportBatch("ingestFiles")) {
+        // Same claim rule as the finally block below: callers with files still
+        // hold their pre-ingest claim, callers without files released it.
+        if (vfiles.length > 0) endPreIngestReading();
+        return;
+    }
     // A gesture with neither files nor observed names has nothing to retain.
     // Structure-only selections still enter the queue so snapshots follow the
     // same order as imports, including batches waiting behind this selection.

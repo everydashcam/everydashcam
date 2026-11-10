@@ -6,6 +6,7 @@ import { t } from "../i18n/index.js";
 
 import { dom } from "./dom.js";
 import { activateModal, deactivateModal } from "./modal-helper.js";
+import { ensureImportGestureClaimed } from "./restart-gate.js";
 import { state } from "./state.js";
 
 // Pre-ingest "reading" phase ownership, as a REFCOUNT (not a bool). The overlay
@@ -81,6 +82,7 @@ export function showIngestOverlay(): void {
  * ingest re-points it at the controller via showIngestOverlay.
  */
 export function beginPreIngestReading(): boolean {
+    ensureImportGestureClaimed("beginPreIngestReading");
     if (state.ingestController !== null) return false;
     preIngestOwners++;
     openOverlay();

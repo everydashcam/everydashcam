@@ -1,10 +1,10 @@
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
-import { createLogger } from "../log.js";
-import { UPDATE_MESSAGE, isUpdateResult, type UpdateRequest, type UpdateResult } from "../sw-update-protocol.js";
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
 import { markIntentionalNavigation } from "./nav-intent.js";
 import { notify, setPinnedStatus } from "./notifications.js";
+import { isRestartLocked, subscribeRestartLock } from "./restart-gate.js";
+import { createRestartController, type UserRestartFailure } from "./sw-restart.js";
 import {
     createUpdateObserver,
     type ObservedRegistration,
@@ -12,62 +12,20 @@ import {
     type UpdateState,
 } from "./sw-update-observer.js";
 
-const log = createLogger("sw-update");
-
 const UPDATE_STATUS_ID = "update";
 
-// The restart dialog cannot be dismissed while notes are saved, so a write that
-// never settles must not hold the window behind it.
-const NOTES_SAVE_TIMEOUT_MS = 15_000;
-
-/** Resolves false when notes are not confirmed saved within the limit. A late
- *  write keeps running; the window simply stays open. */
-async function saveNotesWithin(saveNotes: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => {
-            log.warn("notes save timed out", { timeoutMs });
-            resolve(false);
-        }, timeoutMs);
-    });
-    try {
-        return await Promise.race([saveNotes(), timeout]);
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
-/** Asks the waiting worker to take over. Resolves null when it does not answer
- *  in time or with a result this release does not know. */
-function requestActivation(worker: ServiceWorker, timeoutMs = 10_000): Promise<UpdateResult | null> {
-    return new Promise((resolve) => {
-        const channel = new MessageChannel();
-        const finish = (result: UpdateResult | null): void => {
-            clearTimeout(timer);
-            channel.port1.close();
-            resolve(result);
-        };
-        const timer = setTimeout(() => finish(null), timeoutMs);
-        channel.port1.onmessage = (event: MessageEvent<unknown>) => {
-            finish(isUpdateResult(event.data) ? event.data : null);
-        };
-        try {
-            worker.postMessage({ type: UPDATE_MESSAGE } satisfies UpdateRequest, [channel.port2]);
-        } catch {
-            finish(null);
-        }
-    });
-}
+const FAILURE_MESSAGES: Record<UserRestartFailure, I18nKey> = {
+    notesNotSaved: "status.update.failed",
+    otherWindows: "status.update.otherWindows",
+    failed: "status.update.failed",
+};
 
 /**
- * Owns the update notification and the user-requested restart into a waiting
- * worker. The restart runs only while `isBusy` reports no work a restart would
- * lose and no dialog is open, only after `saveNotes` resolves true within
- * NOTES_SAVE_TIMEOUT_MS (notes reached durable storage), and only when the worker
- * reports no other open window of the site. Once notes are saved, any other
- * outcome ends in a reload: the user has accepted the restart, a reload loads
- * the newest active release, and an update that is still waiting announces
- * itself again.
+ * Owns the update status line, the restart dialogs and the wiring between the
+ * update observer and the restart controller. A user restart starts only while
+ * `isBusy` reports no work a restart would lose and no dialog is open, and only
+ * after the user confirms. The non-dismissable "updating" dialog is shown for
+ * exactly as long as the restart lock is held.
  * `loadController` is the worker that controlled the page when it loaded.
  * Returns the function that hands each registration from register() to the
  * update observer.
@@ -79,18 +37,7 @@ export function initServiceWorkerUpdates(options: {
     saveNotes: () => Promise<boolean>;
 }): (registration: ObservedRegistration) => void {
     const { container } = options;
-    let isRestarting = false;
     let dialog: HTMLElement | null = null;
-
-    const reload = (): void => {
-        markIntentionalNavigation();
-        location.reload();
-    };
-    // Reloading before the new worker controls this window could load the old
-    // release again.
-    container.addEventListener("controllerchange", () => {
-        if (isRestarting) reload();
-    });
 
     const closeDialog = (): void => {
         if (!dialog) return;
@@ -99,6 +46,8 @@ export function initServiceWorkerUpdates(options: {
         dialog = null;
     };
 
+    // `confirm` asks the user; otherwise the dialog reports a restart in
+    // progress and cannot be dismissed.
     const showDialog = (confirm: boolean): void => {
         closeDialog();
         const root = document.createElement("div");
@@ -137,7 +86,7 @@ export function initServiceWorkerUpdates(options: {
             apply.textContent = t("status.update.apply");
             apply.addEventListener("click", () => {
                 closeDialog();
-                void restart();
+                startUserRestart();
             });
             actions.append(cancel, apply);
             section.append(actions);
@@ -156,12 +105,6 @@ export function initServiceWorkerUpdates(options: {
 
     const isBusyNow = (): boolean => options.isBusy() || isAnyModalOpen();
 
-    const requestRestart = (): void => {
-        if (isRestarting) return;
-        if (isBusyNow()) announce("status.update.busy");
-        else showDialog(true);
-    };
-
     // Answers to an explicit request. The pinned status line stays the way
     // back to the update, so these toasts keep their retry action out of the
     // drawer and repeated attempts do not stack buttons there.
@@ -175,13 +118,26 @@ export function initServiceWorkerUpdates(options: {
         });
     };
 
+    const requestRestart = (): void => {
+        if (isRestartLocked()) return;
+        if (isBusyNow()) announce("status.update.busy");
+        else showDialog(true);
+    };
+
+    // Re-checked after confirmation: work may have started while the dialog was open.
+    const startUserRestart = (): void => {
+        if (isRestartLocked()) return;
+        if (isBusyNow()) announce("status.update.busy");
+        else void controller.restart();
+    };
+
     let updateState: UpdateState = { waitingWorker: null, isPageBehind: false, updateSerial: 0 };
     // The line names the browser's own path out loud: closing the app applies
     // the update even when every restart attempt from this page fails.
     const syncStatusLine = (): void => {
         setPinnedStatus(
             UPDATE_STATUS_ID,
-            updateState.isPageBehind && !isRestarting
+            updateState.isPageBehind && !isRestartLocked()
                 ? {
                       severity: "info",
                       messageKey: "status.update.pending",
@@ -193,44 +149,6 @@ export function initServiceWorkerUpdates(options: {
         );
     };
 
-    const stop = (messageKey: I18nKey): void => {
-        isRestarting = false;
-        closeDialog();
-        syncStatusLine();
-        announce(messageKey);
-    };
-
-    const restart = async (): Promise<void> => {
-        if (isRestarting) return;
-        if (isBusyNow()) {
-            announce("status.update.busy");
-            return;
-        }
-        isRestarting = true;
-        syncStatusLine();
-        // The non-dismissable dialog keeps new work from starting while notes
-        // are saved and the worker takes over.
-        showDialog(false);
-        try {
-            if (!(await saveNotesWithin(options.saveNotes, NOTES_SAVE_TIMEOUT_MS))) {
-                return stop("status.update.failed");
-            }
-            const worker = (await container.getRegistration())?.waiting;
-            const result = worker ? await requestActivation(worker) : null;
-            if (result === "otherWindows") return stop("status.update.otherWindows");
-            if (result !== "updating") {
-                log.warn("reloading without a worker answer", { hasWaitingWorker: Boolean(worker) });
-                return reload();
-            }
-            // controllerchange normally reloads first; this only bounds a browser
-            // that never reports the takeover.
-            setTimeout(reload, 10_000);
-        } catch (error) {
-            log.warn("update failed", { error: error instanceof Error ? error.message : String(error) });
-            stop("status.update.failed");
-        }
-    };
-
     const observer = createUpdateObserver({
         loadController: options.loadController,
         currentController: (): ObservedWorker | null => container.controller,
@@ -240,8 +158,29 @@ export function initServiceWorkerUpdates(options: {
             syncStatusLine();
         },
     });
+
+    const controller = createRestartController({
+        saveNotes: options.saveNotes,
+        waitingWorker: () => observer.refresh().waitingWorker,
+        reloadPage: () => location.reload(),
+        markIntentionalNavigation,
+        onUserRestartFailed: (failure) => announce(FAILURE_MESSAGES[failure]),
+    });
+
+    // The dialog reflects the lock: it keeps new work from starting while
+    // notes are saved and the worker takes over, and leaves with the lock.
+    subscribeRestartLock((reason) => {
+        if (reason) showDialog(false);
+        else closeDialog();
+        syncStatusLine();
+    });
+    container.addEventListener("controllerchange", () => {
+        controller.handleControllerChange();
+        observer.refresh();
+    });
+
     // An update installed by an earlier visit is already waiting now. Reading
-    // it here, not after the deferred register(), announces it without delay.
+    // it here, not after the deferred register(), shows it without delay.
     if (options.loadController) void observer.readAtLoad(() => container.getRegistration());
     return (registration) => observer.adopt(registration);
 }

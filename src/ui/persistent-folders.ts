@@ -48,6 +48,7 @@ import { beginPreIngestReading, endPreIngestReading } from "./ingest-overlay.js"
 import { ingestFiles } from "./ingest.js";
 import { notify } from "./notifications.js";
 import { X_ICON_PATHS, buildLucideIcon } from "./icons.js";
+import { claimImportGesture } from "./restart-gate.js";
 
 const log = createLogger("persistent-folders");
 
@@ -194,6 +195,8 @@ let chipOpenInFlight = false;
 /** Click path for a chip: re-verify permission (prompting inside the user
  *  gesture when it lapsed), then open. */
 async function openRememberedFolder(folder: RememberedFolder): Promise<void> {
+    // Before the permission wait, which can take as long as the user likes.
+    if (!claimImportGesture()) return;
     if (chipOpenInFlight || pickerInFlight) return;
     chipOpenInFlight = true;
     try {

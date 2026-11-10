@@ -15,6 +15,7 @@ import { toVendorFiles } from "./ingest-core.js";
 import { showIosFolderWarning } from "./ios-folder-warning-modal.js";
 import { notify } from "./notifications.js";
 import { canUseDirectoryPicker, openViaDirectoryPicker } from "./persistent-folders.js";
+import { claimImportGesture } from "./restart-gate.js";
 import { shouldShowUploadWarning, showUploadWarning } from "./upload-warning-modal.js";
 
 const log = createLogger("file-sources");
@@ -67,7 +68,15 @@ function hideDropOverlay(): void {
 }
 
 export function initFileSources(): void {
+    // Every gesture below asks claimImportGesture() before anything else: an
+    // import must not start while the app restarts, and once one has started
+    // the app never reloads itself without asking (restart-gate.ts).
     dom.folderInput.addEventListener("change", () => {
+        if (!claimImportGesture()) {
+            endPreIngestReading();
+            dom.folderInput.value = "";
+            return;
+        }
         const files = Array.from(dom.folderInput.files || []);
         if (files.length === 0) {
             // Empty selection (an empty folder, or some browsers' "open" with
@@ -94,6 +103,11 @@ export function initFileSources(): void {
     // pick, so toVendorFiles falls back to bare filenames - same shape a flat
     // file drop produces.
     dom.fileInput.addEventListener("change", () => {
+        if (!claimImportGesture()) {
+            endPreIngestReading();
+            dom.fileInput.value = "";
+            return;
+        }
         const files = Array.from(dom.fileInput.files || []);
         if (files.length === 0) endPreIngestReading();
         ingestFiles(toVendorFiles(files));
@@ -149,6 +163,8 @@ export function initFileSources(): void {
             // descendant) and any default button activation. We open the picker
             // explicitly below.
             e.preventDefault();
+            // Claimed before the warning dialogs: a cancelled picker still counts.
+            if (!claimImportGesture()) return;
             if (isIos) {
                 if (pickerGateInFlight) return;
                 pickerGateInFlight = true;
@@ -189,6 +205,8 @@ export function initFileSources(): void {
     window.addEventListener("dragenter", (e) => {
         if (!dragHasFiles(e.dataTransfer)) return;
         e.preventDefault();
+        // Files dragged over the page count as an import even if never dropped.
+        if (!claimImportGesture()) return;
         dragDepth++;
         if (dragDepth === 1) showDropOverlay();
     });
@@ -212,6 +230,9 @@ export function initFileSources(): void {
         e.preventDefault();
         dragDepth = 0;
         hideDropOverlay();
+        // The drop listener sits on window, so it also fires over the restart
+        // dialog.
+        if (!claimImportGesture()) return;
 
         // Raise the overlay BEFORE walking the dropped tree:
         // collectFilesFromDataTransfer enumerates the tree and opens eligible
