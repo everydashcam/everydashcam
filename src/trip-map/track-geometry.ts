@@ -24,6 +24,11 @@ export interface TripMapTrack {
 // Douglas-Peucker tolerance. Well under a lane width, so the line still sits on
 // its road at street zoom, while straight stretches lose almost every vertex.
 const SIMPLIFY_TOLERANCE_M = 5;
+// Times between vertices are interpolated by distance, which is wrong where the
+// speed changes on a straight road: a jam after a fast stretch would put the
+// pass minutes off. A fix whose time strays this far from the interpolated one
+// stays a vertex, so pass times and marker positions keep within it.
+const SIMPLIFY_TIME_TOLERANCE_SEC = 2;
 // A segment is a gap rather than a drive when the points are far apart in
 // space, far apart after a long pause (lost signal, tunnel exit), or would need
 // an impossible speed. Matches the reference prototype.
@@ -157,7 +162,7 @@ function appendSimplifiedPiece(
     let anchor = 0;
     for (let k = 1; k < px.length; k++) {
         if (!pinned[k] && k < px.length - 1) continue;
-        markDouglasPeucker(px, py, anchor, k, tolerance * tolerance, keep);
+        markDouglasPeucker(px, py, pt, anchor, k, tolerance, keep);
         anchor = k;
     }
     keep[0] = 1;
@@ -170,27 +175,50 @@ function appendSimplifiedPiece(
     }
 }
 
-/** Marks the vertices Douglas-Peucker keeps in [from, to]; iterative for long pieces. */
+/**
+ * Marks the vertices Douglas-Peucker keeps in [from, to]; iterative for long
+ * pieces. A fix stays when it lies off the chord by more than `tolerance`
+ * (world units) or when its time strays from the time interpolated at its
+ * place on the chord by more than SIMPLIFY_TIME_TOLERANCE_SEC; the worse of
+ * the two, each relative to its own tolerance, picks the split.
+ */
 function markDouglasPeucker(
     xs: readonly number[],
     ys: readonly number[],
+    times: readonly number[],
     from: number,
     to: number,
-    toleranceSquared: number,
+    tolerance: number,
     keep: Uint8Array,
 ): void {
     keep[from] = 1;
     keep[to] = 1;
+    const toleranceSquared = tolerance * tolerance;
     const stack: number[] = [from, to];
     while (stack.length > 0) {
         const end = stack.pop()!;
         const start = stack.pop()!;
+        const ax = xs[start]!;
+        const ay = ys[start]!;
+        const dx = xs[end]! - ax;
+        const dy = ys[end]! - ay;
+        const lengthSquared = dx * dx + dy * dy;
+        const startSec = times[start]!;
+        const spanSec = times[end]! - startSec;
         let farthest = -1;
-        let farthestDistance = toleranceSquared;
+        let worstError = 1;
         for (let k = start + 1; k < end; k++) {
-            const distance = segmentDistanceSquared(xs[k]!, ys[k]!, xs[start]!, ys[start]!, xs[end]!, ys[end]!);
-            if (distance > farthestDistance) {
-                farthestDistance = distance;
+            const share =
+                lengthSquared === 0
+                    ? 0
+                    : Math.max(0, Math.min(1, ((xs[k]! - ax) * dx + (ys[k]! - ay) * dy) / lengthSquared));
+            const ex = xs[k]! - ax - share * dx;
+            const ey = ys[k]! - ay - share * dy;
+            const offRoute = (ex * ex + ey * ey) / toleranceSquared;
+            const offTime = (times[k]! - startSec - share * spanSec) / SIMPLIFY_TIME_TOLERANCE_SEC;
+            const error = Math.max(offRoute, offTime * offTime);
+            if (error > worstError) {
+                worstError = error;
                 farthest = k;
             }
         }

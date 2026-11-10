@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { driveThrough, packLocalFixes, START_SEC, trackFromFixes, type LocalFix } from "./__fixtures__/tracks.js";
 import { buildTripMapTrack, segmentDistanceSquared, vertexCount } from "./track-geometry.js";
-import { groundMetersPerWorldUnit, worldX, worldY } from "./world.js";
-import { latForNorth, lonForEast } from "./__fixtures__/tracks.js";
+import { groundMetersPerWorldUnit, worldToLon, worldX, worldY } from "./world.js";
+import { eastForLon, latForNorth, lonForEast } from "./__fixtures__/tracks.js";
+import { trackPositionAt, tripPassesThroughCircle } from "./queries.js";
 
 /** Distance in metres from a local fix to the simplified polyline. */
 function distanceToTrackM(track: ReturnType<typeof trackFromFixes>, fix: LocalFix): number {
@@ -49,6 +50,40 @@ describe("buildTripMapTrack", () => {
 
         expect(vertexCount(track)).toBe(2);
         expect([...track.breaks]).toEqual([0]);
+    });
+
+    it("keeps the times of a straight drive whose speed changes", () => {
+        // A fast kilometre, then a kilometre of traffic jam on the same straight road.
+        const fast = driveThrough(
+            [
+                [0, 0],
+                [1000, 0],
+            ],
+            { speedMs: 25 },
+        );
+        const slow = driveThrough(
+            [
+                [1000, 0],
+                [2000, 0],
+            ],
+            { speedMs: 1.5, startSec: fast.at(-1)!.unixSeconds },
+        ).slice(1);
+        const fixes = [...fast, ...slow];
+        const track = trackFromFixes(fixes);
+
+        expect(vertexCount(track)).toBeLessThan(10);
+        for (const fix of fixes) {
+            const position = trackPositionAt(track, fix.unixSeconds)!;
+            const east = eastForLon(worldToLon(position.x));
+            expect(Math.abs(east - fix.eastM), `position at ${fix.unixSeconds - START_SEC} s`).toBeLessThan(2 * 25 + 1);
+        }
+        const jam = tripPassesThroughCircle(track, {
+            x: worldX(lonForEast(1500)),
+            y: worldY(latForNorth(0)),
+            radiusMeters: 20,
+        });
+        const truth = fixes.find((fix) => fix.eastM >= 1500)!.unixSeconds;
+        expect(Math.abs(jam[0]!.unixSeconds - truth)).toBeLessThanOrEqual(2);
     });
 
     it("pins the arrival and departure of a stop at one place", () => {
