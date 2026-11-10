@@ -64,10 +64,29 @@ export function syncCamerasMenu(): void {
 
 /* -------------------------------- rendering -------------------------------- */
 
-function header(textKey: Parameters<typeof t>[0]): HTMLElement {
+/** Layout switch and main camera stepping shortcuts (player-hotkeys.ts),
+ *  shown like the panel keys below. */
+const ARRANGEMENT_MODE_KEY = "V";
+const NEXT_CAMERA_KEY = "N";
+
+/** Section header. `shortcutHint` names the key for the control right under
+ *  it, the way the map row shows M; the control itself carries the key for
+ *  screen readers, so the hint is hidden from them. */
+function header(textKey: Parameters<typeof t>[0], shortcutHint?: string): HTMLElement {
     const el = document.createElement("div");
     el.className = "view-menu-popover__header";
-    el.textContent = t(textKey);
+    if (shortcutHint === undefined) {
+        el.textContent = t(textKey);
+        return el;
+    }
+    el.classList.add("view-menu-popover__header--hinted");
+    const label = document.createElement("span");
+    label.textContent = t(textKey);
+    const hint = document.createElement("span");
+    hint.className = "view-menu-row__hint mono";
+    hint.setAttribute("aria-hidden", "true");
+    hint.textContent = shortcutHint;
+    el.append(label, hint);
     return el;
 }
 
@@ -76,6 +95,7 @@ function renderModes(): HTMLElement {
     group.className = "view-menu-map__modes cameras-menu__modes";
     group.setAttribute("role", "radiogroup");
     group.setAttribute("aria-label", t("player.cameras.mode.label"));
+    group.setAttribute("aria-keyshortcuts", ARRANGEMENT_MODE_KEY);
     for (const mode of ["main", "equal"] as const) {
         const option = document.createElement("button");
         option.type = "button";
@@ -201,6 +221,22 @@ function renderCameraRow(channel: Channel, isArrangeable: boolean): HTMLElement 
     return row;
 }
 
+/** The keys that hand the main place to the next or previous camera. No
+ *  control in the menu does that, so they get a quiet line of their own
+ *  under the list; touch screens hide it (player-bar.css). */
+function renderCameraKeysHint(): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "cameras-menu__keys";
+    const text = document.createElement("span");
+    text.className = "cameras-menu__keys-label";
+    text.textContent = t("hotkeys.action.nextCamera");
+    const keys = document.createElement("span");
+    keys.className = "view-menu-row__hint mono";
+    keys.textContent = `${NEXT_CAMERA_KEY} / Shift+${NEXT_CAMERA_KEY}`;
+    row.append(text, keys);
+    return row;
+}
+
 function renderAudio(): HTMLElement {
     const label = document.createElement("label");
     label.className = "cameras-menu__row cameras-menu__audio";
@@ -281,7 +317,7 @@ export function renderCamerasMenu(): void {
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.focusKey;
     section.replaceChildren();
     const isArrangeable = hasSeveralCameras();
-    section.append(header("player.cameras.title"));
+    section.append(header("player.cameras.title", isArrangeable ? ARRANGEMENT_MODE_KEY : undefined));
     // The segmented control explains itself; its group carries the "Layout"
     // name for screen readers, and the menu stays one header shorter.
     if (isArrangeable) section.append(renderModes(), renderOverlayToggle());
@@ -289,7 +325,7 @@ export function renderCamerasMenu(): void {
     list.className = "cameras-menu__cameras";
     for (const channel of state.composition.order) list.append(renderCameraRow(channel, isArrangeable));
     section.append(list);
-    if (isArrangeable) section.append(renderAudio());
+    if (isArrangeable) section.append(renderCameraKeysHint(), renderAudio());
     if (focused) section.querySelector<HTMLElement>(`[data-focus-key="${focused}"]`)?.focus();
 }
 

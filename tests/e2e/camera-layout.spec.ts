@@ -393,6 +393,25 @@ test("a single-camera trip lists its camera with only the reflection in the View
     await expect(section.locator(".cameras-menu__flip-axis").first()).toBeFocused();
 });
 
+for (const lang of ["en", "ru"] as const) {
+    test(`the cameras menu names the layout and camera keys (${lang})`, async ({ page }) => {
+        await presetLocalStorage(page, { lang });
+        await page.setViewportSize(DESKTOP);
+        await gotoApp(page, lang);
+        await loadTrip(page, SAMPLE_70MAI);
+        await pausePlayback(page);
+        await openCamerasMenu(page);
+        const section = page.locator("#player-cameras-section");
+        await expect(section.locator(".view-menu-popover__header .view-menu-row__hint")).toHaveText("V");
+        await expect(section.locator(".cameras-menu__modes")).toHaveAttribute("aria-keyshortcuts", "V");
+        const keys = section.locator(".cameras-menu__keys");
+        await expect(keys).toBeVisible();
+        await expect(keys.locator(".view-menu-row__hint")).toHaveText("N / Shift+N");
+        await expect(keys).toBeInViewport({ ratio: 1 });
+        await shot(page, `camera-layout-11-menu-keys-${lang}`);
+    });
+}
+
 test.describe("on a touch phone", () => {
     test.use({ hasTouch: true, isMobile: true });
 
@@ -432,6 +451,7 @@ test.describe("on a touch phone", () => {
             expect(clipped, "names cut by the row").toEqual([]);
             const toggles = page.locator("#player-cameras-section .cameras-menu__flip-axis");
             for (const toggle of await toggles.all()) await expect(toggle).toBeInViewport({ ratio: 1 });
+            await expect(page.locator("#player-cameras-section .cameras-menu__keys")).toBeHidden();
             await shot(page, `camera-layout-10-touch-menu-ru-${width}`);
         });
     }

@@ -489,6 +489,18 @@
     letter-spacing: var(--dc-tracking-caps);
     padding: var(--dc-space-1) var(--dc-space-2) var(--dc-space-2);
 }
+/* A header over a control with a shortcut: the key sits in the column of
+   the panel keys below, in their type rather than the header's caps. */
+.view-menu-popover__header--hinted {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dc-space-2);
+}
+.view-menu-popover__header--hinted .view-menu-row__hint {
+    font-weight: 400;
+    letter-spacing: normal;
+}
 .view-menu-row {
     display: flex;
     align-items: center;
@@ -798,6 +810,27 @@
     flex: 0 1 auto;
     min-width: 0;
     max-width: 65%;
+}
+/* Keys for stepping the main camera: a quiet line, keys in the panel-key
+   column. A sentence about keys only adds noise on a touch screen. */
+.cameras-menu__keys {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--dc-space-2);
+    padding: var(--dc-space-1) var(--dc-space-2);
+}
+.cameras-menu__keys-label {
+    color: var(--fg-dim);
+    font: var(--dc-text-xs) / 1.4 var(--dc-font-ui);
+}
+.cameras-menu__keys .view-menu-row__hint {
+    white-space: nowrap;
+}
+@media (pointer: coarse) {
+    .cameras-menu__keys {
+        display: none;
+    }
 }
 /* A single-camera row has no handle; its name lines up with the rows below. */
 .cameras-menu__camera--single {
