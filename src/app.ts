@@ -887,16 +887,19 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     // ("imports", script subject to HTTP cache) a freshly deployed SW is not
     // picked up for up to 4h. "none" makes the update check always revalidate,
     // so the new SW installs (pre-caching the new build) on the next load; it
-    // then waits for a full launch or a restart requested from the only open window.
+    // then waits for every window to close or for a restart requested from the
+    // only open window (src/ui/sw-update.ts).
     //
     // Registration is DEFERRED to window load + an idle slot: a fresh install
     // kicks off the multi-MB precache download, and started at module-eval it
     // competes with the landing render (and the user's first ingest) for
     // bandwidth on slow networks. An already-installed SW is unaffected - the
     // browser routes fetches through it before any register() call runs, so
-    // offline boot does not depend on this timing; deferral only shifts WHEN a
-    // new install/update check starts. The scheduler bounds both the load and
-    // idle waits, and retries registration on reconnect after a failed install.
+    // offline boot does not depend on this timing. For a controlled page the
+    // browser itself checks for an update on navigation, and the update flow
+    // reads the registration at startup, so deferral only shifts WHEN a first
+    // install starts. The scheduler bounds both the load and idle waits, and
+    // retries registration on reconnect after a failed install.
     let registration: ServiceWorkerRegistration | undefined;
     const adoptRegistration = initServiceWorkerUpdates({
         container: navigator.serviceWorker,

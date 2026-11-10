@@ -65,11 +65,14 @@ retention script's current/retained inventories; do not infer assets from servic
 worker source. Atomic hosts do not need an intermediate publication state.
 
 Hosted updates install a complete shell before activation and wait for all
-controlled windows to close. The update notification also offers a restart when
-no other window of the site is open; it is refused while it would lose work, and
-recordings must be reopened afterwards. What blocks the restart is defined in
-[sw-update.ts](../src/ui/sw-update.ts) and its caller in [app.ts](../src/app.ts).
-Refresh alone may not activate an update. Asset retention covers the
+controlled windows to close. A pinned line in the notification bell also offers
+a restart when no other window of the site is open; it is refused while it would
+lose work, and recordings must be reopened afterwards. The page never asks for
+activation by itself; a page that a late activation takes over reloads only when
+nothing open would be lost. What allows each reload is defined in
+[restart-gate.ts](../src/ui/restart-gate.ts), [sw-restart.ts](../src/ui/sw-restart.ts)
+and their caller [sw-update.ts](../src/ui/sw-update.ts). Refresh alone may not
+activate an update. Asset retention covers the
 predecessor, not arbitrarily old tabs. A dashboard-only rollback cannot add
 newer assets to an old artifact: use the recovery procedure below.
 
