@@ -42,6 +42,37 @@ describe("tripPassesThroughCircle", () => {
         expect(eastForLon(worldToLon(passes[0]!.x))).toBeCloseTo(500, 0);
     });
 
+    it("keeps a corner one pass when the circle sits inside the turn", () => {
+        const fixes = driveThrough(
+            [
+                [0, 0],
+                [500, 0],
+                [500, 500],
+            ],
+            { speedMs: 10 },
+        );
+        // 14 m inside both legs with an 18 m radius: the corner vertex is 19.8 m away.
+        const passes = tripPassesThroughCircle(trackFromFixes(fixes), place(486, 14, 18));
+
+        expect(passes).toHaveLength(1);
+        // Both legs come 14 m close, at 48.6 s and 51.4 s.
+        expect(Math.abs(passes[0]!.unixSeconds - (START_SEC + 50))).toBeLessThan(1.5);
+    });
+
+    it("splits a hairpin whose turn lies outside the circle into two passes", () => {
+        const fixes = driveThrough(
+            [
+                [0, 0],
+                [500, 0],
+                [0, 60],
+            ],
+            { speedMs: 10 },
+        );
+        const passes = tripPassesThroughCircle(trackFromFixes(fixes), place(460, 8, 18));
+
+        expect(passes).toHaveLength(2);
+    });
+
     it("dates a pass after a stop by the departure, not the arrival", () => {
         const fixes: LocalFix[] = [
             ...driveThrough(

@@ -6,6 +6,10 @@
 import { segmentDistanceSquared, type TripMapTrack } from "./track-geometry.js";
 import { groundMetersPerWorldUnit, type WorldBounds } from "./world.js";
 
+// A turn sharper than 120 degrees at a vertex outside the circle is a drive
+// back the way it came; a right-angle corner is not.
+const TURN_BACK_COS = -0.5;
+
 /** One continuous stay of a trip inside the circle, at its closest approach. */
 export interface TripPass {
     /** unixSeconds at the closest point, interpolated between vertices. */
@@ -189,13 +193,15 @@ function collectPasses(track: TripMapTrack, cx: number, cy: number, radius: numb
             out.push({ unixSeconds: times[0]!, x: points[0]!, y: points[1]! });
         return;
     }
-    // A pass continues into the next segment only while the vehicle is still
-    // inside at the shared vertex. Long simplified segments can touch the
-    // circle on both legs of an out-and-back drive; the exit in between
-    // happens inside a segment, not at a vertex.
+    // Long simplified segments can touch the circle on both legs of an
+    // out-and-back drive, with the turn outside it: there the pass ends at
+    // the shared vertex. A plain corner can leave its vertex outside a circle
+    // on the inside of the turn as well, and that stays one pass.
     let current: TripPass | null = null;
     let currentDistance = Infinity;
     let isInsideAtVertex = false;
+    let previousDx = 0;
+    let previousDy = 0;
     for (let i = 0; i < vertices - 1; i++) {
         const ax = points[i * 2]!;
         const ay = points[i * 2 + 1]!;
@@ -208,9 +214,16 @@ function collectPasses(track: TripMapTrack, cx: number, cy: number, radius: numb
             isInsideAtVertex = false;
             continue;
         }
-        if (current && !isInsideAtVertex) {
+        const dx = bx - ax;
+        const dy = by - ay;
+        if (current && !isInsideAtVertex && turnsBack(previousDx, previousDy, dx, dy)) {
             out.push(current);
             current = null;
+        }
+        // A stop's arrival/departure pair has no direction of its own.
+        if (dx !== 0 || dy !== 0) {
+            previousDx = dx;
+            previousDy = dy;
         }
         if (!current || distance < currentDistance) {
             current = closestOnSegment(cx, cy, ax, ay, bx, by, times[i]!, times[i + 1]!);
@@ -219,6 +232,13 @@ function collectPasses(track: TripMapTrack, cx: number, cy: number, radius: numb
         isInsideAtVertex = (bx - cx) ** 2 + (by - cy) ** 2 <= radiusSquared;
     }
     if (current) out.push(current);
+}
+
+/** Whether the heading turns by more than TURN_BACK_COS allows: the drive heads back the way it came. */
+function turnsBack(fromDx: number, fromDy: number, toDx: number, toDy: number): boolean {
+    const lengths = Math.hypot(fromDx, fromDy) * Math.hypot(toDx, toDy);
+    if (lengths === 0) return true;
+    return (fromDx * toDx + fromDy * toDy) / lengths < TURN_BACK_COS;
 }
 
 function closestOnSegment(
