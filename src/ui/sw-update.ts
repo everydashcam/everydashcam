@@ -2,7 +2,7 @@ import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
 import { markIntentionalNavigation } from "./nav-intent.js";
-import { notify, setPinnedStatus } from "./notifications.js";
+import { notify, type PinnedStatusInput, setPinnedStatus } from "./notifications.js";
 import { canReloadWithoutAsking, isRestartLocked, subscribeRestartLock } from "./restart-gate.js";
 import { createRestartController, type UserRestartFailure } from "./sw-restart.js";
 import {
@@ -19,6 +19,28 @@ const FAILURE_MESSAGES: Record<UserRestartFailure, I18nKey> = {
     otherWindows: "status.update.otherWindows",
     failed: "status.update.failed",
 };
+
+/**
+ * The update status line for `state`, or null when it should be hidden. It
+ * shows while the page runs an older release than the browser holds and no
+ * restart holds the lock: during a restart the dialog speaks instead, and the
+ * line returns if the restart stops. Its revision is the release serial, so
+ * the dot lights once per new release.
+ */
+export function updateStatusLine(
+    state: UpdateState,
+    isRestartLocked: boolean,
+    onAction: () => void,
+): PinnedStatusInput | null {
+    if (!state.isPageBehind || isRestartLocked) return null;
+    return {
+        severity: "info",
+        messageKey: "status.update.pending",
+        actionKey: "status.update.action",
+        onAction,
+        revision: state.updateSerial,
+    };
+}
 
 /**
  * Owns the update status line, the restart dialogs and the wiring between the
@@ -48,9 +70,11 @@ export function initServiceWorkerUpdates(options: {
         dialog = null;
     };
 
-    // `confirm` asks the user; otherwise the dialog reports a restart in
-    // progress and cannot be dismissed.
-    const showDialog = (confirm: boolean): void => {
+    // "confirm" asks the user. The other kinds report a restart in progress
+    // and cannot be dismissed. The worker-change rule reloads only a page with
+    // nothing open, so its dialog has no warning about reopening recordings.
+    const showDialog = (kind: "confirm" | "userRestart" | "unaskedReload"): void => {
+        const confirm = kind === "confirm";
         closeDialog();
         const root = document.createElement("div");
         root.id = "sw-update-modal";
@@ -58,7 +82,7 @@ export function initServiceWorkerUpdates(options: {
         root.setAttribute("role", "dialog");
         root.setAttribute("aria-modal", "true");
         root.setAttribute("aria-labelledby", "sw-update-title");
-        root.setAttribute("aria-describedby", "sw-update-body");
+        if (kind !== "unaskedReload") root.setAttribute("aria-describedby", "sw-update-body");
         root.tabIndex = -1;
         const card = document.createElement("div");
         card.className = "export-modal-card modal-card";
@@ -72,7 +96,7 @@ export function initServiceWorkerUpdates(options: {
         body.id = "sw-update-body";
         body.className = "export-modal-body";
         body.textContent = t("status.update.body");
-        section.append(body);
+        if (kind !== "unaskedReload") section.append(body);
         let cancel: HTMLButtonElement | undefined;
         if (confirm) {
             const actions = document.createElement("div");
@@ -123,7 +147,7 @@ export function initServiceWorkerUpdates(options: {
     const requestRestart = (): void => {
         if (isRestartLocked()) return;
         if (isBusyNow()) announce("status.update.busy");
-        else showDialog(true);
+        else showDialog("confirm");
     };
 
     // Re-checked after confirmation: work may have started while the dialog was open.
@@ -137,18 +161,7 @@ export function initServiceWorkerUpdates(options: {
     // The line names the browser's own path out loud: closing the app applies
     // the update even when every restart attempt from this page fails.
     const syncStatusLine = (): void => {
-        setPinnedStatus(
-            UPDATE_STATUS_ID,
-            updateState.isPageBehind && !isRestartLocked()
-                ? {
-                      severity: "info",
-                      messageKey: "status.update.pending",
-                      actionKey: "status.update.action",
-                      onAction: requestRestart,
-                      revision: updateState.updateSerial,
-                  }
-                : null,
-        );
+        setPinnedStatus(UPDATE_STATUS_ID, updateStatusLine(updateState, isRestartLocked(), requestRestart));
     };
 
     const observer = createUpdateObserver({
@@ -175,7 +188,7 @@ export function initServiceWorkerUpdates(options: {
     // The dialog reflects the lock: it keeps new work from starting while
     // notes are saved and the worker takes over, and leaves with the lock.
     subscribeRestartLock((reason) => {
-        if (reason) showDialog(false);
+        if (reason) showDialog(reason === "user" ? "userRestart" : "unaskedReload");
         else closeDialog();
         syncStatusLine();
     });
