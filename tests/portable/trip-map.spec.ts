@@ -1,8 +1,10 @@
 import { type Page, expect } from "@playwright/test";
 
 import { presetLocalStorage } from "../e2e/_fixtures.js";
-import { EAST_ROAD, NORTH_ROAD, writeTripLibrary } from "../e2e/_trip-library.js";
+import { EAST_ROAD, NORTH_ROAD, removeTripLibraries, writeTripLibrary } from "../e2e/_trip-library.js";
 import { isPortableMapRequest, openPortable, test } from "./_fixtures.js";
+
+test.afterAll(removeTripLibraries);
 
 /** The map of all trips draws its routes on a style without remote sources. */
 async function expectLocalTripRoutes(page: Page): Promise<void> {

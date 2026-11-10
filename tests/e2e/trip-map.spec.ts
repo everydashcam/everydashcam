@@ -5,7 +5,9 @@
 import { type Page } from "@playwright/test";
 
 import { DESKTOP, expect, gotoApp, MOBILE, presetLocalStorage, test } from "./_fixtures.js";
-import { EAST_ROAD, NORTH_ROAD, roadPoint, writeTripLibrary } from "./_trip-library.js";
+import { EAST_ROAD, NORTH_ROAD, removeTripLibraries, roadPoint, writeTripLibrary } from "./_trip-library.js";
+
+test.afterAll(removeTripLibraries);
 
 async function openLibrary(page: Page, directory: string): Promise<void> {
     await presetLocalStorage(page);

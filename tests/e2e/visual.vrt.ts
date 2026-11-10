@@ -7,7 +7,7 @@
 // for the Docker command to regenerate Linux baselines for CI.
 
 import { DESKTOP, MOBILE, expect, gotoApp, loadTrip, openExport, presetLocalStorage, test } from "./_fixtures.js";
-import { EAST_ROAD, NORTH_ROAD, writeTripLibrary } from "./_trip-library.js";
+import { EAST_ROAD, NORTH_ROAD, removeTripLibraries, writeTripLibrary } from "./_trip-library.js";
 
 // Fonts are self-hosted; wait for them so text metrics are stable before a shot.
 async function settle(page: import("@playwright/test").Page): Promise<void> {
@@ -78,6 +78,7 @@ test.describe("visual regression", () => {
 
     test.describe("map of all trips (map canvas masked)", () => {
         test.use({ viewerMap: "route-only" });
+        test.afterAll(removeTripLibraries);
 
         async function openLibrary(page: import("@playwright/test").Page): Promise<void> {
             await gotoApp(page, "en");

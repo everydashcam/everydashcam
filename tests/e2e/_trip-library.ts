@@ -3,7 +3,7 @@
 // clips without GPS and a clip whose GPS is read only in full (one freeGPS
 // block, as in progressive-ingest.spec.ts).
 
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -100,9 +100,17 @@ function freeGpsBlock(): Buffer {
     throw new Error("missing freeGPS fixture box");
 }
 
-/** Writes the library into a new temporary directory and returns its path. */
+const writtenLibraries: string[] = [];
+
+/** Removes every library this worker wrote; for the spec's afterAll. */
+export function removeTripLibraries(): void {
+    for (const directory of writtenLibraries.splice(0)) rmSync(directory, { recursive: true, force: true });
+}
+
+/** Writes the library into a new temporary directory and returns its path; removeTripLibraries deletes it. */
 export function writeTripLibrary(options: TripLibraryOptions): string {
     const directory = mkdtempSync(path.join(tmpdir(), "everydashcam-trip-map-"));
+    writtenLibraries.push(directory);
     options.roads.forEach((road, index) => {
         const name = `MOV_${String(index + 1).padStart(4, "0")}`;
         copyFileSync(VIDEO, path.join(directory, `${name}.mp4`));
