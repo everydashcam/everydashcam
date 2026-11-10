@@ -59,10 +59,14 @@ const KEY_SPAN = 2 ** 23;
 // Edge keys pack two cell indices; far above any library's distinct cells.
 const MAX_CELLS = 2 ** 26;
 
-/** Zoom step for a map zoom: half levels, clamped to the reusable range. */
+/** A map zoom rounded to the half levels both the corridor lines and the far dots are computed for. */
+export function zoomStepForZoom(zoom: number): number {
+    return Math.max(0, Math.round(zoom * STEPS_PER_ZOOM) / STEPS_PER_ZOOM);
+}
+
+/** Zoom step of the corridor lines for a map zoom: half levels, clamped to the reusable range. */
 export function bundleStepForZoom(zoom: number): number {
-    const step = Math.round(zoom * STEPS_PER_ZOOM) / STEPS_PER_ZOOM;
-    return Math.max(0, Math.min(BUNDLE_MAX_STEP, step));
+    return Math.min(BUNDLE_MAX_STEP, zoomStepForZoom(zoom));
 }
 
 /** Core width for log2 of the trip count, before rounding to half pixels. */

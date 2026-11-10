@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { farDotRadiusPx, foldFarTrips } from "./far-dots.js";
+import { BUNDLE_MAX_STEP } from "./bundle.js";
+import { farDotRadiusPx, farTrips, groupFarDots } from "./far-dots.js";
 import { worldUnitsPerPixel } from "./world.js";
 
 function tripAt(id: number, x: number, y: number, sizePx: number, step: number) {
@@ -8,18 +9,39 @@ function tripAt(id: number, x: number, y: number, sizePx: number, step: number) 
     return { id, bounds: { minX: x, minY: y, maxX: x + size, maxY: y + size } };
 }
 
-describe("foldFarTrips", () => {
-    it("folds small nearby trips into one dot and leaves readable ones as lines", () => {
+/** A world coordinate on a 34 px grid line at `step`, so test trips stay inside one cell. */
+function cellCorner(step: number): number {
+    const cell = 34 * worldUnitsPerPixel(step);
+    return Math.ceil(0.52 / cell) * cell;
+}
+
+describe("farTrips", () => {
+    it("keeps the trips too small to read as a line and leaves readable ones out", () => {
+        const step = 6;
+        // Sides of 3, 40 and 6 px: diagonals of 4.2, 57 and 8.5 px against the 9 px fold.
+        const trips = [tripAt(1, 0.5, 0.3, 3, step), tripAt(2, 0.6, 0.3, 40, step), tripAt(3, 0.7, 0.3, 6, step)];
+
+        expect(farTrips(trips, step).map(({ id }) => id)).toEqual([1, 3]);
+    });
+
+    it("stops folding a trip once it is large enough at a closer step", () => {
+        const trip = tripAt(1, 0.5, 0.3, 5, 6);
+
+        expect(farTrips([trip], 6)).toHaveLength(1);
+        expect(farTrips([trip], 7)).toHaveLength(0);
+    });
+});
+
+describe("groupFarDots", () => {
+    it("groups nearby far trips into one dot over their joint bounds", () => {
         const step = 6;
         const unit = worldUnitsPerPixel(step);
-        // World-anchored grid: keep the trips inside one 34 px cell.
-        const base = Math.ceil(0.52 / (34 * unit)) * 34 * unit;
-        const dots = foldFarTrips(
+        const base = cellCorner(step);
+        const dots = groupFarDots(
             [
                 tripAt(1, base + 2 * unit, base + 2 * unit, 3, step),
                 tripAt(2, base + 8 * unit, base + 5 * unit, 2, step),
                 tripAt(3, base + 12 * unit, base + 10 * unit, 4, step),
-                tripAt(4, base + 4 * unit, base + 4 * unit, 40, step),
             ],
             step,
         );
@@ -29,11 +51,19 @@ describe("foldFarTrips", () => {
         expect(dots[0]!.bounds.minX).toBeCloseTo(base + 2 * unit, 12);
     });
 
-    it("stops folding a trip once it is large enough at a closer step", () => {
-        const trip = tripAt(1, 0.5, 0.3, 5, 6);
+    it("splits stays that share a dot once the map zooms past the last line step", () => {
+        const lineStep = BUNDLE_MAX_STEP;
+        const unit = worldUnitsPerPixel(lineStep);
+        const base = cellCorner(lineStep);
+        // Two parked trips 20 px apart at the last line step: one dot there.
+        const stays = [
+            tripAt(1, base + 4 * unit, base + 4 * unit, 0, lineStep),
+            tripAt(2, base + 24 * unit, base + 4 * unit, 0, lineStep),
+        ];
+        expect(farTrips(stays, lineStep), "both fold at the last line step").toHaveLength(2);
 
-        expect(foldFarTrips([trip], 6)).toHaveLength(1);
-        expect(foldFarTrips([trip], 7)).toHaveLength(0);
+        expect(groupFarDots(stays, lineStep).map((dot) => dot.tripIds)).toEqual([[1, 2]]);
+        expect(groupFarDots(stays, lineStep + 2).map((dot) => dot.tripIds)).toEqual([[1], [2]]);
     });
 });
 

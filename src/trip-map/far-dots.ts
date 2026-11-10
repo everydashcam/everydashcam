@@ -29,17 +29,29 @@ const GROUP_RADIUS_MIN_PX = 9;
 const GROUP_RADIUS_MAX_PX = 20;
 
 /**
- * Folds the trips too small to read at `step` (a bundle zoom step) into dots.
- * Deterministic: dots and their trips keep the input order.
+ * The trips too small to read as a line at `bundleStep`, the zoom step their
+ * corridor lines are computed for, in input order. The fold follows the line
+ * geometry, not the map: above BUNDLE_MAX_STEP the lines stop refining, and a
+ * trip unfolded there could fall inside one corridor cell and draw nothing.
  */
-export function foldFarTrips(trips: readonly FarDotTrip[], step: number): FarDot[] {
-    const unit = worldUnitsPerPixel(step);
-    const foldDiagonal = FOLD_BELOW_DIAGONAL_PX * unit;
-    const groupCell = GROUP_CELL_PX * unit;
+export function farTrips(trips: readonly FarDotTrip[], bundleStep: number): FarDotTrip[] {
+    const foldDiagonal = FOLD_BELOW_DIAGONAL_PX * worldUnitsPerPixel(bundleStep);
+    return trips.filter(
+        ({ bounds }) => Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) < foldDiagonal,
+    );
+}
+
+/**
+ * Groups far trips into dots on a grid at `zoomStep`, the map's own zoom step
+ * without the bundle's cap: stays a street apart must split as the user zooms
+ * in, long after the lines stopped refining. Deterministic: dots and their
+ * trips keep the input order.
+ */
+export function groupFarDots(trips: readonly FarDotTrip[], zoomStep: number): FarDot[] {
+    const groupCell = GROUP_CELL_PX * worldUnitsPerPixel(zoomStep);
     const groups = new Map<string, { sumX: number; sumY: number; dot: FarDot }>();
     for (const trip of trips) {
         const { bounds } = trip;
-        if (Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) >= foldDiagonal) continue;
         const x = (bounds.minX + bounds.maxX) / 2;
         const y = (bounds.minY + bounds.maxY) / 2;
         const key = `${Math.floor(x / groupCell)}|${Math.floor(y / groupCell)}`;

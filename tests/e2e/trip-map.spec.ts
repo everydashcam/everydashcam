@@ -1,6 +1,6 @@
 // The map of all trips: local routes without a basemap, the place filter and
-// opening a trip at its pass, the map laid over an open trip, "Read now", and
-// the phone's map tab with its sheet.
+// opening a trip at its pass, the map laid over an open trip, the dots of far
+// trips, "Read now", and the phone's map tab with its sheet.
 
 import { type Page } from "@playwright/test";
 
@@ -116,6 +116,34 @@ test.describe("with routes only", () => {
         await expect(page.locator("#trip-map-toggle")).toBeFocused();
         expect(await page.locator(".player-wrap").evaluate((element) => (element as HTMLElement).inert)).toBe(false);
         expect(await page.evaluate(() => window.__everydashcam.state.map!.getZoom())).toBeCloseTo(12.25, 2);
+    });
+
+    test("a dot of nearby short trips splits when clicked", async ({ page }) => {
+        // Trips 16 m apart share a dot's grid cell up to zoom 16 and part at 17,
+        // past the last zoom step the corridor lines are computed for.
+        await openLibrary(
+            page,
+            writeTripLibrary({
+                roads: [
+                    [
+                        [0, 0],
+                        [12, 0],
+                    ],
+                    [
+                        [16, 0],
+                        [28, 0],
+                    ],
+                ],
+            }),
+        );
+        const dots = page.locator(".trip-map-dot");
+        await expect(dots).toHaveCount(1);
+        await expect(dots).toHaveText("2");
+
+        await dots.click();
+
+        await expect(dots).toHaveCount(2);
+        expect(await page.evaluate(() => window.__everydashcam.state.tripMap!.getZoom())).toBeLessThanOrEqual(17);
     });
 
     test("reads the tracks inside videos on request", async ({ page }) => {

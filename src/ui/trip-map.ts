@@ -18,8 +18,8 @@ import type { ExpressionSpecification, GeoJSONSource } from "maplibre-gl";
 import { probeWebGL } from "../capabilities.js";
 import { t } from "../i18n/index.js";
 import { createLogger } from "../log.js";
-import { bundleStepForZoom, type TripBundle } from "../trip-map/bundle.js";
-import { farDotRadiusPx, foldFarTrips, type FarDot } from "../trip-map/far-dots.js";
+import { bundleStepForZoom, zoomStepForZoom, type TripBundle } from "../trip-map/bundle.js";
+import { farDotRadiusPx, farTrips, groupFarDots, type FarDot, type FarDotTrip } from "../trip-map/far-dots.js";
 import { FOLLOW_FIT_DURATION_MS, FOLLOW_FIT_PADDING_PX, shouldReframe, type ScreenBox } from "../trip-map/follow.js";
 import { placeRadiusWorld, trackPositionAt, type PlaceCircle } from "../trip-map/queries.js";
 import type { TripMapTrack } from "../trip-map/track-geometry.js";
@@ -126,6 +126,10 @@ const PHONE_FRAME_PADDING_PX = 24;
 // A library of one short trip must not open at building level.
 const FRAME_MAX_ZOOM = 15;
 const DOT_ZOOM_PADDING_PX = 50;
+// A click on a dot zooms closer than the start view may: stays within a few
+// tens of metres share a dot at FRAME_MAX_ZOOM, and the click must split them.
+// Here a dot's grid cell is about 12 m at 52°N.
+const DOT_ZOOM_MAX = 17;
 // A group of dots zooms to its trips with this share of extra room around them.
 const DOT_ZOOM_MARGIN = 0.1;
 // A click chooses a circle this large on screen; afterwards it keeps its size
@@ -163,7 +167,11 @@ interface TripMapView {
     isStyleReady: boolean;
     bundle: TripBundle | null;
     matchedBundle: TripBundle | null;
+    /** The trips the drawn lines leave out as too small; the dots show them. */
+    farTrips: FarDotTrip[];
     dots: maplibregl.Marker[];
+    /** Zoom step the dots are grouped for. */
+    dotStep: number | null;
     /** The user's trip markers on their routes. */
     /** By marker id: a rebuild moves and relabels them in place, so focus and an open card survive. */
     userMarkers: Map<string, UserMarkerPin>;
@@ -445,7 +453,9 @@ async function createView(): Promise<void> {
         isStyleReady: false,
         bundle: null,
         matchedBundle: null,
+        farTrips: [],
         dots: [],
+        dotStep: null,
         userMarkers: new Map(),
         markersTimer: null,
         lastMarkersAt: 0,
@@ -486,7 +496,10 @@ async function createView(): Promise<void> {
         stopFollowing(current);
     });
     map.on("zoom", () => {
-        if (bundleStepForZoom(map.getZoom()) !== current.requestedStep) scheduleBundle(current);
+        const zoom = map.getZoom();
+        if (bundleStepForZoom(zoom) !== current.requestedStep) scheduleBundle(current);
+        // Past the bundle's last step the lines stay; only the dots regroup.
+        else if (zoomStepForZoom(zoom) !== current.dotStep) renderDots(current);
     });
     map.on("moveend", () => scheduleAreaUpdate(current));
     map.on("resize", () => scheduleAreaUpdate(current));
@@ -591,12 +604,13 @@ function framePadding(desktopPx = FRAME_PADDING_PX): Required<maplibregl.Padding
     return { top: base, right: base, bottom: base + sheetOverlapPx(), left: base };
 }
 
-/** Fits `bounds` when the container is large enough to hold the padding. */
+/** Fits `bounds`, no closer than `maxZoom`, when the container is large enough to hold the padding. */
 function fitWorldBounds(
     current: TripMapView,
     bounds: WorldBounds,
     padding: Required<maplibregl.PaddingOptions>,
     durationMs: number,
+    maxZoom = FRAME_MAX_ZOOM,
 ): boolean {
     if (isEmptyBounds(bounds)) return false;
     const container = current.map.getContainer();
@@ -604,7 +618,7 @@ function fitWorldBounds(
         return false;
     current.map.fitBounds(lngLatBounds(bounds), {
         padding,
-        maxZoom: FRAME_MAX_ZOOM,
+        maxZoom,
         duration: prefersReducedMotion() ? 0 : durationMs,
     });
     return true;
@@ -704,12 +718,12 @@ async function refreshBundle(current: TripMapView): Promise<void> {
     current.lastBundleAt = performance.now();
     const step = bundleStepForZoom(current.map.getZoom());
     const tracks = readyTracks();
-    const dots = foldFarTrips(
+    const far = farTrips(
         tracks.map(({ id, track }) => ({ id, bounds: track.bounds })),
         step,
     );
     // A folded trip is drawn as its dot only; its few-pixel line would be noise.
-    const folded = new Set(dots.flatMap((dot) => dot.tripIds));
+    const folded = new Set(far.map(({ id }) => id));
     const ids = tracks.filter(({ id }) => !folded.has(id)).map(({ id }) => id);
     const placeIds = tripMapPlace() ? tripMapPlaceIds() : null;
     const matchedIds = placeIds ? ids.filter((id) => placeIds.has(id)) : [];
@@ -728,8 +742,9 @@ async function refreshBundle(current: TripMapView): Promise<void> {
     if (view !== current || request !== current.bundleRequest) return;
     current.bundle = bundle;
     current.matchedBundle = matchedBundle;
+    current.farTrips = far;
     renderLines(current);
-    renderDots(current, dots);
+    renderDots(current);
 }
 
 interface LinesData {
@@ -934,9 +949,12 @@ function renderLines(current: TripMapView): void {
     map.getSource<GeoJSONSource>(MATCHED_LAYERS.source)?.setData(linesData(current.matchedBundle));
 }
 
-function renderDots(current: TripMapView, dots: readonly FarDot[]): void {
+/** Groups the trips the drawn lines left out into dots at the camera's own zoom step. */
+function renderDots(current: TripMapView): void {
+    const zoomStep = zoomStepForZoom(current.map.getZoom());
+    current.dotStep = zoomStep;
     for (const marker of current.dots) marker.remove();
-    current.dots = dots.map((dot) => {
+    current.dots = groupFarDots(current.farTrips, zoomStep).map((dot) => {
         const count = dot.tripIds.length;
         const element = document.createElement("button");
         element.type = "button";
@@ -1096,6 +1114,7 @@ function zoomToDot(current: TripMapView, dot: FarDot): void {
         },
         framePadding(DOT_ZOOM_PADDING_PX),
         0,
+        DOT_ZOOM_MAX,
     );
 }
 

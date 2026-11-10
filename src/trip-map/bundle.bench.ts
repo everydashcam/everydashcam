@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { it } from "vitest";
 
 import { buildTripBundle, type BundleTrack } from "./bundle.js";
-import { foldFarTrips } from "./far-dots.js";
+import { farTrips, groupFarDots } from "./far-dots.js";
 import { trackIntersectsArea, tripPassesThroughCircle } from "./queries.js";
 import { buildTripMapTrack, type TripMapTrack } from "./track-geometry.js";
 import type { PackedTripTrack } from "./track-input.js";
@@ -167,8 +167,11 @@ it("answers place queries within milliseconds on the main thread", async ({ benc
             for (const track of tracks) tripPassesThroughCircle(track, { x, y, radiusMeters: 40 });
         }),
         bench("far dots at step 9", () => {
-            foldFarTrips(
-                tracks.map((track, id) => ({ id, bounds: track.bounds })),
+            groupFarDots(
+                farTrips(
+                    tracks.map((track, id) => ({ id, bounds: track.bounds })),
+                    9,
+                ),
                 9,
             );
         }),
