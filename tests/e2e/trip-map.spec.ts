@@ -77,6 +77,12 @@ test.describe("with routes only", () => {
         const rows = page.locator("li.trip:not(.unindexed-note)");
         await expect(rows).toHaveCount(2);
         await expect(rows.first()).toContainText(/pass at \d\d:\d\d/);
+        // Beside the road the closest points and pass times stay the same; the circle still moves.
+        const handle = page.locator(".trip-map-place-handle");
+        const handleBefore = (await handle.boundingBox())!;
+        await page.mouse.click(road.x, road.y - 10);
+        await expect.poll(async () => handleBefore.y - (await handle.boundingBox())!.y).toBeCloseTo(10, -1);
+        await expect(rows).toHaveCount(2);
 
         const tripIndex = Number(await rows.first().getAttribute("data-trip-index"));
         await rows.first().locator(".trip-title").click();

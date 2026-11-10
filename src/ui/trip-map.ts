@@ -505,7 +505,7 @@ async function createView(): Promise<void> {
         if (event.originalEvent.target !== map.getCanvas()) return;
         stopFollowing(current);
         const circle = circleAt(current, event.lngLat);
-        setTripMapPlace(countTripsThrough(circle) > 0 ? circle : null);
+        choosePlace(current, countTripsThrough(circle) > 0 ? circle : null);
         hideProbe(current);
     });
     registerViewerMap({
@@ -1182,11 +1182,7 @@ function createPlaceHandle(current: TripMapView): maplibregl.Marker {
         const point = current.map.project(handle.getLngLat());
         const radiusPx = Math.max(PLACE_MIN_RADIUS_PX, Math.hypot(point.x - centre.x, point.y - centre.y));
         const radiusWorld = radiusPx * worldUnitsPerPixel(current.map.getZoom());
-        setTripMapPlace({ ...place, radiusMeters: radiusWorld * groundMetersPerWorldUnit(place.y) });
-        // The search only speaks up when the matching trips change; the
-        // circle and its radius follow the handle on every move.
-        renderPlace(current);
-        syncPlaceControls();
+        choosePlace(current, { ...place, radiusMeters: radiusWorld * groundMetersPerWorldUnit(place.y) });
     });
     handle.on("dragend", () => {
         current.isDraggingHandle = false;
@@ -1194,6 +1190,19 @@ function createPlaceHandle(current: TripMapView): maplibregl.Marker {
         syncPlaceControls();
     });
     return handle;
+}
+
+/**
+ * Chooses (or with null, clears) the place from the map. The search speaks up
+ * only when the matching trips or their pass times change, and a new circle
+ * often keeps both: near a route's end or a stop the closest point stays the
+ * same vertex, and a drag changes only the radius. The circle, its handle and
+ * the radius label follow every choice here instead.
+ */
+function choosePlace(current: TripMapView, next: PlaceCircle | null): void {
+    setTripMapPlace(next);
+    renderPlace(current);
+    syncPlaceControls();
 }
 
 /** A chosen place lifts the phone sheet; a circle tapped low on the map would end up under it. */
