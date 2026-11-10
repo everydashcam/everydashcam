@@ -241,7 +241,8 @@ export function initMobileDrawer(): void {
     dom.drawerScrim.addEventListener("click", () => setDrawerOpen(false));
 
     document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && dom.sidebar.dataset.drawerOpen === "true") {
+        // A layer inside the drawer (the trip map's card) may have taken this Escape.
+        if (e.key === "Escape" && !e.defaultPrevented && dom.sidebar.dataset.drawerOpen === "true") {
             setDrawerOpen(false);
         }
     });

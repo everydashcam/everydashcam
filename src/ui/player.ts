@@ -2179,8 +2179,10 @@ export function openTripAtContentSec(tripIdx: number, contentSec: number): void 
         // same-file target - its offset is consumed by loadedmetadata, which
         // never fires without a src change (and the MSE same-file branch
         // would even reset playback to the file start). seekTripTime handles
-        // both backends; pause first so the user can orient.
+        // both backends; pause first so the user can orient. A same-file seek
+        // never reaches playFrame's "jump", so hand the screen to the viewer here.
         pausePlayback();
+        if (dom.sidebar.dataset.drawerOpen === "true") setDrawerOpen(false);
         seekTripTime(target);
         return;
     }

@@ -185,6 +185,8 @@ export function renderTrips(): void {
     // The final regroup sweep / user actions re-render the whole list; without
     // this the viewport jumps to the top and focus is lost.
     const prevScrollTop = dom.sidebar.scrollTop;
+    // On a phone's map tab the list scrolls inside the sheet instead.
+    const prevSheetScrollTop = dom.tripMapSheetList.scrollTop;
     const focus = captureListFocus(dom.list);
     const cardHeights = captureCollapsedCardHeights();
 
@@ -336,6 +338,7 @@ export function renderTrips(): void {
 
     // Restore reading position + focus captured before the rebuild.
     dom.sidebar.scrollTop = prevScrollTop;
+    dom.tripMapSheetList.scrollTop = prevSheetScrollTop;
     restoreListFocus(focus, dom.list);
 
     // Tell assistive tech the list is still updating while any card is provisional.

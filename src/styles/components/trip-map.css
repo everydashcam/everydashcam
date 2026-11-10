@@ -459,6 +459,13 @@
 .sidebar.is-trip-map-view > .trip-analysis-status {
     display: none;
 }
+/* A landscape phone cannot fit the head and a usable map: the panel scrolls
+   as a whole there, and the map keeps its minimum height below the head. */
+@media (max-height: 500px) and (orientation: landscape) {
+    .sidebar.is-trip-map-view {
+        overflow-y: auto;
+    }
+}
 .trip-map-panel {
     position: relative;
     flex: 1;
@@ -485,6 +492,11 @@
 .trip-map-panel .trip-map-corner--end {
     flex-direction: column;
     align-items: flex-end;
+}
+/* Credits and scale stay visible above the sheet (see the ResizeObserver in trip-map.ts). */
+.trip-map-panel .maplibregl-ctrl-bottom-left,
+.trip-map-panel .maplibregl-ctrl-bottom-right {
+    bottom: var(--trip-map-sheet-overlap, 0px);
 }
 .trip-map-panel .trip-map-style-error {
     top: 52px;

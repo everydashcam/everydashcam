@@ -635,12 +635,19 @@ function followLibrary(current: TripMapView): void {
 
 /** The visible frame in world coordinates; may extend past the world's edges. */
 function viewFrame(current: TripMapView): WorldBounds {
-    const bounds = current.map.getBounds();
+    const container = current.map.getContainer();
+    // Routes under the phone sheet are out of view. The map never rotates or
+    // tilts, so two corners make the frame.
+    const topLeft = current.map.unproject([0, 0]);
+    const bottomRight = current.map.unproject([
+        container.clientWidth,
+        Math.max(1, container.clientHeight - sheetOverlapPx()),
+    ]);
     return {
-        minX: worldX(bounds.getWest()),
-        minY: worldY(bounds.getNorth()),
-        maxX: worldX(bounds.getEast()),
-        maxY: worldY(bounds.getSouth()),
+        minX: worldX(topLeft.lng),
+        minY: worldY(topLeft.lat),
+        maxX: worldX(bottomRight.lng),
+        maxY: worldY(bottomRight.lat),
     };
 }
 
@@ -1137,12 +1144,29 @@ function createPlaceHandle(current: TripMapView): maplibregl.Marker {
         const radiusPx = Math.max(PLACE_MIN_RADIUS_PX, Math.hypot(point.x - centre.x, point.y - centre.y));
         const radiusWorld = radiusPx * worldUnitsPerPixel(current.map.getZoom());
         setTripMapPlace({ ...place, radiusMeters: radiusWorld * groundMetersPerWorldUnit(place.y) });
+        // The search only speaks up when the matching trips change; the
+        // circle and its radius follow the handle on every move.
+        renderPlace(current);
+        syncPlaceControls();
     });
     handle.on("dragend", () => {
         current.isDraggingHandle = false;
         renderPlace(current);
+        syncPlaceControls();
     });
     return handle;
+}
+
+/** A chosen place lifts the phone sheet; a circle tapped low on the map would end up under it. */
+function keepPlaceAboveSheet(current: TripMapView): void {
+    const place = tripMapPlace();
+    const overlap = sheetOverlapPx();
+    if (!place || overlap === 0) return;
+    const centre = current.map.project([worldToLon(place.x), worldToLat(place.y)]);
+    const visibleBottom = current.map.getContainer().clientHeight - overlap;
+    const lowest = visibleBottom - PHONE_FRAME_PADDING_PX * 2;
+    if (centre.y <= lowest) return;
+    current.map.panBy([0, centre.y - visibleBottom / 2], { duration: prefersReducedMotion() ? 0 : 250 });
 }
 
 function renderPlace(current: TripMapView): void {
@@ -1380,6 +1404,14 @@ export function initTripMap(cb: TripMapCallbacks): void {
         setPhoneTab(target);
         (target === "map" ? dom.tripViewMap : dom.tripViewList).focus({ preventScroll: true });
     });
+    // The phone sheet covers the bottom of the map: the credits and the scale
+    // ride above it, and routes under it leave the area filter's frame.
+    new ResizeObserver(() => {
+        dom.tripMapPanel.style.setProperty("--trip-map-sheet-overlap", `${dom.tripMapSheet.offsetHeight}px`);
+        if (!view) return;
+        keepPlaceAboveSheet(view);
+        scheduleAreaUpdate(view);
+    }).observe(dom.tripMapSheet);
     subscribeTripMapLibrary(onLibraryChange);
     // The list's query and chips changed what the map draws.
     subscribeTripMapScope(onLibraryChange);
@@ -1409,20 +1441,26 @@ export function initTripMap(cb: TripMapCallbacks): void {
         // The placeholder card offers the way back; the closed map's button is gone.
         document.querySelector<HTMLElement>('[data-action="show-trip-map"]')?.focus({ preventScroll: true });
     });
+    // The panel and the card close before anything else hears Escape: on a
+    // phone the drawer holding the map would close with them.
+    document.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.key !== "Escape" || event.defaultPrevented || isAnyModalOpen()) return;
+            if (isReadPanelOpen()) {
+                event.preventDefault();
+                closeReadPanel();
+            } else if (view?.markerPopup) {
+                event.preventDefault();
+                view.markerPopup.remove();
+                if (markerCardOpener?.isConnected) markerCardOpener.focus({ preventScroll: true });
+                markerCardOpener = null;
+            }
+        },
+        true,
+    );
     document.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || event.defaultPrevented || isAnyModalOpen()) return;
-        if (isReadPanelOpen()) {
-            event.preventDefault();
-            closeReadPanel();
-            return;
-        }
-        if (view?.markerPopup) {
-            event.preventDefault();
-            view.markerPopup.remove();
-            if (markerCardOpener?.isConnected) markerCardOpener.focus({ preventScroll: true });
-            markerCardOpener = null;
-            return;
-        }
         // Escape in the search clears the search.
         if (!isOverTrip || isTextEntry(event.target)) return;
         event.preventDefault();
@@ -1464,7 +1502,9 @@ export function initTripMap(cb: TripMapCallbacks): void {
     });
     dom.tripPlaceClear.addEventListener("click", () => {
         setTripMapPlace(null);
-        dom.tripSearch.focus({ preventScroll: true });
+        // The bar is gone. On a phone the search would bring up the keyboard
+        // over the map, so focus stays with the map tab there.
+        (isMobileLayout() ? dom.tripViewMap : dom.tripSearch).focus({ preventScroll: true });
     });
 
     // Hovering a trip in the list shows where it went.
