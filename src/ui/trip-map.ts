@@ -449,6 +449,10 @@ async function createView(): Promise<void> {
             pitchWithRotate: false,
             touchPitch: false,
             maxPitch: 0,
+            // A click chooses a place, and MapLibre clicks on each half of a
+            // double click: zooming by one would choose a place on a road and
+            // drop the chosen one off it. Wheel, pinch and the buttons zoom.
+            doubleClickZoom: false,
         });
     } catch (error) {
         markUnavailable(error);
@@ -508,9 +512,6 @@ async function createView(): Promise<void> {
     map.on("movestart", noteUserMove);
     map.on("zoomstart", noteUserMove);
     map.on("wheel", () => {
-        stopFollowing(current);
-    });
-    map.on("dblclick", () => {
         stopFollowing(current);
     });
     map.on("zoom", () => {
