@@ -43,8 +43,20 @@ export function tripMapTracksInScope(): Map<number, TripMapTrack> {
     return tracks;
 }
 
+/** Distinct simplified tracks of every trip, in or out of the scope. */
+function allTracks(): Map<number, TripMapTrack> {
+    const tracks = new Map<number, TripMapTrack>();
+    for (const entry of tripMapEntries()) if (entry?.track) tracks.set(entry.id, entry.track);
+    return tracks;
+}
+
+/**
+ * Passes and frame membership cover every trip, not only the scope: the
+ * list's chips count what each of them would show under the place and the
+ * frame. Drawing, framing and the counts on the map stay within the scope.
+ */
 function recompute(): void {
-    const tracks = tripMapTracksInScope();
+    const tracks = allTracks();
     passesById = new Map();
     if (place) {
         for (const [id, track] of tracks) {
@@ -56,9 +68,13 @@ function recompute(): void {
     if (frame) {
         const inside = new Set<number>();
         for (const [id, track] of tracks) if (trackIntersectsArea(track, frame)) inside.add(id);
-        // The area filter only exists while it hides something: with every
-        // route in frame the list stays whole, trips without GPS included.
-        if (inside.size < tracks.size) areaIds = inside;
+        // The area filter only exists while it hides a listed route: with every
+        // one in frame the list stays whole, trips without GPS included.
+        for (const id of tripMapTracksInScope().keys()) {
+            if (inside.has(id)) continue;
+            areaIds = inside;
+            break;
+        }
     }
 }
 
