@@ -4052,5 +4052,8 @@ describe("deriveStartUtc: file time fallback", () => {
     it("starts a recording without any time at the epoch so derived times stay non-negative", () => {
         const file = new File([], "a.mp4", { lastModified: UNKNOWN_FILE_MTIME });
         expect(deriveStartUtc(withoutOtherTime(file))).toEqual({ startUtc: 0, source: "mtime" });
+        // Chromium's 1601 answer for a picked file without an OS time.
+        const picked = new File([], "b.mp4", { lastModified: -11_644_473_600_000 });
+        expect(deriveStartUtc(withoutOtherTime(picked))).toEqual({ startUtc: 0, source: "mtime" });
     });
 });

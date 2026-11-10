@@ -56,8 +56,9 @@ describe("pinUnknownFileMtimes", () => {
 });
 
 describe("knownFileMtime", () => {
-    it("reports a pinned time as unknown and passes a stored time through", () => {
+    it("reports pinned and pre-epoch times as unknown and passes a stored time through", () => {
         expect(knownFileMtime(new File([], "a", { lastModified: UNKNOWN_FILE_MTIME }))).toBeNull();
+        expect(knownFileMtime(new File([], "c", { lastModified: -11_644_473_600_000 })), "chromium 1601").toBeNull();
         expect(knownFileMtime(new File([], "b", { lastModified: 1_700_000_000_000 }))).toBe(1_700_000_000_000);
     });
 });

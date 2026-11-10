@@ -18,9 +18,11 @@ export const UNKNOWN_FILE_MTIME = 0;
 const CURRENT_TIME_MARGIN_MS = 1_000;
 
 /** Modification time in Unix milliseconds, or null when the file has none.
- * Valid only for files that passed `pinUnknownFileMtimes`. */
+ * Valid only for files that passed `pinUnknownFileMtimes`. A pre-epoch time
+ * also counts as none: Chromium reports a picked file without an OS time as
+ * 1601-01-01, and persisted note times cannot be negative. */
 export function knownFileMtime(file: File): number | null {
-    return file.lastModified === UNKNOWN_FILE_MTIME ? null : file.lastModified;
+    return file.lastModified <= UNKNOWN_FILE_MTIME ? null : file.lastModified;
 }
 
 /**
