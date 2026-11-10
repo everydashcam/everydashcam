@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-10.1",
+        category: "feature",
+        text: {
+            en: "Added a map of all trips with filtering by location.",
+            ru: "Добавлена карта всех поездок с поиском по месту.",
+            de: "Karte aller Fahrten mit Filter nach Ort hinzugefügt.",
+            es: "Añadido un mapa de todos los trayectos con filtro por ubicación.",
+            fr: "Ajout d’une carte de tous les trajets avec filtrage par lieu.",
+            pl: "Dodano mapę wszystkich przejazdów z filtrowaniem według miejsca.",
+            pt: "Adicionado um mapa de todas as viagens com filtro por local.",
+            zh: "新增所有行程的地图，支持按地点筛选。",
+            ja: "場所で絞り込める、すべての走行の地図を追加しました。",
+            ko: "장소별로 필터링할 수 있는 모든 주행 지도를 추가했어요.",
+        },
+    },
+    {
         id: "2026-11-08.1",
         category: "improvement",
         text: {
