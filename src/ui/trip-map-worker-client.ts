@@ -7,9 +7,17 @@ import type { TripMapTrack } from "../trip-map/track-geometry.js";
 import { packedTrackTransfer, type PackedTripTrack } from "../trip-map/track-input.js";
 import type { TripMapWorkerContract } from "../workers/trip-map-protocol.js";
 import { createTypedWorkerClient, type TypedWorkerClient } from "../workers/_protocol/worker-client.js";
+import { createLogger } from "../log.js";
+
+const log = createLogger("trip-map");
+
+// A worker that cannot even load (its chunk gone after a deploy) would crash
+// on every resend; past this many crashes the tracks stay lost until reload.
+const MAX_CRASH_RESENDS = 3;
 
 let client: TypedWorkerClient<TripMapWorkerContract> | null = null;
 let onCrash: (() => void) | null = null;
+let crashes = 0;
 
 /** Runs after the worker died and took its tracks with it. */
 export function setTripMapWorkerCrashHandler(handler: () => void): void {
@@ -27,7 +35,9 @@ function workerClient(): TypedWorkerClient<TripMapWorkerContract> {
         name: "trip-map",
         onCrash: () => {
             client = null;
-            onCrash?.();
+            crashes++;
+            if (crashes <= MAX_CRASH_RESENDS) onCrash?.();
+            else if (crashes === MAX_CRASH_RESENDS + 1) log.warn("trip map worker keeps crashing, tracks not resent");
         },
     });
     return client;
