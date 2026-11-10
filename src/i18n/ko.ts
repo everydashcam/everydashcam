@@ -607,7 +607,7 @@ export const koDict = {
     "hotkeys.group.export": "내보내기",
     "hotkeys.action.toggleChart": "그래프 표시/숨김",
     "hotkeys.action.toggleStrip": "그래프 이벤트 표시/숨김",
-    "hotkeys.action.toggleMap": "지도 표시/숨김",
+    "hotkeys.action.toggleMap": "지도: 끄기 / 미니 / 크게",
     "hotkeys.action.toggleReadout": "GPS 값 표시/숨김",
     "viewMenu.label": "보기",
     "viewMenu.title": "보기 — 카메라와 패널",

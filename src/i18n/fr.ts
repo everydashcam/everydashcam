@@ -598,7 +598,7 @@ export const frDict = {
     "hotkeys.group.export": "Export",
     "hotkeys.action.toggleChart": "Basculer le graphique",
     "hotkeys.action.toggleStrip": "Basculer les événements sur le graphique",
-    "hotkeys.action.toggleMap": "Basculer la carte",
+    "hotkeys.action.toggleMap": "Carte : masquée / mini / grande",
     "hotkeys.action.toggleReadout": "Basculer les valeurs GPS",
     "viewMenu.label": "Vue",
     "viewMenu.title": "Vue — caméras et panneaux",

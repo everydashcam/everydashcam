@@ -751,6 +751,28 @@ test.describe("player", () => {
         await shot(page, "player-05-view-map-modes");
     });
 
+    test("M steps the map through every layout, smallest first", async ({ page }) => {
+        const player = page.locator("#player-wrap");
+        const miniMap = page.locator("#mini-map");
+        const mode = (name: "off" | "mini" | "large") => page.locator(`[data-map-mode="${name}"]`);
+        // The control's checked mode is committed when a transition ends, so
+        // it also tells when the next press starts from a settled layout.
+        await expect(mode("mini")).toHaveAttribute("aria-checked", "true");
+
+        await page.keyboard.press("m");
+        await expect(mode("large")).toHaveAttribute("aria-checked", "true");
+        await expect(player).toHaveClass(/map-expanded/);
+
+        await page.keyboard.press("m");
+        await expect(mode("off")).toHaveAttribute("aria-checked", "true");
+        await expect(player).not.toHaveClass(/map-expanded/);
+        await expect(miniMap).toBeHidden();
+
+        await page.keyboard.press("m");
+        await expect(mode("mini")).toHaveAttribute("aria-checked", "true");
+        await expect(miniMap).toBeVisible();
+    });
+
     test("View restores the saved large map mode after reload", async ({ page }) => {
         await page.locator("#player-view-menu").click();
         await page.locator('[data-map-mode="large"]').click();

@@ -596,7 +596,7 @@ export const zhDict = {
     "hotkeys.group.export": "导出",
     "hotkeys.action.toggleChart": "切换图表",
     "hotkeys.action.toggleStrip": "切换图表上的事件",
-    "hotkeys.action.toggleMap": "切换地图",
+    "hotkeys.action.toggleMap": "地图：关闭 / 小 / 大",
     "hotkeys.action.toggleReadout": "切换 GPS 数值",
     "viewMenu.label": "视图",
     "viewMenu.title": "视图 — 摄像头和面板",

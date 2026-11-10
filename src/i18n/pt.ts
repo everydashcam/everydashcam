@@ -598,7 +598,7 @@ export const ptDict = {
     "hotkeys.group.export": "Exportação",
     "hotkeys.action.toggleChart": "Alternar gráfico",
     "hotkeys.action.toggleStrip": "Alternar eventos no gráfico",
-    "hotkeys.action.toggleMap": "Alternar mapa",
+    "hotkeys.action.toggleMap": "Mapa: oculto / mini / grande",
     "hotkeys.action.toggleReadout": "Alternar leituras GPS",
     "viewMenu.label": "Vista",
     "viewMenu.title": "Vista — câmeras e painéis",

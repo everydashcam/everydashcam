@@ -603,7 +603,7 @@ export const ruDict = {
     "hotkeys.group.export": "Экспорт",
     "hotkeys.action.toggleChart": "Показать/скрыть график",
     "hotkeys.action.toggleStrip": "Показать/скрыть события на графике",
-    "hotkeys.action.toggleMap": "Показать/скрыть карту",
+    "hotkeys.action.toggleMap": "Карта: выкл. / мини / большая",
     "hotkeys.action.toggleReadout": "Показать/скрыть показания GPS",
     "viewMenu.label": "Вид",
     "viewMenu.title": "Вид — камеры и панели",

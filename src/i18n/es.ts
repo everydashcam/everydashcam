@@ -598,7 +598,7 @@ export const esDict = {
     "hotkeys.group.export": "Exportación",
     "hotkeys.action.toggleChart": "Alternar gráfico",
     "hotkeys.action.toggleStrip": "Alternar eventos en el gráfico",
-    "hotkeys.action.toggleMap": "Alternar mapa",
+    "hotkeys.action.toggleMap": "Mapa: oculto / mini / grande",
     "hotkeys.action.toggleReadout": "Alternar lecturas GPS",
     "viewMenu.label": "Vista",
     "viewMenu.title": "Vista — cámaras y paneles",

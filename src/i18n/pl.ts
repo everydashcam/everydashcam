@@ -598,7 +598,7 @@ export const plDict = {
     "hotkeys.group.export": "Eksport",
     "hotkeys.action.toggleChart": "Przełącz wykres",
     "hotkeys.action.toggleStrip": "Przełącz zdarzenia na wykresie",
-    "hotkeys.action.toggleMap": "Przełącz mapę",
+    "hotkeys.action.toggleMap": "Mapa: wył. / mini / duża",
     "hotkeys.action.toggleReadout": "Przełącz odczyty GPS",
     "viewMenu.label": "Widok",
     "viewMenu.title": "Widok — kamery i panele",

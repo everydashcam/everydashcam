@@ -608,7 +608,7 @@ export const jaDict = {
     "hotkeys.group.export": "書き出し",
     "hotkeys.action.toggleChart": "グラフ表示切替",
     "hotkeys.action.toggleStrip": "グラフ上のイベント表示切替",
-    "hotkeys.action.toggleMap": "地図表示切替",
+    "hotkeys.action.toggleMap": "地図：オフ／ミニ／大",
     "hotkeys.action.toggleReadout": "GPS表示切替",
     "viewMenu.label": "表示",
     "viewMenu.title": "表示 — カメラとパネル",

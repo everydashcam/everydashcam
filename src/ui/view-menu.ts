@@ -23,6 +23,15 @@ const PANELS = ["chart", "strip", "map", "readout"] as const;
 export type Panel = (typeof PANELS)[number];
 export type MapViewMode = "off" | "mini" | "large";
 
+/** M steps the map through every layout, smallest first, so each one is a
+ *  press away. Phones have no mini map and map.ts shows the large one for
+ *  "mini", so there M alternates between off and large. */
+const MAP_MODE_CYCLE: readonly MapViewMode[] = ["off", "mini", "large"];
+
+function nextMapMode(mode: MapViewMode): MapViewMode {
+    return MAP_MODE_CYCLE[(MAP_MODE_CYCLE.indexOf(mode) + 1) % MAP_MODE_CYCLE.length]!;
+}
+
 /** Visibility state of the view-menu panels. Default: all visible. */
 export type ViewPanels = Record<Panel, boolean>;
 
@@ -269,7 +278,7 @@ export function initViewMenu(opts: ViewMenuOptions): () => void {
     function toggle(panel: Panel): void {
         if (!isPanelUsable(panel)) return;
         if (panel === "map" && mapModeRequestHandler) {
-            mapModeRequestHandler(currentMapMode === "off" ? "mini" : "off");
+            mapModeRequestHandler(nextMapMode(currentMapMode));
             return;
         }
         setPanelVisible(panel, !currentPanels[panel]);

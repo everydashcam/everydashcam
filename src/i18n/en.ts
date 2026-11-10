@@ -599,7 +599,7 @@ export const enDict = {
     "hotkeys.group.export": "Export",
     "hotkeys.action.toggleChart": "Toggle chart",
     "hotkeys.action.toggleStrip": "Toggle events on chart",
-    "hotkeys.action.toggleMap": "Toggle map",
+    "hotkeys.action.toggleMap": "Map: off / mini / large",
     "hotkeys.action.toggleReadout": "Toggle GPS readouts",
     "viewMenu.label": "View",
     "viewMenu.title": "View — cameras and panels",

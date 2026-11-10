@@ -596,7 +596,7 @@ export const deDict = {
     "hotkeys.group.export": "Export",
     "hotkeys.action.toggleChart": "Diagramm umschalten",
     "hotkeys.action.toggleStrip": "Ereignisse im Diagramm umschalten",
-    "hotkeys.action.toggleMap": "Karte umschalten",
+    "hotkeys.action.toggleMap": "Karte: aus / Mini / groß",
     "hotkeys.action.toggleReadout": "GPS-Werte umschalten",
     "viewMenu.label": "Ansicht",
     "viewMenu.title": "Ansicht — Kameras und Bereiche",
