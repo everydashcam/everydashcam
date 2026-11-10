@@ -89,17 +89,22 @@ async function openApp(page: Page, origin: string, locale = "en"): Promise<void>
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
 }
 
+const statusLine = (page: Page) => page.locator("#notif-drawer .notif-drawer-item--pinned");
+
+// A new release lights the bell's dot and adds the pinned status line, without a toast.
 async function installUpdate(page: Page, publish: () => void): Promise<void> {
     publish();
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
-    await expect(page.locator(".dc-toast .dc-toast__action")).toBeVisible();
+    await expect(page.locator("#notif-bell-dot")).toBeVisible();
+    await expect(statusLine(page)).toHaveCount(1);
 }
 
 const applyName = (locale: string): string => (locale === "en" ? "Update now" : "Обновить сейчас");
 
-// A busy app answers the toast action directly, without the confirmation dialog.
+// A busy app answers the status line's action directly, without the confirmation dialog.
 async function requestUpdate(page: Page): Promise<void> {
-    await page.locator(".dc-toast .dc-toast__action").last().click();
+    await page.locator("#notif-bell").click();
+    await statusLine(page).locator(".dc-toast__action").click();
 }
 
 async function confirmUpdate(page: Page, locale = "en"): Promise<void> {
@@ -128,24 +133,35 @@ test("update confirmation fits each locale and viewport, then restarts the app",
     await openApp(page, updateServer.origin, "en");
     await page.evaluate(() => localStorage.setItem("update-test-preference", "keep"));
     await installUpdate(page, updateServer.publish);
-    const action = page.locator(".dc-toast .dc-toast__action");
+    await expect(page.locator(".dc-toast")).toHaveCount(0);
+    // Neither the first installation taking control nor the update reloaded the page.
+    expect(await page.evaluate(() => sessionStorage.getItem("update-loads"))).toBe("1");
+    const action = statusLine(page).locator(".dc-toast__action");
+    await page.locator("#notif-bell").click();
+    await expect(page.locator("#notif-bell-dot")).toBeHidden();
     await expect(action).toHaveText("Update…");
-    await action.click();
+    await page.screenshot({ path: info.outputPath("update-status-en-1280.png"), animations: "disabled" });
+    // The status line is not history: clearing the drawer keeps it.
+    await page.locator("#notif-drawer-clear").click();
+    await expect(page.locator("#notif-bell")).toBeVisible();
+    await expect(statusLine(page)).toHaveCount(1);
+    // A second release in the same session keeps one line and lights the dot again.
+    await installUpdate(page, updateServer.publish);
+    await requestUpdate(page);
     await expect(page.locator("#sw-update-body")).toContainText("recordings again");
     await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
     await expectDialogFits(page);
     await page.screenshot({ path: info.outputPath("update-en-1280.png"), animations: "disabled" });
     await page.keyboard.press("Escape");
     await expect(page.locator("#sw-update-modal")).toHaveCount(0);
-    // The dismissed toast's action remains available in the bell drawer.
-    await page.locator("#notif-bell").click();
-    await page.locator("#notif-drawer .dc-toast__action").click();
-    await expect(page.locator("#sw-update-modal")).toBeVisible();
-    await page.keyboard.press("Escape");
+    await expect(statusLine(page)).toHaveCount(1);
 
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(`${updateServer.origin}/ru/`);
+    await expect(statusLine(page)).toHaveCount(1);
+    await page.locator("#notif-bell").click();
     await expect(action).toHaveText("Обновить…");
+    await page.screenshot({ path: info.outputPath("update-status-ru-390.png"), animations: "disabled" });
     await action.click();
     await expect(page.locator("#sw-update-body")).toContainText("открыть заново");
     await expectDialogFits(page);
@@ -188,9 +204,7 @@ test("a busy export cancels the attempt; a retry restarts the app and keeps note
     // Save clip panel and retry.
     expect(await page.evaluate(() => sessionStorage.getItem("update-loads"))).toBe("1");
     await page.locator("#export-panel-close").click();
-    // Action toasts expire during a long export; the drawer keeps the update action.
-    await page.locator("#notif-bell").click();
-    await page.locator("#notif-drawer .dc-toast__action").click();
+    await requestUpdate(page);
     await page.getByRole("button", { name: applyName("ru"), exact: true }).click();
     await page.waitForFunction(() => sessionStorage.getItem("update-loads") === "2");
     expect(new URL(page.url()).pathname).toBe("/ru/");
@@ -211,9 +225,9 @@ test("another app window must close before the update restarts the app", async (
     expect(await page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.waiting))).toBe(
         true,
     );
-    // Normal reload still announces an update that was already waiting.
+    // Normal reload still shows an update that was already waiting.
     await page.reload();
-    await expect(page.locator(".dc-toast .dc-toast__action")).toBeVisible();
+    await expect(statusLine(page)).toHaveCount(1);
     await other.close();
     await confirmUpdate(page);
     await page.waitForFunction(() => sessionStorage.getItem("update-loads") === "3");

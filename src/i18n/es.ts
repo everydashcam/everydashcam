@@ -231,7 +231,7 @@ export const esDict = {
     "status.offline.label": "Sin conexión",
     "status.offline.info": "Qué significa esto",
     "status.offline.detail": "El fondo del mapa no se carga sin conexión. El vídeo, el gráfico de velocidad y la exportación siguen funcionando, y la app se actualiza sola cuando vuelvas a tener conexión.",
-    "status.update.ready": "Hay una actualización lista.",
+    "status.update.pending": "Se descargó una actualización. Se aplicará cuando cierres everydashcam.",
     "status.update.action": "Actualizar…",
     "status.update.confirm": "¿Actualizar everydashcam ahora?",
     "status.update.body": "La aplicación se reiniciará. Tendrás que volver a abrir tus grabaciones. Se conservarán las notas guardadas y los ajustes.",

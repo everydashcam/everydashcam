@@ -313,7 +313,7 @@ export type I18nKey =
     | "status.offline.label"
     | "status.offline.info"
     | "status.offline.detail"
-    | "status.update.ready"
+    | "status.update.pending"
     | "status.update.action"
     | "status.update.confirm"
     | "status.update.body"

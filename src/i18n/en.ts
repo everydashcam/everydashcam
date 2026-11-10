@@ -232,7 +232,7 @@ export const enDict = {
     "status.offline.label": "Offline",
     "status.offline.info": "What this means",
     "status.offline.detail": "The map background won't load while you're offline. Video, the speed chart and export still work — and the app updates itself the next time you're online.",
-    "status.update.ready": "An update is ready.",
+    "status.update.pending": "An update has been downloaded. It'll apply when you close everydashcam.",
     "status.update.action": "Update…",
     "status.update.confirm": "Update everydashcam now?",
     "status.update.body": "The app will restart. You'll need to open your recordings again. Saved notes and settings will stay.",

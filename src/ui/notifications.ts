@@ -9,8 +9,11 @@
 //   - Info/warn auto-dismiss after a timeout; error toasts stay until the
 //     user clicks the close button. The bell drawer keeps everything until
 //     the user clears it or the page reloads.
-//   - The bell icon stays hidden until the first notification; the red dot
+//   - The bell icon stays hidden while there is nothing to list; the red dot
 //     marks unread items. Opening the drawer marks everything read.
+//   - A pinned status line (setPinnedStatus) reflects a standing fact rather
+//     than an event: no toast, listed above the history, untouched by "Clear
+//     all" and by the history limit, removed only by its owner.
 //
 // Replaces the old #status text in the topbar, which mixed progress with
 // final warnings and stuck them in a tiny mono font that scrolled off in
@@ -81,6 +84,21 @@ function toastTimeoutFor(n: Notification): number | null {
 // in the bell drawer history. Avoids a wall of toasts on slow recovery
 // scenarios (e.g. burst of errors). 3 is a typical Material Design ceiling.
 const TOAST_STACK_LIMIT = 3;
+
+/** A standing line at the top of the drawer, owned by the module that sets it. */
+export interface PinnedStatusInput {
+    severity: Severity;
+    messageKey: I18nKey;
+    actionKey: I18nKey;
+    onAction: () => void;
+    /** Identifies the news the line carries. Opening the drawer marks this
+     *  revision read; only a different revision lights the dot again. */
+    revision: number;
+}
+
+// Insertion order is display order.
+const pinnedStatuses = new Map<string, PinnedStatusInput>();
+const readPinnedRevisions = new Map<string, number>();
 
 // Each notification's toast lifecycle is tracked here so dismissAll can
 // tear them down cleanly. The DOM element is the key.
@@ -177,7 +195,22 @@ export function notify(input: NotifyInput): void {
     // Defer UI work until DOM is available.
     if (bellBtn && toastContainer && drawerList) {
         showToast(n);
-        revealBell();
+        syncBellVisibility();
+        renderDrawerList();
+        renderBellBadge();
+    }
+}
+
+/**
+ * Shows or replaces the pinned status line `id`, or removes it when `input` is
+ * null. The line raises no toast; the dot lights when its revision has not
+ * been seen in an open drawer. Safe to call before initNotifications.
+ */
+export function setPinnedStatus(id: string, input: PinnedStatusInput | null): void {
+    if (input) pinnedStatuses.set(id, input);
+    else if (!pinnedStatuses.delete(id)) return;
+    if (bellBtn && drawerList) {
+        syncBellVisibility();
         renderDrawerList();
         renderBellBadge();
     }
@@ -223,8 +256,8 @@ export function initNotifications(): void {
     document.getElementById("notif-drawer-clear")?.addEventListener("click", clearAll);
 
     // Catch up if anything fired before init.
-    if (notifications.length > 0) {
-        revealBell();
+    if (notifications.length > 0 || pinnedStatuses.size > 0) {
+        syncBellVisibility();
         renderBellBadge();
         renderDrawerList();
     }
@@ -317,13 +350,18 @@ function resetToastTimer(id: string): void {
 
 // --- Bell + drawer ---
 
-function revealBell(): void {
-    if (bellBtn) bellBtn.hidden = false;
+function syncBellVisibility(): void {
+    if (!bellBtn) return;
+    const isEmpty = notifications.length === 0 && pinnedStatuses.size === 0;
+    bellBtn.hidden = isEmpty;
+    if (isEmpty) closeDrawer();
 }
 
 function renderBellBadge(): void {
     if (!bellDot) return;
-    const unread = notifications.some((n) => !n.read);
+    const unread =
+        notifications.some((n) => !n.read) ||
+        [...pinnedStatuses].some(([id, status]) => readPinnedRevisions.get(id) !== status.revision);
     bellDot.hidden = !unread;
 }
 
@@ -337,6 +375,7 @@ function openDrawer(): void {
     drawerPopover?.open();
     // Mark everything read at open; dot disappears immediately.
     for (const n of notifications) n.read = true;
+    for (const [id, status] of pinnedStatuses) readPinnedRevisions.set(id, status.revision);
     renderBellBadge();
 }
 
@@ -353,7 +392,7 @@ function clearAll(): void {
     for (const id of [...activeToasts.keys()]) removeToast(id);
     renderDrawerList();
     renderBellBadge();
-    if (bellBtn) bellBtn.hidden = true;
+    syncBellVisibility();
     closeDrawer();
 }
 
@@ -361,7 +400,7 @@ function renderDrawerList(): void {
     if (!drawerList) return;
     drawerList.replaceChildren();
 
-    if (notifications.length === 0) {
+    if (notifications.length === 0 && pinnedStatuses.size === 0) {
         const empty = document.createElement("p");
         empty.className = "notif-drawer-empty";
         empty.textContent = t("notif.drawer.empty");
@@ -369,35 +408,51 @@ function renderDrawerList(): void {
         return;
     }
 
-    for (const n of notifications) {
-        const item = document.createElement("div");
-        item.className = `notif-drawer-item notif-drawer-item--${n.severity}`;
-
-        const icon = document.createElement("span");
-        icon.className = "notif-drawer-item__icon";
-        icon.setAttribute("aria-hidden", "true");
-        icon.append(buildSeverityIcon(n.severity));
-        item.appendChild(icon);
-
-        const text = document.createElement("span");
-        text.className = "notif-drawer-item__text";
-        text.textContent = t(n.messageKey, n.messageParams);
-        if (n.actionInDrawer && n.actionKey && n.onAction) {
-            const action = document.createElement("button");
-            action.type = "button";
-            action.className = "dc-toast__action";
-            action.textContent = t(n.actionKey);
-            const onAction = n.onAction;
-            action.addEventListener("click", () => {
-                closeDrawer();
-                onAction();
-            });
-            text.append(action);
-        }
-        item.appendChild(text);
-
+    for (const status of pinnedStatuses.values()) {
+        const item = buildDrawerItem(status.severity, t(status.messageKey), {
+            label: t(status.actionKey),
+            run: status.onAction,
+        });
+        item.classList.add("notif-drawer-item--pinned");
         drawerList.appendChild(item);
     }
+    for (const n of notifications) {
+        const action =
+            n.actionInDrawer && n.actionKey && n.onAction ? { label: t(n.actionKey), run: n.onAction } : null;
+        drawerList.appendChild(buildDrawerItem(n.severity, t(n.messageKey, n.messageParams), action));
+    }
+}
+
+function buildDrawerItem(
+    severity: Severity,
+    message: string,
+    action: { label: string; run: () => void } | null,
+): HTMLElement {
+    const item = document.createElement("div");
+    item.className = `notif-drawer-item notif-drawer-item--${severity}`;
+
+    const icon = document.createElement("span");
+    icon.className = "notif-drawer-item__icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.append(buildSeverityIcon(severity));
+    item.appendChild(icon);
+
+    const text = document.createElement("span");
+    text.className = "notif-drawer-item__text";
+    text.textContent = message;
+    if (action) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dc-toast__action";
+        button.textContent = action.label;
+        button.addEventListener("click", () => {
+            closeDrawer();
+            action.run();
+        });
+        text.append(button);
+    }
+    item.appendChild(text);
+    return item;
 }
 
 // --- Severity icons (Lucide) ---

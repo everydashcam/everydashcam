@@ -241,7 +241,7 @@ export const jaDict = {
     "status.offline.label": "オフライン",
     "status.offline.info": "これはどういうこと？",
     "status.offline.detail": "オフラインのあいだは地図の背景が表示されません。動画・速度グラフ・書き出しはそのまま使えます。ネットにつながると自動で最新版に更新されます。",
-    "status.update.ready": "更新の準備ができました。",
+    "status.update.pending": "更新をダウンロードしました。everydashcam を閉じると適用されます。",
     "status.update.action": "更新…",
     "status.update.confirm": "everydashcam を今すぐ更新しますか？",
     "status.update.body": "アプリが再起動します。録画は開き直す必要があります。保存済みのメモと設定は保持されます。",

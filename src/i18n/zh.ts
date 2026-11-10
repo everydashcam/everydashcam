@@ -230,7 +230,7 @@ export const zhDict = {
     "status.offline.label": "离线",
     "status.offline.info": "这是什么意思",
     "status.offline.detail": "离线时地图底图无法加载。视频、速度图表和导出仍可正常使用，重新联网后应用会自动更新到最新版本。",
-    "status.update.ready": "更新已准备就绪。",
+    "status.update.pending": "更新已下载，关闭 everydashcam 后生效。",
     "status.update.action": "更新…",
     "status.update.confirm": "现在更新 everydashcam？",
     "status.update.body": "应用将重新启动。你需要重新打开录像。已保存的笔记和设置将保留。",

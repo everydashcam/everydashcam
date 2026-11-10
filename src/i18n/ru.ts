@@ -236,7 +236,7 @@ export const ruDict = {
     "status.offline.label": "Офлайн",
     "status.offline.info": "Что это значит",
     "status.offline.detail": "Фоновая карта не загрузится, пока нет интернета. Видео, график скорости и экспорт работают, а приложение обновится само, когда снова появится сеть.",
-    "status.update.ready": "Обновление готово.",
+    "status.update.pending": "Обновление скачано. Применится, когда закроешь everydashcam.",
     "status.update.action": "Обновить…",
     "status.update.confirm": "Обновить everydashcam сейчас?",
     "status.update.body": "Приложение перезапустится. Записи потребуется открыть заново. Сохранённые заметки и настройки останутся.",

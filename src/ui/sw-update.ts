@@ -4,10 +4,17 @@ import { createLogger } from "../log.js";
 import { UPDATE_MESSAGE, isUpdateResult, type UpdateRequest, type UpdateResult } from "../sw-update-protocol.js";
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
 import { markIntentionalNavigation } from "./nav-intent.js";
-import { notify } from "./notifications.js";
-import { createUpdateObserver, type ObservedRegistration, type ObservedWorker } from "./sw-update-observer.js";
+import { notify, setPinnedStatus } from "./notifications.js";
+import {
+    createUpdateObserver,
+    type ObservedRegistration,
+    type ObservedWorker,
+    type UpdateState,
+} from "./sw-update-observer.js";
 
 const log = createLogger("sw-update");
+
+const UPDATE_STATUS_ID = "update";
 
 // The restart dialog cannot be dismissed while notes are saved, so a write that
 // never settles must not hold the window behind it.
@@ -149,27 +156,47 @@ export function initServiceWorkerUpdates(options: {
 
     const isBusyNow = (): boolean => options.isBusy() || isAnyModalOpen();
 
-    const announce = (messageKey: I18nKey = "status.update.ready"): void => {
-        const isReady = messageKey === "status.update.ready";
+    const requestRestart = (): void => {
+        if (isRestarting) return;
+        if (isBusyNow()) announce("status.update.busy");
+        else showDialog(true);
+    };
+
+    // Answers to an explicit request. The pinned status line stays the way
+    // back to the update, so these toasts keep their retry action out of the
+    // drawer and repeated attempts do not stack buttons there.
+    const announce = (messageKey: I18nKey): void => {
         notify({
-            severity: isReady ? "info" : "warn",
+            severity: "warn",
             messageKey,
             ...(messageKey === "status.update.busy" && { messageParams: { panel: t("export.title") } }),
             actionKey: "status.update.action",
-            // The drawer keeps one way back to the update. Retry results stay
-            // text-only there so repeated attempts do not stack buttons.
-            actionInDrawer: isReady,
-            onAction: () => {
-                if (isRestarting) return;
-                if (isBusyNow()) announce("status.update.busy");
-                else showDialog(true);
-            },
+            onAction: requestRestart,
         });
+    };
+
+    let updateState: UpdateState = { waitingWorker: null, isPageBehind: false, updateSerial: 0 };
+    // The line names the browser's own path out loud: closing the app applies
+    // the update even when every restart attempt from this page fails.
+    const syncStatusLine = (): void => {
+        setPinnedStatus(
+            UPDATE_STATUS_ID,
+            updateState.isPageBehind && !isRestarting
+                ? {
+                      severity: "info",
+                      messageKey: "status.update.pending",
+                      actionKey: "status.update.action",
+                      onAction: requestRestart,
+                      revision: updateState.updateSerial,
+                  }
+                : null,
+        );
     };
 
     const stop = (messageKey: I18nKey): void => {
         isRestarting = false;
         closeDialog();
+        syncStatusLine();
         announce(messageKey);
     };
 
@@ -180,6 +207,7 @@ export function initServiceWorkerUpdates(options: {
             return;
         }
         isRestarting = true;
+        syncStatusLine();
         // The non-dismissable dialog keeps new work from starting while notes
         // are saved and the worker takes over.
         showDialog(false);
@@ -203,15 +231,13 @@ export function initServiceWorkerUpdates(options: {
         }
     };
 
-    let announcedSerial = 0;
     const observer = createUpdateObserver({
         loadController: options.loadController,
         currentController: (): ObservedWorker | null => container.controller,
         page: { window, document },
         onChange: (state) => {
-            if (!state.waitingWorker || state.updateSerial === announcedSerial) return;
-            announcedSerial = state.updateSerial;
-            announce();
+            updateState = state;
+            syncStatusLine();
         },
     });
     // An update installed by an earlier visit is already waiting now. Reading

@@ -231,7 +231,7 @@ export const plDict = {
     "status.offline.label": "Offline",
     "status.offline.info": "Co to znaczy",
     "status.offline.detail": "Tło mapy nie załaduje się bez internetu. Wideo, wykres prędkości i eksport nadal działają, a aplikacja sama się zaktualizuje, gdy znów będziesz online.",
-    "status.update.ready": "Aktualizacja jest gotowa.",
+    "status.update.pending": "Pobrano aktualizację. Zostanie zastosowana, gdy zamkniesz everydashcam.",
     "status.update.action": "Aktualizuj…",
     "status.update.confirm": "Zaktualizować everydashcam teraz?",
     "status.update.body": "Aplikacja uruchomi się ponownie. Trzeba będzie ponownie otworzyć nagrania. Zapisane notatki i ustawienia pozostaną.",
