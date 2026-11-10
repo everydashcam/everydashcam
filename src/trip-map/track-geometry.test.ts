@@ -118,6 +118,33 @@ describe("buildTripMapTrack", () => {
         expect(track.points[arrival * 2 + 3]).toBe(track.points[arrival * 2 + 1]);
     });
 
+    it("keeps the departure time of a stop too short to pin", () => {
+        // Eight seconds standing on one repeated fix, then on along the road.
+        const fixes = [
+            ...driveThrough(
+                [
+                    [0, 0],
+                    [300, 0],
+                ],
+                { speedMs: 10 },
+            ),
+            ...Array.from({ length: 8 }, (_, s) => ({ eastM: 300, northM: 0, unixSeconds: START_SEC + 31 + s })),
+            ...driveThrough(
+                [
+                    [300, 0],
+                    [1000, 0],
+                ],
+                { speedMs: 10, startSec: START_SEC + 38 },
+            ).slice(1),
+        ];
+        const track = trackFromFixes(fixes);
+        const circle = { x: worldX(lonForEast(305)), y: worldY(latForNorth(0)), radiusMeters: 3 };
+
+        const [pass] = tripPassesThroughCircle(track, circle);
+        // Truth: the car leaves 300 m at +38 s and reaches 305 m half a second later.
+        expect(pass!.unixSeconds).toBeCloseTo(START_SEC + 38.5, 0);
+    });
+
     it("breaks the line at an implausible jump, a long pause and a declared cut", () => {
         const jump = trackFromFixes([
             ...driveThrough([

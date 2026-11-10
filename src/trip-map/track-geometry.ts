@@ -111,8 +111,8 @@ function isGap(xs: Float64Array, ys: Float64Array, times: Float64Array, cutBefor
 
 /**
  * Appends the simplified vertices of the continuous piece [first, last]:
- * stops become pinned arrival/departure pairs, consecutive identical points
- * collapse, and Douglas-Peucker runs between pinned vertices.
+ * stops become pinned arrival/departure pairs, a run of identical points keeps
+ * only its first and last, and Douglas-Peucker runs between pinned vertices.
  */
 function appendSimplifiedPiece(
     xs: Float64Array,
@@ -149,7 +149,14 @@ function appendSimplifiedPiece(
             continue;
         }
         const previous = px.length - 1;
-        if (previous < 0 || px[previous] !== ax || py[previous] !== ay) {
+        const isRepeat = previous >= 0 && px[previous] === ax && py[previous] === ay;
+        if (isRepeat && previous >= 1 && px[previous - 1] === ax && py[previous - 1] === ay) {
+            // A stop too short for a dwell repeats one fix: the run's last
+            // repeat carries its departure time, so the next segment does
+            // not take the wait. Douglas-Peucker drops it when the wait is
+            // within the time tolerance.
+            pt[previous] = times[i]!;
+        } else {
             px.push(ax);
             py.push(ay);
             pt.push(times[i]!);
