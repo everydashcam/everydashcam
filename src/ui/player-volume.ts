@@ -8,6 +8,7 @@ import { t } from "../i18n/index.js";
 import { dom } from "./dom.js";
 import { isCoarsePointer } from "./media-queries.js";
 import { state } from "./state.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 // Volume and mute are persisted under separate keys so each can be read
 // independently without JSON parsing a tiny two-field blob. Volume: 0..1
@@ -66,7 +67,7 @@ export function syncMuteButton(): void {
     if (volXIcon) volXIcon.toggleAttribute("hidden", !muted);
     const label = muted ? t("player.unmute") : t("player.mute");
     dom.playerBar.mute.setAttribute("aria-label", label);
-    dom.playerBar.mute.title = label;
+    dom.playerBar.mute.title = withShortcutHint(label, "U");
 }
 
 /**

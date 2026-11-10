@@ -14,6 +14,7 @@ import { focusableWithin, isAnyModalOpen } from "./modal-helper.js";
 import { notify } from "./notifications.js";
 import { state } from "./state.js";
 import { setExpandedViewPanels } from "./view-menu.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 const log = createLogger("player");
 const HIDE_DELAY_MS = 1000;
@@ -251,7 +252,7 @@ export function syncFullscreenButton(): void {
     const label = t(native ? "player.fullscreen.enter" : "player.fullscreen.expand");
     const button = dom.playerBar.fullscreen;
     button.setAttribute("aria-label", label);
-    button.title = label;
+    button.title = withShortcutHint(label, "F");
     button.hidden = expanded;
     button.disabled = !state.active;
     button.setAttribute("aria-busy", String(transition !== null));

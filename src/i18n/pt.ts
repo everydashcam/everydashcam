@@ -545,7 +545,6 @@ export const ptDict = {
     "player.fullscreen.exitError": "Não foi possível sair da tela cheia. Tente de novo.",
     "player.controls.pin": "Manter os controles visíveis",
     "player.export.label": "Salvar clipe",
-    "player.export.tooltip": "Salvar clipe · E",
     "player.zoom.minimap.aria": "Mini-mapa de zoom — clique ou arraste para mover a vista",
     "player.zoom.minimap.title": "Roda do mouse: zoom; arrastar: mover; Z: redefinir",
     "player.zoom.reset": "Redefinir zoom",

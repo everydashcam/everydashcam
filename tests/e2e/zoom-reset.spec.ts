@@ -88,6 +88,8 @@ test("zoom reset edges stay reachable with a default, dragged and restored GPS m
     await expect(map).toBeVisible();
 
     await zoomVideo(page);
+    await expect(page.locator(".zoom-badge")).toHaveAttribute("title", "Reset zoom (Z)");
+    await expect(page.locator(".zoom-badge")).toHaveAccessibleName("Reset zoom");
     await shot(page, `zoom-reset-desktop-default-${browserName}`);
     await resetAtEdge(page, "bottom");
     await zoomVideo(page);

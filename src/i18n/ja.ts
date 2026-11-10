@@ -555,7 +555,6 @@ export const jaDict = {
     "player.fullscreen.exitError": "フルスクリーンを終了できませんでした。もう一度お試しください。",
     "player.controls.pin": "操作ボタンを常に表示",
     "player.export.label": "クリップを保存",
-    "player.export.tooltip": "クリップを保存 · E",
     "player.zoom.minimap.aria": "拡大位置のプレビュー — クリックまたはドラッグで表示位置を移動",
     "player.zoom.minimap.title": "ホイール：ズーム、ドラッグ：移動、Z：リセット",
     "player.zoom.reset": "ズームをリセット",

@@ -80,6 +80,7 @@ import {
 } from "./strip-zoom.js";
 import { eventColors, themeColors } from "./theme.js";
 import { isPanelShown, subscribeViewPanels } from "./view-menu.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 interface ChartCallbacks {
     /** Current player position in seconds from trip start. Needed by cursorPlugin. */
@@ -1167,6 +1168,9 @@ export function initChart(cb: ChartCallbacks): void {
     dom.chartCanvas.addEventListener("dblclick", resetTimelineZoom);
     // Keyboard activation has detail=0. When an action reaches its limit and
     // disables itself, keep focus on the remaining usable zoom control.
+    // The tooltips name the +/- keys; index.html only names the buttons.
+    dom.playerChartZoomOut.title = withShortcutHint(t("chart.zoomOut"), "-");
+    dom.playerChartZoomIn.title = withShortcutHint(t("chart.zoomIn"), "+");
     dom.playerChartZoomOut.addEventListener("click", (e) => {
         e.stopPropagation();
         zoomTimelineStep(-1);

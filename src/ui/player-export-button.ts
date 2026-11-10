@@ -6,6 +6,7 @@
 import { t } from "../i18n/index.js";
 import { dom } from "./dom.js";
 import { state } from "./state.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 let exportInProgress = false;
 
@@ -26,7 +27,7 @@ export function syncExportButton(): void {
     const hasActive = state.active !== null;
     const disabled = !hasActive || exportInProgress;
     btn.disabled = disabled;
-    const text = t("player.export.tooltip");
-    btn.title = text;
-    btn.setAttribute("aria-label", text);
+    const label = t("player.export.label");
+    btn.title = withShortcutHint(label, "E");
+    btn.setAttribute("aria-label", label);
 }

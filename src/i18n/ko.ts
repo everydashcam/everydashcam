@@ -554,7 +554,6 @@ export const koDict = {
     "player.fullscreen.exitError": "전체 화면을 종료하지 못했어요. 다시 시도해 주세요.",
     "player.controls.pin": "재생 컨트롤 항상 표시",
     "player.export.label": "클립 저장",
-    "player.export.tooltip": "클립 저장 · E",
     "player.zoom.minimap.aria": "확대 위치 미리보기 — 클릭하거나 드래그해 보기 영역을 옮겨요",
     "player.zoom.minimap.title": "휠: 확대/축소, 드래그: 이동, Z: 초기화",
     "player.zoom.reset": "확대 초기화",

@@ -545,7 +545,6 @@ export const plDict = {
     "player.fullscreen.exitError": "Nie udało się wyjść z pełnego ekranu. Spróbuj ponownie.",
     "player.controls.pin": "Zawsze pokazuj elementy sterowania",
     "player.export.label": "Zapisz fragment",
-    "player.export.tooltip": "Zapisz fragment · E",
     "player.zoom.minimap.aria": "Minimapa zoomu — klik lub ciągnięcie przesuwa widok",
     "player.zoom.minimap.title": "Kółko: powiększenie; przeciąganie: przesunięcie; Z: przywrócenie widoku",
     "player.zoom.reset": "Resetuj powiększenie",

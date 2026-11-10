@@ -543,7 +543,6 @@ export const zhDict = {
     "player.fullscreen.exitError": "无法退出全屏。请重试。",
     "player.controls.pin": "始终显示播放控件",
     "player.export.label": "保存片段",
-    "player.export.tooltip": "保存片段 · E",
     "player.zoom.minimap.aria": "缩放位置预览 — 点击或拖动以移动视图",
     "player.zoom.minimap.title": "滚轮缩放，拖动平移，Z 键复位",
     "player.zoom.reset": "重置缩放",

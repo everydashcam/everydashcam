@@ -5,6 +5,7 @@
 import { t } from "../i18n/index.js";
 import { dom } from "./dom.js";
 import { state } from "./state.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 export function syncLoopButton(): void {
     const behavior = state.tripEndBehavior;
@@ -22,7 +23,7 @@ export function syncLoopButton(): void {
           ? t("player.loop.on")
           : t("player.loop.off");
     dom.playerBar.loop.setAttribute("aria-label", label);
-    dom.playerBar.loop.setAttribute("title", label);
+    dom.playerBar.loop.setAttribute("title", withShortcutHint(label, "R"));
 }
 
 /** Cycles trip-end behavior stop -> loop -> advance -> stop (the media-player

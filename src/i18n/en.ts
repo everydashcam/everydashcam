@@ -546,7 +546,6 @@ export const enDict = {
     "player.fullscreen.exitError": "Couldn’t leave full screen. Try again.",
     "player.controls.pin": "Keep controls visible",
     "player.export.label": "Save clip",
-    "player.export.tooltip": "Save clip · E",
     "player.zoom.minimap.aria": "Zoom mini-map — click or drag to pan the view",
     "player.zoom.minimap.title": "Wheel to zoom, drag to pan, Z to reset",
     "player.zoom.reset": "Reset zoom",

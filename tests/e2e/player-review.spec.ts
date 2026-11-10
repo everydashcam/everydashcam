@@ -200,6 +200,32 @@ test("the player bar folds controls only when the whole bar is full, in one prio
     expect(sawFolding, "the sweep reaches widths where controls fold").toBe(true);
 });
 
+test("controls with a keyboard shortcut name the key in their tooltip only", async ({ page }) => {
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    const tooltips: Record<string, string | RegExp> = {
+        "#player-mute": /^(Mute|Unmute) \(U\)$/,
+        "#player-speed": "Playback speed (< / >)",
+        "#player-loop": /^(Loop trip|Loop on|Play all trips) \(R\)$/,
+        "#player-fullscreen": "Full screen (F)",
+        "#player-export": "Save clip (E)",
+        "#player-chart-zoom-out": "Zoom out (-)",
+        "#player-chart-zoom-in": "Zoom in (+)",
+    };
+    for (const [selector, title] of Object.entries(tooltips)) {
+        await expect(page.locator(selector), selector).toHaveAttribute("title", title);
+    }
+    await expect(page.locator("#player-fullscreen")).toHaveAccessibleName("Full screen");
+    await expect(page.locator("#player-export")).toHaveAccessibleName("Save clip");
+
+    await openExport(page, false);
+    const setEdge = (edge: "start" | "end") => page.locator(`.export-trim-bar__set[data-set-edge="${edge}"]`);
+    await expect(setEdge("start")).toHaveAttribute("title", "From here (I)");
+    await expect(setEdge("end")).toHaveAttribute("title", "To here (O)");
+    await expect(setEdge("start")).toHaveAccessibleName("From here");
+});
+
 test("transport buttons match arrow seeks, repeat while held, and stop after leaving", async ({ page }) => {
     await page.clock.install();
     await gotoApp(page);

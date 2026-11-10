@@ -21,6 +21,7 @@ import { activeTrip, state } from "./state.js";
 import { flashRangeTab } from "./timeline-range.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 // Playhead accessors (player.ts getTripCurrentTime / seekThenPlay),
 // injected at init to keep the dep tree acyclic - player.ts must stay importable
@@ -258,7 +259,9 @@ function makeSetEdgeButton(which: "start" | "end", label: string): HTMLButtonEle
     btn.className = "export-trim-bar__set";
     btn.dataset.setEdge = which;
     btn.setAttribute("aria-label", label);
-    btn.title = label;
+    const key = which === "start" ? "I" : "O";
+    btn.setAttribute("aria-keyshortcuts", key);
+    btn.title = withShortcutHint(label, key);
     btn.appendChild(buildLucideIcon(SET_EDGE_ICON_PATHS, 14));
     const text = document.createElement("span");
     text.textContent = label;

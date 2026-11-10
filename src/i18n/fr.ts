@@ -545,7 +545,6 @@ export const frDict = {
     "player.fullscreen.exitError": "Impossible de quitter le plein écran. Réessaie.",
     "player.controls.pin": "Garder les commandes visibles",
     "player.export.label": "Enregistrer l'extrait",
-    "player.export.tooltip": "Enregistrer l'extrait · E",
     "player.zoom.minimap.aria": "Mini-carte de zoom — clique ou glisse pour déplacer la vue",
     "player.zoom.minimap.title": "Molette : zoom ; glisser : déplacer ; Z : réinitialiser",
     "player.zoom.reset": "Réinitialiser le zoom",

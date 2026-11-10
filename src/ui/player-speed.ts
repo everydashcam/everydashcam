@@ -9,6 +9,7 @@ import { initMenuKeyboard } from "./menu-keyboard.js";
 import { initPlayerPopoverPosition } from "./player-popover.js";
 import { state } from "./state.js";
 import { createPopover } from "./popover-lifecycle.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 // Speed values for "<" / ">" hotkeys and the dropdown menu. Must match
 // data-rate in the speed-menu HTML.
@@ -67,7 +68,7 @@ export function syncSpeedButton(): void {
     dom.playerBar.speed.textContent = `${Number.isInteger(r) ? r : r.toString()}x`;
     // title is set explicitly: aria-label "Playback speed" is in HTML and doesn't change.
     // title is needed so hover shows a tooltip - a bare "1x" is meaningless without context.
-    dom.playerBar.speed.title = t("player.speed.title");
+    dom.playerBar.speed.title = withShortcutHint(t("player.speed.title"), "< / >");
     // Highlight the current item in the menu.
     for (const item of dom.playerBar.speedMenu.querySelectorAll("[data-rate]")) {
         const selected = Number(item.getAttribute("data-rate")) === r;

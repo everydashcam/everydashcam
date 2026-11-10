@@ -717,7 +717,6 @@ export type I18nKey =
     | "player.fullscreen.exitError"
     | "player.controls.pin"
     | "player.export.label"
-    | "player.export.tooltip"
     | "player.zoom.minimap.aria"
     | "player.zoom.minimap.title"
     | "player.zoom.reset"

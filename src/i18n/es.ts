@@ -545,7 +545,6 @@ export const esDict = {
     "player.fullscreen.exitError": "No se pudo salir de la pantalla completa. Inténtalo de nuevo.",
     "player.controls.pin": "Mantener visibles los controles",
     "player.export.label": "Guardar clip",
-    "player.export.tooltip": "Guardar clip · E",
     "player.zoom.minimap.aria": "Mini-mapa de zoom — clic o arrastra para mover la vista",
     "player.zoom.minimap.title": "Rueda: zoom; arrastrar: mover; Z: restablecer",
     "player.zoom.reset": "Restablecer zoom",

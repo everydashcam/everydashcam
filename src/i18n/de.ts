@@ -543,7 +543,6 @@ export const deDict = {
     "player.fullscreen.exitError": "Vollbild ließ sich nicht verlassen. Versuch es noch einmal.",
     "player.controls.pin": "Steuerung eingeblendet lassen",
     "player.export.label": "Clip speichern",
-    "player.export.tooltip": "Clip speichern · E",
     "player.zoom.minimap.aria": "Zoom-Mini-Karte — klicken oder ziehen zum Verschieben",
     "player.zoom.minimap.title": "Mausrad zoomen, ziehen verschieben, Z zurücksetzen",
     "player.zoom.reset": "Zoom zurücksetzen",

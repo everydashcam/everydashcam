@@ -550,7 +550,6 @@ export const ruDict = {
     "player.fullscreen.exitError": "Не удалось выйти из полного экрана. Попробуй ещё раз.",
     "player.controls.pin": "Закрепить управление",
     "player.export.label": "Сохранить фрагмент",
-    "player.export.tooltip": "Сохранить фрагмент · E",
     "player.zoom.minimap.aria": "Область просмотра — нажми или перетащи, чтобы сдвинуть изображение",
     "player.zoom.minimap.title": "Колесо мыши — зум, перетаскивание — сдвиг, Z — сброс",
     "player.zoom.reset": "Сбросить зум",

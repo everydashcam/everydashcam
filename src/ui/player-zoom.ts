@@ -28,6 +28,7 @@ import { isMobileLayout } from "./media-queries.js";
 import { videoAttachedFile } from "./player-video-src.js";
 import { NO_VIDEO_ZOOM, state, type VideoZoomState, visibleChannels } from "./state.js";
 import { normalizeWheelDelta, wheelZoomScaleFactor } from "./strip-zoom.js";
+import { withShortcutHint } from "./shortcut-hint.js";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
@@ -277,7 +278,8 @@ function ensureZoomBadge(): HTMLButtonElement {
     btn.type = "button";
     btn.className = "zoom-badge";
     btn.setAttribute("aria-label", t("player.zoom.reset"));
-    btn.title = t("player.zoom.reset");
+    btn.setAttribute("aria-keyshortcuts", "Z");
+    btn.title = withShortcutHint(t("player.zoom.reset"), "Z");
     const scale = document.createElement("span");
     scale.className = "zoom-badge__scale mono";
     const icon = document.createElement("span");
@@ -305,7 +307,8 @@ function syncZoomBadge(): void {
     }
     const badge = ensureZoomBadge();
     badge.setAttribute("aria-label", t("player.zoom.reset"));
-    badge.title = t("player.zoom.reset");
+    badge.setAttribute("aria-keyshortcuts", "Z");
+    badge.title = withShortcutHint(t("player.zoom.reset"), "Z");
     const tile = channelTileFor(z.channel);
     if (badge.parentElement !== tile) tile.appendChild(badge);
     const scaleEl = badge.querySelector<HTMLElement>(".zoom-badge__scale");
