@@ -224,6 +224,11 @@
     outline-offset: 2px;
 }
 
+/* The card sits over the markers and dots, which lift themselves above the
+   canvas; otherwise a neighbouring marker covers the card and takes its taps. */
+.trip-map-state .maplibregl-popup {
+    z-index: 2;
+}
 /* A marker's card (MapLibre popup with the shared .ez-popup look). */
 .trip-map-marker-card {
     display: flex;

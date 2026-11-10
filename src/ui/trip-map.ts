@@ -146,6 +146,12 @@ const HIGHLIGHT_CORE_WIDTH_PX = 3.6;
 const USER_MARKER_ICON =
     '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>';
 
+interface UserMarkerPin {
+    pin: maplibregl.Marker;
+    element: HTMLButtonElement;
+    lngLat: [number, number];
+}
+
 interface ReadyTrack {
     id: number;
     track: TripMapTrack;
@@ -159,8 +165,13 @@ interface TripMapView {
     matchedBundle: TripBundle | null;
     dots: maplibregl.Marker[];
     /** The user's trip markers on their routes. */
-    userMarkers: maplibregl.Marker[];
+    /** By marker id: a rebuild moves and relabels them in place, so focus and an open card survive. */
+    userMarkers: Map<string, UserMarkerPin>;
+    markersTimer: ReturnType<typeof setTimeout> | null;
+    lastMarkersAt: number;
     markerPopup: maplibregl.Popup | null;
+    /** The marker whose card is open. */
+    markerPopupId: string | null;
     placeHandle: maplibregl.Marker | null;
     isDraggingHandle: boolean;
     /** The camera has shown the library at least once since following started. */
@@ -432,8 +443,11 @@ async function createView(): Promise<void> {
         bundle: null,
         matchedBundle: null,
         dots: [],
-        userMarkers: [],
+        userMarkers: new Map(),
+        markersTimer: null,
+        lastMarkersAt: 0,
         markerPopup: null,
+        markerPopupId: null,
         placeHandle: null,
         isDraggingHandle: false,
         hasFramed: false,
@@ -508,7 +522,8 @@ function destroyView(): void {
     if (current.areaTimer !== null) clearTimeout(current.areaTimer);
     if (current.probeFrame) cancelAnimationFrame(current.probeFrame);
     for (const marker of current.dots) marker.remove();
-    for (const marker of current.userMarkers) marker.remove();
+    if (current.markersTimer !== null) clearTimeout(current.markersTimer);
+    for (const { pin } of current.userMarkers.values()) pin.remove();
     current.markerPopup?.remove();
     current.placeHandle?.remove();
     hideProbe(current);
@@ -900,39 +915,75 @@ function renderDots(current: TripMapView, dots: readonly FarDot[]): void {
  * marker's moment. Rebuilt whenever markers, tracks or the list's scope
  * change; a library holds tens of markers, not thousands.
  */
+/**
+ * Track arrivals redraw the markers at most every BUNDLE_MIN_INTERVAL_MS:
+ * finding every marker's trip walks the whole library.
+ */
+function scheduleUserMarkers(current: TripMapView): void {
+    if (current.markersTimer !== null) return;
+    const wait = Math.max(0, current.lastMarkersAt + BUNDLE_MIN_INTERVAL_MS - performance.now());
+    current.markersTimer = setTimeout(() => {
+        current.markersTimer = null;
+        if (view === current) renderUserMarkers(current);
+    }, wait);
+}
+
 function renderUserMarkers(current: TripMapView): void {
-    for (const marker of current.userMarkers) marker.remove();
-    current.userMarkers = [];
+    current.lastMarkersAt = performance.now();
     const isShown = getTripMapPreferences().shouldShowMarkers;
     dom.tripMapMarkers.setAttribute("aria-pressed", String(isShown));
-    if (!isShown) {
-        current.markerPopup?.remove();
-        return;
+    const placed = new Map<string, { title: string; lngLat: [number, number] }>();
+    if (isShown) {
+        const indexByTrip = new Map(state.trips.map((trip, index) => [trip, index]));
+        const inScope = new Set(tripMapScope());
+        const entries = tripMapEntries();
+        for (const { marker, trip } of markersWithTrips()) {
+            const index = indexByTrip.get(trip);
+            const track = index === undefined || !inScope.has(index) ? null : entries[index]?.track;
+            const position = track ? trackPositionAt(track, marker.utc / 1000) : null;
+            if (!position) continue;
+            const text = marker.text || t("marker.untitled");
+            placed.set(marker.id, {
+                title: `${text} · ${formatMarkerMoment(trip, marker.utc / 1000).date}`,
+                lngLat: [worldToLon(position.x), worldToLat(position.y)],
+            });
+        }
     }
-    const indexByTrip = new Map(state.trips.map((trip, index) => [trip, index]));
-    const inScope = new Set(tripMapScope());
-    const entries = tripMapEntries();
-    for (const { marker, trip } of markersWithTrips()) {
-        const index = indexByTrip.get(trip);
-        const track = index === undefined || !inScope.has(index) ? null : entries[index]?.track;
-        if (!track) continue;
-        const position = trackPositionAt(track, marker.utc / 1000);
-        if (!position) continue;
-        const text = marker.text || t("marker.untitled");
-        const moment = formatMarkerMoment(trip, marker.utc / 1000);
-        const element = document.createElement("button");
-        element.type = "button";
-        element.className = "trip-map-user-marker";
-        element.title = `${text} · ${moment.date}`;
-        element.setAttribute("aria-label", element.title);
-        element.innerHTML = USER_MARKER_ICON;
-        const lngLat: [number, number] = [worldToLon(position.x), worldToLat(position.y)];
-        element.addEventListener("click", (event) => {
-            // The map's own click would close the card this opens.
-            event.stopPropagation();
-            openMarkerCard(current, marker.id, lngLat, element);
-        });
-        current.userMarkers.push(new current.maplibre.Marker({ element }).setLngLat(lngLat).addTo(current.map));
+    for (const [id, item] of current.userMarkers) {
+        if (placed.has(id)) continue;
+        item.pin.remove();
+        current.userMarkers.delete(id);
+        // A card must not outlive its marker: deleted, or its trip left the list.
+        if (current.markerPopupId === id) current.markerPopup?.remove();
+    }
+    for (const [id, next] of placed) {
+        let item = current.userMarkers.get(id);
+        if (!item) {
+            const element = document.createElement("button");
+            element.type = "button";
+            element.className = "trip-map-user-marker";
+            element.innerHTML = USER_MARKER_ICON;
+            const created: UserMarkerPin = {
+                pin: new current.maplibre.Marker({ element }),
+                element,
+                lngLat: next.lngLat,
+            };
+            element.addEventListener("click", (event) => {
+                // The map's own click would close the card this opens.
+                event.stopPropagation();
+                // A touch: arriving tracks must not move the camera and close the card.
+                stopFollowing(current);
+                openMarkerCard(current, id, created.lngLat, element);
+            });
+            created.pin.setLngLat(next.lngLat).addTo(current.map);
+            current.userMarkers.set(id, created);
+            item = created;
+        } else if (item.lngLat[0] !== next.lngLat[0] || item.lngLat[1] !== next.lngLat[1]) {
+            item.lngLat = next.lngLat;
+            item.pin.setLngLat(next.lngLat);
+        }
+        item.element.title = next.title;
+        item.element.setAttribute("aria-label", next.title);
     }
 }
 
@@ -966,9 +1017,12 @@ function openMarkerCard(current: TripMapView, markerId: string, lngLat: [number,
         .setDOMContent(card)
         .addTo(current.map);
     current.markerPopup = popup;
+    current.markerPopupId = markerId;
     hideProbe(current);
     popup.on("close", () => {
-        if (current.markerPopup === popup) current.markerPopup = null;
+        if (current.markerPopup !== popup) return;
+        current.markerPopup = null;
+        current.markerPopupId = null;
     });
     open.addEventListener("click", () => {
         popup.remove();
@@ -1270,7 +1324,7 @@ function onLibraryChange(): void {
     scheduleBundle(current);
     syncTripMapStatus();
     renderHighlight();
-    renderUserMarkers(current);
+    scheduleUserMarkers(current);
 }
 
 function onSearchChange(): void {
