@@ -50,6 +50,7 @@ import { cancelCameraDrag, initCamerasMenu, renderCamerasMenu } from "./ui/camer
 import { initConnectivity } from "./ui/connectivity.js";
 import { initOfflineBanner } from "./ui/offline-banner.js";
 import { scheduleServiceWorkerRegistration } from "./ui/sw-registration.js";
+import { initServiceWorkerUpdates } from "./ui/sw-update.js";
 import { initLangSuggestionBanner } from "./ui/lang-suggestion-banner.js";
 import { initLandingDock } from "./ui/landing-dock.js";
 import { initLandingShot } from "./ui/landing-shot.js";
@@ -64,7 +65,7 @@ import { initTripMetaModal, openTripMetaModal } from "./ui/trip-meta-modal.js";
 import { initTimelineMarkers, refreshTimelineMarkers } from "./ui/timeline-markers.js";
 import { initMarkerListModal } from "./ui/marker-list-modal.js";
 import { initMarkerModal } from "./ui/marker-modal.js";
-import { initAnnotationsSidecar } from "./ui/annotations-sidecar.js";
+import { initAnnotationsSidecar, saveNotesForRestart } from "./ui/annotations-sidecar.js";
 import { initNotesNudge } from "./ui/notes-nudge.js";
 import { registerTimelineOverlaySync } from "./ui/chart.js";
 import { initIngestOverlay } from "./ui/ingest-overlay.js";
@@ -101,7 +102,7 @@ import { closeTripMapOverTrip, initTripMap } from "./ui/trip-map.js";
 import { subscribeTripMapSearch, tripMapPassesFor } from "./ui/trip-map-search.js";
 import { initHotkeysModal } from "./ui/hotkeys-modal.js";
 import { initWhatsNewModal } from "./ui/whats-new-modal.js";
-import { openExportMode, setRange } from "./ui/export-state.js";
+import { exportPanelState, openExportMode, setRange } from "./ui/export-state.js";
 import { initExportMode } from "./ui/export-mode.js";
 import { initExportPanel } from "./ui/export-panel.js";
 import { initExportTrimBar } from "./ui/export-trim-bar.js";
@@ -886,8 +887,7 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     // ("imports", script subject to HTTP cache) a freshly deployed SW is not
     // picked up for up to 4h. "none" makes the update check always revalidate,
     // so the new SW installs (pre-caching the new build) on the next load; it
-    // then waits and takes over on the next full launch - see the update
-    // handover rationale in src/sw.ts.
+    // then waits for a full launch or a restart requested from the only open window.
     //
     // Registration is DEFERRED to window load + an idle slot: a fresh install
     // kicks off the multi-MB precache download, and started at module-eval it
@@ -899,6 +899,12 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
     // idle waits, and retries registration on reconnect after a failed install.
     let registration: ServiceWorkerRegistration | undefined;
     let hasNotifiedUpdate = false;
+    const announceUpdate = initServiceWorkerUpdates({
+        // Any open Save clip panel counts: a finished clip may exist only in
+        // memory there, and a download click cannot prove the file was kept.
+        isBusy: () => state.exportModeOpen || exportPanelState.phase === "progress" || state.ingestController !== null,
+        saveNotes: saveNotesForRestart,
+    });
     const registerSw = async (): Promise<void> => {
         if (registration) {
             try {
@@ -916,7 +922,7 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
         worker.addEventListener("waiting", () => {
             if (hasNotifiedUpdate) return;
             hasNotifiedUpdate = true;
-            notify({ severity: "info", messageKey: "status.update.ready" });
+            announceUpdate();
         });
         worker.addEventListener("installed", (event) => {
             swLog.info("installed", { isUpdate: event.isUpdate === true });

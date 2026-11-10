@@ -65,10 +65,13 @@ retention script's current/retained inventories; do not infer assets from servic
 worker source. Atomic hosts do not need an intermediate publication state.
 
 Hosted updates install a complete shell before activation and wait for all
-controlled windows to close. Users should finish exports, close all app windows
-and tabs, then reopen; refresh alone may not activate an update. Asset retention
-covers the predecessor, not arbitrarily old tabs. A dashboard-only rollback
-cannot add newer assets to an old artifact: use the recovery procedure below.
+controlled windows to close. The update notification also offers a restart when
+no other window of the site is open; it is refused while it would lose work, and
+recordings must be reopened afterwards. What blocks the restart is defined in
+[sw-update.ts](../src/ui/sw-update.ts) and its caller in [app.ts](../src/app.ts).
+Refresh alone may not activate an update. Asset retention covers the
+predecessor, not arbitrarily old tabs. A dashboard-only rollback cannot add
+newer assets to an old artifact: use the recovery procedure below.
 
 Resource caches are disposable; settings and notes must remain independent of
 cleanup. Cache policy lives in [sw.ts](../src/sw.ts) and

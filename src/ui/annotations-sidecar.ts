@@ -625,6 +625,16 @@ export async function flushPendingSidecarWrites(): Promise<void> {
     await writeQueue.catch(() => {});
 }
 
+/** Writes a debounced notes-file change before an app restart. Resolves false
+ *  when either copy failed, the same state the notes indicator shows, so the
+ *  window stays open. Browser-store writes are not awaited: each starts with
+ *  its edit and settles long before the user can confirm a restart. */
+export async function saveNotesForRestart(): Promise<boolean> {
+    await flushPendingSidecarWrites();
+    const browserSaved = annotationStoreAvailable() || allAnnotationRecords().length === 0;
+    return browserSaved && !writeFailed;
+}
+
 async function withSidecarWriteLock<T>(write: () => Promise<T>): Promise<T> {
     if (typeof navigator !== "undefined" && navigator.locks) return navigator.locks.request(WRITE_LOCK_NAME, write);
     return write();

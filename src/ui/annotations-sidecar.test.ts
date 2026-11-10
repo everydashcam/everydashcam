@@ -93,6 +93,7 @@ import {
     isNotesBackupName,
     mergeNotesFilesFromBatch,
     registerNotesWriteAttentionHook,
+    saveNotesForRestart,
 } from "./annotations-sidecar.js";
 
 function tripMeta(id: string, folderId = "folder-1", updatedAt = 100): TripMetaAnnotation {
@@ -513,6 +514,7 @@ describe("active notes file", () => {
 
         mocks.annotationHook?.();
         await flushPendingSidecarWrites();
+        expect(await saveNotesForRestart()).toBe(false);
         mocks.annotationHook?.();
         await flushPendingSidecarWrites();
         expect(capture).toHaveBeenCalledExactlyOnceWith("notes file write failed", {
@@ -525,6 +527,7 @@ describe("active notes file", () => {
         mocks.annotationHook?.();
         await flushPendingSidecarWrites();
         expect(notes.writes()).toBe(1);
+        expect(await saveNotesForRestart()).toBe(true);
         notes.setWriteFailure(new Error("another private note"));
         mocks.annotationHook?.();
         await flushPendingSidecarWrites();

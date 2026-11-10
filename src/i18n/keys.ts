@@ -314,6 +314,15 @@ export type I18nKey =
     | "status.offline.info"
     | "status.offline.detail"
     | "status.update.ready"
+    | "status.update.action"
+    | "status.update.confirm"
+    | "status.update.body"
+    | "status.update.apply"
+    | "status.update.cancel"
+    | "status.update.restarting"
+    | "status.update.busy"
+    | "status.update.failed"
+    | "status.update.otherWindows"
 
     // Notifications: bell button in the topbar, toasts that pop from
     // top-right and the drawer popover that lists session history.

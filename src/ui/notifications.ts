@@ -32,11 +32,11 @@ export interface NotifyInput {
     messageKey: I18nKey;
     /** ICU MessageFormat parameters; merged into the template at render time. */
     messageParams?: Record<string, string | number | boolean>;
-    /** Optional action button on the toast. The bell-drawer copy stays
-     *  text-only: the drawer outlives the moment the action was offered for,
-     *  and a stale button there would fire on state that no longer exists. */
+    /** Optional action button on the toast. */
     actionKey?: I18nKey;
     onAction?: () => void;
+    /** Opt in only for actions that revalidate their state when invoked. */
+    actionInDrawer?: boolean;
     /** Separates identical messages whose actions belong to different sources. */
     dedupKey?: string;
 }
@@ -51,7 +51,7 @@ interface Notification extends NotifyInput {
 
 /** Stable signature for de-duplicating identical notifications. */
 function notifSignature(input: NotifyInput): string {
-    return `${input.severity}|${input.messageKey}|${JSON.stringify(input.messageParams ?? {})}|${input.actionKey ?? ""}|${input.dedupKey ?? ""}`;
+    return `${input.severity}|${input.messageKey}|${JSON.stringify(input.messageParams ?? {})}|${input.actionKey ?? ""}|${input.actionInDrawer === true}|${input.dedupKey ?? ""}`;
 }
 
 // Newest first. Capped to keep the drawer from growing unboundedly in long
@@ -382,6 +382,18 @@ function renderDrawerList(): void {
         const text = document.createElement("span");
         text.className = "notif-drawer-item__text";
         text.textContent = t(n.messageKey, n.messageParams);
+        if (n.actionInDrawer && n.actionKey && n.onAction) {
+            const action = document.createElement("button");
+            action.type = "button";
+            action.className = "dc-toast__action";
+            action.textContent = t(n.actionKey);
+            const onAction = n.onAction;
+            action.addEventListener("click", () => {
+                closeDrawer();
+                onAction();
+            });
+            text.append(action);
+        }
         item.appendChild(text);
 
         drawerList.appendChild(item);

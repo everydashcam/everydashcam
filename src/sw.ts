@@ -1,5 +1,6 @@
 // Workbox owns cache revisions, installation, routing and expiration. Updates
-// wait for every controlled window to close: local recordings cannot reload.
+// wait for every controlled window to close unless the only open window requests
+// a restart: local recordings cannot survive reload.
 import { clientsClaim, type RouteHandler, type RouteMatchCallback, type WorkboxPlugin } from "workbox-core";
 import { ExpirationPlugin } from "workbox-expiration";
 import { PrecacheController, PrecacheRoute, type PrecacheEntry } from "workbox-precaching";
@@ -17,6 +18,7 @@ import {
 } from "./sw-policy.js";
 import { offlineResponse } from "./sw-offline.js";
 import { migrateLegacyTrackerCache, TRACKER_MAX_ENTRIES } from "./sw-tracker-cache.js";
+import { isUpdateRequest, type UpdateResult } from "./sw-update-protocol.js";
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: PrecacheEntry[] };
 
@@ -29,6 +31,28 @@ function entryFor(request: Request): PrecacheEntry | undefined {
     url.search = "";
     return entries.get(url.href);
 }
+
+// A user-requested restart activates this waiting worker only from the sole open
+// window: any other app window may hold recordings and would otherwise run the
+// old release under the new worker. Static pages count too, because the offline
+// fallback below can open the app at their address. The requester has already
+// checked its own work and saved its notes.
+self.addEventListener("message", (event) => {
+    const source = event.source;
+    const port = event.ports[0];
+    if (!isUpdateRequest(event.data) || !port || !source || !("id" in source)) return;
+    const requesterId = source.id;
+    event.waitUntil(
+        (async (): Promise<UpdateResult> => {
+            // A waiting worker controls no clients yet; includeUncontrolled also
+            // lists the windows of the active worker.
+            const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+            if (windows.some((client) => client.id !== requesterId)) return "otherWindows";
+            await self.skipWaiting();
+            return "updating";
+        })().then((result) => port.postMessage(result)),
+    );
+});
 
 const precache = new PrecacheController({
     cacheName: PRECACHE,
