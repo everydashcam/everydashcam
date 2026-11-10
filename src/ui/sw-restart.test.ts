@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UPDATE_MESSAGE, type UpdateResult } from "../sw-update-protocol.js";
-import { _resetForTests, isRestartLocked } from "./restart-gate.js";
+import { _resetForTests as resetLog, getLogBuffer } from "../log.js";
+import {
+    _resetForTests,
+    claimImportGesture,
+    isRestartLocked,
+    restartLockReason,
+    tryLockRestart,
+} from "./restart-gate.js";
 import {
     createRestartController,
     NOTES_SAVE_TIMEOUT_MS,
@@ -25,13 +32,19 @@ class FakeWorker extends EventTarget implements ObservedWorker {
     readonly postMessage = vi.fn();
 }
 
-function setup() {
+/** A page that loaded under `loadWorker` (null: uncontrolled) with `worker` waiting. */
+function setup(page: { isControlled?: boolean; canReloadWithoutAsking?: boolean } = {}) {
+    const loadWorker = page.isControlled === false ? null : new FakeWorker();
     const worker = new FakeWorker();
+    let controller: ObservedWorker | null = loadWorker;
     const notes = deferred<boolean>();
     const answer = deferred<UpdateResult | null>();
     const options = {
         saveNotes: vi.fn(() => notes.promise),
         waitingWorker: vi.fn((): ObservedWorker | null => worker),
+        loadController: loadWorker,
+        currentController: () => controller,
+        canReloadWithoutAsking: vi.fn(() => page.canReloadWithoutAsking ?? true),
         reloadPage: vi.fn(),
         markIntentionalNavigation: vi.fn(),
         onUserRestartFailed: vi.fn(),
@@ -39,8 +52,19 @@ function setup() {
             (_worker: Pick<ObservedWorker, "postMessage">, _timeoutMs: number) => answer.promise,
         ),
     };
-    const controller = createRestartController(options);
-    return { controller, options, notes, answer, worker };
+    const restartController = createRestartController(options);
+    /** The waiting worker takes control and the browser reports it. */
+    const takeOver = (): void => {
+        controller = worker;
+        restartController.handleControllerChange();
+    };
+    return { controller: restartController, options, notes, answer, worker, takeOver };
+}
+
+function warnings(): string[] {
+    return getLogBuffer()
+        .filter((record) => record.level === "warn")
+        .map((record) => record.msg);
 }
 
 describe("user restart", () => {
@@ -67,14 +91,14 @@ describe("user restart", () => {
     });
 
     it("reloads once the worker takes over", async () => {
-        const { controller, options, notes, answer } = setup();
+        const { controller, options, notes, answer, takeOver } = setup();
         const restart = controller.restart();
         notes.resolve(true);
         answer.resolve("updating");
         await restart;
         expect(options.reloadPage, "waits for the takeover").not.toHaveBeenCalled();
 
-        controller.handleControllerChange();
+        takeOver();
 
         expect(options.reloadPage).toHaveBeenCalledTimes(1);
     });
@@ -179,15 +203,85 @@ describe("user restart", () => {
     });
 
     it("keeps the reload of a takeover that arrived while notes were saved", async () => {
-        const { controller, options, notes } = setup();
+        const { controller, options, notes, takeOver } = setup();
         const restart = controller.restart();
-        controller.handleControllerChange();
+        takeOver();
         notes.resolve(false);
         await restart;
 
         expect(options.reloadPage).toHaveBeenCalledTimes(1);
         expect(options.onUserRestartFailed).not.toHaveBeenCalled();
         expect(isRestartLocked(), "the reload still holds the lock").toBe(true);
+    });
+});
+
+describe("worker change rule", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        _resetForTests();
+        resetLog();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("ignores an event that leaves the load controller in place", () => {
+        const { controller, options } = setup();
+
+        controller.handleControllerChange();
+
+        expect(options.reloadPage).not.toHaveBeenCalled();
+        expect(options.canReloadWithoutAsking).not.toHaveBeenCalled();
+    });
+
+    it("reloads without asking after a late activation when nothing would be lost", () => {
+        const { options, takeOver } = setup({ canReloadWithoutAsking: true });
+
+        takeOver();
+
+        expect(options.reloadPage).toHaveBeenCalledTimes(1);
+        expect(restartLockReason(), "the reload holds the lock").toBe("auto");
+        expect(options.markIntentionalNavigation, "the leave-page prompt stays armed").not.toHaveBeenCalled();
+    });
+
+    it("stays under the newer worker and warns when a reload would need asking", () => {
+        const { options, takeOver } = setup({ canReloadWithoutAsking: false });
+
+        takeOver();
+
+        expect(options.reloadPage).not.toHaveBeenCalled();
+        expect(isRestartLocked()).toBe(false);
+        expect(warnings()).toEqual(["page stays under a newer worker"]);
+    });
+
+    it("reloads a page loaded without a controller when a restart is running", () => {
+        const { options, takeOver } = setup({ isControlled: false });
+        tryLockRestart("user");
+
+        takeOver();
+
+        expect(options.reloadPage).toHaveBeenCalledTimes(1);
+        expect(options.markIntentionalNavigation).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a first installation alone", () => {
+        const { options, takeOver } = setup({ isControlled: false });
+
+        takeOver();
+
+        expect(options.reloadPage).not.toHaveBeenCalled();
+        expect(options.canReloadWithoutAsking).not.toHaveBeenCalled();
+        expect(warnings()).toEqual([]);
+    });
+
+    it("releases the lock when the page survives an unasked reload", async () => {
+        const { takeOver } = setup({ canReloadWithoutAsking: true });
+        takeOver();
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(isRestartLocked()).toBe(false);
+        expect(claimImportGesture(), "imports work again").toBe(true);
     });
 });
 

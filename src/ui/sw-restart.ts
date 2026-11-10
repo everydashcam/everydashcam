@@ -76,14 +76,23 @@ export interface RestartController {
      * confirmed. A no-op while another restart holds the lock.
      */
     restart(): Promise<void>;
-    /** Handles the browser's report that another worker now controls the page. */
+    /**
+     * Applies the worker-change rule on the browser's report that the page's
+     * controller changed. The page should run under the worker it loaded
+     * with. When another worker took over: a restart in progress reloads
+     * (including a page loaded without a controller); otherwise a page loaded
+     * under a worker reloads only when canReloadWithoutAsking allows it, and
+     * stays with a log warning when not. A first installation changes nothing.
+     */
     handleControllerChange(): void;
 }
 
 /**
  * Creates the restart controller. `waitingWorker` reads the observed
  * registration synchronously, so the worker that receives the request is the
- * one waiting at that moment. `reloadPage` performs the navigation;
+ * one waiting at that moment. `loadController` is the worker that controlled
+ * the page when it loaded; `currentController` reads the live one.
+ * `canReloadWithoutAsking` is the shared answer from restart-gate.ts. `reloadPage` performs the navigation;
  * `markIntentionalNavigation` silences the leave-page prompt for a reload the
  * user confirmed. `onUserRestartFailed` reports a stop that left the page as
  * it was. `sendActivationRequest` exists for tests.
@@ -91,6 +100,9 @@ export interface RestartController {
 export function createRestartController(options: {
     saveNotes: () => Promise<boolean>;
     waitingWorker: () => ObservedWorker | null;
+    loadController: ObservedWorker | null;
+    currentController: () => ObservedWorker | null;
+    canReloadWithoutAsking: () => boolean;
     reloadPage: () => void;
     markIntentionalNavigation: () => void;
     onUserRestartFailed: (failure: UserRestartFailure) => void;
@@ -162,10 +174,26 @@ export function createRestartController(options: {
         }
     };
 
+    // The rule acts only on the browser's event, never on a state read: a
+    // reload must correspond to a real activation, so it cannot loop.
     const handleControllerChange = (): void => {
-        // Reloading before the new worker controls this window could load
-        // the old release again.
-        if (isRestartLocked()) reload();
+        if (options.currentController() === options.loadController) return;
+        // The expected outcome of a restart. A page loaded without a
+        // controller (hard reload) reloads now instead of after the takeover
+        // window. Reloading earlier could load the old release again.
+        if (isRestartLocked()) {
+            reload();
+            return;
+        }
+        if (options.loadController === null) return;
+        // A late activation: an earlier restart request, or another window.
+        if (options.canReloadWithoutAsking() && tryLockRestart("auto")) {
+            reload();
+            return;
+        }
+        // Lazy chunks of this release now come from the network: asset
+        // retention covers the previous release, offline they fail.
+        log.warn("page stays under a newer worker");
     };
 
     return { restart, handleControllerChange };

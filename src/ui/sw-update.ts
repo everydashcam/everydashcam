@@ -3,7 +3,7 @@ import type { I18nKey } from "../i18n/keys.js";
 import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.js";
 import { markIntentionalNavigation } from "./nav-intent.js";
 import { notify, setPinnedStatus } from "./notifications.js";
-import { isRestartLocked, subscribeRestartLock } from "./restart-gate.js";
+import { canReloadWithoutAsking, isRestartLocked, subscribeRestartLock } from "./restart-gate.js";
 import { createRestartController, type UserRestartFailure } from "./sw-restart.js";
 import {
     createUpdateObserver,
@@ -35,6 +35,8 @@ export function initServiceWorkerUpdates(options: {
     loadController: ServiceWorker | null;
     isBusy: () => boolean;
     saveNotes: () => Promise<boolean>;
+    /** Live work a reload without asking would destroy. */
+    liveWork: () => { hasOpenTrips: boolean; isIngesting: boolean };
 }): (registration: ObservedRegistration) => void {
     const { container } = options;
     let dialog: HTMLElement | null = null;
@@ -162,6 +164,9 @@ export function initServiceWorkerUpdates(options: {
     const controller = createRestartController({
         saveNotes: options.saveNotes,
         waitingWorker: () => observer.refresh().waitingWorker,
+        loadController: options.loadController,
+        currentController: () => container.controller,
+        canReloadWithoutAsking: () => canReloadWithoutAsking({ ...options.liveWork(), isModalOpen: isAnyModalOpen() }),
         reloadPage: () => location.reload(),
         markIntentionalNavigation,
         onUserRestartFailed: (failure) => announce(FAILURE_MESSAGES[failure]),

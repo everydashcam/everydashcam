@@ -905,6 +905,7 @@ if (!__PORTABLE__ && !import.meta.env.DEV && "serviceWorker" in navigator) {
         // memory there, and a download click cannot prove the file was kept.
         isBusy: () => state.exportModeOpen || exportPanelState.phase === "progress" || state.ingestController !== null,
         saveNotes: saveNotesForRestart,
+        liveWork: () => ({ hasOpenTrips: state.trips.length > 0, isIngesting: state.ingestController !== null }),
     });
     const registerSw = async (): Promise<void> => {
         if (registration) {
