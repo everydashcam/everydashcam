@@ -43,9 +43,9 @@ async function matchWindowControlsOverlayRules(page: Page): Promise<void> {
     ).not.toBe("0px");
 }
 
-// In an installed window the OS owns every drag region: pointer, click and
-// wheel input there never reach the page, whatever pointer-events or opacity
-// say. app-region is inherited, and Chromium reports each box's border box
+// In an installed window the OS owns every drag region, whatever
+// pointer-events or opacity say: Windows keeps pointer, click and wheel input
+// from the page, macOS turns presses into window drags. app-region is inherited, and Chromium reports each box's border box
 // without ancestor overflow clipping, so a drag value on a box with
 // descendants leaks wherever they overflow (the logo's letter columns span the
 // whole window height).

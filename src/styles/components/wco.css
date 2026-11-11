@@ -11,8 +11,10 @@
    inherited, and Chromium reports each box's full border box, ignoring
    ancestor overflow clipping (LayoutObject::AddDraggableRegions). On .topbar
    itself, the value would reach the logo's letter columns, which span the
-   whole window height, and make invisible title-bar stripes there: the OS
-   takes pointer, click and wheel input in a drag region. An explicit `none`
+   whole window height, and make invisible title-bar stripes there. Windows
+   treats a drag region as the title bar and keeps pointer, click and wheel
+   input from the page; macOS still delivers hover and wheel but turns presses
+   into window drags (BridgedContentView hitTest:). An explicit `none`
    cannot reset descendants because Chromium maps it to no-drag
    (WindowDrag::ApplyValue).
    https://github.com/chromium/chromium/blob/156.0.8078.4/third_party/blink/renderer/core/layout/layout_object.cc
