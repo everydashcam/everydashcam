@@ -3,9 +3,20 @@
    window-controls-overlay. The browser hides its title bar and hands that
    strip to us as client area. env(titlebar-area-*) marks the safe zone
    between left/right window controls (close/min/max - right on Windows,
-   left on macOS). We make .topbar a drag-region of that strip; interactive
-   elements inside must opt out via no-drag, otherwise clicks turn into
-   window drags. Docs: https://developer.mozilla.org/en-US/docs/Web/CSS/env
+   left on macOS). A childless .topbar::before makes that strip a drag region;
+   interactive elements inside must opt out via no-drag, otherwise clicks turn
+   into window drags. Docs: https://developer.mozilla.org/en-US/docs/Web/CSS/env
+
+   The drag region must stay on a box without descendants. app-region is
+   inherited, and Chromium reports each box's full border box, ignoring
+   ancestor overflow clipping (LayoutObject::AddDraggableRegions). On .topbar
+   itself, the value would reach the logo's letter columns, which span the
+   whole window height, and make invisible title-bar stripes there: the OS
+   takes pointer, click and wheel input in a drag region. An explicit `none`
+   cannot reset descendants because Chromium maps it to no-drag
+   (WindowDrag::ApplyValue).
+   https://github.com/chromium/chromium/blob/156.0.8078.4/third_party/blink/renderer/core/layout/layout_object.cc
+   https://github.com/chromium/chromium/blob/156.0.8078.4/third_party/blink/renderer/core/css/properties/longhands/longhands_custom.cc
 
    Height is max(env, --dc-topbar-h): env(titlebar-area-height) is typically
    30-35px across platforms - smaller than our 40x40 buttons. Clamping to
@@ -37,6 +48,15 @@
            env vars are 0 or the OS controls are narrower than the gutter. */
         padding-left: max(16px, calc(env(titlebar-area-x, 0px) + 16px));
         padding-right: max(16px, calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 16px));
+    }
+    /* First in tree order, so the no-drag controls below carve their holes
+       out of it. pointer-events only affects in-page hit testing; the OS
+       title-bar behavior comes from app-region alone. */
+    .topbar::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
         -webkit-app-region: drag;
         app-region: drag;
     }
@@ -45,6 +65,7 @@
     .topbar input,
     .topbar select,
     .topbar [role="button"],
+    .topbar [role="dialog"],
     .topbar .lang-wrap,
     .topbar .overflow-wrap,
     .topbar .theme-toggle {
