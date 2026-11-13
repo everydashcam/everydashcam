@@ -419,8 +419,8 @@ function reverseBitsU32(value: number): number {
  * the record here rather than open a mediabunny Input per MP4 - the indexer's
  * MP4 path is a direct moov walk with no Input. The prefix is the file's
  * sample entry, as mediabunny reports it for ISOBMFF; the native player
- * judges a file by that prefix. Cross-checked against
- * mediabunny.getDecoderConfig().codec by a pin test on a real sample.
+ * judges a file by that prefix. mp4-indexing.test.ts pins the result to
+ * mediabunny's own codec string on real hvc1 and hev1 recordings.
  *
  * Returns null when the record is shorter than the fixed 23-byte prefix.
  */

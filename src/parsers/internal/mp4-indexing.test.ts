@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { BlobSource, Input, Mp4InputFormat } from "mediabunny";
 import { describe, expect, it } from "vitest";
 import { indexMp4FileWithMoov, indexOneFile } from "./mp4-indexing.js";
 
@@ -229,6 +230,33 @@ describe("indexMp4FileWithMoov: broken hvcC codec string", () => {
         expect(indexed!.codec).toBe("hevc");
         expect(indexed!.videoCodecString).toBe("hvc1.1.6.L150");
         expect(indexed!.videoCodecString).not.toBe("hvc1.2.0.L0.0.44");
+    });
+});
+
+// The moov walk builds the HEVC codec string itself instead of opening a
+// mediabunny Input, so it must name the codec exactly as mediabunny does for
+// the same file, including the hvc1/hev1 prefix taken from the sample entry.
+describe("indexMp4FileWithMoov: HEVC codec string matches mediabunny", () => {
+    it.each([
+        { sampleEntry: "hvc1", path: "../__fixtures__/sei-double-gps/real-fix-anonymized.mp4" },
+        { sampleEntry: "hev1", path: "../__fixtures__/mivue-955wd/FILE260819-071804F.mp4" },
+    ])("agrees on a real $sampleEntry recording", async ({ sampleEntry, path }) => {
+        const file = new File([readFileSync(new URL(path, import.meta.url))], path.split("/").at(-1)!);
+        const input = new Input({ source: new BlobSource(file), formats: [new Mp4InputFormat()] });
+        try {
+            const track = await input.getPrimaryVideoTrack();
+            expect(track, "fixture has a video track").not.toBeNull();
+            const expected = await track!.getCodecParameterString();
+
+            const { indexed } = await indexMp4FileWithMoov(file, false);
+
+            expect(expected, "mediabunny names the codec after the sample entry").toMatch(
+                new RegExp(`^${sampleEntry}\\.`),
+            );
+            expect(indexed?.videoCodecString).toBe(expected);
+        } finally {
+            input.dispose();
+        }
     });
 });
 
