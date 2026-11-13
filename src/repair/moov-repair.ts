@@ -80,7 +80,7 @@ export function detectMoovRepairs(moovBytes: Uint8Array, codec: VideoCodec | nul
         hvcc = {
             needsHevcRemux: needsHevcRemux("hevc", hvccRepair.rebuilt),
             reason: hvccRepair.reason,
-            videoCodecString: hevcCodecStringFromHvcc(hvccRepair.rebuilt),
+            videoCodecString: hevcCodecStringFromHvcc(hvccRepair.rebuilt, hvccRepair.sampleEntry),
         };
     }
 

@@ -47,8 +47,8 @@ describe("indexer: MPEG-TS branch", () => {
         expect(indexed!.codec).toBe("hevc");
         expect(indexed!.fps).toBe(30);
         // Full RFC 6381 string from mediabunny.getCodecParameterString - feeds
-        // the config-aware canPlay check. mediabunny emits the "hev1." prefix
-        // for HEVC regardless of the in-band/out-of-band parameter-set storage.
+        // the config-aware canPlay check. A transport stream has no sample
+        // entry and may repeat parameter sets in band, so mediabunny says hev1.
         expect(indexed!.videoCodecString).toMatch(/^hev1\./);
         // TS has no mvhd, so creation_time and rotation are explicitly null/0.
         expect(indexed!.createdUtc).toBeNull();

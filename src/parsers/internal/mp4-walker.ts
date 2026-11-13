@@ -367,8 +367,11 @@ export function readVideoFrameRate(dv: DataView, trak: Box): number | null {
 export interface HvccLocation {
     payloadStart: number;
     payloadEnd: number;
-    parent: "hvc1" | "hev1";
+    parent: HevcSampleEntry;
 }
+
+/** HEVC sample entries: hvc1 keeps parameter sets out of band, hev1 may carry them in band. */
+export type HevcSampleEntry = "hvc1" | "hev1";
 
 export function findHvccInTrak(dv: DataView, trak: Box): HvccLocation | null {
     const stsd = walkPath(dv, trak, "mdia", "minf", "stbl", "stsd");
@@ -406,7 +409,7 @@ function reverseBitsU32(value: number): number {
 }
 
 /**
- * Builds the RFC 6381 codec string ("hev1.1.6.L150", "hev1.2.4.L153") from the
+ * Builds the RFC 6381 codec string ("hvc1.1.6.L150", "hev1.2.4.L153") from the
  * hvcC payload (HEVCDecoderConfigurationRecord, ISO/IEC 14496-15 8.3.3.1).
  *
  * Why: a config-aware canDecodeVideo needs the real profile_idc/tier/level to
@@ -414,14 +417,14 @@ function reverseBitsU32(value: number): number {
  * enum makes mediabunny assume a generic Main profile, so a browser without
  * 10-bit HEVC decode is told (wrongly) that a Main10 clip is playable. We parse
  * the record here rather than open a mediabunny Input per MP4 - the indexer's
- * MP4 path is a direct moov walk with no Input. Always emits the "hev1." prefix
- * (as mediabunny does) whatever the hvc1/hev1 sample entry is; the profile/level
- * part is what drives decode support. Cross-checked against
+ * MP4 path is a direct moov walk with no Input. The prefix is the file's
+ * sample entry, as mediabunny reports it for ISOBMFF; the native player
+ * judges a file by that prefix. Cross-checked against
  * mediabunny.getDecoderConfig().codec by a pin test on a real sample.
  *
  * Returns null when the record is shorter than the fixed 23-byte prefix.
  */
-export function hevcCodecStringFromHvcc(description: Uint8Array): string | null {
+export function hevcCodecStringFromHvcc(description: Uint8Array, sampleEntry: HevcSampleEntry): string | null {
     if (description.byteLength < 23) return null;
     const view = new DataView(description.buffer, description.byteOffset, description.byteLength);
     const profileByte = view.getUint8(1);
@@ -433,7 +436,7 @@ export function hevcCodecStringFromHvcc(description: Uint8Array): string | null 
     const constraintFlags: number[] = [];
     for (let i = 0; i < 6; i++) constraintFlags.push(view.getUint8(6 + i));
 
-    let codecString = "hev1.";
+    let codecString = `${sampleEntry}.`;
     codecString += ["", "A", "B", "C"][generalProfileSpace]! + generalProfileIdc;
     codecString += `.${compatibilityFlags.toString(16).toUpperCase()}`;
     codecString += `.${generalTierFlag === 0 ? "L" : "H"}${generalLevelIdc}`;

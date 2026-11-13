@@ -126,7 +126,7 @@ export async function indexMp4FileWithMoov(file: File, captureMoov: boolean): Pr
                             hvcc.payloadEnd - hvcc.payloadStart,
                         );
                         needsRemux = needsHevcRemux(codec, description);
-                        videoCodecString = hevcCodecStringFromHvcc(description);
+                        videoCodecString = hevcCodecStringFromHvcc(description, hvcc.parent);
                     }
                 }
             } else if (handler === "soun" && !sawAudio) {
@@ -335,7 +335,8 @@ async function indexRawHevcFile(file: File): Promise<IndexedWithMoov> {
             createdUtc: null,
             codec: "hevc",
             codecParam: null,
-            videoCodecString: hevcCodecStringFromHvcc(head.hvcc),
+            // Annex B carries its parameter sets in band, which hev1 permits.
+            videoCodecString: hevcCodecStringFromHvcc(head.hvcc, "hev1"),
             rotation: 0,
             width: head.width,
             height: head.height,

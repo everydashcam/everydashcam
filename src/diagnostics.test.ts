@@ -42,16 +42,19 @@ describe("formatVideoTrack", () => {
 });
 
 describe("probePlayback", () => {
-    it("probes the codec string under the file's own sample entry", async () => {
-        const probe = await probePlayback(hevcCandidate("hev1.2.4.L153"));
+    it("probes the indexed codec string under the file's own sample entry", async () => {
+        const candidate = hevcCandidate("hev1.2.4.L153");
+        candidate.codecParam = "hev1";
 
-        expect(probe?.codecString, "the native player sees hvc1, not mediabunny's hev1").toBe("hvc1.2.4.L153");
+        const probe = await probePlayback(candidate);
+
+        expect(probe?.codecString).toBe("hev1.2.4.L153");
         expect(probe?.file).toBe("20261006_133935_04883_N_A.MP4");
     });
 
     it("reports browser decode APIs that this environment lacks as unavailable", async () => {
         // Node has no document, MediaSource, VideoDecoder or mediaCapabilities.
-        const probe = await probePlayback(hevcCandidate("hev1.1.6.L150"));
+        const probe = await probePlayback(hevcCandidate("hvc1.1.6.L150"));
 
         expect(probe).toEqual({
             file: "20261006_133935_04883_N_A.MP4",

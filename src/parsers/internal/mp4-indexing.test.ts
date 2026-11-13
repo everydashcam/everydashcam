@@ -219,7 +219,7 @@ function movWithHvc1(hvccPayload: Uint8Array): File {
 // End-to-end guard for the "broken hvcC leaves a bogus videoCodecString" defect.
 // The hvcC bytes are repaired in the worker (numOfArrays/profile/level rebuilt),
 // but videoCodecString is parsed once BEFORE the repair. Without adopting the
-// repaired string, the candidate carries hev1.2.0.L0.0.44 (Main10 / level 0) -
+// repaired string, the candidate carries hvc1.2.0.L0.0.44 (Main10 / level 0) -
 // which the config-aware canPlay probe rejects, blocking a file that decodes
 // fine, and the details panel shows the wrong codec.
 describe("indexMp4FileWithMoov: broken hvcC codec string", () => {
@@ -227,8 +227,8 @@ describe("indexMp4FileWithMoov: broken hvcC codec string", () => {
         const { indexed } = await indexMp4FileWithMoov(movWithHvc1(BROKEN_HVCC_PAYLOAD), false);
         expect(indexed).not.toBeNull();
         expect(indexed!.codec).toBe("hevc");
-        expect(indexed!.videoCodecString).toBe("hev1.1.6.L150");
-        expect(indexed!.videoCodecString).not.toBe("hev1.2.0.L0.0.44");
+        expect(indexed!.videoCodecString).toBe("hvc1.1.6.L150");
+        expect(indexed!.videoCodecString).not.toBe("hvc1.2.0.L0.0.44");
     });
 });
 

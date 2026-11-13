@@ -109,10 +109,10 @@ describe("detectMoovRepairs", () => {
         // A rebuilt (valid) hvcC means native playback, not MSE remux.
         expect(repair!.hvcc!.needsHevcRemux).toBe(false);
         // The codec string is re-derived from the REPAIRED hvcC. Parsing the
-        // broken header instead would yield hev1.2.0.L0.0.44 (profile Main10,
+        // broken header instead would yield hvc1.2.0.L0.0.44 (profile Main10,
         // level 0), which the config-aware canPlay probe rejects - blocking a
         // file that actually decodes fine after the splice.
-        expect(repair!.hvcc!.videoCodecString).toBe("hev1.1.6.L150");
+        expect(repair!.hvcc!.videoCodecString).toBe("hvc1.1.6.L150");
         expect(repair!.patchedMoov.byteLength).toBe(moov.byteLength);
         // Both defects are gone from the patched moov.
         expect(findPhantomTracks(repair!.patchedMoov)).toHaveLength(0);

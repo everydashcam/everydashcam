@@ -33,7 +33,7 @@ export interface IndexedMp4 {
     codecParam: string | null;
     /**
      * Full RFC 6381 codec string of the primary video track when derivable
-     * ("hev1.1.6.L150", "hev1.2.4.L153"): for HEVC MP4 parsed from hvcC, for
+     * ("hvc1.1.6.L150", "hev1.2.4.L153"): for HEVC MP4 parsed from hvcC, for
      * MPEG-TS from mediabunny.getCodecParameterString. null for AVC MP4 and when
      * undetermined - the canPlay check then falls back to the bare `codec` enum.
      * Carries the HEVC profile/level so canDecodeVideo can reject Main10 /

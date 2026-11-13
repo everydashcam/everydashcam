@@ -913,36 +913,37 @@ describe("hevcCodecStringFromHvcc", () => {
         return rec;
     }
 
-    it("70mai Main: hev1.1.6.L150 (matches the codec metadata fixture in hvcc.test)", () => {
+    it("70mai Main: hvc1.1.6.L150 (matches the codec metadata fixture in hvcc.test)", () => {
         // compatRaw 0x60000000 bit-reverses to 6; level 150; no constraint flags.
-        expect(hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x01, compatRaw: 0x60000000, levelIdc: 150 }))).toBe(
-            "hev1.1.6.L150",
-        );
+        expect(
+            hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x01, compatRaw: 0x60000000, levelIdc: 150 }), "hvc1"),
+        ).toBe("hvc1.1.6.L150");
     });
 
     it("Main10 high level: profile_idc 2 is encoded (the false-positive the canPlay check catches)", () => {
         // compatRaw 0x20000000 -> 4; level 153 (5.1).
-        expect(hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x02, compatRaw: 0x20000000, levelIdc: 153 }))).toBe(
-            "hev1.2.4.L153",
-        );
+        expect(
+            hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x02, compatRaw: 0x20000000, levelIdc: 153 }), "hev1"),
+        ).toBe("hev1.2.4.L153");
     });
 
     it("high tier sets the H marker", () => {
         // tier flag (bit 5) set; profile_idc 1.
-        expect(hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x21, compatRaw: 0x60000000, levelIdc: 156 }))).toBe(
-            "hev1.1.6.H156",
-        );
+        expect(
+            hevcCodecStringFromHvcc(makeHvcc({ profileByte: 0x21, compatRaw: 0x60000000, levelIdc: 156 }), "hev1"),
+        ).toBe("hev1.1.6.H156");
     });
 
     it("emits non-zero constraint flags as a trailing hex suffix", () => {
         expect(
             hevcCodecStringFromHvcc(
                 makeHvcc({ profileByte: 0x01, compatRaw: 0x60000000, levelIdc: 150, constraint: [0xb0] }),
+                "hev1",
             ),
         ).toBe("hev1.1.6.L150.B0");
     });
 
     it("returns null for a record shorter than the 23-byte prefix", () => {
-        expect(hevcCodecStringFromHvcc(new Uint8Array(10))).toBeNull();
+        expect(hevcCodecStringFromHvcc(new Uint8Array(10), "hvc1")).toBeNull();
     });
 });

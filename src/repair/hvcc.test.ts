@@ -120,8 +120,10 @@ async function expectReadableHevc(file: File): Promise<void> {
         const track = await input.getPrimaryVideoTrack();
         expect(track).not.toBeNull();
         const config = await track!.getDecoderConfig();
-        expect(config?.codec).toBe("hev1.1.6.L150");
-        expect(hevcCodecStringFromHvcc(GOOD_HVCC_PAYLOAD)).toBe(config!.codec);
+        // The muxer always writes an hvc1 sample entry, and mediabunny names the
+        // codec after the file's entry.
+        expect(config?.codec).toBe("hvc1.1.6.L150");
+        expect(hevcCodecStringFromHvcc(GOOD_HVCC_PAYLOAD, "hvc1")).toBe(config!.codec);
         expect(new Uint8Array(config!.description as ArrayBuffer)).toEqual(GOOD_HVCC_PAYLOAD);
         const packet = await new EncodedPacketSink(track!).getFirstPacket();
         expect(packet?.data).toEqual(SYNTHETIC_PACKET);
@@ -171,7 +173,7 @@ describe.each([
         const { indexed, repair } = await indexMp4FileWithMoov(broken, false);
         expect(repair).toBeDefined();
         expect(indexed?.codec).toBe("hevc");
-        expect(indexed?.videoCodecString).toBe("hev1.1.6.L150");
+        expect(indexed?.videoCodecString).toBe("hvc1.1.6.L150");
     });
 });
 

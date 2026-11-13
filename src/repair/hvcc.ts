@@ -33,7 +33,13 @@ import {
 } from "../hevc-parameter-sets.js";
 import { cleanHvccDescription } from "../hevc-remux.js";
 import { createLogger } from "../log.js";
-import { findBox, findHvccInTrak, findMoovInFile, iterBoxes } from "../parsers/internal/mp4-walker.js";
+import {
+    findBox,
+    findHvccInTrak,
+    findMoovInFile,
+    type HevcSampleEntry,
+    iterBoxes,
+} from "../parsers/internal/mp4-walker.js";
 
 const log = createLogger("repair:hvcc");
 
@@ -60,6 +66,8 @@ export interface HvcCRepair {
     rebuilt: Uint8Array;
     /** Which damage pattern was fixed. */
     reason: "header" | "arrays";
+    /** Sample entry that holds the hvcC; the repair leaves it unchanged. */
+    sampleEntry: HevcSampleEntry;
 }
 
 /**
@@ -126,7 +134,7 @@ export function detectHvcCRepair(moovBytes: Uint8Array): HvcCRepair | null {
     // the check is explicit in case a future regression breaks it.
     if (rebuilt.byteLength !== payloadLen) return null;
 
-    return { moovRelPayloadStart: payloadStart, rebuilt, reason };
+    return { moovRelPayloadStart: payloadStart, rebuilt, reason, sampleEntry: located.sampleEntry };
 }
 
 /**
@@ -185,6 +193,7 @@ interface LocatedHvcC {
     payloadStartAbs: number;
     /** Absolute exclusive-end of the hvcC box in the file. */
     endAbs: number;
+    sampleEntry: HevcSampleEntry;
 }
 
 /**
@@ -206,7 +215,7 @@ function findHvcCInDataView(dv: DataView): LocatedHvcC | null {
         // findHvccInTrak) so the 78-byte VisualSampleEntry prefix and the
         // hvc1/hev1 entry set live in one place instead of a second copy here.
         const loc = findHvccInTrak(dv, trak);
-        if (loc) return { payloadStartAbs: loc.payloadStart, endAbs: loc.payloadEnd };
+        if (loc) return { payloadStartAbs: loc.payloadStart, endAbs: loc.payloadEnd, sampleEntry: loc.parent };
     }
     return null;
 }
