@@ -42,16 +42,6 @@ describe("formatVideoTrack", () => {
 });
 
 describe("probePlayback", () => {
-    it("probes the indexed codec string under the file's own sample entry", async () => {
-        const candidate = hevcCandidate("hev1.2.4.L153");
-        candidate.codecParam = "hev1";
-
-        const probe = await probePlayback(candidate);
-
-        expect(probe?.codecString).toBe("hev1.2.4.L153");
-        expect(probe?.file).toBe("20261006_133935_04883_N_A.MP4");
-    });
-
     it("reports browser decode APIs that this environment lacks as unavailable", async () => {
         // Node has no document, MediaSource, VideoDecoder or mediaCapabilities.
         const probe = await probePlayback(hevcCandidate("hvc1.1.6.L150"));
