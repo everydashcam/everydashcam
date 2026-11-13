@@ -613,9 +613,9 @@ export async function exportClip({
                     } else {
                         // A file without ADPCM audio gets explicit silence at the
                         // first reader's format. mediabunny pads a gap only when the
-                        // next sample arrives, as one buffer for the whole gap after
-                        // the muxer has held this segment's video, and never pads the
-                        // track end; chunked silence streams alongside the video.
+                        // next sample arrives, after the muxer has held this segment's
+                        // video, and never pads the track end; chunked silence streams
+                        // alongside the video.
                         const { openSilenceCursor } = await import("./transcode/pipeline-common.js");
                         decodedAudio = openSilenceCursor(
                             adpcmSource,

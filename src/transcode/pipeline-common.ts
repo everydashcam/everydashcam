@@ -247,12 +247,11 @@ export interface SegmentAudioOptions {
  * startInFile). The source's `transform` resamples each native sample to 48k/2.
  * A segment with no audio, including an audio track without packets, is filled
  * with explicit silence. mediabunny's audio sources pad a gap only when the
- * next sample arrives, as one buffer spanning the whole gap, and never pad the
- * track end; chunked silence keeps memory bounded, lets the muxer keep draining
- * the video, and ends a trailing audio-less segment with its video. A WebCodecs
- * decode error on a damaged tail ends this segment's audio gracefully
- * (onTruncated) rather than aborting the whole export, matching the video
- * loops' tolerant drive.
+ * next sample arrives and never pad the track end; feeding silence alongside
+ * lets the muxer keep draining the video and ends a trailing audio-less segment
+ * with its video. A WebCodecs decode error on a damaged tail ends this
+ * segment's audio gracefully (onTruncated) rather than aborting the whole
+ * export, matching the video loops' tolerant drive.
  *
  * silenceFormat is a SHARED MUTABLE holder (see SilenceFormat). On the first real
  * decoded sample this updates it to the sample's actual format, so silence for

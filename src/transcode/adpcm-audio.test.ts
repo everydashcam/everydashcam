@@ -10,8 +10,8 @@ describe("ADPCM encode resample target", () => {
         // The player worker and export feed their AAC/Opus AudioSampleSource
         // transform.sampleRate this value. Anything else makes Chrome's MSE
         // demuxer reject the fragmented mp4 for Opus (verified with a real
-        // avc1+opus MediaSource harness), and it also keeps mediabunny on AAC-LC
-        // rather than HE-AAC. Do not "optimize" it to the source's native rate.
+        // avc1+opus MediaSource harness). Do not "optimize" it to the source's
+        // native rate.
         expect(AUDIO_TARGET_SAMPLE_RATE).toBe(48000);
     });
 });

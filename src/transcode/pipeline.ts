@@ -16,10 +16,8 @@
 //    - a run that paints NOTHING over the video takes the composite-free path:
 //      the decoded frame goes to the encoder as-is (see noOverlayLayer).
 //
-// 3. Audio in parallel: AudioSampleSink → AudioSampleSource (re-encoded as
-//    AAC-LC 48k/stereo). Forced resample - dashcams with mono 16k would fail
-//    on encoder config otherwise (HE-AAC v1 is not supported by the Chromium
-//    encoder).
+// 3. Audio in parallel: AudioSampleSink → AudioSampleSource (re-encoded at
+//    the shared 48k/stereo target, see AUDIO_TARGET_SAMPLE_RATE).
 //
 // 4. Between segments, timestamp shifting is done via videoAccumOutSec -
 //    mediabunny assembles a continuous output timeline.

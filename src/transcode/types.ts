@@ -313,10 +313,9 @@ export function framesForSpeed(totalOutputSec: number, fps: number, speedFactor:
  * this config via resolveEncodeAudioCodec - one source of truth so the probe can
  * never drift from what the pipeline actually asks the encoder for.
  *
- * 48 kHz / stereo is not just a normalization: it keeps mediabunny on AAC-LC
- * (a mono 16 kHz source would otherwise make it pick HE-AAC v1 / mp4a.40.5,
- * which Chromium cannot encode) and satisfies Opus's RFC 7845 48 kHz mandate, so
- * the same target works for both the AAC and Opus encode codecs. Note this
+ * 48 kHz / stereo is not just a normalization: it satisfies Opus's RFC 7845
+ * 48 kHz mandate, so the same target works for both the AAC and Opus encode
+ * codecs, and every segment of an export encodes to one format. Note this
  * applies only to the ENCODE path; the stream-copy passthrough (AAC/MP3 source
  * at 1x) copies the original packets untouched and ignores this target. Lives
  * here (a leaf both the worker pipelines and the main-thread capabilities module

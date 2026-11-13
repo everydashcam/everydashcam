@@ -20,9 +20,8 @@ import { upperBoundBy } from "../sorted-search.js";
 //     player has no PCM fallback and drops audio if neither encoder is usable.
 //
 // Both encode consumers resample to 48 kHz / stereo via the source transform
-// (AUDIO_TARGET_*): RFC 7845 mandates 48 kHz for Opus-in-ISOBMFF, and it also
-// keeps mediabunny on AAC-LC rather than HE-AAC. The reader stays at the source
-// rate; the resample is the sink's job.
+// (AUDIO_TARGET_*): RFC 7845 mandates 48 kHz for Opus-in-ISOBMFF. The reader
+// stays at the source rate; the resample is the sink's job.
 //
 // Block framing note: each container chunk is exactly one self-contained ADPCM
 // block, so we read the track as per-chunk byte ranges and treat each as a

@@ -342,9 +342,7 @@ function fail(reason: string, error?: unknown): void {
  * runtime failures during the feed loop, which are out-of-band push events.
  */
 /** MP4 (RFC 6381) audio codec parameter for the chosen encode codec, used to
- *  build the SourceBuffer mime. AAC is AAC-LC (mp4a.40.2): the encode target is
- *  pinned to 48 kHz / stereo / 128 kbps (AUDIO_TARGET_*), which keeps mediabunny
- *  on AAC-LC rather than HE-AAC v1 (mp4a.40.5). */
+ *  build the SourceBuffer mime. mediabunny encodes AAC as AAC-LC (mp4a.40.2). */
 function adpcmAudioMimeParam(codec: "aac" | "opus"): string {
     return codec === "aac" ? "mp4a.40.2" : "opus";
 }

@@ -77,11 +77,10 @@ export async function resolveEncodeAudioCodec(
 /**
  * Audio sample source for any path that decodes to PCM and re-encodes: the MSE
  * player worker's ADPCM transcode, the export stream-copy ADPCM branch, and the
- * re-encode pipelines. `transform` resamples every fed sample to 48 kHz / stereo:
- * for AAC that keeps the encoder on AAC-LC (a mono / low-rate input would make
- * mediabunny pick HE-AAC v1 / mp4a.40.5, which Chromium cannot encode AND which
- * MSE then rejects under the mp4a.40.2 mime); for Opus it satisfies RFC 7845's
- * 48 kHz mandate. `codec` is the result of resolveEncodeAudioCodec.
+ * re-encode pipelines. `transform` resamples every fed sample to 48 kHz / stereo
+ * (AUDIO_TARGET_*): Opus requires 48 kHz by RFC 7845, and AAC shares the target
+ * so the probe checks one config for both codecs. `codec` is the result of
+ * resolveEncodeAudioCodec.
  *
  * Constraint this leans on: mediabunny's source rejects a mid-track INPUT format
  * change (the guard runs before the transform resampler), so every sample fed -
