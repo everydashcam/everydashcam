@@ -251,6 +251,7 @@ export const jaDict = {
     "status.update.busy": "アプリは使用中です。録画の読み込みやクリップの保存が終わるまで待ち、完成したクリップをダウンロードしてから、ダイアログと「{panel}」パネルを閉じて、もう一度お試しください。",
     "status.update.failed": "メモの保存または更新の準備ができませんでした。メモを確認して、もう一度お試しください。",
     "status.update.otherWindows": "ほかの everydashcam のタブまたはウィンドウが開いています。閉じてから、もう一度お試しください。",
+    "status.update.notRestarted": "アプリを再起動できませんでした。もう一度お試しいただくか、everydashcam を閉じて更新を適用してください。",
 
     "notif.bell.aria": "通知",
     "notif.drawer.title": "通知",

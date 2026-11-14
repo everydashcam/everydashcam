@@ -241,6 +241,7 @@ export const frDict = {
     "status.update.busy": "L’application est occupée. Attends qu’elle ait fini de lire les enregistrements ou d’enregistrer un extrait, télécharge l’extrait terminé, puis ferme les boîtes de dialogue et le panneau « {panel} » et réessaie.",
     "status.update.failed": "Impossible d’enregistrer les notes ou de préparer la mise à jour. Vérifie tes notes et réessaie.",
     "status.update.otherWindows": "D’autres onglets ou fenêtres everydashcam sont ouverts. Ferme-les, puis réessaie.",
+    "status.update.notRestarted": "L’application n’a pas redémarré. Réessaie ou ferme everydashcam pour appliquer la mise à jour.",
 
     "notif.bell.aria": "Notifications",
     "notif.drawer.title": "Notifications",

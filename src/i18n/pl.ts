@@ -241,6 +241,7 @@ export const plDict = {
     "status.update.busy": "Aplikacja jest zajęta. Poczekaj, aż skończy odczytywać nagrania lub zapisywać fragment, pobierz gotowy fragment, a następnie zamknij okna dialogowe i panel „{panel}” i spróbuj ponownie.",
     "status.update.failed": "Nie udało się zapisać notatek lub przygotować aktualizacji. Sprawdź notatki i spróbuj ponownie.",
     "status.update.otherWindows": "Otwarte są inne karty lub okna everydashcam. Zamknij je i spróbuj ponownie.",
+    "status.update.notRestarted": "Aplikacja nie uruchomiła się ponownie. Spróbuj ponownie lub zamknij everydashcam, aby zastosować aktualizację.",
 
     "notif.bell.aria": "Powiadomienia",
     "notif.drawer.title": "Powiadomienia",

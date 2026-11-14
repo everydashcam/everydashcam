@@ -241,6 +241,7 @@ export const ptDict = {
     "status.update.busy": "O aplicativo está ocupado. Espere ele terminar de ler gravações ou salvar um clipe, baixe o clipe pronto e depois feche as caixas de diálogo e o painel “{panel}” e tente novamente.",
     "status.update.failed": "Não foi possível salvar as notas ou preparar a atualização. Verifique suas notas e tente novamente.",
     "status.update.otherWindows": "Há outras abas ou janelas do everydashcam abertas. Feche-as e tente novamente.",
+    "status.update.notRestarted": "O aplicativo não reiniciou. Tente novamente ou feche o everydashcam para aplicar a atualização.",
 
     "notif.bell.aria": "Notificações",
     "notif.drawer.title": "Notificações",

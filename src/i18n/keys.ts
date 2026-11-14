@@ -323,6 +323,7 @@ export type I18nKey =
     | "status.update.busy"
     | "status.update.failed"
     | "status.update.otherWindows"
+    | "status.update.notRestarted"
 
     // Notifications: bell button in the topbar, toasts that pop from
     // top-right and the drawer popover that lists session history.

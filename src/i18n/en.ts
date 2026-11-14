@@ -242,6 +242,7 @@ export const enDict = {
     "status.update.busy": "The app is busy. Let it finish reading recordings or saving a clip, download any finished clip, then close dialogs and the “{panel}” panel and try again.",
     "status.update.failed": "Couldn't save notes or prepare the update. Check your notes and try again.",
     "status.update.otherWindows": "Other everydashcam tabs or windows are open. Close them, then try again.",
+    "status.update.notRestarted": "The app didn't restart. Try again, or close everydashcam to apply the update.",
 
     "notif.bell.aria": "Notifications",
     "notif.drawer.title": "Notifications",

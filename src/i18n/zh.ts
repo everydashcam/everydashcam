@@ -240,6 +240,7 @@ export const zhDict = {
     "status.update.busy": "应用正忙。请等待它读取完录像或保存完片段，下载已完成的片段，然后关闭对话框和“{panel}”面板，再重试。",
     "status.update.failed": "无法保存笔记或准备更新。请检查笔记后重试。",
     "status.update.otherWindows": "还打开着其他 everydashcam 标签页或窗口。请关闭它们，然后重试。",
+    "status.update.notRestarted": "应用未能重启。请重试，或关闭 everydashcam 以应用更新。",
 
     "notif.bell.aria": "通知",
     "notif.drawer.title": "通知",

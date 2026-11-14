@@ -239,6 +239,7 @@ export const deDict = {
     "status.update.busy": "Die App ist beschäftigt. Warte, bis sie Aufnahmen fertig gelesen oder einen Clip gespeichert hat, lade einen fertigen Clip herunter, schließe dann Dialoge und den Bereich „{panel}“ und versuche es erneut.",
     "status.update.failed": "Notizen konnten nicht gespeichert oder das Update nicht vorbereitet werden. Prüfe deine Notizen und versuche es erneut.",
     "status.update.otherWindows": "Andere everydashcam-Tabs oder -Fenster sind geöffnet. Schließe sie und versuche es erneut.",
+    "status.update.notRestarted": "Die App wurde nicht neu gestartet. Versuche es erneut oder schließe everydashcam, um das Update anzuwenden.",
 
     "notif.bell.aria": "Benachrichtigungen",
     "notif.drawer.title": "Benachrichtigungen",

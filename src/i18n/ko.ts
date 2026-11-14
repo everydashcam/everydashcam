@@ -250,6 +250,7 @@ export const koDict = {
     "status.update.busy": "앱이 작업 중이에요. 녹화 읽기나 클립 저장이 끝날 때까지 기다리고, 완성된 클립을 다운로드한 다음 대화상자와 “{panel}” 패널을 닫고 다시 시도해 주세요.",
     "status.update.failed": "메모를 저장하거나 업데이트를 준비하지 못했어요. 메모를 확인한 다음 다시 시도해 주세요.",
     "status.update.otherWindows": "다른 everydashcam 탭이나 창이 열려 있어요. 닫은 다음 다시 시도해 주세요.",
+    "status.update.notRestarted": "앱을 다시 시작하지 못했어요. 다시 시도하거나 everydashcam을 닫아 업데이트를 적용해 주세요.",
 
     "notif.bell.aria": "알림",
     "notif.drawer.title": "알림",

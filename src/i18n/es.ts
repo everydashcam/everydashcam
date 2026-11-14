@@ -241,6 +241,7 @@ export const esDict = {
     "status.update.busy": "La aplicación está ocupada. Espera a que termine de leer grabaciones o de guardar un clip, descarga el clip terminado y luego cierra los diálogos y el panel «{panel}» y vuelve a intentarlo.",
     "status.update.failed": "No se pudieron guardar las notas o preparar la actualización. Revisa tus notas y vuelve a intentarlo.",
     "status.update.otherWindows": "Hay otras pestañas o ventanas de everydashcam abiertas. Ciérralas y vuelve a intentarlo.",
+    "status.update.notRestarted": "La aplicación no se reinició. Vuelve a intentarlo o cierra everydashcam para aplicar la actualización.",
 
     "notif.bell.aria": "Notificaciones",
     "notif.drawer.title": "Notificaciones",

@@ -4,7 +4,7 @@ import { activateModal, deactivateModal, isAnyModalOpen } from "./modal-helper.j
 import { clearIntentionalNavigation, markIntentionalNavigation } from "./nav-intent.js";
 import { notify, type PinnedStatusInput, setPinnedStatus } from "./notifications.js";
 import { canReloadWithoutAsking, isRestartLocked, subscribeRestartLock } from "./restart-gate.js";
-import { createRestartController, type UserRestartFailure } from "./sw-restart.js";
+import { createRestartController, type RestartFailure } from "./sw-restart.js";
 import {
     createUpdateObserver,
     type ObservedRegistration,
@@ -14,10 +14,11 @@ import {
 
 const UPDATE_STATUS_ID = "update";
 
-const FAILURE_MESSAGES: Record<UserRestartFailure, I18nKey> = {
+const FAILURE_MESSAGES: Record<RestartFailure, I18nKey> = {
     notesNotSaved: "status.update.failed",
     otherWindows: "status.update.otherWindows",
     failed: "status.update.failed",
+    notRestarted: "status.update.notRestarted",
 };
 
 /**
@@ -131,7 +132,7 @@ export function initServiceWorkerUpdates(options: {
 
     const isBusyNow = (): boolean => options.isBusy() || isAnyModalOpen();
 
-    // Answers to an explicit request. The pinned status line stays the way
+    // Explain why a restart did not happen. The pinned status line stays the way
     // back to the update, so these toasts keep their retry action out of the
     // drawer and repeated attempts do not stack buttons there.
     const announce = (messageKey: I18nKey): void => {
@@ -183,7 +184,7 @@ export function initServiceWorkerUpdates(options: {
         reloadPage: () => location.reload(),
         markIntentionalNavigation,
         clearIntentionalNavigation,
-        onUserRestartFailed: (failure) => announce(FAILURE_MESSAGES[failure]),
+        onRestartFailed: (failure) => announce(FAILURE_MESSAGES[failure]),
     });
 
     // The dialog reflects the lock: it keeps new work from starting while

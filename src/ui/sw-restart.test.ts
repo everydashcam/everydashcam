@@ -49,7 +49,7 @@ function setup(page: { isControlled?: boolean; canReloadWithoutAsking?: boolean 
         reloadPage: vi.fn(),
         markIntentionalNavigation: vi.fn(),
         clearIntentionalNavigation: vi.fn(),
-        onUserRestartFailed: vi.fn(),
+        onRestartFailed: vi.fn(),
         sendActivationRequest: vi.fn(
             (_worker: Pick<ObservedWorker, "postMessage">, _reason: RestartReason, _timeoutMs: number) =>
                 answer.promise,
@@ -90,7 +90,7 @@ describe("user restart", () => {
         expect(options.sendActivationRequest).toHaveBeenCalledWith(worker, "user", 10_000);
         expect(options.markIntentionalNavigation).toHaveBeenCalledTimes(1);
         expect(options.reloadPage).toHaveBeenCalledTimes(1);
-        expect(options.onUserRestartFailed).not.toHaveBeenCalled();
+        expect(options.onRestartFailed).not.toHaveBeenCalled();
     });
 
     it("reloads once the worker takes over", async () => {
@@ -128,7 +128,7 @@ describe("user restart", () => {
         await restart;
 
         expect(options.reloadPage).not.toHaveBeenCalled();
-        expect(options.onUserRestartFailed).toHaveBeenCalledWith("otherWindows");
+        expect(options.onRestartFailed).toHaveBeenCalledWith("otherWindows");
         expect(isRestartLocked()).toBe(false);
     });
 
@@ -140,7 +140,7 @@ describe("user restart", () => {
         await restart;
 
         expect(options.reloadPage).not.toHaveBeenCalled();
-        expect(options.onUserRestartFailed).toHaveBeenCalledWith("failed");
+        expect(options.onRestartFailed).toHaveBeenCalledWith("failed");
         expect(isRestartLocked()).toBe(false);
     });
 
@@ -151,7 +151,7 @@ describe("user restart", () => {
         await restart;
 
         expect(options.sendActivationRequest).not.toHaveBeenCalled();
-        expect(options.onUserRestartFailed).toHaveBeenCalledWith("notesNotSaved");
+        expect(options.onRestartFailed).toHaveBeenCalledWith("notesNotSaved");
         expect(isRestartLocked()).toBe(false);
     });
 
@@ -163,7 +163,7 @@ describe("user restart", () => {
         await restart;
 
         expect(options.sendActivationRequest).not.toHaveBeenCalled();
-        expect(options.onUserRestartFailed).toHaveBeenCalledWith("notesNotSaved");
+        expect(options.onRestartFailed).toHaveBeenCalledWith("notesNotSaved");
         expect(isRestartLocked()).toBe(false);
     });
 
@@ -186,11 +186,11 @@ describe("user restart", () => {
         await restart;
 
         expect(options.reloadPage).not.toHaveBeenCalled();
-        expect(options.onUserRestartFailed).toHaveBeenCalledWith("failed");
+        expect(options.onRestartFailed).toHaveBeenCalledWith("failed");
         expect(isRestartLocked()).toBe(false);
     });
 
-    it("releases the lock when the page survives its reload", async () => {
+    it("releases the lock and reports a failure when the page survives its reload", async () => {
         const { controller, options, notes, answer } = setup();
         const restart = controller.restart();
         notes.resolve(true);
@@ -206,6 +206,7 @@ describe("user restart", () => {
         expect(options.clearIntentionalNavigation, "the leave-page prompt guards the page again").toHaveBeenCalledTimes(
             1,
         );
+        expect(options.onRestartFailed).toHaveBeenCalledWith("notRestarted");
     });
 
     it("ignores a second request while one runs", async () => {
@@ -228,7 +229,7 @@ describe("user restart", () => {
         await restart;
 
         expect(options.reloadPage).toHaveBeenCalledTimes(1);
-        expect(options.onUserRestartFailed).not.toHaveBeenCalled();
+        expect(options.onRestartFailed).not.toHaveBeenCalled();
         expect(isRestartLocked(), "the reload still holds the lock").toBe(true);
     });
 });
@@ -292,7 +293,7 @@ describe("worker change rule", () => {
         expect(warnings()).toEqual([]);
     });
 
-    it("releases the lock when the page survives an unasked reload", async () => {
+    it("releases the lock and reports a failure when the page survives an unasked reload", async () => {
         const { options, takeOver } = setup({ canReloadWithoutAsking: true });
         takeOver();
 
@@ -301,6 +302,7 @@ describe("worker change rule", () => {
         expect(isRestartLocked()).toBe(false);
         expect(claimImportGesture(), "imports work again").toBe(true);
         expect(options.clearIntentionalNavigation, "nothing was silenced").not.toHaveBeenCalled();
+        expect(options.onRestartFailed, "the vanished dialog is explained").toHaveBeenCalledWith("notRestarted");
     });
 });
 

@@ -33,8 +33,9 @@ export const TAKEOVER_TIMEOUT_MS = 10_000;
 // user chose to stay in the browser's leave-page prompt.
 export const RELOAD_TIMEOUT_MS = 10_000;
 
-/** Why a user-requested restart stopped and left the page as it was. */
-export type UserRestartFailure = "notesNotSaved" | "otherWindows" | "failed";
+/** Why a restart stopped and left the page as it was. Only "notRestarted"
+ *  can end a restart the page started on its own. */
+export type RestartFailure = "notesNotSaved" | "otherWindows" | "failed" | "notRestarted";
 
 /** Resolves false when notes are not confirmed saved within the limit. A late
  *  write keeps running; the window simply stays open. */
@@ -111,7 +112,7 @@ export interface RestartController {
  * the page when it loaded; `currentController` reads the live one.
  * `canReloadWithoutAsking` is the shared answer from restart-gate.ts. `reloadPage` performs the navigation;
  * `markIntentionalNavigation` silences the leave-page prompt for a reload the
- * user confirmed; `clearIntentionalNavigation` re-arms it if the page survives. `onUserRestartFailed` reports a stop that left the page as
+ * user confirmed; `clearIntentionalNavigation` re-arms it if the page survives. `onRestartFailed` reports a stop that left the page as
  * it was. `sendActivationRequest` exists for tests.
  */
 export function createRestartController(options: {
@@ -123,7 +124,7 @@ export function createRestartController(options: {
     reloadPage: () => void;
     markIntentionalNavigation: () => void;
     clearIntentionalNavigation: () => void;
-    onUserRestartFailed: (failure: UserRestartFailure) => void;
+    onRestartFailed: (failure: RestartFailure) => void;
     sendActivationRequest?: typeof requestActivation;
 }): RestartController {
     const sendActivationRequest = options.sendActivationRequest ?? requestActivation;
@@ -144,9 +145,9 @@ export function createRestartController(options: {
         unlockRestart();
     };
 
-    const fail = (failure: UserRestartFailure): void => {
+    const fail = (failure: RestartFailure): void => {
         release();
-        options.onUserRestartFailed(failure);
+        options.onRestartFailed(failure);
     };
 
     // Reloading is a wait as well: the page lives on if the navigation does
@@ -159,7 +160,9 @@ export function createRestartController(options: {
             log.warn("page stayed after reload", { reason: restartLockReason() });
             // The page keeps working, so the leave-page prompt must guard it again.
             if (isUserReload) options.clearIntentionalNavigation();
-            release();
+            // Both reasons show the "updating" dialog; closing it in silence
+            // would read as a finished update.
+            fail("notRestarted");
         }, RELOAD_TIMEOUT_MS);
         options.reloadPage();
     };
