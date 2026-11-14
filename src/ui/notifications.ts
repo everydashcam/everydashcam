@@ -12,8 +12,9 @@
 //   - The bell icon stays hidden while there is nothing to list; the red dot
 //     marks unread items. Opening the drawer marks everything read.
 //   - A pinned status line (setPinnedStatus) reflects a standing fact rather
-//     than an event: no toast, listed above the history, untouched by "Clear
-//     all" and by the history limit, removed only by its owner.
+//     than an event: listed above the history, untouched by "Clear all" and by
+//     the history limit, removed only by its owner. One toast announces each
+//     new revision of the line; the line itself is not added to the history.
 //
 // Replaces the old #status text in the topbar, which mixed progress with
 // final warnings and stuck them in a tiny mono font that scrolled off in
@@ -42,6 +43,12 @@ export interface NotifyInput {
     actionInDrawer?: boolean;
     /** Separates identical messages whose actions belong to different sources. */
     dedupKey?: string;
+}
+
+/** What a toast shows; history entries and pinned lines both supply it. */
+interface ToastContent
+    extends Pick<NotifyInput, "severity" | "messageKey" | "messageParams" | "actionKey" | "onAction"> {
+    id: string;
 }
 
 interface Notification extends NotifyInput {
@@ -75,7 +82,7 @@ const TOAST_TIMEOUT_MS: Record<Severity, number | null> = {
 // default info window is gone before the user reaches the button.
 const ACTION_TOAST_TIMEOUT_MS = 15000;
 
-function toastTimeoutFor(n: Notification): number | null {
+function toastTimeoutFor(n: ToastContent): number | null {
     if (n.actionKey && n.onAction) return ACTION_TOAST_TIMEOUT_MS;
     return TOAST_TIMEOUT_MS[n.severity];
 }
@@ -91,14 +98,20 @@ export interface PinnedStatusInput {
     messageKey: I18nKey;
     actionKey: I18nKey;
     onAction: () => void;
-    /** Identifies the news the line carries. Opening the drawer marks this
-     *  revision read; only a different revision lights the dot again. */
+    /** Identifies the news the line carries. A revision is toasted once and
+     *  marked read when the drawer opens; only a different revision toasts
+     *  and lights the dot again. */
     revision: number;
 }
 
 // Insertion order is display order.
 const pinnedStatuses = new Map<string, PinnedStatusInput>();
 const readPinnedRevisions = new Map<string, number>();
+// A line that leaves and returns with the same news (an update line hidden
+// during a restart that then stops) must not toast again.
+const toastedPinnedRevisions = new Map<string, number>();
+// The toast speaking for each line's current revision; it may already be gone.
+const pinnedToastIds = new Map<string, string>();
 
 // Each notification's toast lifecycle is tracked here so dismissAll can
 // tear them down cleanly. The DOM element is the key.
@@ -203,13 +216,19 @@ export function notify(input: NotifyInput): void {
 
 /**
  * Shows or replaces the pinned status line `id`, or removes it when `input` is
- * null. The line raises no toast; the dot lights when its revision has not
- * been seen in an open drawer. Safe to call before initNotifications.
+ * null. A revision not toasted before raises one toast, which goes away with
+ * the line or when the line carries another revision. The dot lights while the
+ * revision has not been seen in an open drawer. Safe to call before
+ * initNotifications.
  */
 export function setPinnedStatus(id: string, input: PinnedStatusInput | null): void {
+    const previous = pinnedStatuses.get(id);
     if (input) pinnedStatuses.set(id, input);
     else if (!pinnedStatuses.delete(id)) return;
+    // A toast left behind would offer an action the drawer no longer shows.
+    if (previous && previous.revision !== input?.revision) dismissPinnedToast(id);
     if (bellBtn && drawerList) {
+        if (input) toastNewPinnedRevision(id, input);
         syncBellVisibility();
         renderDrawerList();
         renderBellBadge();
@@ -257,6 +276,7 @@ export function initNotifications(): void {
 
     // Catch up if anything fired before init.
     if (notifications.length > 0 || pinnedStatuses.size > 0) {
+        for (const [id, status] of pinnedStatuses) toastNewPinnedRevision(id, status);
         syncBellVisibility();
         renderBellBadge();
         renderDrawerList();
@@ -265,7 +285,23 @@ export function initNotifications(): void {
 
 // --- Toast rendering ---
 
-function showToast(n: Notification): void {
+function toastNewPinnedRevision(id: string, status: PinnedStatusInput): void {
+    if (toastedPinnedRevisions.get(id) === status.revision) return;
+    toastedPinnedRevisions.set(id, status.revision);
+    const toastId = makeId();
+    pinnedToastIds.set(id, toastId);
+    const { severity, messageKey, actionKey, onAction } = status;
+    showToast({ id: toastId, severity, messageKey, actionKey, onAction });
+}
+
+function dismissPinnedToast(id: string): void {
+    const toastId = pinnedToastIds.get(id);
+    if (toastId === undefined) return;
+    pinnedToastIds.delete(id);
+    removeToast(toastId);
+}
+
+function showToast(n: ToastContent): void {
     if (!toastContainer) return;
 
     // Enforce stack cap by removing the oldest toast first. Older entries

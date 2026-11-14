@@ -25,7 +25,7 @@ const FAILURE_MESSAGES: Record<UserRestartFailure, I18nKey> = {
  * shows while the page runs an older release than the browser holds and no
  * restart holds the lock: during a restart the dialog speaks instead, and the
  * line returns if the restart stops. Its revision is the release serial, so
- * the dot lights once per new release.
+ * each new release raises one toast and lights the dot once.
  */
 export function updateStatusLine(
     state: UpdateState,

@@ -65,8 +65,9 @@ retention script's current/retained inventories; do not infer assets from servic
 worker source. Atomic hosts do not need an intermediate publication state.
 
 Hosted updates install a complete shell before activation and wait for all
-controlled windows to close. A pinned line in the notification bell also offers
-a restart when no other window of the site is open; it is refused while it would
+controlled windows to close. A toast announces each new release once, and a
+pinned line in the notification bell keeps offering a restart when no other
+window of the site is open; it is refused while it would
 lose work, and recordings must be reopened afterwards. The page never asks for
 activation by itself; a page that a late activation takes over reloads only when
 nothing open would be lost. What allows each reload is defined in

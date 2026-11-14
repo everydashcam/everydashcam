@@ -90,11 +90,15 @@ async function openApp(page: Page, origin: string, locale = "en"): Promise<void>
 }
 
 const statusLine = (page: Page) => page.locator("#notif-drawer .notif-drawer-item--pinned");
+// Answers to a restart request carry the same action, so the text tells the announcement apart.
+const updateToast = (page: Page) =>
+    page.locator(".dc-toast", { hasText: /An update has been downloaded|Обновление скачано/ });
 
-// A new release lights the bell's dot and adds the pinned status line, without a toast.
+// A new release raises one toast, lights the bell's dot and adds the pinned status line.
 async function installUpdate(page: Page, publish: () => void): Promise<void> {
     publish();
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
+    await expect(updateToast(page)).toHaveCount(1);
     await expect(page.locator("#notif-bell-dot")).toBeVisible();
     await expect(statusLine(page)).toHaveCount(1);
 }
@@ -133,7 +137,7 @@ test("update confirmation fits each locale and viewport, then restarts the app",
     await openApp(page, updateServer.origin, "en");
     await page.evaluate(() => localStorage.setItem("update-test-preference", "keep"));
     await installUpdate(page, updateServer.publish);
-    await expect(page.locator(".dc-toast")).toHaveCount(0);
+    await expect(updateToast(page).locator(".dc-toast__action")).toHaveText("Update…");
     // Neither the first installation taking control nor the update reloaded the page.
     expect(await page.evaluate(() => sessionStorage.getItem("update-loads"))).toBe("1");
     const action = statusLine(page).locator(".dc-toast__action");
@@ -145,7 +149,8 @@ test("update confirmation fits each locale and viewport, then restarts the app",
     await page.locator("#notif-drawer-clear").click();
     await expect(page.locator("#notif-bell")).toBeVisible();
     await expect(statusLine(page)).toHaveCount(1);
-    // A second release in the same session keeps one line and lights the dot again.
+    // A second release in the same session keeps one line, toasts again and
+    // lights the dot again.
     await installUpdate(page, updateServer.publish);
     await requestUpdate(page);
     await expect(page.locator("#sw-update-body")).toContainText("recordings again");
@@ -221,6 +226,10 @@ test("another app window must close before the update restarts the app", async (
     await confirmUpdate(page);
     await expect(page.locator(".dc-toast__body").last()).toContainText("Other everydashcam tabs or windows are open.");
     await expect(page.locator("#sw-update-modal")).toHaveCount(0);
+    // The restart took the announcement down, and the same release does not
+    // raise it again when the line returns.
+    await expect(statusLine(page)).toHaveCount(1);
+    await expect(updateToast(page)).toHaveCount(0);
     expect(await page.evaluate(() => sessionStorage.getItem("update-loads"))).toBe("1");
     expect(await page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.waiting))).toBe(
         true,
