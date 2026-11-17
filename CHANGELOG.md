@@ -7,6 +7,11 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-11-17
+
+- **New camera support:** Added support for Thinkware U3000 PRO.
+- **New camera support:** Added support for GKU D600Pro.
+
 ## 2026-11-10
 
 - **New:** Added a map of all trips with filtering by location.

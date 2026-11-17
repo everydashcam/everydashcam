@@ -28,6 +28,38 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-17.2",
+        category: "support",
+        text: {
+            en: "Added support for Thinkware U3000 PRO.",
+            ru: "Добавлена поддержка Thinkware U3000 PRO.",
+            de: "Unterstützung für Thinkware U3000 PRO hinzugefügt.",
+            es: "Se ha añadido compatibilidad con Thinkware U3000 PRO.",
+            fr: "Ajout de la prise en charge de Thinkware U3000 PRO.",
+            pl: "Dodano obsługę Thinkware U3000 PRO.",
+            pt: "Adicionado suporte a Thinkware U3000 PRO.",
+            zh: "新增对 Thinkware U3000 PRO 的支持。",
+            ja: "Thinkware U3000 PROに対応しました。",
+            ko: "Thinkware U3000 PRO 지원이 추가됐어요.",
+        },
+    },
+    {
+        id: "2026-11-17.1",
+        category: "support",
+        text: {
+            en: "Added support for GKU D600Pro.",
+            ru: "Добавлена поддержка GKU D600Pro.",
+            de: "Unterstützung für GKU D600Pro hinzugefügt.",
+            es: "Se ha añadido compatibilidad con GKU D600Pro.",
+            fr: "Ajout de la prise en charge de GKU D600Pro.",
+            pl: "Dodano obsługę GKU D600Pro.",
+            pt: "Adicionado suporte a GKU D600Pro.",
+            zh: "新增对 GKU D600Pro 的支持。",
+            ja: "GKU D600Proに対応しました。",
+            ko: "GKU D600Pro 지원이 추가됐어요.",
+        },
+    },
+    {
         id: "2026-11-10.1",
         category: "feature",
         text: {
