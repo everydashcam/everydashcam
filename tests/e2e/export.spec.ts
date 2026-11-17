@@ -2,6 +2,7 @@
 // and channel composition - the most regression-prone surface in the app. Uses
 // boxOf() (asserts presence, returns a non-null box) for element geometry.
 
+import type { Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -50,6 +51,33 @@ function formatClock(totalSec: number): string {
     const s = total % 60;
     const pad = (n: number): string => String(n).padStart(2, "0");
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/** Viewport point on the chart's event-marker strip at `relSec`, read only
+ *  once the canvas and its x-scale stop moving. Toggling export mode reflows
+ *  the player column, and Chart.js resizes from its own ResizeObserver a frame
+ *  later; a click aimed inside that window can land outside the hit radius. */
+async function settledEventStripPoint(page: Page, relSec: number): Promise<{ x: number; y: number }> {
+    let previous = "";
+    let point = { x: 0, y: 0 };
+    await expect
+        .poll(async () => {
+            point = await page.evaluate(async (sec) => {
+                await new Promise<void>((resolve) =>
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+                );
+                const canvas = document.querySelector("#player-chart-canvas")!;
+                const rect = canvas.getBoundingClientRect();
+                const xScale = window.__everydashcam.state.chart!.scales.x!;
+                return { x: rect.x + xScale.getPixelForValue(sec), y: rect.y + 4 };
+            }, relSec);
+            const current = `${point.x},${point.y}`;
+            const isSettled = current === previous;
+            previous = current;
+            return isSettled;
+        }, "chart geometry settles")
+        .toBe(true);
+    return point;
 }
 
 test.describe("export", () => {
@@ -767,12 +795,8 @@ test.describe("export", () => {
         // Click the marker strip at the event's exact pixel: map relSec=2
         // through the live x-scale (the canvas has y-axis gutters, so a naive
         // width fraction can miss the popup hit radius).
-        const host = await boxOf(page, "#player-chart-canvas");
-        const evPx = await page.evaluate(() => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (window as any).__everydashcam.state.chart.scales.x.getPixelForValue(2) as number;
-        });
-        await page.mouse.click(host.x + evPx, host.y + 4);
+        const marker = await settledEventStripPoint(page, 2);
+        await page.mouse.click(marker.x, marker.y);
         const popupExport = page.locator(".event-popup-export");
         await expect(popupExport).toBeVisible();
 
