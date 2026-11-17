@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { BlobSource, Input, Mp4InputFormat } from "mediabunny";
 import { describe, expect, it } from "vitest";
+import { repairBrokenHvcC } from "../../repair/hvcc.js";
 import { indexMp4FileWithMoov, indexOneFile } from "./mp4-indexing.js";
 
 // Proves the indexer flips audioNeedsTranscode for the IMA-ADPCM (Mio/Navman)
@@ -237,12 +238,21 @@ describe("indexMp4FileWithMoov: broken hvcC codec string", () => {
 // mediabunny Input, so it must name the codec exactly as mediabunny does for
 // the same file, including the hvc1/hev1 prefix taken from the sample entry.
 describe("indexMp4FileWithMoov: HEVC codec string matches mediabunny", () => {
+    // The XEGA track's hvcC keeps profile_idc 0 from the camera, so its index
+    // string comes from the repaired header; mediabunny reads the same repaired
+    // file during playback and export.
     it.each([
-        { sampleEntry: "hvc1", path: "../__fixtures__/sei-double-gps/real-fix-anonymized.mp4" },
-        { sampleEntry: "hev1", path: "../__fixtures__/mivue-955wd/FILE260819-071804F.mp4" },
-    ])("agrees on a real $sampleEntry recording", async ({ sampleEntry, path }) => {
+        {
+            sampleEntry: "hvc1",
+            path: "../__fixtures__/sei-double-gps/real-fix-anonymized.mp4",
+            codecString: "hvc1.1.6.H120.90",
+        },
+        { sampleEntry: "hev1", path: "../__fixtures__/mivue-955wd/FILE260819-071804F.mp4", codecString: null },
+    ])("agrees on a real $sampleEntry recording", async ({ sampleEntry, path, codecString }) => {
         const file = new File([readFileSync(new URL(path, import.meta.url))], path.split("/").at(-1)!);
-        const input = new Input({ source: new BlobSource(file), formats: [new Mp4InputFormat()] });
+        const repaired = await repairBrokenHvcC(file);
+        expect(repaired !== null, "hvcC repair").toBe(codecString !== null);
+        const input = new Input({ source: new BlobSource(repaired?.file ?? file), formats: [new Mp4InputFormat()] });
         try {
             const track = await input.getPrimaryVideoTrack();
             expect(track, "fixture has a video track").not.toBeNull();
@@ -254,6 +264,7 @@ describe("indexMp4FileWithMoov: HEVC codec string matches mediabunny", () => {
                 new RegExp(`^${sampleEntry}\\.`),
             );
             expect(indexed?.videoCodecString).toBe(expected);
+            if (codecString !== null) expect(expected).toBe(codecString);
         } finally {
             input.dispose();
         }

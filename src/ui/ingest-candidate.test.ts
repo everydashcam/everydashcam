@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { IndexedMp4 } from "../workers/indexer-protocol.js";
+import type { IndexedMp4, IndexerRepair } from "../workers/indexer-protocol.js";
 import { applyIndexedMetadata, buildProvisionalCandidate, checkCanPlay } from "./ingest-candidate.js";
 
 describe("checkCanPlay", () => {
@@ -70,5 +70,27 @@ describe("applyIndexedMetadata", () => {
         const candidate = rawStreamCandidate();
         applyIndexedMetadata(candidate, { ...indexed, durationSec: 59.5 }, undefined);
         expect(candidate.durationSec).toBe(59.5);
+    });
+
+    it.each([
+        { reason: "header", hvccRepaired: true, hvccProfileRestored: false },
+        { reason: "arrays", hvccRepaired: true, hvccProfileRestored: false },
+        { reason: "profile", hvccRepaired: false, hvccProfileRestored: true },
+    ] as const)("reports a $reason hvcC repair to the damaged-file count: $hvccRepaired", (expected) => {
+        const candidate = rawStreamCandidate();
+        const repair: IndexerRepair = {
+            patchedMoov: new Uint8Array([1, 2, 3, 4]),
+            moovFileStart: 4,
+            moovFileEnd: 8,
+            phantomNeutralized: [],
+            hvcc: { needsHevcRemux: false, reason: expected.reason, videoCodecString: "hvc1.1.6.L150" },
+        };
+        const applied = applyIndexedMetadata(candidate, indexed, repair);
+        expect(applied).toEqual({
+            phantomRepaired: false,
+            hvccRepaired: expected.hvccRepaired,
+            hvccProfileRestored: expected.hvccProfileRestored,
+        });
+        expect(candidate.file.size, "patched file keeps its size").toBe(16);
     });
 });

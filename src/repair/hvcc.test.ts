@@ -89,6 +89,11 @@ const BROKEN_HVCC_PAYLOAD = bytes(
         "22 00 01 00 07 44 01 c0 72 f0 3b 24",
 );
 
+// Pattern C as indexed from a Thinkware U3000 Pro report ("hvc1.0.0.L0"): the
+// GOOD record with header bytes 1-12 (profile/tier/level block) zeroed and
+// every other field, including numOfArrays, intact.
+const ZEROED_PROFILE_HVCC_PAYLOAD = GOOD_HVCC_PAYLOAD.slice().fill(0, 1, 13);
+
 // Container tests inspect metadata and packet bytes without decoding footage.
 const SYNTHETIC_PACKET = new Uint8Array([0, 0, 0, 3, 0x26, 0x01, 0x80]);
 
@@ -173,6 +178,34 @@ describe.each([
         const { indexed, repair } = await indexMp4FileWithMoov(broken, false);
         expect(repair).toBeDefined();
         expect(indexed?.codec).toBe("hevc");
+        expect(indexed?.videoCodecString).toBe("hvc1.1.6.L150");
+    });
+
+    it("restores a zeroed profile block so the indexed codec string is decodable", async () => {
+        const healthy = await hevcFile(fastStart);
+        const healthyBytes = new Uint8Array(await healthy.arrayBuffer());
+        const dv = new DataView(healthyBytes.buffer);
+        const moov = findBox(dv, 0, dv.byteLength, "moov")!;
+        const hvcc = findHvccInTrak(dv, findBox(dv, moov.payloadStart, moov.end, "trak")!)!;
+        const brokenBytes = healthyBytes.slice();
+        brokenBytes.set(ZEROED_PROFILE_HVCC_PAYLOAD, hvcc.payloadStart);
+        const broken = new File([brokenBytes], healthy.name, { type: healthy.type });
+
+        const unrepaired = new Input({ source: new BlobSource(broken), formats: [new Mp4InputFormat()] });
+        try {
+            const track = await unrepaired.getPrimaryVideoTrack();
+            expect(await track!.getCodecParameterString(), "codec string from the report").toBe("hvc1.0.0.L0");
+        } finally {
+            unrepaired.dispose();
+        }
+
+        const repaired = await repairBrokenHvcC(broken);
+        expect(repaired).not.toBeNull();
+        expect(repaired!.description).toEqual(GOOD_HVCC_PAYLOAD);
+        expect(new Uint8Array(await repaired!.file.arrayBuffer())).toEqual(healthyBytes);
+        await expectReadableHevc(repaired!.file);
+
+        const { indexed } = await indexMp4FileWithMoov(broken, false);
         expect(indexed?.videoCodecString).toBe("hvc1.1.6.L150");
     });
 });
@@ -301,6 +334,34 @@ describe("detectHvcCRepair (moov bytes, no file IO)", () => {
     it("returns null for a moov whose hvcC is already valid", () => {
         const moov = moovWithHvcc(GOOD_HVCC_PAYLOAD);
         expect(detectHvcCRepair(moov)).toBeNull();
+    });
+
+    it("copies only the profile block from the SPS and keeps the other header fields", () => {
+        const payload = ZEROED_PROFILE_HVCC_PAYLOAD.slice();
+        payload[21] = (payload[21]! & ~0x3) | 0x1; // 2-byte NAL lengths, unlike the rebuilt-header default
+        const padded = new Uint8Array(payload.length + 8);
+        padded.set(payload);
+        const repair = detectHvcCRepair(moovWithHvcc(padded));
+        expect(repair).not.toBeNull();
+        expect(repair!.reason).toBe("profile");
+        expect(repair!.rebuilt.byteLength, "box size").toBe(padded.byteLength);
+        expect(repair!.rebuilt.subarray(1, 13)).toEqual(GOOD_HVCC_PAYLOAD.subarray(1, 13));
+        expect(Array.from(repair!.rebuilt.subarray(13)), "untouched fields, arrays and padding").toEqual(
+            Array.from(padded.subarray(13)),
+        );
+        expect(hevcCodecStringFromHvcc(repair!.rebuilt, repair!.sampleEntry)).toBe("hvc1.1.6.L150");
+        const patched = moovWithHvcc(padded);
+        patched.set(repair!.rebuilt, repair!.moovRelPayloadStart);
+        expect(detectHvcCRepair(patched), "idempotent").toBeNull();
+    });
+
+    it("leaves a zeroed profile block alone when the declared arrays carry no SPS", () => {
+        // VPS (29 bytes) and PPS (12 bytes) arrays only; see the rebuildHvcC layout note.
+        const noSps = new Uint8Array(23 + 29 + 12);
+        noSps.set(ZEROED_PROFILE_HVCC_PAYLOAD.subarray(0, 23 + 29), 0);
+        noSps.set(ZEROED_PROFILE_HVCC_PAYLOAD.subarray(23 + 29 + 38), 23 + 29);
+        noSps[22] = 2;
+        expect(detectHvcCRepair(moovWithHvcc(noSps))).toBeNull();
     });
 
     it("returns null for a moov with no hvcC at all", () => {

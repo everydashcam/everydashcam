@@ -17,6 +17,7 @@ import { createLogger } from "../log.js";
 import { needsHevcRemux } from "../hevc-remux.js";
 import { hevcCodecStringFromHvcc } from "../parsers/internal/mp4-walker.js";
 import { detectHvcCRepair } from "./hvcc.js";
+import type { HvcCRepairReason } from "./hvcc-reason.js";
 import { findPhantomTracks, type PhantomEdit } from "./phantom-track.js";
 
 const log = createLogger("repair:moov");
@@ -39,7 +40,7 @@ export interface MoovRepair {
      * the broken header (bogus profile/level), and a config-aware canPlay probe on
      * that string would falsely reject a file that decodes fine after the splice.
      */
-    hvcc: { needsHevcRemux: boolean; reason: "header" | "arrays"; videoCodecString: string | null } | null;
+    hvcc: { needsHevcRemux: boolean; reason: HvcCRepairReason; videoCodecString: string | null } | null;
 }
 
 /**

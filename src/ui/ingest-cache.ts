@@ -19,6 +19,7 @@ import {
     unpackGpsRecordColumns,
 } from "../persist/gps-columns.js";
 import { fileIdentityKey, fileIdentityOf } from "../persist/identity.js";
+import { isHvcCRepairReason } from "../repair/hvcc-reason.js";
 import {
     buildCacheEntry,
     getIndexCacheEntries,
@@ -309,7 +310,7 @@ export function isCurrentRecordingMetadata(value: unknown): value is CachedRecor
             repair.hvcc !== null &&
             (typeof repair.hvcc !== "object" ||
                 typeof repair.hvcc.needsHevcRemux !== "boolean" ||
-                (repair.hvcc.reason !== "header" && repair.hvcc.reason !== "arrays") ||
+                !isHvcCRepairReason(repair.hvcc.reason) ||
                 !isNullableString(repair.hvcc.videoCodecString))
         ) {
             return false;

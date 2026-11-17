@@ -50,7 +50,11 @@ export interface RepairApplication {
     file: File;
     needsHevcRemux: boolean;
     phantomRepaired: boolean;
+    /** The hvcC repair made unplayable footage playable - the "damaged file" toast. */
     hvccRepaired: boolean;
+    /** Only the hvcC profile block was restored (pattern C): footage already
+     *  played natively, so the user is not told about it. */
+    hvccProfileRestored: boolean;
 }
 
 /**
@@ -64,7 +68,13 @@ export function applyIndexRepair(
     repair: IndexerRepair | undefined,
 ): RepairApplication {
     if (!repair) {
-        return { file, needsHevcRemux: indexedNeedsHevcRemux, phantomRepaired: false, hvccRepaired: false };
+        return {
+            file,
+            needsHevcRemux: indexedNeedsHevcRemux,
+            phantomRepaired: false,
+            hvccRepaired: false,
+            hvccProfileRestored: false,
+        };
     }
     return {
         file: applyMoovRepair(file, repair),
@@ -72,7 +82,8 @@ export function applyIndexRepair(
         // descriptor to the native path); a phantom-only repair keeps the indexed value.
         needsHevcRemux: repair.hvcc ? repair.hvcc.needsHevcRemux : indexedNeedsHevcRemux,
         phantomRepaired: repair.phantomNeutralized.length > 0,
-        hvccRepaired: repair.hvcc != null,
+        hvccRepaired: repair.hvcc != null && repair.hvcc.reason !== "profile",
+        hvccProfileRestored: repair.hvcc?.reason === "profile",
     };
 }
 
@@ -179,7 +190,7 @@ export function applyIndexedMetadata(
     candidate: VideoCandidate,
     indexed: IndexedMp4,
     repair: IndexerRepair | undefined,
-): { phantomRepaired: boolean; hvccRepaired: boolean } {
+): Pick<RepairApplication, "phantomRepaired" | "hvccRepaired" | "hvccProfileRestored"> {
     const applied = applyIndexRepair(candidate.file, indexed.needsHevcRemux, repair);
     candidate.file = applied.file;
     candidate.durationSec = candidate.logDurationSec ?? indexed.durationSec;
@@ -195,14 +206,20 @@ export function applyIndexedMetadata(
     candidate.needsHevcRemux = applied.needsHevcRemux;
     candidate.audioNeedsTranscode = indexed.audioNeedsTranscode;
     candidate.metadataReady = true;
-    if (repair) {
+    // A camera with pattern C has it in every HEVC file; per-file lines would
+    // push everything else out of the log ring, so the run summary counts them.
+    if (applied.phantomRepaired || applied.hvccRepaired) {
         log.info("applied container repair", {
             file: candidate.file.name,
-            phantom: repair.phantomNeutralized,
-            hvcc: repair.hvcc?.reason ?? null,
+            phantom: repair?.phantomNeutralized ?? [],
+            hvcc: repair?.hvcc?.reason ?? null,
         });
     }
-    return { phantomRepaired: applied.phantomRepaired, hvccRepaired: applied.hvccRepaired };
+    return {
+        phantomRepaired: applied.phantomRepaired,
+        hvccRepaired: applied.hvccRepaired,
+        hvccProfileRestored: applied.hvccProfileRestored,
+    };
 }
 
 // Decoder support for a codec string cannot change within a session, and the

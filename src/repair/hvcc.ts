@@ -1,6 +1,7 @@
-// Repair of HEVCDecoderConfigurationRecord (hvcC) for two independent damage
-// patterns. Both manifest in the browser as a black <video> screen with audio
-// playing (native or WebCodecs decoder finds no valid parameter sets).
+// Repair of HEVCDecoderConfigurationRecord (hvcC) for three independent damage
+// patterns. A and B manifest in the browser as a black <video> screen with
+// audio playing (native or WebCodecs decoder finds no valid parameter sets);
+// C breaks only the decode paths that go through a codec string.
 //
 // Pattern A - zeroed header. Some dashcam firmwares (observed on 70mai x800
 // after a "failed" finalization) write an hvcC where the header fields
@@ -19,7 +20,17 @@
 // bad arrays and zero-pad to keep the original payload size (the decoder
 // walks only numOfArrays entries, trailing zeros are never read).
 //
-// Both fixes preserve the on-disk hvcC box size, so stco/co64/stsz offsets
+// Pattern C - zeroed profile block. The header's profile_idc or level_idc is
+// 0 while the arrays are declared and valid. Thinkware U3000 Pro leaves all of
+// bytes 1-12 (profile, compatibility and constraint flags, level) at zero - a
+// diagnostic report indexed every HEVC clip as "hvc1.0.0.L0"; the committed
+// XEGA XG-37 track (sei-double-gps fixture) has profile_idc 0 with level 123.
+// Native <video> plays such files, but WebCodecs, MSE and mediabunny reject
+// the codec string, so export, blur and frame extraction cannot decode. Fix:
+// copy profile_tier_level from the SPS into those 12 bytes and keep every
+// other header field as written.
+//
+// All fixes preserve the on-disk hvcC box size, so stco/co64/stsz offsets
 // remain valid - only the payload bytes are replaced via zero-copy Blob
 // concatenation: file.slice() + Uint8Array + file.slice().
 
@@ -27,11 +38,14 @@ import {
     HEVC_NAL_PPS as NAL_TYPE_PPS,
     HEVC_NAL_SPS as NAL_TYPE_SPS,
     HEVC_NAL_VPS as NAL_TYPE_VPS,
+    HVCC_HEADER_BYTES,
     type HevcSps,
     parseHevcSps,
     writeHvcCHeader,
+    writeHvcCProfileTierLevel,
 } from "../hevc-parameter-sets.js";
 import { cleanHvccDescription } from "../hevc-remux.js";
+import type { HvcCRepairReason } from "./hvcc-reason.js";
 import { createLogger } from "../log.js";
 import {
     findBox,
@@ -65,7 +79,7 @@ export interface HvcCRepair {
     /** Rebuilt hvcC payload, same byte length as the original. */
     rebuilt: Uint8Array;
     /** Which damage pattern was fixed. */
-    reason: "header" | "arrays";
+    reason: HvcCRepairReason;
     /** Sample entry that holds the hvcC; the repair leaves it unchanged. */
     sampleEntry: HevcSampleEntry;
 }
@@ -75,7 +89,7 @@ export interface HvcCRepair {
  * payload + its moov-relative offset, or null when no hvcC is present / it is
  * healthy / the repair would be unsafe. Pure: no file IO.
  *
- * Two independent damage patterns are handled:
+ * Three damage patterns are handled:
  *   (a) Zeroed header (numOfArrays=0 but VPS/SPS/PPS sit in the tail) -
  *       rebuilt header from SPS introspection, body kept intact.
  *   (b) Header is fine but a NAL array has an invalid NAL_unit_type (BlackVue
@@ -83,6 +97,9 @@ export interface HvcCRepair {
  *       arrays). Cleaned via cleanHvccDescription (same logic the MSE backend
  *       uses at runtime) and zero-padded back to the original size so the box
  *       size - and every subsequent mp4 offset - stays intact.
+ *   (c) Declared arrays are fine but the profile/level block is zero
+ *       (Thinkware U3000 Pro). Only those header bytes are copied from the SPS;
+ *       may combine with (b).
  *
  * Used by the indexer worker (repair detection on moov bytes it already holds)
  * and by the file-level repairBrokenHvcC wrapper below.
@@ -109,7 +126,7 @@ export function detectHvcCRepair(moovBytes: Uint8Array): HvcCRepair | null {
     const payload = moovBytes.subarray(payloadStart, payloadEnd);
 
     let rebuilt: Uint8Array | null = null;
-    let reason: "header" | "arrays" = "header";
+    let reason: HvcCRepairReason = "header";
     if (isBrokenHeader(payload)) {
         try {
             rebuilt = rebuildHvcC(payload);
@@ -125,6 +142,12 @@ export function detectHvcCRepair(moovBytes: Uint8Array): HvcCRepair | null {
             padded.set(cleaned, 0);
             rebuilt = padded;
             reason = "arrays";
+        }
+        // Independent of B: the cleaned arrays still carry the SPS.
+        const restored = restoreZeroedProfile(rebuilt ?? payload);
+        if (restored) {
+            if (!rebuilt) reason = "profile";
+            rebuilt = restored;
         }
     }
     if (!rebuilt) return null;
@@ -340,6 +363,52 @@ function rebuildHvcC(payload: Uint8Array): Uint8Array | null {
     writeHvcCHeader(out, spec, arrays.length);
 
     return out;
+}
+
+/**
+ * Pattern C: returns a copy of `payload` with header bytes 1-12 taken from its
+ * SPS, or null when the record is not that defect. A general_profile_idc or
+ * general_level_idc of 0 is never valid, so the block is broken whenever
+ * either is zero; the SPS must name a real profile and level for the copy to
+ * help. All other header fields, including the NAL length size, stay as
+ * written - the arrays they describe are valid.
+ */
+function restoreZeroedProfile(payload: Uint8Array): Uint8Array | null {
+    if (payload.length <= HVCC_HEADER_BYTES || payload[0] !== 1) return null;
+    const profileIdc = payload[1]! & 0x1f;
+    const levelIdc = payload[12]!;
+    if (profileIdc !== 0 && levelIdc !== 0) return null;
+    const spsNalu = firstDeclaredSps(payload);
+    const sps = spsNalu ? parseHevcSps(spsNalu) : null;
+    if (!sps || sps.profile_idc === 0 || sps.level_idc === 0) return null;
+    const out = new Uint8Array(payload);
+    writeHvcCProfileTierLevel(out, sps);
+    return out;
+}
+
+/**
+ * First SPS NAL unit among the numOfArrays arrays the header declares, or null
+ * when there is none or a declared length runs past the payload. Unlike
+ * tryParseNalArraysAfterHeader this trusts the header's array count, so
+ * trailing padding after the declared arrays is allowed.
+ */
+function firstDeclaredSps(payload: Uint8Array): Uint8Array | null {
+    let p = HVCC_HEADER_BYTES;
+    for (let a = 0; a < payload[22]!; a++) {
+        if (p + 3 > payload.length) return null;
+        const nalUnitType = payload[p]! & 0x3f;
+        const numNalus = (payload[p + 1]! << 8) | payload[p + 2]!;
+        p += 3;
+        for (let n = 0; n < numNalus; n++) {
+            if (p + 2 > payload.length) return null;
+            const len = (payload[p]! << 8) | payload[p + 1]!;
+            p += 2;
+            if (p + len > payload.length) return null;
+            if (nalUnitType === NAL_TYPE_SPS && len > 0) return payload.subarray(p, p + len);
+            p += len;
+        }
+    }
+    return null;
 }
 
 // ====== utilities ======

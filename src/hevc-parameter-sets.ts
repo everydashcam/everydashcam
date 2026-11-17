@@ -139,18 +139,7 @@ export function parseHevcSps(spsNalu: Uint8Array): HevcSps | null {
  */
 export function writeHvcCHeader(out: Uint8Array, sps: HevcSps, numOfArrays: number): void {
     out[0] = 1; // configurationVersion
-    out[1] = ((sps.profile_space & 0x3) << 6) | ((sps.tier_flag & 0x1) << 5) | (sps.profile_idc & 0x1f);
-    // profile_compatibility_flags (32 bit BE)
-    writeU32BE(out, 2, sps.profile_compatibility_flags >>> 0);
-    // constraint_indicator_flags (48 bit BE)
-    const c = sps.constraint_indicator_48;
-    out[6] = Number((c >> 40n) & 0xffn);
-    out[7] = Number((c >> 32n) & 0xffn);
-    out[8] = Number((c >> 24n) & 0xffn);
-    out[9] = Number((c >> 16n) & 0xffn);
-    out[10] = Number((c >> 8n) & 0xffn);
-    out[11] = Number(c & 0xffn);
-    out[12] = sps.level_idc & 0xff;
+    writeHvcCProfileTierLevel(out, sps);
     // 4 reserved '1' + 12 bit min_spatial_segmentation_idc=0
     out[13] = 0xf0;
     out[14] = 0x00;
@@ -168,6 +157,26 @@ export function writeHvcCHeader(out: Uint8Array, sps: HevcSps, numOfArrays: numb
     // 2 bit constantFrameRate=0 + 3 bit numTemporalLayers + 1 bit temporalIdNested + 2 bit lengthSizeMinusOne=3
     out[21] = ((sps.numTemporalLayers & 0x7) << 3) | ((sps.temporalIdNested & 0x1) << 2) | 3;
     out[22] = numOfArrays & 0xff;
+}
+
+/**
+ * Writes the SPS general profile_tier_level into hvcC header bytes 1-12:
+ * profile space, tier and profile, compatibility flags, constraint flags and
+ * level. These are the fields the RFC 6381 codec string is built from.
+ */
+export function writeHvcCProfileTierLevel(out: Uint8Array, sps: HevcSps): void {
+    out[1] = ((sps.profile_space & 0x3) << 6) | ((sps.tier_flag & 0x1) << 5) | (sps.profile_idc & 0x1f);
+    // profile_compatibility_flags (32 bit BE)
+    writeU32BE(out, 2, sps.profile_compatibility_flags >>> 0);
+    // constraint_indicator_flags (48 bit BE)
+    const c = sps.constraint_indicator_48;
+    out[6] = Number((c >> 40n) & 0xffn);
+    out[7] = Number((c >> 32n) & 0xffn);
+    out[8] = Number((c >> 24n) & 0xffn);
+    out[9] = Number((c >> 16n) & 0xffn);
+    out[10] = Number((c >> 8n) & 0xffn);
+    out[11] = Number(c & 0xffn);
+    out[12] = sps.level_idc & 0xff;
 }
 
 /** One hvcC NAL array: every NAL unit of one parameter-set type. */

@@ -12,6 +12,7 @@ import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.
 import type { VideoCodec } from "mediabunny";
 
 import type { Mp4Rotation } from "../parsers/internal/mp4-walker.js";
+import type { HvcCRepairReason } from "../repair/hvcc-reason.js";
 
 /** Indexing result for one MP4 - metadata needed by ingest on the main thread. */
 export interface IndexedMp4 {
@@ -107,7 +108,7 @@ export interface IndexerRepair {
      * The videoCodecString parsed at index time came from the broken header
      * (bogus profile/level), so the config-aware canPlay probe must use this one.
      */
-    hvcc: { needsHevcRemux: boolean; reason: "header" | "arrays"; videoCodecString: string | null } | null;
+    hvcc: { needsHevcRemux: boolean; reason: HvcCRepairReason; videoCodecString: string | null } | null;
 }
 
 /** Request payload. */

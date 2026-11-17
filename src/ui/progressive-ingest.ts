@@ -264,6 +264,7 @@ interface ProgressiveIngestRun {
     listReadyAt: number;
     metadataFailed: number;
     repairedHvcc: number;
+    restoredHvccProfile: number;
     repairedPhantom: number;
     embeddedErrors: Array<{ file: string; extractor?: string; message: string; isSourceRead?: boolean }>;
     scheduling: IngestSchedulingPolicy | null;
@@ -330,6 +331,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
         listReadyAt: 0,
         metadataFailed: 0,
         repairedHvcc: 0,
+        restoredHvccProfile: 0,
         repairedPhantom: 0,
         embeddedErrors: [],
         scheduling: null,
@@ -1012,6 +1014,7 @@ async function readRecordingData(
         }
         if (session.run) {
             if (appliedRepair.hvccRepaired) session.run.repairedHvcc++;
+            if (appliedRepair.hvccProfileRestored) session.run.restoredHvccProfile++;
             if (appliedRepair.phantomRepaired) session.run.repairedPhantom++;
         }
     };
@@ -1452,6 +1455,7 @@ async function completeProgressiveRun(run: ProgressiveIngestRun, generation: num
         gpsRecordsTotal: state.gpsLog?.records.length ?? 0,
         metadataFailedCount: run.metadataFailed,
         repairedHvccCount: run.repairedHvcc,
+        restoredHvccProfileCount: run.restoredHvccProfile,
         repairedPhantomCount: run.repairedPhantom,
         errorCounts: { ...ctx.errorCounts, embedded: run.embeddedErrors.length },
         scheduling: run.scheduling ?? schedulingPolicy,
