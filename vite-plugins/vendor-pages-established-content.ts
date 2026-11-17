@@ -495,63 +495,63 @@ const PAGES: EstablishedCamera[] = [
                 compatibility:
                     "GPS is checked in the F200 PRO front recording. The rear clip in the checked pair has no GPS of its own; keep the front clip even when you only need the rear picture.",
                 openTip:
-                    "Open the parent folder containing both camera views. Preserve names beginning REC, EVT, PARK or MAN and their camera endings so ordinary, saved and parking recordings stay identifiable.",
+                    "Open the whole card so every camera loads together; interior camera recordings may be in a separate incabin_rec folder. Keep the original file names: the start marks ordinary, saved and parking recordings, and the last letter marks the camera.",
             },
             ru: {
                 lead: "Смотри передние и задние записи Thinkware F200 PRO вместе, с маршрутом из переднего видео. Сохрани нужный фрагмент в браузере.",
                 compatibility:
                     "GPS проверен в передней записи F200 PRO. В проверенной паре у заднего ролика собственного GPS нет: сохрани передний, даже если нужен только задний ракурс.",
                 openTip:
-                    "Открой общую папку с обоими ракурсами. Сохрани начала имён REC, EVT, PARK или MAN и окончания камер, чтобы отличать обычные, сохранённые и парковочные записи.",
+                    "Открой карту целиком, чтобы все камеры загрузились вместе: записи салонной камеры могут лежать в отдельной папке incabin_rec. Сохрани исходные имена файлов: по началу видно обычные, сохранённые и парковочные записи, а последняя буква обозначает камеру.",
             },
             de: {
                 lead: "Sieh Thinkware-F200-PRO-Aufnahmen von Front und Heck zusammen an, mit der Route aus dem Frontvideo. Speichere Ausschnitte im Browser.",
                 compatibility:
                     "GPS wurde in der F200-PRO-Frontaufnahme geprüft. Das zugehörige Heckvideo hat kein eigenes GPS; behalte das Frontvideo auch dann, wenn du nur die Heckansicht brauchst.",
                 openTip:
-                    "Öffne den gemeinsamen Ordner beider Ansichten. Behalte Namensanfänge wie REC, EVT, PARK oder MAN und die Kamera-Endungen, damit normale, gespeicherte und Parkaufnahmen erkennbar bleiben.",
+                    "Öffne die ganze Speicherkarte, damit alle Kameras zusammen geladen werden; die Innenraumkamera kann in einem eigenen Ordner incabin_rec liegen. Behalte die Original-Dateinamen: Der Anfang kennzeichnet normale, gespeicherte und Parkaufnahmen, der letzte Buchstabe die Kamera.",
             },
             es: {
                 lead: "Mira juntas las cámaras delantera y trasera de Thinkware F200 PRO, con la ruta del vídeo delantero. Guarda un fragmento en el navegador.",
                 compatibility:
                     "El GPS se ha comprobado en la grabación delantera F200 PRO. El vídeo trasero del par comprobado no tiene GPS propio; conserva el delantero aunque solo necesites la vista trasera.",
                 openTip:
-                    "Abre la carpeta común de ambas cámaras. Conserva los prefijos REC, EVT, PARK o MAN y las terminaciones de cámara para distinguir grabaciones normales, guardadas y de aparcamiento.",
+                    "Abre la tarjeta completa para que todas las cámaras se carguen juntas; la cámara interior puede estar en una carpeta incabin_rec aparte. Conserva los nombres originales: el inicio distingue grabaciones normales, guardadas y de aparcamiento, y la última letra indica la cámara.",
             },
             fr: {
                 lead: "Regarde ensemble l’avant et l’arrière de la Thinkware F200 PRO, avec le trajet de la vidéo avant. Enregistre un extrait dans ton navigateur.",
                 compatibility:
                     "Le GPS a été vérifié dans la vidéo avant F200 PRO. La vidéo arrière de la paire vérifiée n’a pas son propre GPS ; garde l’avant même si tu ne veux voir que l’arrière.",
                 openTip:
-                    "Ouvre le dossier commun aux deux caméras. Garde les préfixes REC, EVT, PARK ou MAN et les terminaisons de caméra pour distinguer vidéos normales, sauvegardées et de stationnement.",
+                    "Ouvre la carte entière pour charger toutes les caméras ensemble ; la caméra intérieure peut se trouver dans un dossier incabin_rec séparé. Garde les noms d’origine : le début distingue les vidéos normales, sauvegardées et de stationnement, et la dernière lettre indique la caméra.",
             },
             pl: {
                 lead: "Oglądaj razem przód i tył z Thinkware F200 PRO z trasą z przedniego filmu. Zapisz potrzebny fragment w przeglądarce.",
                 compatibility:
                     "GPS sprawdzono w przednim nagraniu F200 PRO. Tylny film ze sprawdzonej pary nie ma własnego GPS; zachowaj przedni, nawet jeśli potrzebujesz tylko tylnego widoku.",
                 openTip:
-                    "Otwórz wspólny folder obu kamer. Zachowaj początki REC, EVT, PARK lub MAN oraz końcówki kamer, aby rozróżniać nagrania zwykłe, zapisane i parkingowe.",
+                    "Otwórz całą kartę, aby wszystkie kamery wczytały się razem; nagrania kamery wewnętrznej mogą leżeć w osobnym folderze incabin_rec. Zachowaj oryginalne nazwy plików: początek odróżnia nagrania zwykłe, zapisane i parkingowe, a ostatnia litera oznacza kamerę.",
             },
             zh: {
                 lead: "一起查看 Thinkware F200 PRO 的前后录像，并显示前置视频中的路线。在浏览器中保存需要的片段。",
                 compatibility:
                     "已在 F200 PRO 前置录像中验证 GPS。经验证的配对后置视频没有自身的 GPS；即使只需要后置画面，也请保留前置视频。",
                 openTip:
-                    "打开同时包含两个摄像头录像的上级文件夹。保留 REC、EVT、PARK、MAN 等文件名前缀及摄像头结尾，以区分普通、已保存和停车录像。",
+                    "打开整张存储卡，让所有摄像头一起加载；车内摄像头的录像可能位于单独的 incabin_rec 文件夹中。请保留原始文件名：开头区分普通、已保存和停车录像，最后一个字母表示摄像头。",
             },
             ja: {
                 lead: "Thinkware F200 PRO の前後映像を、前方動画のルートと一緒に確認。ブラウザーで必要な場面を保存できます。",
                 compatibility:
                     "F200 PRO の前方録画で GPS を確認しています。確認した後方動画には独自の GPS がないため、後方だけを見たい場合も前方動画を残してください。",
                 openTip:
-                    "両方の映像を含む親フォルダーを開きます。通常・保存済み・駐車録画を区別できるよう、REC、EVT、PARK、MAN などの先頭とカメラを示す末尾を保ってください。",
+                    "すべてのカメラをまとめて読み込むため、カード全体を開いてください。車内カメラの録画は別の incabin_rec フォルダーにある場合があります。元のファイル名を保ってください。先頭で通常・保存済み・駐車録画を区別し、末尾の文字でカメラを示します。",
             },
             ko: {
                 lead: "Thinkware F200 PRO의 앞뒤 영상을 앞쪽 영상의 경로와 함께 봐요. 필요한 구간을 브라우저에서 저장할 수 있어요.",
                 compatibility:
                     "F200 PRO 앞쪽 녹화에서 GPS를 확인했어요. 확인한 뒤쪽 영상에는 자체 GPS가 없으므로 뒤쪽 화면만 필요해도 앞쪽 파일을 보관해 주세요.",
                 openTip:
-                    "두 카메라가 함께 들어 있는 상위 폴더를 열어 주세요. REC, EVT, PARK, MAN 같은 시작 부분과 카메라를 나타내는 끝부분을 유지하면 일반·저장·주차 녹화를 구분할 수 있어요.",
+                    "모든 카메라를 함께 불러오려면 카드 전체를 열어 주세요. 실내 카메라 녹화는 별도의 incabin_rec 폴더에 있을 수 있어요. 원래 파일명을 유지하세요. 시작 부분으로 일반·저장·주차 녹화를 구분하고, 마지막 글자로 카메라를 나타내요.",
             },
         },
     },
