@@ -320,9 +320,12 @@ test("pinning and an open menu keep fullscreen controls available during playbac
     await expect(player).toHaveClass(/controls-visible/);
     await pin.click();
     await moveAwayFromControls(page);
-    await page.clock.fastForward(800);
+    // The installed clock keeps advancing with real time, and pausing it would
+    // stall the rAF-driven clip switches of this looping trip. A check just
+    // below the idle deadline would race test latency, so check right after
+    // the last movement and only then cross the deadline.
     await expect(player).toHaveClass(/controls-visible/);
-    await page.clock.fastForward(500);
+    await page.clock.fastForward(1300);
     await expect(player).not.toHaveClass(/controls-visible/);
     await page.keyboard.press("Tab");
     await expect(player).toHaveClass(/controls-visible/);
