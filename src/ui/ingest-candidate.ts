@@ -7,6 +7,7 @@ import { type IndexerRepair } from "../indexer.js";
 import type { IndexedMp4 } from "../workers/indexer-protocol.js";
 import type { GpsRecord, VendorFile } from "../parsers/types.js";
 import {
+    classifyFilenameIgnoresContainerClock,
     classifyFilenameTimelapse,
     matchFilenameChannel,
     matchFilenameMode,
@@ -118,6 +119,17 @@ export function filenameClassifierFields(file: VendorFile): FilenameClassifierFi
     };
 }
 
+/**
+ * The container creation time a recording offers as clock evidence: the
+ * indexed mvhd stamp, or null when its filename family declares that stamp is
+ * not a clock (classifyFilenameIgnoresContainerClock). Every start, zone and
+ * wall-span estimate reads the candidate's createdUtc, so dropping the stamp
+ * here keeps all of them on the filename and GPS clocks.
+ */
+export function containerClockUtc(file: VendorFile, indexedCreatedUtc: Date | null): Date | null {
+    return indexedCreatedUtc !== null && classifyFilenameIgnoresContainerClock(file) ? null : indexedCreatedUtc;
+}
+
 /** Parameters for a provisional (filename-only) VideoCandidate. */
 export interface ProvisionalCandidateParams {
     file: VendorFile;
@@ -194,7 +206,7 @@ export function applyIndexedMetadata(
     const applied = applyIndexRepair(candidate.file, indexed.needsHevcRemux, repair);
     candidate.file = applied.file;
     candidate.durationSec = candidate.logDurationSec ?? indexed.durationSec;
-    candidate.createdUtc = indexed.createdUtc;
+    candidate.createdUtc = containerClockUtc(candidate, indexed.createdUtc);
     candidate.codec = indexed.codec;
     candidate.codecParam = indexed.codecParam;
     candidate.videoCodecString = indexed.videoCodecString;

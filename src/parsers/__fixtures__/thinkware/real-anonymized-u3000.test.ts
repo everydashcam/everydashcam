@@ -17,11 +17,21 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { cameraFingerprint } from "../../camera-fingerprint.js";
+import { classifyFilenameTime } from "../../filename/index.js";
 import { indexMp4FileWithMoov } from "../../internal/mp4-indexing.js";
 import { KNOTS_TO_MS } from "../../types.js";
 import type { GpsRecord, VendorFile } from "../../types.js";
 import { classifyFiles, dispatchParseVideoEmbeddedGps } from "../../registry.js";
+import { applyIndexedMetadata, buildProvisionalCandidate } from "../../../ui/ingest-candidate.js";
 import type { IndexedMp4 } from "../../../workers/indexer-protocol.js";
+import {
+    frameMediaOffset,
+    groupTrips,
+    rederiveStartUtcForCandidates,
+    tripChannels,
+    type VideoCandidate,
+} from "../../../trips.js";
 import { expectPlausibleGpsTrack } from "../helpers.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +55,32 @@ async function fixtureIndex(): Promise<IndexedMp4> {
     return indexed!;
 }
 
+/** A candidate built the way ingest builds it, with the real clip's container
+ *  stamp and duration in place of the fixture's 9 s excerpt. */
+function ingestCandidate(
+    file: VendorFile,
+    records: GpsRecord[],
+    indexed: IndexedMp4,
+    real: { createdIso: string; durationSec: number },
+): VideoCandidate {
+    const candidate = buildProvisionalCandidate({
+        file,
+        fingerprint: cameraFingerprint(file),
+        startUtc: 0,
+        startSource: "name",
+        cameraTzSec: null,
+        durationSec: real.durationSec,
+        records,
+        appliedExtractors: records.length > 0 ? ["nmea-subtitle"] : [],
+    });
+    applyIndexedMetadata(
+        candidate,
+        { ...indexed, createdUtc: new Date(real.createdIso), durationSec: real.durationSec },
+        undefined,
+    );
+    return candidate;
+}
+
 describe("real-anonymized Thinkware U3000 Pro front", () => {
     it("parses the scrubbed subtitle telemetry with real times and speed", async () => {
         const { records, extractor } = await parseFixture(cardFile("cont_rec", "REC_20261115_165549_F.MP4"));
@@ -64,5 +100,67 @@ describe("real-anonymized Thinkware U3000 Pro front", () => {
     it("keeps the real container stamp, 27 s after the name", async () => {
         const indexed = await fixtureIndex();
         expect(indexed.createdUtc?.toISOString()).toBe("2026-11-15T22:56:16.000Z");
+    });
+});
+
+describe("real-anonymized Thinkware U3000 Pro drive", () => {
+    it("keeps a cold-start REC pair with the interior although its container stamp runs 27 s ahead", async () => {
+        const indexed = await fixtureIndex();
+        const front = cardFile("cont_rec", "REC_20261115_165549_F.MP4");
+        const { records } = await parseFixture(front);
+        const rear = cardFile("cont_rec", "REC_20261115_165549_R.MP4");
+        const rearRecords = records.map((record) => ({ ...record, mp4Filename: rear.file.name }));
+        const realRec = (createdIso: string) => ({ createdIso, durationSec: 60 });
+        const realExt = (createdIso: string) => ({ createdIso, durationSec: 59.9994 });
+
+        const candidates = [
+            // The first minute of the drive, before the GPS fix.
+            ingestCandidate(
+                cardFile("cont_rec", "REC_20261115_165449_F.MP4"),
+                [],
+                indexed,
+                realRec("2026-11-15T22:55:16Z"),
+            ),
+            ingestCandidate(
+                cardFile("cont_rec", "REC_20261115_165449_R.MP4"),
+                [],
+                indexed,
+                realRec("2026-11-15T22:55:16Z"),
+            ),
+            ingestCandidate(front, records, indexed, realRec("2026-11-15T22:56:16Z")),
+            ingestCandidate(rear, rearRecords, indexed, realRec("2026-11-15T22:56:16Z")),
+            ingestCandidate(
+                cardFile("incabin_rec", "EXT_20261115_165455_I.MP4"),
+                [],
+                indexed,
+                realExt("2026-11-15T22:54:55Z"),
+            ),
+            ingestCandidate(
+                cardFile("incabin_rec", "EXT_20261115_165555_I.MP4"),
+                [],
+                indexed,
+                realExt("2026-11-15T22:55:55Z"),
+            ),
+        ];
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+
+        const startByName = Object.fromEntries(candidates.map((c) => [c.file.name, c.startUtc]));
+        expect(startByName).toEqual({
+            "REC_20261115_165449_F.MP4": unix("2026-11-15T22:54:49Z"),
+            "REC_20261115_165449_R.MP4": unix("2026-11-15T22:54:49Z"),
+            "REC_20261115_165549_F.MP4": unix("2026-11-15T22:55:49Z"),
+            "REC_20261115_165549_R.MP4": unix("2026-11-15T22:55:49Z"),
+            "EXT_20261115_165455_I.MP4": unix("2026-11-15T22:54:55Z"),
+            "EXT_20261115_165555_I.MP4": unix("2026-11-15T22:55:55Z"),
+        });
+
+        const trips = groupTrips(candidates);
+        expect(trips, "one drive").toHaveLength(1);
+        const trip = trips[0]!;
+        expect(tripChannels(trip)).toEqual(["front", "rear", "interior"]);
+        const interiorStart = trip.frames.find((frame) => frame.channels.interior && frame.channels.front)!;
+        expect(interiorStart.channels.front!.file.name).toBe("REC_20261115_165449_F.MP4");
+        expect(frameMediaOffset(interiorStart, "front") - frameMediaOffset(interiorStart, "interior")).toBeCloseTo(6, 6);
+        expect(frameMediaOffset(interiorStart, "rear")).toBe(frameMediaOffset(interiorStart, "front"));
     });
 });

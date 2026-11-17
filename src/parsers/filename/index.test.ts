@@ -29,6 +29,7 @@ import {
 import {
     classifyFilenameChannel,
     classifyFilenameClockTimelapse,
+    classifyFilenameIgnoresContainerClock,
     classifyFilenameIndependentCut,
     classifyFilenameMode,
     classifyFilenameRecordingKey,
@@ -1200,6 +1201,20 @@ describe("thinkware U3000 Pro folders", () => {
         expect(classifyFilenameIndependentCut(interior)).toBe(true);
         expect(classifyFilenameIndependentCut(front)).toBe(false);
         expect(classifyFilenameIndependentCut(card("evt_rec", "EVT_20261116_175357_F.MP4"))).toBe(false);
+    });
+
+    it("starts every thinkware clip by its name rather than its container stamp", () => {
+        for (const file of [
+            front,
+            rear,
+            interior,
+            card("parking_rec", "PAK_20261116_104313_F.MP4"),
+            card("evt_rec", "EVT_20261116_175357_R.MP4"),
+            vf("REC_2026_06_01_21_16_47_F.MP4"),
+        ]) {
+            expect(classifyFilenameIgnoresContainerClock(file), file.relativePath).toBe(true);
+        }
+        expect(classifyFilenameIgnoresContainerClock(vf("NO20260429-171553-000580F.MP4"))).toBe(false);
     });
 
     it.each([

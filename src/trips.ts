@@ -143,7 +143,8 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     localClockOffsetHintSec: number | null;
     // mvhd.creation_time as Date (interpreted as UTC directly). Stored in the
     // candidate so startUtc can be recalculated after camera TZ is refined
-    // from the complete set of indexed recordings.
+    // from the complete set of indexed recordings. Null when the filename
+    // family declares the stamp is not a clock (containerClockUtc).
     createdUtc: Date | null;
     // GPS points for this MP4 (may be empty)
     records: GpsRecord[];

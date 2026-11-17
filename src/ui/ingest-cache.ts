@@ -39,6 +39,7 @@ import { buildEmbeddedGpsCacheArtifactUpdates } from "./ingest-cache-artifacts.j
 import {
     applyIndexedMetadata,
     buildProvisionalCandidate,
+    containerClockUtc,
     filenameClassifierFields,
     vendorFileKey,
 } from "./ingest-candidate.js";
@@ -358,7 +359,7 @@ export function hydrateCandidate(
     const derived = deriveStartUtc({
         file: file.file,
         fingerprint,
-        createdUtc: entry.metadata.indexed.createdUtc,
+        createdUtc: containerClockUtc(file.file, entry.metadata.indexed.createdUtc),
         durationSec: entry.metadata.indexed.durationSec,
         records,
         fingerprintTz: null,

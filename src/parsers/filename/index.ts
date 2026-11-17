@@ -14,6 +14,7 @@ import type { RecordingMode, VendorFile } from "../types.js";
 import { FILENAME_CAMERA_KEY } from "./camera-key.js";
 import { asOriginalDownload } from "./download-copy.js";
 import { FILENAME_CHANNEL } from "./channel.js";
+import { FILENAME_IGNORED_CONTAINER_CLOCK } from "./container-clock.js";
 import { FILENAME_INDEPENDENT_CUT } from "./independent-cut.js";
 import { FILENAME_MODE } from "./mode.js";
 import { FILENAME_SEQUENCE } from "./sequence.js";
@@ -98,4 +99,11 @@ export function classifyFilenameRecordingKey(file: VendorFile): string | null {
  *  assumed to be cut together unless the filename family says otherwise. */
 export function classifyFilenameIndependentCut(file: VendorFile): boolean {
     return walk(FILENAME_INDEPENDENT_CUT, file).value ?? false;
+}
+
+/** Whether the file's container creation time must not anchor its start (see
+ *  FILENAME_IGNORED_CONTAINER_CLOCK). Defaults to false: the container stamp
+ *  stays a clock candidate unless the filename family says otherwise. */
+export function classifyFilenameIgnoresContainerClock(file: VendorFile): boolean {
+    return walk(FILENAME_IGNORED_CONTAINER_CLOCK, file).value ?? false;
 }
