@@ -94,6 +94,17 @@ const BROKEN_HVCC_PAYLOAD = bytes(
 // every other field, including numOfArrays, intact.
 const ZEROED_PROFILE_HVCC_PAYLOAD = GOOD_HVCC_PAYLOAD.slice().fill(0, 1, 13);
 
+// The same pattern as written by a real Thinkware U3000 Pro (firmware 1.00.06,
+// REC front file): header bytes 1-12 zero, the remaining header fields and the
+// VPS/SPS/PPS arrays intact. Every REC and PAK file of the sample has it.
+const U3000_PRO_HVCC_PAYLOAD = bytes(
+    "01 00 00 00 00 00 00 00 00 00 00 00 00 f0 00 fc fd f8 f8 00 00 0f 03 " +
+        "a0 00 01 00 17 40 01 0c 01 ff ff 01 c0 00 00 03 00 80 00 00 03 00 00 03 00 99 ac 09 " +
+        "a1 00 01 00 2c 42 01 01 01 c0 00 00 03 00 80 00 00 03 00 00 03 00 99 a0 01 e0 20 02 1c 59 ab bb " +
+        "c9 2e b0 16 a0 20 20 20 80 00 01 f4 00 00 3a 98 04 " +
+        "a2 00 01 00 0a 44 01 c1 72 b0 9c 0a 01 46 24",
+);
+
 // Container tests inspect metadata and packet bytes without decoding footage.
 const SYNTHETIC_PACKET = new Uint8Array([0, 0, 0, 3, 0x26, 0x01, 0x80]);
 
@@ -353,6 +364,18 @@ describe("detectHvcCRepair (moov bytes, no file IO)", () => {
         const patched = moovWithHvcc(padded);
         patched.set(repair!.rebuilt, repair!.moovRelPayloadStart);
         expect(detectHvcCRepair(patched), "idempotent").toBeNull();
+    });
+
+    it("restores the profile block of a real thinkware u3000 pro hvcC from its SPS", () => {
+        expect(hevcCodecStringFromHvcc(U3000_PRO_HVCC_PAYLOAD, "hvc1"), "as written").toBe("hvc1.0.0.L0");
+        const repair = detectHvcCRepair(moovWithHvcc(U3000_PRO_HVCC_PAYLOAD));
+        expect(repair).not.toBeNull();
+        expect(repair!.reason).toBe("profile");
+        expect(Array.from(repair!.rebuilt.subarray(13)), "untouched fields and arrays").toEqual(
+            Array.from(U3000_PRO_HVCC_PAYLOAD.subarray(13)),
+        );
+        // Main profile, Main tier, level 5.1, as declared in the SPS.
+        expect(hevcCodecStringFromHvcc(repair!.rebuilt, repair!.sampleEntry)).toBe("hvc1.1.3.L153.80");
     });
 
     it("leaves a zeroed profile block alone when the declared arrays carry no SPS", () => {

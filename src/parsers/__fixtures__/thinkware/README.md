@@ -8,8 +8,10 @@ gsensori,<range>,<sens>,X,Y,Z;[GxRMC,...*cc;]CAR,<obd>
 ```
 
 NMEA is written **without** a leading `$`, segments are `;`-delimited, accel is
-~10 Hz, GPS ~1 Hz, and GPS appears only in the **front** file. The real F200 PRO
-rear carries **no subtitle track at all** (video+audio only). Parsed by
+~10 Hz and GPS ~1 Hz. The real F200 PRO writes GPS only in the **front** file;
+its rear carries **no subtitle track at all** (video+audio only). The U3000 Pro
+rear carries a byte-identical copy of the front track, and its interior camera
+(`incabin_rec/EXT_..._I`) has no subtitle track. Parsed by
 `src/parsers/internal/sbtl-nmea-extract.ts`.
 
 ## Files
@@ -34,3 +36,9 @@ rear carries **no subtitle track at all** (video+audio only). Parsed by
   pair for the channel-anchoring regression test
   (`real-anonymized-pair.test.ts`); the pair's real mvhd/duration values are
   documented there.
+- `real-anonymized-u3000.mp4` - the first 10 GPS fixes of a real U3000 Pro
+  front clip (`REC_20261115_165549_F.MP4`, firmware 1.00.06), coordinates
+  scrubbed like `real-anonymized.mp4`. Unlike that fixture it keeps the source
+  mvhd stamp (name time + 27 s, as on every REC and PAK file of the sample) and
+  the 100 ms cue spacing. `real-anonymized-u3000.test.ts` lists the clip
+  metadata read from the sample card.

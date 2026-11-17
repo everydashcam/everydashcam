@@ -6,7 +6,7 @@
 // with NMEA written WITHOUT a leading '$', ';'-delimited inline. GPS appears
 // ~1 Hz, accel every cue, matching the device.
 //
-// `buildSbtlMp4(cueTexts)` is exported so scripts/anonymize-thinkware-mp4.mjs
+// `buildSbtlMp4(cueTexts, options)` is exported so scripts/anonymize-thinkware-mp4.mjs
 // can reuse the exact container layout with real (coordinate-scrubbed) cues.
 // Running this file directly writes synthetic-fseries.mp4 (synthetic cues).
 
@@ -36,19 +36,24 @@ const CREATION_TIME = 3851323200; // 2026-01-15 12:00:00 in the MP4 epoch
 /**
  * Builds a minimal ISOBMFF file (ftyp + moov + mdat) with a single tx3g
  * subtitle track whose samples are `cueTexts`. moov-at-start; one chunk.
+ * `creationTime` (MP4-epoch seconds) and `cueDurationMs` let the anonymizer
+ * keep the source recording's mvhd stamp and cue spacing; the synthetic
+ * fixtures use the defaults.
  * @param {string[]} cueTexts
+ * @param {{ creationTime?: number, cueDurationMs?: number }} [options]
  * @returns {Buffer}
  */
-export function buildSbtlMp4(cueTexts) {
+export function buildSbtlMp4(cueTexts, { creationTime = CREATION_TIME, cueDurationMs = 1000 } = {}) {
     const samples = cueTexts.map(tx3gSample);
     const sampleSizes = samples.map((s) => s.length);
+    const durationMs = samples.length * cueDurationMs;
 
     const mvhd = (() => {
         const p = Buffer.alloc(108);
-        p.writeUInt32BE(CREATION_TIME, 4);
-        p.writeUInt32BE(CREATION_TIME, 8);
+        p.writeUInt32BE(creationTime, 4);
+        p.writeUInt32BE(creationTime, 8);
         p.writeUInt32BE(1000, 12);
-        p.writeUInt32BE(samples.length * 1000, 16);
+        p.writeUInt32BE(durationMs, 16);
         return box("mvhd", p);
     })();
 
@@ -60,10 +65,10 @@ export function buildSbtlMp4(cueTexts) {
 
     const mdhd = (() => {
         const p = Buffer.alloc(24);
-        p.writeUInt32BE(CREATION_TIME, 4);
-        p.writeUInt32BE(CREATION_TIME, 8);
+        p.writeUInt32BE(creationTime, 4);
+        p.writeUInt32BE(creationTime, 8);
         p.writeUInt32BE(1000, 12);
-        p.writeUInt32BE(samples.length * 1000, 16);
+        p.writeUInt32BE(durationMs, 16);
         return box("mdhd", p);
     })();
 
@@ -74,7 +79,7 @@ export function buildSbtlMp4(cueTexts) {
         return box("stsd", Buffer.concat([Buffer.alloc(4), u32be(1), entry]));
     })();
 
-    const stts = box("stts", Buffer.concat([Buffer.alloc(4), u32be(1), u32be(samples.length), u32be(1000)]));
+    const stts = box("stts", Buffer.concat([Buffer.alloc(4), u32be(1), u32be(samples.length), u32be(cueDurationMs)]));
     const stsc = box("stsc", Buffer.concat([Buffer.alloc(4), u32be(1), u32be(1), u32be(samples.length), u32be(1)]));
     const stsz = box("stsz", Buffer.concat([Buffer.alloc(4), u32be(0), u32be(samples.length), ...sampleSizes.map(u32be)]));
     const stcoPlaceholder = box("stco", Buffer.concat([Buffer.alloc(4), u32be(1), u32be(0)]));
@@ -88,10 +93,10 @@ export function buildSbtlMp4(cueTexts) {
     const tkhd = (() => {
         const p = Buffer.alloc(84);
         p.writeUInt32BE(7, 0);
-        p.writeUInt32BE(CREATION_TIME, 4);
-        p.writeUInt32BE(CREATION_TIME, 8);
+        p.writeUInt32BE(creationTime, 4);
+        p.writeUInt32BE(creationTime, 8);
         p.writeUInt32BE(1, 12);
-        p.writeUInt32BE(samples.length * 1000, 20);
+        p.writeUInt32BE(durationMs, 20);
         return box("tkhd", p);
     })();
     const trak = box("trak", Buffer.concat([tkhd, mdia]));

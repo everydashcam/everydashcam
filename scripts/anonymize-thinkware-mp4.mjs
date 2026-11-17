@@ -12,7 +12,9 @@
 //     speed, course, and the real gsensori accel counts are kept (not sensitive
 //     without coordinates, per the private-zone policy);
 //  4. truncate to the first ~10 GPS fixes for a small fixture;
-//  5. re-wrap into the same minimal tx3g container the synthetic fixture uses.
+//  5. re-wrap into the same minimal tx3g container the synthetic fixture uses,
+//     keeping the source mvhd creation_time and cue spacing (a clock stamp is
+//     not sensitive without coordinates and footage).
 //
 // Usage: node scripts/anonymize-thinkware-mp4.mjs <input.mp4> <output.mp4>
 // Requires ffmpeg in PATH.
@@ -71,6 +73,41 @@ function scrubCue(cueText, fixIndex) {
     });
 }
 
+// MP4 epoch (1904-01-01) minus Unix epoch, in seconds.
+const MP4_EPOCH_OFFSET_SEC = 2082844800;
+
+// Reads the source mvhd creation_time and the subtitle cue spacing via ffprobe.
+function sourceTiming(inputPath) {
+    const probe = spawnSync(
+        "ffprobe",
+        [
+            "-v",
+            "error",
+            "-select_streams",
+            "s:0",
+            "-show_entries",
+            "stream=duration,nb_frames:format_tags=creation_time",
+            "-of",
+            "json",
+            inputPath,
+        ],
+        { encoding: "utf8" },
+    );
+    if (probe.status !== 0) {
+        console.error(`ffprobe failed: ${probe.stderr || probe.error}`);
+        exit(1);
+    }
+    const info = JSON.parse(probe.stdout);
+    const createdMs = Date.parse(info.format?.tags?.creation_time ?? "");
+    const stream = info.streams?.[0];
+    const cueDurationMs = Math.round((Number(stream?.duration) * 1000) / Number(stream?.nb_frames));
+    if (!Number.isFinite(createdMs) || !(cueDurationMs > 0)) {
+        console.error("source has no mvhd creation_time or subtitle cue timing");
+        exit(1);
+    }
+    return { creationTime: Math.round(createdMs / 1000) + MP4_EPOCH_OFFSET_SEC, cueDurationMs };
+}
+
 function main() {
     const [, , inputPath, outputPath] = argv;
     if (!inputPath || !outputPath) {
@@ -104,7 +141,7 @@ function main() {
         exit(1);
     }
 
-    const mp4 = buildSbtlMp4(out);
+    const mp4 = buildSbtlMp4(out, sourceTiming(inputPath));
     writeFileSync(resolve(outputPath), mp4);
     console.error(`wrote ${mp4.length} bytes (${out.length} cues, ${fixes} fixes) to ${outputPath}`);
 }
