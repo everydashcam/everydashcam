@@ -199,8 +199,9 @@ export function initServiceWorkerUpdates(options: {
         observer.refresh();
     });
 
-    // An update installed by an earlier visit is already waiting now. Reading
-    // it here, not after the deferred register(), shows it without delay.
-    if (options.loadController) void observer.readAtLoad(() => container.getRegistration());
+    // Read now, not after the deferred register(): a controlled page shows an
+    // update installed by an earlier visit without delay, and a hard-reloaded
+    // page learns which workers it outdates before a newer one can install.
+    void observer.readAtLoad(() => container.getRegistration());
     return (registration) => observer.adopt(registration);
 }

@@ -23,8 +23,9 @@ export interface ObservedRegistration extends EventTarget {
 
 /** What the page knows about releases newer than the one it runs. */
 export interface UpdateState {
-    /** The installed next release waiting to take over. Null when nothing waits
-     *  and during a first installation, which is not an update. */
+    /** The installed next release waiting to take over. Null when nothing waits,
+     *  during a first installation, which is not an update, and when a page
+     *  loaded without a worker already runs that release (see readAtLoad). */
     waitingWorker: ObservedWorker | null;
     /** The page runs an older release than the newest one the browser holds:
      *  an update waits, or the page loaded under a worker that no longer
@@ -37,15 +38,19 @@ export interface UpdateState {
 
 export interface UpdateObserver {
     /** Starts reading a registration from getRegistration() or register().
-     *  Safe to call repeatedly with the same object. */
+     *  Safe to call repeatedly with the same object. On a page loaded without a
+     *  worker, the first call decides which workers the page already outdates. */
     adopt(registration: ObservedRegistration): void;
     /** Re-reads the registration and the page's controller, reports a change
      *  through onChange and returns the current state. Idempotent. */
     refresh(): UpdateState;
     /**
-     * First read after page load, for a page loaded under a worker: adopts its
-     * registration without waiting for the deferred register(), so an update
-     * installed by an earlier visit shows at once. A failed lookup is logged.
+     * First read after page load: adopts the registration without waiting for
+     * the deferred register(). A page loaded under a worker shows an update
+     * installed by an earlier visit at once. A page loaded without one (a hard
+     * reload bypasses the worker) came from the network, so it already runs
+     * the release of every worker this read finds, or a newer one; none of
+     * them is reported. A failed lookup is logged.
      */
     readAtLoad(getRegistration: () => Promise<ObservedRegistration | undefined>): Promise<void>;
 }
@@ -91,6 +96,11 @@ export function createUpdateObserver(options: {
     const watchedRegistrations = new WeakSet<ObservedRegistration>();
     const watchedWorkers = new WeakSet<ObservedWorker>();
     const reportedWorkers = new WeakSet<ObservedWorker>();
+    // Workers that a page loaded without a worker already outdates (see
+    // readAtLoad). Reporting one would offer a restart into the page's own
+    // release, which fails while another window keeps the worker waiting.
+    const workersOutdatedByPage = new WeakSet<ObservedWorker>();
+    let hasAdopted = false;
     let state: UpdateState = { waitingWorker: null, isPageBehind: false, updateSerial: 0 };
     let lastCheckMs = options.page.now();
 
@@ -108,7 +118,7 @@ export function createUpdateObserver(options: {
         watchWorker(registration?.installing ?? null);
         const waiting = registration?.waiting ?? null;
         // A first installation passes through `waiting` with no active worker.
-        const waitingWorker = waiting && registration?.active ? waiting : null;
+        const waitingWorker = waiting && registration?.active && !workersOutdatedByPage.has(waiting) ? waiting : null;
         const controller = options.currentController();
         const hasControllerChanged =
             options.loadController !== null && controller !== null && controller !== options.loadController;
@@ -133,6 +143,13 @@ export function createUpdateObserver(options: {
     };
 
     const adopt = (next: ObservedRegistration): void => {
+        // readAtLoad normally makes this first read right after load. If the
+        // lookup fails, register() makes it seconds later, and a release
+        // installed in between goes unreported in this tab only.
+        if (!hasAdopted && options.loadController === null) {
+            for (const worker of [next.installing, next.waiting]) if (worker) workersOutdatedByPage.add(worker);
+        }
+        hasAdopted = true;
         registration = next;
         if (!watchedRegistrations.has(next)) {
             watchedRegistrations.add(next);

@@ -118,6 +118,48 @@ describe("service worker update observer", () => {
         expect(changes.at(-1)).toEqual({ waitingWorker: registration.waiting, isPageBehind: true, updateSerial: 1 });
     });
 
+    it("does not report a release a hard-reloaded page already runs", async () => {
+        const { observer, changes } = setup({ loadController: null });
+        const registration = new FakeRegistration();
+        registration.active = new FakeWorker("activated");
+        registration.waiting = new FakeWorker("installed");
+
+        await observer.readAtLoad(async () => registration);
+        observer.adopt(registration);
+
+        expect(observer.refresh()).toEqual({ waitingWorker: null, isPageBehind: false, updateSerial: 0 });
+        expect(changes).toEqual([]);
+    });
+
+    it("does not report an installation a hard-reloaded page found in progress", async () => {
+        const { observer, changes } = setup({ loadController: null });
+        const registration = new FakeRegistration();
+        registration.active = new FakeWorker("activated");
+        registration.installing = new FakeWorker("installing");
+
+        await observer.readAtLoad(async () => registration);
+        finishInstall(registration);
+
+        expect(observer.refresh().isPageBehind).toBe(false);
+        expect(changes).toEqual([]);
+    });
+
+    it("reports a release that installs after a hard-reloaded page loaded", async () => {
+        const { observer, changes } = setup({ loadController: null });
+        const registration = new FakeRegistration();
+        registration.active = new FakeWorker("activated");
+        registration.waiting = new FakeWorker("installed");
+        await observer.readAtLoad(async () => registration);
+
+        registration.installing = new FakeWorker("installing");
+        registration.dispatchEvent(new Event("updatefound"));
+        const newer = finishInstall(registration);
+        // The deferred register() hands over the same registration later.
+        observer.adopt(registration);
+
+        expect(changes.at(-1)).toEqual({ waitingWorker: newer, isPageBehind: true, updateSerial: 1 });
+    });
+
     it("follows an update that arrives after the read at load", async () => {
         const active = new FakeWorker("activated");
         const { observer, changes } = setup({ loadController: active });
