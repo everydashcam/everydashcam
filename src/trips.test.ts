@@ -416,6 +416,28 @@ describe("groupTrips: Thinkware U3000 Pro interior camera", () => {
         const trip = groupTrips([front!, rear!])[0]!;
         expect(trip.frames.every((frame) => frameMediaOffset(frame, "rear") === 0)).toBe(true);
     });
+
+    it("keeps the REC pair on one media origin next to the interior", () => {
+        const [front, rear] = loopPair("172637");
+        rear!.startUtc += 0.5;
+        const interior = interiorLoop("172640");
+        const trips = groupTrips([front!, rear!, interior]);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expect(
+            trip.frames.every((frame) => !frame.channels.front === !frame.channels.rear),
+            "neither REC channel plays alone",
+        ).toBe(true);
+        for (const frame of trip.frames.filter((frame) => frame.channels.rear)) {
+            expect(frameMediaOffset(frame, "rear"), `rear at ${frame.startUtc}`).toBe(frameMediaOffset(frame, "front"));
+        }
+        for (const frame of trip.frames.filter((frame) => frame.channels.interior)) {
+            expect(frame.startUtc - frameMediaOffset(frame, "interior"), `interior at ${frame.startUtc}`).toBe(
+                interior.startUtc,
+            );
+        }
+        expect(trip.timeline.contentDurationSec).toBe(63);
+    });
 });
 
 describe("groupTrips: dual-channel pairs", () => {

@@ -1135,7 +1135,8 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
 
     // A channel its filename family declares independently cut starts at its
     // own real moment: an offset below the jitter tolerance is still footage.
-    const hasIndependentCut = candidates.some((candidate) => classifyFilenameIndependentCut(candidate));
+    const independentCuts = new Set(candidates.filter((candidate) => classifyFilenameIndependentCut(candidate)));
+    const hasIndependentCut = independentCuts.size > 0;
     // Small overlaps between sequential pairs are clock noise, not evidence
     // that their footage is duplicated. Split each pair independently so the
     // next pair cannot hide the preceding files' playable tails.
@@ -1162,6 +1163,22 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     if (!hasIndependentCut && !hasUnequalCuts && !frames.some((frame) => frameChannels(frame).length > 1))
         return frames;
 
+    // A declaration names the independent channels, so the rest of a frame was
+    // cut together and keeps one media origin, as in splitPairedFrameIntervals;
+    // otherwise adding an interior camera would turn the pair's clock jitter
+    // into a playback offset. Without a declaration jitter cannot be told from
+    // a real offset, so every file keeps its measured start.
+    const pairOriginUtc = new Map<VideoCandidate, number>();
+    if (hasIndependentCut) {
+        for (const frame of frames) {
+            const paired = frameChannels(frame)
+                .map((channel) => frame.channels[channel]!)
+                .filter((candidate) => !independentCuts.has(candidate));
+            for (const candidate of paired) pairOriginUtc.set(candidate, paired[0]!.startUtc);
+        }
+    }
+    const mediaOriginUtc = (candidate: VideoCandidate): number => pairOriginUtc.get(candidate) ?? candidate.startUtc;
+
     interface Boundary {
         starts: VideoCandidate[];
         ends: VideoCandidate[];
@@ -1170,9 +1187,10 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     const channels = new Set<Channel>();
     for (const candidate of candidates) {
         channels.add(candidate.channel ?? DEFAULT_CHANNEL);
+        const originUtc = mediaOriginUtc(candidate);
         for (const [time, kind] of [
-            [candidate.startUtc, "starts"],
-            [candidate.startUtc + candidate.durationSec, "ends"],
+            [originUtc, "starts"],
+            [originUtc + candidate.durationSec, "ends"],
         ] as const) {
             let boundary = boundaries.get(time);
             if (!boundary) {
@@ -1216,7 +1234,7 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
             if (!candidate) continue;
             used.add(candidate);
             interval.channels[channel] = candidate;
-            interval.mediaOffsetSec![channel] = startUtc - candidate.startUtc;
+            interval.mediaOffsetSec![channel] = startUtc - mediaOriginUtc(candidate);
         }
         if (Object.keys(interval.channels).length === 0) continue;
         const previous = intervals.at(-1);
