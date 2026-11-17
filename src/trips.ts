@@ -27,6 +27,7 @@ import {
     classifyFilenameTime,
 } from "./parsers/filename/index.js";
 import { findStaleGpsCandidates, usableCandidateRecords } from "./stale-gps.js";
+import { estimateTriggerNamedStartOffsets } from "./trigger-named-start.js";
 import { normalizeTripTrackSegments, type TripGpsSource } from "./trip-track-segments.js";
 
 const log = createLogger("trips");
@@ -2924,7 +2925,7 @@ export function rederiveStartUtcForCandidates(
     // identity and relativePath because path-based techniques can distinguish two
     // VendorFile views of the same File. Map.has keeps null misses cached too.
     const filenameTimeCache = new WeakMap<File, Map<string, Date | null>>();
-    const memoizedFilenameTime = (file: VendorFile): Date | null => {
+    const memoizedNameTime = (file: VendorFile): Date | null => {
         let byPath = filenameTimeCache.get(file.file);
         if (!byPath) {
             byPath = new Map();
@@ -2934,6 +2935,17 @@ export function rederiveStartUtcForCandidates(
         const parsed = parseFilenameLocalTime(file);
         byPath.set(file.relativePath, parsed);
         return parsed;
+    };
+    // Every estimate below reads the filename time as the clip's first frame.
+    // A trigger-named clip with trustworthy card mtimes gets its measured start
+    // instead, so GPS offsets, zone estimates and GPS-less fallbacks agree.
+    const triggerStartOffsets = estimateTriggerNamedStartOffsets(candidates, memoizedNameTime);
+    const memoizedFilenameTime = (file: VendorFile): Date | null => {
+        const nameTime = memoizedNameTime(file);
+        const offsetSec = triggerStartOffsets.get(file.file);
+        return nameTime !== null && offsetSec !== undefined
+            ? new Date(nameTime.getTime() + offsetSec * 1000)
+            : nameTime;
     };
 
     const staleGps = findStaleGpsCandidates(candidates, memoizedFilenameTime);

@@ -72,8 +72,13 @@ function makeCandidate(opts: {
     relativePath?: string;
     wallDurationSec?: number | null;
     isTimelapse?: boolean;
+    lastModifiedMs?: number;
 }): VideoCandidate {
-    const file = new File([new Uint8Array(opts.bytes ?? 1024)], opts.name);
+    const file = new File(
+        [new Uint8Array(opts.bytes ?? 1024)],
+        opts.name,
+        opts.lastModifiedMs !== undefined ? { lastModified: opts.lastModifiedMs } : undefined,
+    );
     return {
         file,
         relativePath: opts.relativePath ?? opts.name,
@@ -437,6 +442,83 @@ describe("groupTrips: Thinkware U3000 Pro interior camera", () => {
             );
         }
         expect(trip.timeline.contentDurationSec).toBe(63);
+    });
+});
+
+// Card file times from a U3000 PRO diagnostic report (Android reads the card's
+// zone-less times as UTC). PAK names mark the trigger; the first GPS fix and
+// the OSD put each clip's first frame at mtime minus its 20 s length.
+describe("rederiveStartUtcForCandidates: Thinkware trigger-named clips", () => {
+    const CARD_TIMES: [folder: string, stem: string, mtimeIso: string, durationSec: number][] = [
+        ["cont_rec", "REC_20261115_165449", "2026-11-15T16:55:49Z", 60],
+        ["cont_rec", "REC_20261115_165549", "2026-11-15T16:56:49Z", 60],
+        ["parking_rec", "PAK_20261116_104313", "2026-11-16T10:43:24Z", 20],
+        ["parking_rec", "PAK_20261116_104336", "2026-11-16T10:43:46Z", 20],
+        ["parking_rec", "PAK_20261116_104349", "2026-11-16T10:44:00Z", 20],
+    ];
+    function cardClips(mtimeMs: (cardMtimeMs: number, index: number) => number): VideoCandidate[] {
+        return CARD_TIMES.flatMap(([folder, stem, mtimeIso, durationSec], index) =>
+            ["F", "R"].map((letter) => {
+                const name = `${stem}_${letter}.MP4`;
+                const relativePath = `0000-0000/${folder}/${name}`;
+                const vendorFile = { file: new File([], name), relativePath };
+                return makeCandidate({
+                    name,
+                    relativePath,
+                    startUtc: 0,
+                    durationSec,
+                    channel: classifyFilenameChannel(vendorFile)?.channel,
+                    fingerprint: cameraFingerprint(vendorFile),
+                    recordingMode: classifyFilenameMode(vendorFile),
+                    lastModifiedMs: mtimeMs(Date.parse(mtimeIso), index),
+                });
+            }),
+        );
+    }
+    const startsByName = (candidates: readonly VideoCandidate[]): Record<string, string> =>
+        Object.fromEntries(candidates.map((c) => [c.file.name, new Date(c.startUtc * 1000).toISOString()]));
+
+    it("starts parking clips at their first frame from the card's file times", () => {
+        const candidates = cardClips((cardMtimeMs) => cardMtimeMs);
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+        const starts = startsByName(candidates);
+        expect(starts["REC_20261115_165449_F.MP4"], "loop clips keep their names").toBe("2026-11-15T16:54:49.000Z");
+        expect(starts["PAK_20261116_104313_F.MP4"]).toBe("2026-11-16T10:43:04.000Z");
+        expect(starts["PAK_20261116_104313_R.MP4"]).toBe("2026-11-16T10:43:04.000Z");
+        expect(starts["PAK_20261116_104336_F.MP4"]).toBe("2026-11-16T10:43:26.000Z");
+        expect(starts["PAK_20261116_104349_F.MP4"]).toBe("2026-11-16T10:43:40.000Z");
+        expect(candidates.every((c) => c.startSource === "name")).toBe(true);
+    });
+
+    it("keeps the GPS-measured parking starts when the card times agree", () => {
+        const candidates = cardClips((cardMtimeMs) => cardMtimeMs);
+        // First fixes of the three sample PAK clips, in true UTC (camera zone UTC-6).
+        const firstFixes: Record<string, number> = {
+            PAK_20261116_104313: Date.parse("2026-11-16T16:43:05Z") / 1000,
+            PAK_20261116_104336: Date.parse("2026-11-16T16:43:26Z") / 1000,
+            PAK_20261116_104349: Date.parse("2026-11-16T16:43:40Z") / 1000,
+        };
+        for (const candidate of candidates) {
+            const firstFix = firstFixes[candidate.file.name.slice(0, 19)];
+            if (firstFix === undefined) continue;
+            candidate.records = Array.from({ length: 19 }, (_, i) => makeRecord(firstFix + i));
+        }
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+        const starts = startsByName(candidates);
+        expect(starts["PAK_20261116_104313_F.MP4"]).toBe("2026-11-16T16:43:04.000Z");
+        expect(starts["PAK_20261116_104336_F.MP4"]).toBe("2026-11-16T16:43:26.000Z");
+        expect(starts["PAK_20261116_104349_F.MP4"]).toBe("2026-11-16T16:43:40.000Z");
+    });
+
+    it("places parking clips by their trigger when the card times are copy times", () => {
+        // A same-day copy keeps mtimes within a zone's reach of the names, so
+        // only the loop clips' disagreement rejects them.
+        const copyStartMs = Date.parse("2026-11-16T06:00:00Z");
+        const candidates = cardClips((_, index) => copyStartMs + index * 7_000);
+        rederiveStartUtcForCandidates(candidates, classifyFilenameTime);
+        const starts = startsByName(candidates);
+        expect(starts["PAK_20261116_104313_F.MP4"]).toBe("2026-11-16T10:43:13.000Z");
+        expect(starts["PAK_20261116_104349_F.MP4"]).toBe("2026-11-16T10:43:49.000Z");
     });
 });
 

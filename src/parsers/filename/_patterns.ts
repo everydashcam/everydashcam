@@ -451,9 +451,8 @@ export const RX_TESLA_PATH_SENTRY = /(?:^|\/)teslacam\/sentryclips\//i;
 // cont_rec/REC (driving loop), evt_rec/EVT, parking_rec/PAK,
 // motion_timelapse_rec/MOT, and incabin_rec/EXT_..._I - the interior camera's
 // driving loop, cut on its own schedule rather than with REC. PARK and MAN
-// predate that sample and have no observed folder. A PAK name is the trigger
-// moment: the clip starts 9-10 s earlier, so a PAK clip without a GPS fix is
-// placed by its trigger.
+// predate that sample and have no observed folder. PAK and EVT names mark the
+// trigger moment, not the first frame (trigger-name.ts).
 // TODO: MOT clips play as real-time footage. No MOT file has been indexed, so
 // whether motion_timelapse_rec holds time-lapse clips is unconfirmed.
 export const RX_THINKWARE = /^(REC|EVT|PARK|PAK|MOT|MAN|EXT)_.+_([A-Z])\.mp4$/i;

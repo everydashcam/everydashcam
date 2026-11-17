@@ -17,7 +17,9 @@ import { FILENAME_CHANNEL } from "./channel.js";
 import { FILENAME_IGNORED_CONTAINER_CLOCK } from "./container-clock.js";
 import { FILENAME_INDEPENDENT_CUT } from "./independent-cut.js";
 import { FILENAME_MODE } from "./mode.js";
+import { FILENAME_MTIME_CLOSES_CLIP } from "./mtime-close.js";
 import { FILENAME_SEQUENCE } from "./sequence.js";
+import { FILENAME_NAMES_TRIGGER } from "./trigger-name.js";
 import { FILENAME_RECORDING_KEY } from "./recording-key.js";
 import { FILENAME_TIME } from "./time.js";
 import { FILENAME_CLOCK_TIMELAPSE, FILENAME_TIMELAPSE } from "./timelapse.js";
@@ -106,4 +108,18 @@ export function classifyFilenameIndependentCut(file: VendorFile): boolean {
  *  stays a clock candidate unless the filename family says otherwise. */
 export function classifyFilenameIgnoresContainerClock(file: VendorFile): boolean {
     return walk(FILENAME_IGNORED_CONTAINER_CLOCK, file).value ?? false;
+}
+
+/** Whether the file's modification time marks when the camera closed the clip,
+ *  on the filename clock (see FILENAME_MTIME_CLOSES_CLIP). Defaults to false:
+ *  mtime is unknown evidence unless the filename family declares it. */
+export function classifyFilenameMtimeClosesClip(file: VendorFile): boolean {
+    return walk(FILENAME_MTIME_CLOSES_CLIP, file).value ?? false;
+}
+
+/** Whether the name records an event trigger rather than the clip's first
+ *  frame (see FILENAME_NAMES_TRIGGER). Defaults to false: a name time is the
+ *  clip start unless the filename family says otherwise. */
+export function classifyFilenameNamesTrigger(file: VendorFile): boolean {
+    return walk(FILENAME_NAMES_TRIGGER, file).value ?? false;
 }

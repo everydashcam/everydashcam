@@ -32,6 +32,8 @@ import {
     classifyFilenameIgnoresContainerClock,
     classifyFilenameIndependentCut,
     classifyFilenameMode,
+    classifyFilenameMtimeClosesClip,
+    classifyFilenameNamesTrigger,
     classifyFilenameRecordingKey,
     classifyFilenameSequence,
     classifyFilenameTime,
@@ -1215,6 +1217,27 @@ describe("thinkware U3000 Pro folders", () => {
             expect(classifyFilenameIgnoresContainerClock(file), file.relativePath).toBe(true);
         }
         expect(classifyFilenameIgnoresContainerClock(vf("NO20260429-171553-000580F.MP4"))).toBe(false);
+    });
+
+    it("names event and parking clips by their trigger and declares close-stamped mtimes", () => {
+        const parked = card("parking_rec", "PAK_20261116_104313_F.MP4");
+        const event = card("evt_rec", "EVT_20261114_163629_R.MP4");
+        const motion = card("motion_timelapse_rec", "MOT_20261110_163102_F.MP4");
+        expect([front, interior, parked, event, motion].map(classifyFilenameNamesTrigger)).toEqual([
+            false,
+            false,
+            true,
+            true,
+            false,
+        ]);
+        expect([front, rear, interior, parked, event, motion].map(classifyFilenameMtimeClosesClip)).toEqual([
+            true,
+            true,
+            false,
+            true,
+            true,
+            false,
+        ]);
     });
 
     it.each([
