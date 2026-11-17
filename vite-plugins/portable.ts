@@ -133,7 +133,10 @@ export function portablePlugin(options: PortableOptions): Plugin {
                             for (const quote of ['"', "'", "`"]) {
                                 const literal = `${quote}${path}${quote}`;
                                 if (js.includes(literal)) {
-                                    js = js.replaceAll(literal, expression);
+                                    // Generated text is always inserted through a replacer
+                                    // function: a replacement string expands `$&`, "$`"
+                                    // and "$'", which minified bundles can contain.
+                                    js = js.replaceAll(literal, () => expression);
                                     found = true;
                                 }
                             }
@@ -153,10 +156,14 @@ export function portablePlugin(options: PortableOptions): Plugin {
                 html = html
                     .replace(
                         /<head>[\s\S]*?<\/head>/,
-                        `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><title>everydashcam</title><link rel="icon" href="${faviconDataUrl}">${loaderStyle}<script>${bootstrap}</script><style>${css.replace(/<\/style/gi, "<\\/style")}</style></head>`,
+                        () =>
+                            `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><title>everydashcam</title><link rel="icon" href="${faviconDataUrl}">${loaderStyle}<script>${bootstrap}</script><style>${css.replace(/<\/style/gi, "<\\/style")}</style></head>`,
                     )
                     .replace(/<html lang="[^"]*"/, `<html lang="${locale}" data-edition="portable"`)
-                    .replace(/(<script\b[^>]*\bid="dc-i18n"[^>]*>)[\s\S]*?(<\/script>)/, `$1${stringifyJsonLd(dict)}$2`)
+                    .replace(
+                        /(<script\b[^>]*\bid="dc-i18n"[^>]*>)[\s\S]*?(<\/script>)/,
+                        (_match, open: string, close: string) => `${open}${stringifyJsonLd(dict)}${close}`,
+                    )
                     .replace(
                         /<script type="module" src="\/src\/app\.ts"><\/script>/,
                         () => `<script type="module">${js.replace(/<\/script/gi, "<\\/script")}</script>`,
@@ -182,7 +189,8 @@ export function portablePlugin(options: PortableOptions): Plugin {
                     throw new Error("portable notices placeholder is missing");
                 html = html.replace(
                     "<!-- portable-notices -->",
-                    `<details class="portable-notices" id="portable-notices"><summary>${escapeText(dict["footer.licenses"])}</summary><pre>${escapeText(notices)}</pre></details>`,
+                    () =>
+                        `<details class="portable-notices" id="portable-notices"><summary>${escapeText(dict["footer.licenses"])}</summary><pre>${escapeText(notices)}</pre></details>`,
                 );
                 html = await minify(html, {
                     collapseWhitespace: true,
