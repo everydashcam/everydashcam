@@ -210,7 +210,7 @@ const eaceMode: FilenameModeTechnique = {
     extract(file: VendorFile): RecordingMode | null {
         if (!RX_E_ACE.test(file.file.name)) return null;
         const folder = matchModeChannelFolder(file.relativePath);
-        if (folder) return folder[1]!.toLowerCase() === "event" ? "event" : "normal";
+        if (folder) return folder.isEvent ? "event" : "normal";
         return timestampFolderMode(file) ?? "normal";
     },
 };
@@ -225,7 +225,7 @@ const datetimeChannelTsMode: FilenameModeTechnique = {
         const m = file.file.name.match(RX_DATETIME_CHANNEL_TS);
         if (!m) return null;
         if (m[3]) return "parking";
-        return matchModeChannelFolder(file.relativePath)?.[1]?.toLowerCase() === "event" ? "event" : "normal";
+        return matchModeChannelFolder(file.relativePath)?.isEvent ? "event" : "normal";
     },
 };
 
@@ -270,12 +270,13 @@ const fitcamxMode: FilenameModeTechnique = {
 const fordMode: FilenameModeTechnique = {
     id: "ford-mode",
     extract(file: VendorFile): RecordingMode | null {
-        // Single-mode in the corpus - normal recording only (no event/parking
-        // marker in the name). Assert "normal" on a name match, like the other
-        // single-mode name-only families (e-ace, carcam, ibox), so Ford clips
-        // carry a mode instead of null. Event/parking modes are unknown; revisit
-        // if a sample with one surfaces.
-        return RX_FORD.test(file.file.name) ? "normal" : null;
+        // The name carries no event/parking marker. Assert "normal" on a name
+        // match, like the other name-only families (e-ace, carcam, ibox), so
+        // clips carry a mode instead of null. Only the GKU D600Pro folder layout
+        // marks protected clips (video_front_lock/); Ford event/parking modes are
+        // unknown.
+        if (!RX_FORD.test(file.file.name)) return null;
+        return matchModeChannelFolder(file.relativePath)?.isEvent ? "event" : "normal";
     },
 };
 

@@ -112,6 +112,16 @@ function strippedParentDir(
 }
 
 /**
+ * Renames a `<Mode>_<channel word>` leaf folder to its channel-free name so
+ * every channel of one mode converges, while protected-clip folders keep a key
+ * of their own. Other paths come back unchanged.
+ */
+function withChannelFreeModeFolder(relativePath: string): string {
+    const folder = matchModeChannelFolder(relativePath);
+    return folder === null ? relativePath : relativePath.replace(/[^/]+(?=\/[^/]+$)/, folder.channelFreeName);
+}
+
+/**
  * Removes a single character at `idx` from `name`, then masks every digit
  * run with `#`. Used to strip a channel letter that sits at a known
  * regex-capture position.
@@ -321,9 +331,7 @@ const eaceCameraKey: FilenameCameraKeyTechnique = {
         // redtiger-camera-key, no corpus shows whether an event replaces its
         // loop segment or duplicates it; a shared key would turn a duplicate
         // into a dup frame inside the drive.
-        const stem = matchModeChannelFolder(file.relativePath)?.[1] ?? null;
-        const path = stem === null ? file.relativePath : file.relativePath.replace(/[^/]+(?=\/[^/]+$)/, stem);
-        const dir = strippedParentDir(path, [], [ch ?? ""]);
+        const dir = strippedParentDir(withChannelFreeModeFolder(file.relativePath), [], [ch ?? ""]);
         return `e-ace|${dir}|${masked}`;
     },
 };
@@ -402,9 +410,13 @@ const fordCameraKey: FilenameCameraKeyTechnique = {
         // groupTrips. Same lastIndexOf+mask approach as the other trailing-letter
         // families (juscar/ibox/...).
         const masked = maskNameWithTrailingLetterStripped(file.file.name, m[7]!);
-        // Ford writes all channels into one folder, but strip spelled-out channel
-        // folders too in case a user splits them by hand.
-        const dir = strippedParentDir(file.relativePath, []);
+        // Ford writes all channels into one folder. GKU D600Pro uses the same
+        // names but splits channels into video_front/ and video_back/; collapse
+        // that leaf so its channels pair. Its `_lock` folders keep their own key:
+        // as with e-ace-camera-key, no card shows whether a locked clip is a copy
+        // of its loop segment. Plain front/back folders split by hand are
+        // stripped too.
+        const dir = strippedParentDir(withChannelFreeModeFolder(file.relativePath), []);
         return `ford|${dir}|${masked}`;
     },
 };
@@ -738,10 +750,8 @@ const datetimeChannelTsCameraKey: FilenameCameraKeyTechnique = {
         // GKU splits channels into Video_front/Video_rear: keep only the mode
         // stem, as e-ace-camera-key does. Time-lapse clips keep the loop key:
         // they are the same clock and never overlap loop clips in time.
-        const stem = matchModeChannelFolder(file.relativePath)?.[1] ?? null;
-        const path = stem === null ? file.relativePath : file.relativePath.replace(/[^/]+(?=\/[^/]+$)/, stem);
         // Only the leaf is a channel; an enclosing root may itself be named front/back.
-        const dir = strippedParentDir(path, [], ["f", "r", m[4]!]);
+        const dir = strippedParentDir(withChannelFreeModeFolder(file.relativePath), [], ["f", "r", m[4]!]);
         return `datetime-channel-ts|${dir}|${maskName(`${m[1]}_${m[2]}.ts`)}`;
     },
 };

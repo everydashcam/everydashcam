@@ -316,7 +316,10 @@ const eaceChannel: FilenameChannelTechnique = {
         const ch = m[3];
         if (ch) return mnemonicChannel(ch);
         const folder = matchChannelFolder(file.relativePath);
-        return folderChannel(matchModeChannelFolder(file.relativePath)?.[2]) ?? (folder ? sure(folder.channel) : null);
+        return (
+            folderChannel(matchModeChannelFolder(file.relativePath)?.channelWord) ??
+            (folder ? sure(folder.channel) : null)
+        );
     },
 };
 
@@ -366,8 +369,8 @@ const fordChannel: FilenameChannelTechnique = {
     extract(file: VendorFile): ChannelMatch | null {
         const m = file.file.name.match(RX_FORD);
         if (!m) return null;
-        // `f` = front is confirmed on a real sample. The other channels are
-        // unconfirmed (front-only corpus): map the standard mnemonics, and treat
+        // `f` = front and `b` = rear are confirmed on real cards (Ford, GKU
+        // D600Pro). `r`/`i` follow the standard mnemonics without a sample. Treat
         // any other letter as a distinct non-front channel so it pairs with front
         // in one frame (same fingerprint, see ford-camera-key) instead of
         // defaulting to "front". An unknown letter goes to the FREE "side" slot,

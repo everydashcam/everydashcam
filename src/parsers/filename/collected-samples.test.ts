@@ -204,6 +204,44 @@ describe("collected recording filenames", () => {
         expect(Object.keys(trips[0]!.frames[0]!.channels).sort()).toEqual(["front", "rear"]);
     });
 
+    it.each(["GKU", "\\"])("pairs GKU D600Pro video_front and video_back clips under %s", (root) => {
+        // Layout and names from a reported card; `\` is the root name Chrome
+        // gives a whole Windows drive.
+        const front = vf(`${root}/video_front/2026-11-14_07_12_52_f.ts`);
+        const rear = vf(`${root}/video_back/2026-11-14_07_12_53_b.ts`);
+        const lockedFront = vf(`${root}/video_front_lock/2026-11-10_14_00_25_f.ts`);
+        const lockedRear = vf(`${root}/video_back_lock/2026-11-10_14_00_25_b.ts`);
+        const files = [front, rear, lockedFront, lockedRear];
+        expect(files.map((file) => classifyFilenameChannel(file))).toEqual([
+            { channel: "front", confident: true },
+            { channel: "rear", confident: true },
+            { channel: "front", confident: true },
+            { channel: "rear", confident: true },
+        ]);
+        expect(files.map(classifyFilenameMode)).toEqual(["normal", "normal", "event", "event"]);
+        expect(files.every((file) => shouldTryEmbeddedGps(file, false))).toBe(true);
+        expect(cameraFingerprint(rear)).toBe(cameraFingerprint(front));
+        expect(cameraFingerprint(lockedRear)).toBe(cameraFingerprint(lockedFront));
+        expect(cameraFingerprint(lockedFront), "protected clips keep their own key").not.toBe(cameraFingerprint(front));
+        expect(cameraFingerprint(front)).not.toBe(cameraFingerprint(vf("other/video_front/2026-11-14_07_12_52_f.ts")));
+
+        const loopCandidates = [front, rear].map((file) =>
+            buildProvisionalCandidate({
+                file,
+                fingerprint: cameraFingerprint(file),
+                startUtc: classifyFilenameTime(file)!.getTime() / 1000,
+                startSource: "name",
+                cameraTzSec: null,
+                durationSec: 180,
+                records: [],
+                appliedExtractors: [],
+            }),
+        );
+        const trips = groupTrips(loopCandidates);
+        expect(trips).toHaveLength(1);
+        expect(Object.keys(trips[0]!.frames[0]!.channels).sort()).toEqual(["front", "rear"]);
+    });
+
     it("splits a GKU parking time-lapse from the drives right before and after it", () => {
         // Seconds-apart clips, the shape of the reported card around a stop.
         const clips = [

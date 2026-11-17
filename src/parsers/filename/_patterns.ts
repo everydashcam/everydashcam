@@ -141,15 +141,35 @@ export const RX_GRMN_MODE_PATH = /(?:^|\/)DCIM\/(\d{3}(EVENT|SAVED|PARKM|TLPSE|U
 export const RX_HMS_CHANNEL_MODE = /^(\d{8})[-_](\d{2})h(\d{2})m(\d{2})s_([A-Z]{1,4})_([A-Z])\.mp4$/i;
 // Leaf folder of a card that splits streams into `<Mode>_<channel word>/`
 // siblings: RedTiger F17 (Video_Front/, Video_Inside/, Video_Rear/, with
-// Event_* next to them) and GKU 600 Pro (Video_front/, Video_rear/).
-// Groups: mode stem, channel word.
-const RX_MODE_CHANNEL_FOLDER = /^(video|event)_(front|rear|inside)$/i;
+// Event_* next to them), GKU 600 Pro (Video_front/, Video_rear/) and GKU
+// D600Pro (video_front/, video_back/, protected clips in video_front_lock/).
+// Groups: mode stem, channel word, lock suffix.
+const RX_MODE_CHANNEL_FOLDER = /^(video|event)_(front|rear|back|inside)(_lock)?$/i;
 
-/** Mode and channel of a `<Mode>_<channel>` leaf folder, preserving the card's spelling. */
-export function matchModeChannelFolder(relativePath: string): RegExpMatchArray | null {
+/** A leaf folder that names both the recording mode and the channel. */
+export interface ModeChannelFolder {
+    /**
+     * The folder name without its channel word, in the card's spelling. Every
+     * channel of one mode shares it; loop and protected folders keep distinct ones.
+     */
+    channelFreeName: string;
+    /** The channel word as written on the card. */
+    channelWord: string;
+    isEvent: boolean;
+}
+
+/** Reads a `<Mode>_<channel>[_lock]` leaf folder; null for any other parent folder. */
+export function matchModeChannelFolder(relativePath: string): ModeChannelFolder | null {
     const segs = relativePath.split("/");
     if (segs.length < 2) return null;
-    return segs[segs.length - 2]!.match(RX_MODE_CHANNEL_FOLDER);
+    const match = segs[segs.length - 2]!.match(RX_MODE_CHANNEL_FOLDER);
+    if (!match) return null;
+    const lockSuffix = match[3] ?? "";
+    return {
+        channelFreeName: `${match[1]}${lockSuffix}`,
+        channelWord: match[2]!,
+        isEvent: match[1]!.toLowerCase() === "event" || lockSuffix !== "",
+    };
 }
 
 // Escort M2: digits_digits_CAM.mp4. Time has no seconds field.
@@ -189,12 +209,12 @@ export const RX_360_CARDVR_REC_PATH = /(?:^|\/)360CARDVR\/REC\//i;
 // Ford built-in dashcam (records to a USB stick, footage lands in a
 // FordFootage/ folder): YYYY-MM-DD_HH_MM_SS_<channel>.ts. Per a real sample:
 // H.264 2560x1440 + AAC + a single JPEG poster frame on a private stream
-// (stream_type 0x89), and NO embedded GPS/telemetry. Channel letter: `f` is
-// front (confirmed). Any other letter is a different channel - the corpus is
-// front-only so far, so the rear/other letters are an assumption (mnemonic
-// r/b = rear, i = interior), to be revalidated on the first real sample.
-// Brand is inferred from the folder name + naming scheme, not from container
-// metadata (the JPEG's EXIF Make/Model are blank).
+// (stream_type 0x89), and NO embedded GPS/telemetry. Brand is inferred from
+// the folder name + naming scheme, not from container metadata (the JPEG's
+// EXIF Make/Model are blank). A user-reported GKU D600Pro card uses the same
+// names in video_front/ and video_back/ (+ `_lock` siblings), with a LigoGPS
+// trailer. Channel letters: `f` = front and `b` = rear are confirmed on these
+// cards; r/i keep the standard mnemonics without a sample.
 export const RX_FORD = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})_(\d{2})_(\d{2})_([a-z])\.ts$/i;
 // The FordFootage/ folder is what actually identifies the format - the
 // `YYYY-MM-DD_HH_MM_SS_x.ts` name shape is generic. The source-hint gates on
