@@ -65,6 +65,7 @@ import {
     RX_TESLA_PATH,
     RX_TESLA_RECENT,
     RX_THINKWARE,
+    RX_THINKWARE_LOOP_FOLDER,
     RX_VUEROID,
     VUEROID_MODE_FOLDERS,
     RX_WOLFBOX,
@@ -698,9 +699,14 @@ const thinkwareCameraKey: FilenameCameraKeyTechnique = {
     extract(file: VendorFile): string | null {
         const m = file.file.name.match(RX_THINKWARE);
         if (!m) return null;
+        // The interior camera's EXT loop is the third channel of the REC loop.
+        // Other modes keep their own key: an event copy overlaps the loop it
+        // was cut from, and a trip containing it cannot align channels that
+        // are cut independently (normalizeChannelIntervals).
+        const name = m[1]!.toUpperCase() === "EXT" ? `REC${file.file.name.slice(m[1]!.length)}` : file.file.name;
         // Channel letter at group [2], one char before `.mp4`.
-        const masked = maskNameWithTrailingLetterStripped(file.file.name, m[2]!);
-        const dir = strippedParentDir(file.relativePath, [], [m[2]!]);
+        const masked = maskNameWithTrailingLetterStripped(name, m[2]!);
+        const dir = strippedParentDir(file.relativePath, [], [m[2]!]).replace(RX_THINKWARE_LOOP_FOLDER, "$1cont_rec");
         return `thinkware|${dir}|${masked}`;
     },
 };

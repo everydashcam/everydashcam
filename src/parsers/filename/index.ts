@@ -14,6 +14,7 @@ import type { RecordingMode, VendorFile } from "../types.js";
 import { FILENAME_CAMERA_KEY } from "./camera-key.js";
 import { asOriginalDownload } from "./download-copy.js";
 import { FILENAME_CHANNEL } from "./channel.js";
+import { FILENAME_INDEPENDENT_CUT } from "./independent-cut.js";
 import { FILENAME_MODE } from "./mode.js";
 import { FILENAME_SEQUENCE } from "./sequence.js";
 import { FILENAME_RECORDING_KEY } from "./recording-key.js";
@@ -90,4 +91,11 @@ export function classifyFilenameCameraKey(file: VendorFile): string | null {
 /** Exact recording identity shared by synchronized sibling channels. */
 export function classifyFilenameRecordingKey(file: VendorFile): string | null {
     return walk(FILENAME_RECORDING_KEY, file).value;
+}
+
+/** Whether the file's channel is cut on its own schedule (see
+ *  FILENAME_INDEPENDENT_CUT). Defaults to false: channels of one camera are
+ *  assumed to be cut together unless the filename family says otherwise. */
+export function classifyFilenameIndependentCut(file: VendorFile): boolean {
+    return walk(FILENAME_INDEPENDENT_CUT, file).value ?? false;
 }

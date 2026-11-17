@@ -29,6 +29,7 @@ import {
 import {
     classifyFilenameChannel,
     classifyFilenameClockTimelapse,
+    classifyFilenameIndependentCut,
     classifyFilenameMode,
     classifyFilenameRecordingKey,
     classifyFilenameSequence,
@@ -1171,6 +1172,55 @@ describe("rec-single techniques", () => {
     it("keeps Thinkware REC_ names separate", () => {
         expect(matchFilenameTime(vf("REC_20210101_120000_F.mp4")).matchedId).not.toBe("rec-single-time");
         expect(matchFilenameChannel(vf("REC_20210101_120000_F.mp4")).matchedId).toBe("thinkware-channel");
+    });
+});
+
+// Thinkware U3000 Pro card layout from a diagnostic report: one folder per
+// mode, the interior camera's driving loop in incabin_rec as EXT_..._I.
+describe("thinkware U3000 Pro folders", () => {
+    const card = (folder: string, name: string): VendorFile => vf(name, `0000-0000/${folder}/${name}`);
+    const front = card("cont_rec", "REC_20261116_172637_F.MP4");
+    const rear = card("cont_rec", "REC_20261116_172637_R.MP4");
+    const interior = card("incabin_rec", "EXT_20261116_172640_I.MP4");
+
+    it("reads the interior loop as the third channel of the driving loop", () => {
+        expect(matchFilenameChannel(interior)).toEqual({
+            matchedId: "thinkware-channel",
+            value: { channel: "interior", confident: true },
+        });
+        expect(matchFilenameMode(interior)).toEqual({ matchedId: "thinkware-mode", value: "normal" });
+        expect(classifyFilenameTime(interior)?.toISOString()).toBe("2026-11-16T17:26:40.000Z");
+        expect(cameraFingerprint(front), "existing loop key").toBe("thinkware|0000-0000/cont_rec|REC_#_#_.MP#");
+        expect(cameraFingerprint(rear)).toBe(cameraFingerprint(front));
+        expect(cameraFingerprint(interior)).toBe(cameraFingerprint(front));
+        expect(cameraFingerprint(vf(interior.file.name)), "flat drop").toBe(cameraFingerprint(vf(front.file.name)));
+    });
+
+    it("marks only the interior loop as cut on its own schedule", () => {
+        expect(classifyFilenameIndependentCut(interior)).toBe(true);
+        expect(classifyFilenameIndependentCut(front)).toBe(false);
+        expect(classifyFilenameIndependentCut(card("evt_rec", "EVT_20261116_175357_F.MP4"))).toBe(false);
+    });
+
+    it.each([
+        ["parking_rec", "PAK_20261116_104254"],
+        ["motion_timelapse_rec", "MOT_20261110_163102"],
+    ])("pairs %s front and rear as parking clips of one camera", (folder, stem) => {
+        const parkedFront = card(folder, `${stem}_F.MP4`);
+        const parkedRear = card(folder, `${stem}_R.MP4`);
+        expect(classifyFilenameChannel(parkedFront)).toEqual({ channel: "front", confident: true });
+        expect(classifyFilenameChannel(parkedRear)).toEqual({ channel: "rear", confident: true });
+        expect(classifyFilenameMode(parkedRear)).toBe("parking");
+        expect(classifyFilenameTimelapse(parkedRear)).toBe(false);
+        expect(cameraFingerprint(parkedRear)).toBe(cameraFingerprint(parkedFront));
+        expect(cameraFingerprint(parkedFront)).not.toBe(cameraFingerprint(front));
+    });
+
+    it("keeps event copies under their own key", () => {
+        const event = card("evt_rec", "EVT_20261116_175357_F.MP4");
+        expect(classifyFilenameMode(event)).toBe("event");
+        expect(cameraFingerprint(card("evt_rec", "EVT_20261116_175357_R.MP4"))).toBe(cameraFingerprint(event));
+        expect(cameraFingerprint(event)).not.toBe(cameraFingerprint(front));
     });
 });
 

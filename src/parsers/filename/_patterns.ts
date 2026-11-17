@@ -426,8 +426,16 @@ export const RX_TESLA_PATH_RECENT = /(?:^|\/)teslacam\/recentclips\//i;
 export const RX_TESLA_PATH_SAVED = /(?:^|\/)teslacam\/savedclips\//i;
 export const RX_TESLA_PATH_SENTRY = /(?:^|\/)teslacam\/sentryclips\//i;
 
-// Thinkware: <REC|EVT|PARK|MAN>_<anything>_<channel>.mp4. No time in name.
-export const RX_THINKWARE = /^(REC|EVT|PARK|MAN)_.+_([A-Z])\.mp4$/i;
+// Thinkware: <mode>_<date and time>_<channel>.mp4; the generic date-time
+// technique reads the time. The U3000 Pro card keeps one folder per mode:
+// cont_rec/REC (driving loop), evt_rec/EVT, parking_rec/PAK,
+// motion_timelapse_rec/MOT, and incabin_rec/EXT_..._I - the interior camera's
+// driving loop, cut on its own schedule rather than with REC. PARK and MAN
+// predate that sample and have no observed folder.
+export const RX_THINKWARE = /^(REC|EVT|PARK|PAK|MOT|MAN|EXT)_.+_([A-Z])\.mp4$/i;
+// The driving-loop folders of the main channels and of the interior camera.
+// Both hold one recording session, so they share a camera key.
+export const RX_THINKWARE_LOOP_FOLDER = /(^|\/)(?:cont_rec|incabin_rec)$/i;
 
 // Vueroid (S1 4K Infinite): 8-digit date _ 6-digit time _ INF _ channel letter _
 // N/E/P mode. Keep the observed INF infix literal until other filename

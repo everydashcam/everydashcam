@@ -21,7 +21,11 @@ import type { VideoCodec } from "mediabunny";
 import type { Mp4Rotation } from "./indexer.js";
 import { createLogger } from "./log.js";
 import { knownFileMtime } from "./file-mtime.js";
-import { classifyFilenameRecordingKey, classifyFilenameTime } from "./parsers/filename/index.js";
+import {
+    classifyFilenameIndependentCut,
+    classifyFilenameRecordingKey,
+    classifyFilenameTime,
+} from "./parsers/filename/index.js";
 import { findStaleGpsCandidates, usableCandidateRecords } from "./stale-gps.js";
 import { normalizeTripTrackSegments, type TripGpsSource } from "./trip-track-segments.js";
 
@@ -1129,10 +1133,13 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     )
         return frames;
 
+    // A channel its filename family declares independently cut starts at its
+    // own real moment: an offset below the jitter tolerance is still footage.
+    const hasIndependentCut = candidates.some((candidate) => classifyFilenameIndependentCut(candidate));
     // Small overlaps between sequential pairs are clock noise, not evidence
     // that their footage is duplicated. Split each pair independently so the
     // next pair cannot hide the preceding files' playable tails.
-    if (!hasOverlappingCuts) return markPairedTails(frames.flatMap(splitPairedFrameIntervals));
+    if (!hasOverlappingCuts && !hasIndependentCut) return markPairedTails(frames.flatMap(splitPairedFrameIntervals));
 
     const durationsByChannel = new Map<Channel, { min: number; max: number }>();
     for (const candidate of candidates) {
@@ -1151,7 +1158,9 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     );
     // Equal-length channels with no aligned pair may have conflicting clocks.
     // Do not turn that recognition failure into apparently synchronized video.
-    if (!hasUnequalCuts && !frames.some((frame) => frameChannels(frame).length > 1)) return frames;
+    // A declared independent cut explains the missing pair instead.
+    if (!hasIndependentCut && !hasUnequalCuts && !frames.some((frame) => frameChannels(frame).length > 1))
+        return frames;
 
     interface Boundary {
         starts: VideoCandidate[];

@@ -32,6 +32,7 @@ import {
     wallToContentSecIfCovered,
     contentToWallUtc,
     contentToFrame,
+    type Trip,
     type TzSample,
     type VideoCandidate,
 } from "./trips.js";
@@ -337,6 +338,83 @@ describe("groupTrips: 70mai T800 cabin files", () => {
                 cameraFingerprint({ ...cabin, relativePath: cabin.relativePath.replace("card/", "other-card/") }),
             ).not.toBe(cabin.fingerprint);
         }
+    });
+});
+
+// Names and cut times from a U3000 Pro diagnostic report: the interior loop
+// (incabin_rec/EXT) starts a few seconds after the REC pair and keeps its own
+// minute boundaries when REC restarts after an event.
+describe("groupTrips: Thinkware U3000 Pro interior camera", () => {
+    function cardCandidate(folder: string, name: string, durationSec = 60): VideoCandidate {
+        const relativePath = `0000-0000/${folder}/${name}`;
+        const file = { file: new File([], name), relativePath };
+        const channel = classifyFilenameChannel(file);
+        return makeCandidate({
+            name,
+            relativePath,
+            startUtc: classifyFilenameTime(file)!.getTime() / 1000,
+            durationSec,
+            channel: channel?.channel,
+            channelConfident: channel?.confident,
+            fingerprint: cameraFingerprint(file),
+            recordingMode: classifyFilenameMode(file),
+        });
+    }
+    const loopPair = (time: string, durationSec = 60): VideoCandidate[] =>
+        ["F", "R"].map((channel) => cardCandidate("cont_rec", `REC_20261116_${time}_${channel}.MP4`, durationSec));
+    const interiorLoop = (time: string): VideoCandidate => cardCandidate("incabin_rec", `EXT_20261116_${time}_I.MP4`);
+
+    function expectWallAligned(trip: Trip): void {
+        for (const frame of trip.frames) {
+            for (const channel of tripChannels(trip)) {
+                const candidate = frame.channels[channel];
+                if (!candidate) continue;
+                expect(frame.startUtc - frameMediaOffset(frame, channel), `${channel} at ${frame.startUtc}`).toBe(
+                    candidate.startUtc,
+                );
+            }
+        }
+    }
+
+    it("plays the interior at its own start instead of pairing it with REC", () => {
+        const candidates = [
+            ...["172637", "172737", "172837"].flatMap((time) => loopPair(time)),
+            ...["172640", "172740", "172840"].map(interiorLoop),
+        ];
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expect(tripChannels(trip)).toEqual(["front", "rear", "interior"]);
+        expect(tripAllCandidates(trip)).toHaveLength(candidates.length);
+        expectWallAligned(trip);
+        const shared = trip.frames.find((frame) => frame.channels.interior && frame.channels.front)!;
+        expect(frameMediaOffset(shared, "front") - frameMediaOffset(shared, "interior")).toBe(3);
+        expect(trip.timeline.contentDurationSec).toBe(183);
+    });
+
+    it("keeps the interior aligned when REC restarts on a different second", () => {
+        const candidates = [
+            ...loopPair("175237"),
+            ...loopPair("175337", 31),
+            ...loopPair("175408"),
+            ...["175240", "175340", "175440"].map(interiorLoop),
+        ];
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expectWallAligned(trip);
+        const restart = trip.frames.find(
+            (frame) => frame.channels.front?.file.name === "REC_20261116_175408_F.MP4" && frame.channels.interior,
+        )!;
+        expect(restart.channels.interior!.file.name).toBe("EXT_20261116_175340_I.MP4");
+        expect(trip.timeline.contentDurationSec).toBe(183);
+    });
+
+    it("leaves a REC pair without the interior on one media origin", () => {
+        const [front, rear] = loopPair("172637");
+        rear!.startUtc += 0.5;
+        const trip = groupTrips([front!, rear!])[0]!;
+        expect(trip.frames.every((frame) => frameMediaOffset(frame, "rear") === 0)).toBe(true);
     });
 });
 

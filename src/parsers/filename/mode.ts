@@ -477,10 +477,13 @@ const thinkwareMode: FilenameModeTechnique = {
         if (!m) return null;
         switch (m[1]!.toUpperCase()) {
             case "REC":
+            case "EXT":
                 return "normal";
             case "EVT":
                 return "event";
             case "PARK":
+            case "PAK":
+            case "MOT":
                 return "parking";
             case "MAN":
                 return "manual";
