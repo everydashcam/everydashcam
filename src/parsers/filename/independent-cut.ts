@@ -10,7 +10,9 @@ import type { FilenameTechnique } from "./types.js";
 
 // Thinkware U3000 Pro interior (incabin_rec/EXT_..._I): on the observed card
 // it starts 3-8 s after the REC pair, and when REC restarts after an event it
-// keeps its own minute boundaries. The name and mvhd share the camera clock.
+// keeps its own minute boundaries. Those offsets come from file names: no EXT
+// file has been indexed, so wall-clock alignment assumes its mvhd start uses
+// the same clock as REC.
 const thinkwareInteriorCut: FilenameTechnique<boolean> = {
     id: "thinkware-interior-cut",
     extract(file: VendorFile): boolean | null {

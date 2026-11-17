@@ -1211,7 +1211,6 @@ describe("thinkware U3000 Pro folders", () => {
         expect(classifyFilenameChannel(parkedFront)).toEqual({ channel: "front", confident: true });
         expect(classifyFilenameChannel(parkedRear)).toEqual({ channel: "rear", confident: true });
         expect(classifyFilenameMode(parkedRear)).toBe("parking");
-        expect(classifyFilenameTimelapse(parkedRear)).toBe(false);
         expect(cameraFingerprint(parkedRear)).toBe(cameraFingerprint(parkedFront));
         expect(cameraFingerprint(parkedFront)).not.toBe(cameraFingerprint(front));
     });

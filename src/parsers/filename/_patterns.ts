@@ -432,6 +432,8 @@ export const RX_TESLA_PATH_SENTRY = /(?:^|\/)teslacam\/sentryclips\//i;
 // motion_timelapse_rec/MOT, and incabin_rec/EXT_..._I - the interior camera's
 // driving loop, cut on its own schedule rather than with REC. PARK and MAN
 // predate that sample and have no observed folder.
+// TODO: MOT clips play as real-time footage. No MOT file has been indexed, so
+// whether motion_timelapse_rec holds time-lapse clips is unconfirmed.
 export const RX_THINKWARE = /^(REC|EVT|PARK|PAK|MOT|MAN|EXT)_.+_([A-Z])\.mp4$/i;
 // The driving-loop folders of the main channels and of the interior camera.
 // Both hold one recording session, so they share a camera key.
