@@ -157,7 +157,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
         slug: "thinkware",
         hasLandingPage: true,
         locales: ALL_EXCEPT_PT,
-        gpsSamples: ["F200 PRO"],
+        gpsSamples: ["F200 PRO", "U3000 PRO"],
     },
     {
         displayName: "Nextbase",
