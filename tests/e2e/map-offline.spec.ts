@@ -185,7 +185,7 @@ test.describe("map style failures", () => {
                     )
                     .toBe(true);
             } else {
-                await page.locator("#settings-map-theme-select").selectOption("light");
+                await page.locator("#settings-map-theme-light").check();
                 await expectLocalTrack(page);
             }
             if (!pendingStyle) throw new Error("style request is missing");
@@ -215,7 +215,7 @@ test.describe("map style failures", () => {
         await loadTrip(page);
         await expect.poll(() => Boolean(pendingStyle)).toBe(true);
         await page.locator("#settings-btn").click();
-        await page.locator("#settings-map-theme-select").selectOption("light");
+        await page.locator("#settings-map-theme-light").check();
         await expect(page.locator("#map-style-error")).toHaveJSProperty("hidden", false);
 
         if (!pendingStyle) throw new Error("style request is missing");

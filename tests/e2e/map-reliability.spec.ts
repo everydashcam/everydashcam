@@ -42,8 +42,8 @@ for (const { restoreOrder, changeTheme } of [
         }, restoreOrder);
 
         if (changeTheme) {
-            await page.locator("#settings-map-theme-select").selectOption("light");
-            await expect(page.locator("#settings-map-theme-select")).toHaveValue("light");
+            await page.locator("#settings-map-theme-light").check();
+            await expect(page.locator("#settings-map-theme-light")).toBeChecked();
         }
 
         // Exercise the same settings callback as a regroup with a lost GPU.

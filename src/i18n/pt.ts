@@ -988,6 +988,7 @@ export const ptDict = {
 
     "settings.entry.title": "Configurações",
     "settings.modal.title": "Configurações",
+    "settings.navigation": "Seções",
     "settings.modal.close": "Fechar",
     "settings.privacy.section": "Privacidade",
     "settings.privacy.policyLink": "Política de privacidade",

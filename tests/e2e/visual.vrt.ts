@@ -52,6 +52,8 @@ test.describe("visual regression", () => {
         await expect(modal).toBeVisible();
         await settle(page);
         await expect(modal).toHaveScreenshot("settings-modal.png");
+        await modal.getByRole("link", { name: "Map", exact: true }).click();
+        await expect(modal.locator(".modal-card")).toHaveScreenshot("settings-map-previews.png");
     });
 
     test("hotkeys modal", async ({ page }) => {

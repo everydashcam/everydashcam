@@ -1244,6 +1244,7 @@ export type I18nKey =
     // threshold, etc.).
     | "settings.entry.title"
     | "settings.modal.title"
+    | "settings.navigation"
     | "settings.modal.close"
     | "settings.privacy.section"
     | "settings.privacy.policyLink"

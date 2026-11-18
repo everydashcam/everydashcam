@@ -988,6 +988,7 @@ export const plDict = {
 
     "settings.entry.title": "Ustawienia",
     "settings.modal.title": "Ustawienia",
+    "settings.navigation": "Sekcje",
     "settings.modal.close": "Zamknij",
     "settings.privacy.section": "Prywatność",
     "settings.privacy.policyLink": "Polityka prywatności",

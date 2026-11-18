@@ -2730,306 +2730,313 @@
     <div data-nosnippet id="settings-modal" class="export-modal modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
         <div class="export-modal-card modal-card">
             <header class="settings-modal-header">
-                <div class="export-modal-title" id="settings-modal-title" data-i18n="settings.modal.title">Settings</div>
+                <h2 class="export-modal-title" id="settings-modal-title" data-i18n="settings.modal.title">Settings</h2>
                 <button id="settings-modal-header-close" class="dc-btn dc-btn--secondary" type="button" data-i18n-attr="aria-label:export.close,title:export.close" aria-label="Close" title="Close">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
                 </button>
             </header>
-            <!-- web-only:start -->
-            <div class="export-modal-section" id="settings-migration-section" hidden>
-                <h3 class="settings-section-title" id="settings-migration-heading" tabindex="-1" data-i18n="settings.migration.section">Notes from dashcamigo</h3>
-                <div class="settings-row" id="settings-migration-old" hidden>
-                    <p class="settings-toggle-desc" data-i18n="settings.migration.announcement">dashcamigo will move to everydashcam.app. Save your trip notes here before the move.</p>
-                    <a href="/migrate/" class="dc-btn dc-btn--secondary" data-i18n="settings.migration.export">Save notes for the move</a>
-                </div>
-                <div class="settings-row" id="settings-migration-new" hidden>
-                    <p class="settings-toggle-desc" data-i18n="settings.migration.restore">Open the old site to save your notes. If you already have the file, choose it here.</p>
-                    <a id="settings-migration-recover" href="https://dashcamigo.app/migrate/" target="_blank" rel="noopener" class="dc-btn dc-btn--secondary" data-i18n="settings.migration.recover">Save notes from the old site</a>
-                    <button id="settings-migration-import" class="dc-btn dc-btn--secondary" type="button" data-i18n="settings.notes.import">Restore notes backup…</button>
-                </div>
-                <div class="settings-row">
-                    <p class="settings-toggle-desc" data-i18n="settings.migration.installed">If you use an installed app, save your notes from that app before removing it.</p>
-                </div>
-            </div>
-            <!-- web-only:end -->
-            <!-- Playback: unit preference, date format + arrow-key seek step.
-                 Units drive chart axis label, map popup speed, trip distance display
-                 (see src/units-pref.ts). The date format applies to every date
-                 in the interface (see src/ui/date-format.ts).
-                 Seek-step inputs override the previously hardcoded 5s / 30s in
-                 src/ui/player-hotkeys.ts; storage in src/ui/seek-step-pref.ts. -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.playback.section">Playback</h3>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.playback.units.label">Units of measurement</span>
-                        <select id="settings-units-select" class="settings-select">
-                            <option value="metric" data-i18n="settings.playback.units.metric">Metric (km/h, km)</option>
-                            <option value="imperial" data-i18n="settings.playback.units.imperial">Imperial (mph, mi)</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.playback.dateFormat.label">Date format</span>
-                        <select id="settings-date-format-select" class="settings-select">
-                            <!-- Option text carries a sample date in each style; settings-modal.ts fills it. -->
-                            <option value="locale">Language default</option>
-                            <option value="iso">ISO 8601</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-select-label" data-i18n="settings.playback.seekStep.label">Arrow key seek step</span>
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.playback.seekStep.arrow">Arrow</span>
-                        <span class="settings-numeric-row">
-                            <input id="settings-seek-step-input" type="number" inputmode="decimal" class="settings-number-input"
-                                   min="0.1" max="600" step="0.1">
-                            <span class="settings-numeric-unit" data-i18n="settings.playback.seekStep.unit">seconds</span>
-                        </span>
-                    </label>
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.playback.seekStep.shiftArrow">Shift + Arrow</span>
-                        <span class="settings-numeric-row">
-                            <input id="settings-seek-step-shift-input" type="number" inputmode="decimal" class="settings-number-input"
-                                   min="0.1" max="600" step="0.1">
-                            <span class="settings-numeric-unit" data-i18n="settings.playback.seekStep.unit">seconds</span>
-                        </span>
-                    </label>
-                    <p class="settings-toggle-desc" data-i18n="settings.playback.seekStep.description">How far the left / right arrow keys jump in the player. Shift extends the jump.</p>
-                </div>
-            </div>
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.export.section">Export</h3>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.export.encoder.label">Video encoding</span>
-                        <select id="settings-encoder-select" class="settings-select" aria-describedby="settings-encoder-hint">
-                            <option value="auto" data-i18n="settings.export.encoder.auto">Automatic</option>
-                            <option value="hardware" data-i18n="settings.export.encoder.hardware">Hardware</option>
-                            <option value="software" data-i18n="settings.export.encoder.software">Software</option>
-                        </select>
-                    </label>
-                    <p id="settings-encoder-hint" class="settings-toggle-desc" data-i18n="settings.export.encoder.autoHint">Checks a short sample before export and switches to software if it preserves more detail. Recordings saved without changes do not need this check.</p>
-                </div>
-            </div>
-            <!-- Viewer map preferences; export overlays have separate controls. -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.map.section">Map</h3>
-                <div id="settings-map-view-control" class="settings-row"></div>
-                <div class="settings-row">
-                    <label class="settings-toggle">
-                        <input type="checkbox" id="settings-trip-map-toggle" aria-describedby="settings-trip-map-description">
-                        <span class="settings-toggle-slider" aria-hidden="true"></span>
-                        <span class="settings-toggle-label" data-i18n="tripMap.toggle">Trip map</span>
-                    </label>
-                    <p id="settings-trip-map-description" class="settings-toggle-desc" data-i18n="settings.tripMap.description">Show a map of all your trips until you pick one. The map button next to the search opens it any time.</p>
-                </div>
-                <div class="settings-row">
-                    <label class="settings-toggle">
-                        <input type="checkbox" id="settings-trip-map-markers-toggle" aria-describedby="settings-trip-map-markers-description">
-                        <span class="settings-toggle-slider" aria-hidden="true"></span>
-                        <span class="settings-toggle-label" data-i18n="settings.tripMap.markers">Markers on the trip map</span>
-                    </label>
-                    <p id="settings-trip-map-markers-description" class="settings-toggle-desc" data-i18n="settings.tripMap.markers.description">Show the markers you added in your trips.</p>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-select-label" data-i18n="settings.map.marker.label">Map marker</span>
-                    <div id="settings-map-marker-control"></div>
-                    <p class="settings-toggle-desc" data-i18n="settings.map.marker.description">Choose how your position appears on the map.</p>
-                </div>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.map.labelScale.label">Text size on the map</span>
-                        <select id="settings-map-label-scale-select" class="settings-select">
-                            <option value="1" data-i18n="settings.map.labelScale.standard">Standard</option>
-                            <option value="1.25">125 %</option>
-                            <option value="1.5">150 %</option>
-                            <option value="2">200 %</option>
-                        </select>
-                    </label>
-                    <p class="settings-toggle-desc" data-i18n="settings.map.labelScale.description">Makes street and place names on the map easier to read.</p>
-                </div>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.map.streetNames.label">Street names</span>
-                        <select id="settings-map-street-names-select" class="settings-select">
-                            <option value="standard" data-i18n="settings.map.streetNames.standard">Standard</option>
-                            <option value="more" data-i18n="settings.map.streetNames.more">More</option>
-                            <option value="max" data-i18n="settings.map.streetNames.max">Max</option>
-                        </select>
-                    </label>
-                    <p class="settings-toggle-desc" data-i18n="settings.map.streetNames.description">Shows street names more often and from farther out.</p>
-                </div>
-            </div>
-            <!-- Events: brake/impact detection threshold. detectEvents in
-                 src/events.ts reads the threshold via getBrakeThresholdG();
-                 the never-checkbox stores +Infinity ("off") to disable
-                 markers everywhere - chart, map, strip, sidebar chip. -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.events.section">Detected events</h3>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.events.threshold.label">Impact sensitivity</span>
-                        <span class="settings-numeric-row">
-                            <input id="settings-events-threshold-input" type="number" inputmode="decimal" class="settings-number-input"
-                                   min="0.1" max="2" step="0.05">
-                            <span class="settings-numeric-unit" data-i18n="settings.events.threshold.unit">g</span>
-                        </span>
-                    </label>
-                    <label class="settings-toggle settings-toggle-inline">
-                        <input type="checkbox" id="settings-events-threshold-off">
-                        <span class="settings-toggle-slider" aria-hidden="true"></span>
-                        <span class="settings-toggle-label" data-i18n="settings.events.threshold.off">Disable event markers</span>
-                    </label>
-                    <p class="settings-toggle-desc" data-i18n="settings.events.threshold.description">Acceleration above this value marks an event on the chart, map and strip.</p>
-                </div>
-            </div>
-            <!-- Ingest: trip grouping threshold. Number input in minutes
-                 (step 0.5; 0.5 = the original 30-second default) plus a
-                 separate "never split" checkbox. Storage stays in seconds
-                 (or "off") via getTripGapSec/setTripGapSec. Re-groups
-                 state.trips immediately on change (see settings-modal.ts). -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.ingest.section">Trip grouping</h3>
-                <div class="settings-row">
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.ingest.gap.label">Split into a new trip when the gap is longer than</span>
-                        <span class="settings-numeric-row">
-                            <input id="settings-trip-gap-input" type="number" inputmode="decimal" class="settings-number-input"
-                                   min="0.5" max="180" step="0.5">
-                            <span class="settings-numeric-unit" data-i18n="settings.ingest.gap.unit">minutes</span>
-                        </span>
-                    </label>
-                    <label class="settings-toggle settings-toggle-inline">
-                        <input type="checkbox" id="settings-trip-gap-never">
-                        <span class="settings-toggle-slider" aria-hidden="true"></span>
-                        <span class="settings-toggle-label" data-i18n="settings.ingest.gap.never">Never split - one trip from all files</span>
-                    </label>
-                    <p class="settings-toggle-desc" data-i18n="settings.ingest.gap.description">Applies to folders you open from now on and re-groups trips already loaded.</p>
-                </div>
-            </div>
-            <!-- web-only:start -->
-            <div class="export-modal-section" id="settings-privacy-section">
-                <h3 class="settings-section-title" data-i18n="settings.privacy.section">Privacy</h3>
-                <div class="settings-row" id="settings-crash-row">
-                    <label class="settings-toggle">
-                        <input type="checkbox" id="settings-crash-toggle">
-                        <span class="settings-toggle-slider" aria-hidden="true"></span>
-                        <span class="settings-toggle-label" data-i18n="settings.privacy.crash.label">Crash reports</span>
-                    </label>
-                    <p id="settings-crash-description" class="settings-toggle-desc" data-i18n="settings.privacy.crash.description">If the app breaks, an anonymized report helps me fix it — no video, no GPS, no file names, just what went wrong and on which browser. On by default; switch it off here.</p>
-                    <a href="/en/privacy/" target="_blank" rel="noopener" class="settings-policy-link"
-                       data-i18n="settings.privacy.policyLink">Privacy policy</a>
-                </div>
-            </div>
-            <!-- web-only:end -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.notes.section">Trip notes</h3>
-                <div class="settings-row">
-                    <p class="settings-toggle-desc" data-i18n="settings.notes.description">Download a copy of every trip name, note, favorite and marker, or restore one you saved earlier. Recordings aren't included.</p>
-                    <button id="settings-notes-export-btn" class="dc-btn dc-btn--secondary" type="button"
-                            data-i18n="settings.notes.export">Download notes backup</button>
-                    <button id="settings-notes-import-btn" class="dc-btn dc-btn--secondary" type="button"
-                            data-i18n="settings.notes.import">Restore notes backup…</button>
-                    <input id="settings-notes-import-input" type="file" accept=".everydashcam,.dashcamigo,application/json" hidden>
-                </div>
-            </div>
-            <!-- Recordings cache: usage + limit + clear for the cross-session
-                 index cache (src/persist/index-cache.ts). Usage is filled from
-                 JS at open time; the limit input persists via
-                 src/persist/cache-limit.ts and shrinking it prunes at once.
-                 Clearing touches ONLY the indexCache store - folders and
-                 annotations stay. -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.cache.section">Saved recording info</h3>
-                <div class="settings-row">
-                    <p class="settings-toggle-desc" data-i18n="settings.cache.description">Remembers details everydashcam has already read, so folders open faster next time. The videos themselves are never stored.</p>
-                    <div class="settings-info-row">
-                        <span class="settings-info-label" data-i18n="settings.cache.usage.label">Space used</span>
-                        <span id="settings-cache-usage-value" class="settings-info-value">—</span>
-                    </div>
-                    <label class="settings-select-row">
-                        <span class="settings-select-label" data-i18n="settings.cache.limit.label">Space limit</span>
-                        <span class="settings-numeric-row">
-                            <input id="settings-cache-limit-input" type="number" inputmode="numeric" class="settings-number-input"
-                                   min="64" max="4096" step="64">
-                            <span class="settings-numeric-unit" data-i18n="settings.cache.limit.unit">MB</span>
-                        </span>
-                    </label>
-                    <p class="settings-toggle-desc" data-i18n="settings.cache.limit.description">When this space fills up, the oldest folders are forgotten first.</p>
-                </div>
-                <div class="settings-row">
-                    <button id="settings-cache-clear-btn" class="dc-btn dc-btn--secondary" type="button"
-                            data-i18n="settings.cache.clear.label">Clear saved recording info</button>
-                    <p class="settings-toggle-desc" data-i18n="settings.cache.clear.description">everydashcam will read each folder from scratch the next time you open it. Trip names, notes and markers are kept.</p>
-                </div>
-            </div>
-            <!-- About & diagnostics: read-only info (version, storage) and
-                 support actions (download log, clear offline cache). Filled
-                 from JS at open time - DOM is static placeholders. -->
-            <div class="export-modal-section">
-                <h3 class="settings-section-title" data-i18n="settings.about.section">About & diagnostics</h3>
+            <nav class="settings-nav" aria-labelledby="settings-nav-title">
+                <label id="settings-nav-title" for="settings-jump" data-i18n="settings.navigation">Sections</label>
+                <select id="settings-jump" class="settings-select"></select>
+                <div class="settings-nav__links"></div>
+            </nav>
+            <div class="settings-content">
                 <!-- web-only:start -->
-                <details id="settings-support-note" class="settings-support-note">
-                    <summary data-i18n="supportPrompt.title">From the author</summary>
-                    <div class="support-note-body">
-                        <p class="support-note-text" data-i18n="supportPrompt.body">If everydashcam has been useful, tell people about it on a forum, in a chat or among friends — wherever it fits. A link and a few words about your experience are enough.</p>
-                        <p class="support-note-text" data-i18n="supportPrompt.reason">Recommendations like these mean a lot to me. They let me know the project is useful and help others find it.</p>
-                        <a class="support-github" href="https://github.com/everydashcam/everydashcam" target="_blank" rel="noopener noreferrer"
-                           data-i18n="supportPrompt.github">A GitHub star is welcome too.</a>
-                        <div class="support-note-actions">
-                            <button type="button" class="dc-btn dc-btn--secondary support-copy"
-                                    aria-live="polite" data-i18n="supportPrompt.copy">Copy link</button>
+                <div class="export-modal-section" id="settings-migration-section" hidden>
+                    <h3 class="settings-section-title" id="settings-migration-heading" tabindex="-1" data-i18n="settings.migration.section">Notes from dashcamigo</h3>
+                    <div class="settings-row" id="settings-migration-old" hidden>
+                        <p class="settings-toggle-desc" data-i18n="settings.migration.announcement">dashcamigo will move to everydashcam.app. Save your trip notes here before the move.</p>
+                        <a href="/migrate/" class="dc-btn dc-btn--secondary" data-i18n="settings.migration.export">Save notes for the move</a>
+                    </div>
+                    <div class="settings-row" id="settings-migration-new" hidden>
+                        <p class="settings-toggle-desc" data-i18n="settings.migration.restore">Open the old site to save your notes. If you already have the file, choose it here.</p>
+                        <a id="settings-migration-recover" href="https://dashcamigo.app/migrate/" target="_blank" rel="noopener" class="dc-btn dc-btn--secondary" data-i18n="settings.migration.recover">Save notes from the old site</a>
+                        <button id="settings-migration-import" class="dc-btn dc-btn--secondary" type="button" data-i18n="settings.notes.import">Restore notes backup…</button>
+                    </div>
+                    <div class="settings-row">
+                        <p class="settings-toggle-desc" data-i18n="settings.migration.installed">If you use an installed app, save your notes from that app before removing it.</p>
+                    </div>
+                </div>
+                <!-- web-only:end -->
+                <!-- Playback: unit preference, date format + arrow-key seek step.
+                     Units drive chart axis label, map popup speed, trip distance display
+                     (see src/units-pref.ts). The date format applies to every date
+                     in the interface (see src/ui/date-format.ts).
+                     Seek-step inputs override the previously hardcoded 5s / 30s in
+                     src/ui/player-hotkeys.ts; storage in src/ui/seek-step-pref.ts. -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.playback.section">Playback</h3>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.playback.units.label">Units of measurement</span>
+                            <select id="settings-units-select" class="settings-select">
+                                <option value="metric" data-i18n="settings.playback.units.metric">Metric (km/h, km)</option>
+                                <option value="imperial" data-i18n="settings.playback.units.imperial">Imperial (mph, mi)</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.playback.dateFormat.label">Date format</span>
+                            <select id="settings-date-format-select" class="settings-select">
+                                <!-- Option text carries a sample date in each style; settings-modal.ts fills it. -->
+                                <option value="locale">Language default</option>
+                                <option value="iso">ISO 8601</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-select-label" data-i18n="settings.playback.seekStep.label">Arrow key seek step</span>
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.playback.seekStep.arrow">Arrow</span>
+                            <span class="settings-numeric-row">
+                                <input id="settings-seek-step-input" type="number" inputmode="decimal" class="settings-number-input"
+                                       min="0.1" max="600" step="0.1">
+                                <span class="settings-numeric-unit" data-i18n="settings.playback.seekStep.unit">seconds</span>
+                            </span>
+                        </label>
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.playback.seekStep.shiftArrow">Shift + Arrow</span>
+                            <span class="settings-numeric-row">
+                                <input id="settings-seek-step-shift-input" type="number" inputmode="decimal" class="settings-number-input"
+                                       min="0.1" max="600" step="0.1">
+                                <span class="settings-numeric-unit" data-i18n="settings.playback.seekStep.unit">seconds</span>
+                            </span>
+                        </label>
+                        <p class="settings-toggle-desc" data-i18n="settings.playback.seekStep.description">How far the left / right arrow keys jump in the player. Shift extends the jump.</p>
+                    </div>
+                </div>
+                <!-- Viewer map preferences; export overlays have separate controls. -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.map.section">Map</h3>
+                    <div id="settings-map-view-control" class="settings-row"></div>
+                    <div class="settings-row">
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="settings-trip-map-toggle" aria-describedby="settings-trip-map-description">
+                            <span class="settings-toggle-slider" aria-hidden="true"></span>
+                            <span class="settings-toggle-label" data-i18n="tripMap.toggle">Trip map</span>
+                        </label>
+                        <p id="settings-trip-map-description" class="settings-toggle-desc" data-i18n="settings.tripMap.description">Show a map of all your trips until you pick one. The map button next to the search opens it any time.</p>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="settings-trip-map-markers-toggle" aria-describedby="settings-trip-map-markers-description">
+                            <span class="settings-toggle-slider" aria-hidden="true"></span>
+                            <span class="settings-toggle-label" data-i18n="settings.tripMap.markers">Markers on the trip map</span>
+                        </label>
+                        <p id="settings-trip-map-markers-description" class="settings-toggle-desc" data-i18n="settings.tripMap.markers.description">Show the markers you added in your trips.</p>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-select-label" data-i18n="settings.map.marker.label">Map marker</span>
+                        <div id="settings-map-marker-control"></div>
+                        <p class="settings-toggle-desc" data-i18n="settings.map.marker.description">Choose how your position appears on the map.</p>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.map.labelScale.label">Text size on the map</span>
+                            <select id="settings-map-label-scale-select" class="settings-select">
+                                <option value="1" data-i18n="settings.map.labelScale.standard">Standard</option>
+                                <option value="1.25">125 %</option>
+                                <option value="1.5">150 %</option>
+                                <option value="2">200 %</option>
+                            </select>
+                        </label>
+                        <p class="settings-toggle-desc" data-i18n="settings.map.labelScale.description">Makes street and place names on the map easier to read.</p>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.map.streetNames.label">Street names</span>
+                            <select id="settings-map-street-names-select" class="settings-select">
+                                <option value="standard" data-i18n="settings.map.streetNames.standard">Standard</option>
+                                <option value="more" data-i18n="settings.map.streetNames.more">More</option>
+                                <option value="max" data-i18n="settings.map.streetNames.max">Max</option>
+                            </select>
+                        </label>
+                        <p class="settings-toggle-desc" data-i18n="settings.map.streetNames.description">Shows street names more often and from farther out.</p>
+                    </div>
+                </div>
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.export.section">Export</h3>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.export.encoder.label">Video encoding</span>
+                            <select id="settings-encoder-select" class="settings-select" aria-describedby="settings-encoder-hint">
+                                <option value="auto" data-i18n="settings.export.encoder.auto">Automatic</option>
+                                <option value="hardware" data-i18n="settings.export.encoder.hardware">Hardware</option>
+                                <option value="software" data-i18n="settings.export.encoder.software">Software</option>
+                            </select>
+                        </label>
+                        <p id="settings-encoder-hint" class="settings-toggle-desc" data-i18n="settings.export.encoder.autoHint">Checks a short sample before export and switches to software if it preserves more detail. Recordings saved without changes do not need this check.</p>
+                    </div>
+                </div>
+                <!-- Events: brake/impact detection threshold. detectEvents in
+                     src/events.ts reads the threshold via getBrakeThresholdG();
+                     the never-checkbox stores +Infinity ("off") to disable
+                     markers everywhere - chart, map, strip, sidebar chip. -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.events.section">Detected events</h3>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.events.threshold.label">Impact sensitivity</span>
+                            <span class="settings-numeric-row">
+                                <input id="settings-events-threshold-input" type="number" inputmode="decimal" class="settings-number-input"
+                                       min="0.1" max="2" step="0.05">
+                                <span class="settings-numeric-unit" data-i18n="settings.events.threshold.unit">g</span>
+                            </span>
+                        </label>
+                        <label class="settings-toggle settings-toggle-inline">
+                            <input type="checkbox" id="settings-events-threshold-off">
+                            <span class="settings-toggle-slider" aria-hidden="true"></span>
+                            <span class="settings-toggle-label" data-i18n="settings.events.threshold.off">Disable event markers</span>
+                        </label>
+                        <p class="settings-toggle-desc" data-i18n="settings.events.threshold.description">Acceleration above this value marks an event on the chart, map and strip.</p>
+                    </div>
+                </div>
+                <!-- Ingest: trip grouping threshold. Number input in minutes
+                     (step 0.5; 0.5 = the original 30-second default) plus a
+                     separate "never split" checkbox. Storage stays in seconds
+                     (or "off") via getTripGapSec/setTripGapSec. Re-groups
+                     state.trips immediately on change (see settings-modal.ts). -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.ingest.section">Trip grouping</h3>
+                    <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.ingest.gap.label">Split into a new trip when the gap is longer than</span>
+                            <span class="settings-numeric-row">
+                                <input id="settings-trip-gap-input" type="number" inputmode="decimal" class="settings-number-input"
+                                       min="0.5" max="180" step="0.5">
+                                <span class="settings-numeric-unit" data-i18n="settings.ingest.gap.unit">minutes</span>
+                            </span>
+                        </label>
+                        <label class="settings-toggle settings-toggle-inline">
+                            <input type="checkbox" id="settings-trip-gap-never">
+                            <span class="settings-toggle-slider" aria-hidden="true"></span>
+                            <span class="settings-toggle-label" data-i18n="settings.ingest.gap.never">Never split - one trip from all files</span>
+                        </label>
+                        <p class="settings-toggle-desc" data-i18n="settings.ingest.gap.description">Applies to folders you open from now on and re-groups trips already loaded.</p>
+                    </div>
+                </div>
+                <!-- web-only:start -->
+                <div class="export-modal-section" id="settings-privacy-section">
+                    <h3 class="settings-section-title" data-i18n="settings.privacy.section">Privacy</h3>
+                    <div class="settings-row" id="settings-crash-row">
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="settings-crash-toggle">
+                            <span class="settings-toggle-slider" aria-hidden="true"></span>
+                            <span class="settings-toggle-label" data-i18n="settings.privacy.crash.label">Crash reports</span>
+                        </label>
+                        <p id="settings-crash-description" class="settings-toggle-desc" data-i18n="settings.privacy.crash.description">If the app breaks, an anonymized report helps me fix it — no video, no GPS, no file names, just what went wrong and on which browser. On by default; switch it off here.</p>
+                        <a href="/en/privacy/" target="_blank" rel="noopener" class="settings-policy-link"
+                           data-i18n="settings.privacy.policyLink">Privacy policy</a>
+                    </div>
+                </div>
+                <!-- web-only:end -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.notes.section">Trip notes</h3>
+                    <div class="settings-row">
+                        <p class="settings-toggle-desc" data-i18n="settings.notes.description">Download a copy of every trip name, note, favorite and marker, or restore one you saved earlier. Recordings aren't included.</p>
+                        <button id="settings-notes-export-btn" class="dc-btn dc-btn--secondary" type="button"
+                                data-i18n="settings.notes.export">Download notes backup</button>
+                        <button id="settings-notes-import-btn" class="dc-btn dc-btn--secondary" type="button"
+                                data-i18n="settings.notes.import">Restore notes backup…</button>
+                        <input id="settings-notes-import-input" type="file" accept=".everydashcam,.dashcamigo,application/json" hidden>
+                    </div>
+                </div>
+                <!-- Recordings cache: usage + limit + clear for the cross-session
+                     index cache (src/persist/index-cache.ts). Usage is filled from
+                     JS at open time; the limit input persists via
+                     src/persist/cache-limit.ts and shrinking it prunes at once.
+                     Clearing touches ONLY the indexCache store - folders and
+                     annotations stay. -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.cache.section">Saved recording info</h3>
+                    <div class="settings-row">
+                        <p class="settings-toggle-desc" data-i18n="settings.cache.description">Remembers details everydashcam has already read, so folders open faster next time. The videos themselves are never stored.</p>
+                        <div class="settings-info-row">
+                            <span class="settings-info-label" data-i18n="settings.cache.usage.label">Space used</span>
+                            <span id="settings-cache-usage-value" class="settings-info-value">—</span>
+                        </div>
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.cache.limit.label">Space limit</span>
+                            <span class="settings-numeric-row">
+                                <input id="settings-cache-limit-input" type="number" inputmode="numeric" class="settings-number-input"
+                                       min="64" max="4096" step="64">
+                                <span class="settings-numeric-unit" data-i18n="settings.cache.limit.unit">MB</span>
+                            </span>
+                        </label>
+                        <p class="settings-toggle-desc" data-i18n="settings.cache.limit.description">When this space fills up, the oldest folders are forgotten first.</p>
+                    </div>
+                    <div class="settings-row">
+                        <button id="settings-cache-clear-btn" class="dc-btn dc-btn--secondary" type="button"
+                                data-i18n="settings.cache.clear.label">Clear saved recording info</button>
+                        <p class="settings-toggle-desc" data-i18n="settings.cache.clear.description">everydashcam will read each folder from scratch the next time you open it. Trip names, notes and markers are kept.</p>
+                    </div>
+                </div>
+                <!-- About & diagnostics: read-only info (version, storage) and
+                     support actions (download log, clear offline cache). Filled
+                     from JS at open time - DOM is static placeholders. -->
+                <div class="export-modal-section">
+                    <h3 class="settings-section-title" data-i18n="settings.about.section">About & diagnostics</h3>
+                    <!-- web-only:start -->
+                    <details id="settings-support-note" class="settings-support-note">
+                        <summary data-i18n="supportPrompt.title">From the author</summary>
+                        <div class="support-note-body">
+                            <p class="support-note-text" data-i18n="supportPrompt.body">If everydashcam has been useful, tell people about it on a forum, in a chat or among friends — wherever it fits. A link and a few words about your experience are enough.</p>
+                            <p class="support-note-text" data-i18n="supportPrompt.reason">Recommendations like these mean a lot to me. They let me know the project is useful and help others find it.</p>
+                            <a class="support-github" href="https://github.com/everydashcam/everydashcam" target="_blank" rel="noopener noreferrer"
+                               data-i18n="supportPrompt.github">A GitHub star is welcome too.</a>
+                            <div class="support-note-actions">
+                                <button type="button" class="dc-btn dc-btn--secondary support-copy"
+                                        aria-live="polite" data-i18n="supportPrompt.copy">Copy link</button>
+                            </div>
+                        </div>
+                    </details>
+                    <!-- web-only:end -->
+                    <div class="settings-row">
+                        <div class="settings-info-row">
+                            <span class="settings-info-label" data-i18n="settings.about.version.label">Version</span>
+                            <span id="settings-version-value" class="settings-info-value">—</span>
+                        </div>
+                        <div class="settings-info-row">
+                            <span class="settings-info-label" data-i18n="settings.about.storage.label">Storage used</span>
+                            <span id="settings-storage-value" class="settings-info-value">—</span>
                         </div>
                     </div>
-                </details>
-                <!-- web-only:end -->
-                <div class="settings-row">
-                    <div class="settings-info-row">
-                        <span class="settings-info-label" data-i18n="settings.about.version.label">Version</span>
-                        <span id="settings-version-value" class="settings-info-value">—</span>
+                    <div class="settings-row">
+                        <button id="settings-download-log-btn" class="dc-btn dc-btn--secondary" type="button"
+                                data-i18n="settings.about.download.label">Download diagnostics log</button>
+                        <p class="settings-toggle-desc" data-i18n="settings.about.download.description">Attach this file when reporting a bug.</p>
                     </div>
-                    <div class="settings-info-row">
-                        <span class="settings-info-label" data-i18n="settings.about.storage.label">Storage used</span>
-                        <span id="settings-storage-value" class="settings-info-value">—</span>
+                    <!-- portable-notices -->
+                    <!-- web-only:start -->
+                    <div class="settings-row">
+                        <button id="settings-clear-cache-btn" class="dc-btn dc-btn--secondary" type="button"
+                                data-i18n="settings.about.clearCache.label">Refresh offline app</button>
+                        <p class="settings-toggle-desc" data-i18n="settings.about.clearCache.description">Downloads a fresh copy of the app next time you open it. Settings and language stay the same.</p>
+                    </div>
+                    <!-- web-only:end -->
+                </div>
+                <!-- Danger zone. Wired up in src/ui/settings-modal.ts: the button
+                     opens #reset-confirm-modal; the actual wipe lives in
+                     src/ui/reset.ts. Visually separated from Privacy via the
+                     .settings-danger class (red accents, divider above). -->
+                <div class="export-modal-section settings-danger">
+                    <h3 class="settings-section-title" data-i18n="settings.danger.section">Reset app data</h3>
+                    <div class="settings-row">
+                        <p class="settings-toggle-desc" data-i18n="settings.danger.onboarding.description">Show the first-run tips (trips, player, export) again next time you use them.</p>
+                        <button id="settings-reset-onboarding-btn" class="dc-btn dc-btn--secondary" type="button"
+                                data-i18n="settings.danger.onboarding.cta">Replay tips</button>
+                    </div>
+                    <div class="settings-row">
+                        <p class="settings-toggle-desc" data-i18n="settings.danger.description" data-portable-i18n="portable.reset.description">Erases everydashcam data saved in this browser: settings, language, theme, privacy choices, offline data, trip names, notes, favorites, markers and remembered folders. Your recording files stay unchanged.</p>
+                        <button id="settings-reset-btn" class="dc-btn dc-btn--danger" type="button"
+                                data-i18n="settings.danger.cta">Reset everything</button>
                     </div>
                 </div>
-                <div class="settings-row">
-                    <button id="settings-download-log-btn" class="dc-btn dc-btn--secondary" type="button"
-                            data-i18n="settings.about.download.label">Download diagnostics log</button>
-                    <p class="settings-toggle-desc" data-i18n="settings.about.download.description">Attach this file when reporting a bug.</p>
+                <div class="export-modal-actions">
+                    <button id="settings-modal-close" class="dc-btn dc-btn--primary" type="button"
+                            data-i18n="settings.modal.close">Close</button>
                 </div>
-                <!-- portable-notices -->
-                <!-- web-only:start -->
-                <div class="settings-row">
-                    <button id="settings-clear-cache-btn" class="dc-btn dc-btn--secondary" type="button"
-                            data-i18n="settings.about.clearCache.label">Refresh offline app</button>
-                    <p class="settings-toggle-desc" data-i18n="settings.about.clearCache.description">Downloads a fresh copy of the app next time you open it. Settings and language stay the same.</p>
-                </div>
-                <!-- web-only:end -->
-            </div>
-            <!-- Danger zone. Wired up in src/ui/settings-modal.ts: the button
-                 opens #reset-confirm-modal; the actual wipe lives in
-                 src/ui/reset.ts. Visually separated from Privacy via the
-                 .settings-danger class (red accents, divider above). -->
-            <div class="export-modal-section settings-danger">
-                <h3 class="settings-section-title" data-i18n="settings.danger.section">Reset app data</h3>
-                <div class="settings-row">
-                    <p class="settings-toggle-desc" data-i18n="settings.danger.onboarding.description">Show the first-run tips (trips, player, export) again next time you use them.</p>
-                    <button id="settings-reset-onboarding-btn" class="dc-btn dc-btn--secondary" type="button"
-                            data-i18n="settings.danger.onboarding.cta">Replay tips</button>
-                </div>
-                <div class="settings-row">
-                    <p class="settings-toggle-desc" data-i18n="settings.danger.description" data-portable-i18n="portable.reset.description">Erases everydashcam data saved in this browser: settings, language, theme, privacy choices, offline data, trip names, notes, favorites, markers and remembered folders. Your recording files stay unchanged.</p>
-                    <button id="settings-reset-btn" class="dc-btn dc-btn--danger" type="button"
-                            data-i18n="settings.danger.cta">Reset everything</button>
-                </div>
-            </div>
-            <div class="export-modal-actions">
-                <button id="settings-modal-close" class="dc-btn dc-btn--primary" type="button"
-                        data-i18n="settings.modal.close">Close</button>
             </div>
         </div>
     </div>

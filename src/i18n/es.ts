@@ -988,6 +988,7 @@ export const esDict = {
 
     "settings.entry.title": "Ajustes",
     "settings.modal.title": "Ajustes",
+    "settings.navigation": "Secciones",
     "settings.modal.close": "Cerrar",
     "settings.privacy.section": "Privacidad",
     "settings.privacy.policyLink": "Política de privacidad",

@@ -149,7 +149,7 @@ test("Yandex selection syncs map settings and limits the camera to north-up", as
     await page.keyboard.press("Escape");
     await page.locator("#settings-btn").click();
     const modalAppearance = page.locator(
-        "#settings-map-style-select, #settings-map-theme-select, #settings-map-buildings3d-toggle, #settings-map-label-scale-select, #settings-map-street-names-select",
+        "#settings-map-style-select, #settings-map-themes input, #settings-map-buildings3d-toggle, #settings-map-label-scale-select, #settings-map-street-names-select",
     );
     await expectControlsDisabled(modalAppearance, true);
     await expect(page.locator("#settings-map-style-unavailable")).toBeVisible();
@@ -162,7 +162,7 @@ test("Yandex selection syncs map settings and limits the camera to north-up", as
     await expectControlsDisabled(modalAppearance, false);
     await expectControlsDisabled(quickAppearance, false);
     await expect(page.locator("#settings-map-style-select")).toHaveValue("road");
-    await expect(page.locator("#settings-map-theme-select")).toHaveValue("light");
+    await expect(page.locator("#settings-map-theme-light")).toBeChecked();
     await expect(page.locator("#settings-map-style-unavailable")).toBeHidden();
 
     await page.locator("#settings-map-provider-select").selectOption("yandex");
@@ -184,11 +184,11 @@ test("switches between the ViceCity radar and the raster marker without losing e
     const settings = page.locator("#settings-btn");
     const close = page.locator("#settings-modal-header-close");
     const provider = page.locator("#settings-map-provider-select");
-    const theme = page.locator("#settings-map-theme-select");
+    const theme = page.locator("#settings-map-themes");
     const shape = page.locator("#settings-map-minimap-shape-select");
     const controls = page.locator("#settings-map-marker-control");
     await settings.click();
-    await theme.selectOption("vice-city");
+    await theme.locator('[value="vice-city"]').check();
     await close.click();
     await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:vice-city");
     const credits = mini.locator(".dc-map-attrib-toggle");
@@ -205,8 +205,8 @@ test("switches between the ViceCity radar and the raster marker without losing e
 
     await settings.click();
     await provider.selectOption("yandex");
-    await expect(theme).toBeDisabled();
-    await expect(theme).toHaveValue("");
+    await expectControlsDisabled(theme.getByRole("radio"), true);
+    await expect(theme.locator("input:checked")).toHaveCount(0);
     await expect(page.locator("#settings-map-style-select")).toHaveValue("");
     await expect(page.locator("#settings-map-label-scale-select")).toHaveValue("");
     await expect(page.locator("#settings-map-street-names-select")).toHaveValue("");
@@ -225,7 +225,7 @@ test("switches between the ViceCity radar and the raster marker without losing e
     await expectYandexLogo(mini, "Open in Maps");
     await settings.click();
     await provider.selectOption("openfreemap");
-    await expect(theme).toHaveValue("vice-city");
+    await expect(theme.locator('[value="vice-city"]')).toBeChecked();
     await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:vice-city");
     await shape.selectOption("rect");
     await provider.selectOption("yandex");
@@ -233,7 +233,7 @@ test("switches between the ViceCity radar and the raster marker without losing e
     await expect(marker).toHaveAttribute("data-marker-render-key", "sedan:#ff9000:overhead");
     await provider.selectOption("openfreemap");
     await expect(shape).toHaveValue("rect");
-    await theme.selectOption("san-andreas");
+    await theme.locator('[value="san-andreas"]').check();
     await expect(shape).toHaveValue("circle");
     await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:san-andreas");
 });

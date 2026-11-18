@@ -1000,6 +1000,7 @@ export const jaDict = {
 
     "settings.entry.title": "設定",
     "settings.modal.title": "設定",
+    "settings.navigation": "セクション",
     "settings.modal.close": "閉じる",
     "settings.privacy.section": "プライバシー",
     "settings.privacy.policyLink": "プライバシーポリシー",

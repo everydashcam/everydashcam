@@ -1,3 +1,4 @@
+import { OPENFREEMAP_CREDITS } from "./map-credits.js";
 import { t, type I18nKey } from "../i18n/index.js";
 import { createMapProviderSelect } from "./map-provider-control.js";
 import {
@@ -68,6 +69,40 @@ function createSelect<Value extends string>(
     return select;
 }
 
+function createThemeGallery(host: HTMLElement, onChange: (value: MapThemeChoice) => void): HTMLFieldSetElement {
+    const gallery = document.createElement("fieldset");
+    gallery.id = "settings-map-themes";
+    gallery.className = "settings-themes";
+    const legend = document.createElement("legend");
+    legend.textContent = t("settings.map.theme.label");
+    const grid = document.createElement("div");
+    grid.className = "settings-themes__grid";
+    for (const value of MAP_THEME_CHOICES) {
+        const card = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "settings-map-theme";
+        input.id = `settings-map-theme-${value}`;
+        input.value = value;
+        input.addEventListener("change", () => {
+            if (input.checked) onChange(value);
+        });
+        const preview = document.createElement("span");
+        preview.className = "settings-themes__preview";
+        preview.dataset.theme = value;
+        const caption = document.createElement("span");
+        caption.textContent = t(THEME_LABEL_KEYS[value]);
+        card.append(preview, input, caption);
+        grid.append(card);
+    }
+    const credits = document.createElement("small");
+    credits.className = "settings-themes__credits";
+    credits.innerHTML = OPENFREEMAP_CREDITS;
+    gallery.append(legend, grid, credits);
+    host.append(gallery);
+    return gallery;
+}
+
 /** Both hosts live for the page lifetime; syncing values preserves keyboard focus. */
 export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppearanceChange: () => void): void {
     host.classList.add("map-view-controls");
@@ -103,6 +138,8 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppea
     styleHint.textContent = t("settings.map.styleUnavailable");
     styleHint.hidden = true;
     host.append(styleHint);
+    const changeTheme = (theme: MapThemeChoice) => setMapViewPreferences({ ...getMapViewPreferences(), theme });
+    const gallery = idPrefix === "settings-map" ? createThemeGallery(host, changeTheme) : null;
     const style = createSelect(
         host,
         `${idPrefix}-style-select`,
@@ -111,14 +148,16 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppea
         STYLE_LABEL_KEYS,
         (value) => setMapViewPreferences({ ...getMapViewPreferences(), style: value }),
     );
-    const theme = createSelect(
-        host,
-        `${idPrefix}-theme-select`,
-        "settings.map.theme.label",
-        MAP_THEME_CHOICES,
-        THEME_LABEL_KEYS,
-        (value) => setMapViewPreferences({ ...getMapViewPreferences(), theme: value }),
-    );
+    const theme =
+        gallery ??
+        createSelect(
+            host,
+            `${idPrefix}-theme-select`,
+            "settings.map.theme.label",
+            MAP_THEME_CHOICES,
+            THEME_LABEL_KEYS,
+            changeTheme,
+        );
     const shape = createSelect(
         host,
         `${idPrefix}-minimap-shape-select`,
@@ -154,7 +193,10 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppea
     let wasDisabled = false;
     const sync = (prefs: MapViewPreferences): void => {
         style.value = style.disabled ? "" : prefs.style;
-        theme.value = theme.disabled ? "" : prefs.theme;
+        if (theme instanceof HTMLSelectElement) theme.value = theme.disabled ? "" : prefs.theme;
+        else
+            for (const input of theme.querySelectorAll("input"))
+                input.checked = !theme.disabled && input.value === prefs.theme;
         const activeTheme = viewerRadarTheme();
         if (lastTheme !== activeTheme || wasDisabled !== theme.disabled) {
             wasDisabled = theme.disabled;

@@ -986,6 +986,7 @@ export const deDict = {
 
     "settings.entry.title": "Einstellungen",
     "settings.modal.title": "Einstellungen",
+    "settings.navigation": "Bereiche",
     "settings.modal.close": "Schließen",
     "settings.privacy.section": "Datenschutz",
     "settings.privacy.policyLink": "Datenschutzerklärung",

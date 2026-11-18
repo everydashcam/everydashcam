@@ -998,6 +998,7 @@ export const koDict = {
 
     "settings.entry.title": "설정",
     "settings.modal.title": "설정",
+    "settings.navigation": "섹션",
     "settings.modal.close": "닫기",
     "settings.privacy.section": "개인정보",
     "settings.privacy.policyLink": "개인정보 처리방침",

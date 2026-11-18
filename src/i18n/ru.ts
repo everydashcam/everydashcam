@@ -993,6 +993,7 @@ export const ruDict = {
 
     "settings.entry.title": "Настройки",
     "settings.modal.title": "Настройки",
+    "settings.navigation": "Разделы",
     "settings.modal.close": "Закрыть",
     "settings.privacy.section": "Приватность",
     "settings.privacy.policyLink": "Политика конфиденциальности",

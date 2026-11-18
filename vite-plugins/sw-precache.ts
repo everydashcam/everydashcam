@@ -75,7 +75,12 @@ function manifestTransform(
 
 function manifestOptions(distDir: () => string, localeSegments: readonly string[], shouldStampShells = false) {
     return {
-        globPatterns: ["assets/**/*.{js,mjs,css}", "styles/**/*.{json,png}", ...shellFiles(localeSegments)],
+        globPatterns: [
+            "assets/**/*.{js,mjs,css}",
+            "assets/map-theme-previews-*.webp",
+            "styles/**/*.{json,png}",
+            ...shellFiles(localeSegments),
+        ],
         maximumFileSizeToCacheInBytes: MAX_HOSTED_ASSET_BYTES,
         manifestTransforms: [manifestTransform(distDir, localeSegments, shouldStampShells)],
     };

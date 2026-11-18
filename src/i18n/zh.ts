@@ -986,6 +986,7 @@ export const zhDict = {
 
     "settings.entry.title": "设置",
     "settings.modal.title": "设置",
+    "settings.navigation": "设置分类",
     "settings.modal.close": "关闭",
     "settings.privacy.section": "隐私",
     "settings.privacy.policyLink": "隐私政策",

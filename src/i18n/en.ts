@@ -989,6 +989,7 @@ export const enDict = {
 
     "settings.entry.title": "Settings",
     "settings.modal.title": "Settings",
+    "settings.navigation": "Sections",
     "settings.modal.close": "Close",
     "settings.privacy.section": "Privacy",
     "settings.privacy.policyLink": "Privacy policy",

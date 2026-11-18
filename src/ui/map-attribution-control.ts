@@ -1,3 +1,4 @@
+import { OPENFREEMAP_CREDITS, OSM_CREDITS } from "./map-credits.js";
 import type { IControl, Map as MapLibreMap } from "maplibre-gl";
 
 import yandexLogoEn from "../assets/credits/yandex-en.svg?no-inline";
@@ -119,13 +120,7 @@ export class MapAttributionControl implements IControl {
         } else {
             const text = document.createElement("div");
             text.className = "dc-map-attrib-text";
-            const osm =
-                '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
-            text.innerHTML =
-                provider === "openfreemap"
-                    ? `${osm} · © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>` +
-                      ' · © <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>'
-                    : osm;
+            text.innerHTML = provider === "openfreemap" ? OPENFREEMAP_CREDITS : OSM_CREDITS;
             if (this.options.reserveBottomSpace) {
                 const toggle = document.createElement("button");
                 toggle.type = "button";

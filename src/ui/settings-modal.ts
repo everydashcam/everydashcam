@@ -57,6 +57,7 @@ import { renderMapMarkerControl } from "./map-marker-control.js";
 import { getMapMarkerAppearance, setMapMarkerAppearance } from "./map-marker-pref.js";
 import { getMapProvider, subscribeMapProvider } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
+import { initSettingsNavigation } from "./settings-navigation.js";
 import { initMapViewControls } from "./map-view-controls.js";
 import {
     getTripMapPreferences,
@@ -123,6 +124,8 @@ function isOpen(el: HTMLElement | null): boolean {
     return !!el && !el.hidden;
 }
 
+let resetNavigation: (() => void) | undefined;
+
 function openSettings(): void {
     const m = modalEl();
     if (!m) return;
@@ -138,10 +141,6 @@ function openSettings(): void {
     syncCacheSection();
     syncAboutInfo();
     m.hidden = false;
-    // [hidden] preserves the card's scrollTop from the previous open -
-    // settings must always start at the top, not where the user left off.
-    const card = m.querySelector(".modal-card");
-    if (card) card.scrollTop = 0;
     const settingsButton = document.getElementById("settings-btn");
     activateModal(m, {
         onClose: closeSettings,
@@ -153,6 +152,7 @@ function openSettings(): void {
                 ? document.getElementById("topbar-overflow")
                 : settingsButton,
     });
+    resetNavigation?.();
 }
 
 function syncSeekStepInputs(): void {
@@ -434,6 +434,8 @@ export function initSettingsModal(): void {
         if (privacySection) privacySection.hidden = true;
         log.debug("privacy section hidden (no crash reporting)");
     }
+
+    resetNavigation = initSettingsNavigation(m);
 
     settingsBtn?.addEventListener("click", () => {
         if (isOpen(m)) closeSettings();

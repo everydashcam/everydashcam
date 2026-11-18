@@ -264,25 +264,25 @@ test("map preferences persist and use the page language", async ({ page }) => {
     await page.locator("#settings-btn").click();
     const modal = page.locator("#settings-modal");
     const style = modal.getByRole("combobox", { name: "Map style", exact: true });
-    const theme = modal.getByRole("combobox", { name: "Map theme", exact: true });
+    const theme = modal.getByRole("group", { name: "Map theme", exact: true });
     const buildings = modal.getByRole("checkbox", { name: "3D buildings", exact: true });
     await expect(style).toHaveValue("classic");
-    await expect(theme).toHaveValue("auto");
+    await expect(theme.getByRole("radio", { name: "Match interface" })).toBeChecked();
     await expect(buildings).toBeChecked();
     await expect(buildings).toHaveAccessibleDescription("Only in tilted view.");
     await style.selectOption("road");
-    await theme.selectOption("light");
+    await theme.getByRole("radio", { name: "Light" }).check();
     await buildings.uncheck();
 
     await gotoApp(page, "ru");
     await page.locator("#settings-btn").click();
     const russianStyle = modal.getByRole("combobox", { name: "Стиль карты", exact: true });
-    const russianTheme = modal.getByRole("combobox", { name: "Тема карты", exact: true });
+    const russianTheme = modal.getByRole("group", { name: "Тема карты", exact: true });
     const russianBuildings = modal.getByRole("checkbox", { name: "Объёмные здания", exact: true });
     await expect(russianStyle).toHaveValue("road");
     await expect(russianStyle.locator("option:checked")).toHaveText("Дорожная");
-    await expect(russianTheme).toHaveValue("light");
-    await expect(russianTheme.locator('option[value="auto"]')).toHaveText("Как в интерфейсе");
+    await expect(russianTheme.getByRole("radio", { name: "Светлая" })).toBeChecked();
+    await expect(russianTheme.getByRole("radio", { name: "Как в интерфейсе" })).toBeVisible();
     await expect(russianBuildings).not.toBeChecked();
     await expect(russianBuildings).toHaveAccessibleDescription("Только в наклонном виде.");
 });
@@ -305,14 +305,14 @@ test("map gear and general settings share style, theme and buildings choices", a
     await expect.poll(hasBuildings).toBe(false);
     await expect(popover).toBeVisible();
     await expect(page.locator("#settings-map-style-select")).toHaveValue("minimal");
-    await expect(page.locator("#settings-map-theme-select")).toHaveValue("dark");
+    await expect(page.locator("#settings-map-theme-dark")).toBeChecked();
     await expect(page.locator("#settings-map-buildings3d-toggle")).not.toBeChecked();
 
     await page.keyboard.press("Escape");
     await expect(page.locator("#map-settings-toggle")).toBeFocused();
     await page.locator("#settings-btn").click();
     await page.locator("#settings-map-style-select").selectOption("road");
-    await page.locator("#settings-map-theme-select").selectOption("light");
+    await page.locator("#settings-map-theme-light").check();
     await page.locator("#settings-map-buildings3d-toggle").check();
     await expect.poll(hasBuildings).toBe(true);
     await expect
@@ -337,7 +337,7 @@ test("map gear and general settings share style, theme and buildings choices", a
         ["underground-2", "Underground 2", "#59e044"],
     ] as const) {
         await page.locator("#map-theme-select").selectOption({ label: name });
-        await expect(page.locator("#settings-map-theme-select")).toHaveValue(theme);
+        await expect(page.locator(`#settings-map-theme-${theme}`)).toBeChecked();
         await expect(page.locator("#mini-map")).toHaveAttribute("data-radar", theme);
         const markerKey = `arrow:${color}:${theme}`;
         await expect(page.locator("#mini-map .car-marker__canvas")).toHaveAttribute(

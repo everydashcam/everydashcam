@@ -988,6 +988,7 @@ export const frDict = {
 
     "settings.entry.title": "Paramètres",
     "settings.modal.title": "Paramètres",
+    "settings.navigation": "Rubriques",
     "settings.modal.close": "Fermer",
     "settings.privacy.section": "Confidentialité",
     "settings.privacy.policyLink": "Politique de confidentialité",
