@@ -19,11 +19,16 @@ import { fileURLToPath } from "node:url";
 import { injectClipGpmf, injectGpmdTrack, injectGpmdTrackIntoOpen, OutputDamagedError } from "./gpmd-inject.js";
 import { findMoovInFile } from "../parsers/internal/mp4-walker.js";
 import { createInMemoryFileHandle } from "../ui/in-memory-file.js";
-import { packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
+import { type GpmfClipTimeline, packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
 import { buildMp4Index } from "../parsers/internal/mp4-index.js";
 import { extractFromGpmdTrack, findGpmdTrack } from "../parsers/internal/gpmf-extract.js";
 import { buildTripTimeline, type TripFrame } from "../trips.js";
 import type { GpsRecord } from "../parsers/types.js";
+
+/** A real-time clip of the footage's first `durationSec` seconds. */
+function realTimeClip(durationSec: number): GpmfClipTimeline {
+    return { spans: [{ startSec: 0, endSec: durationSec }], speedFactor: 1 };
+}
 
 // Packs a gapless clip starting at the given UTC (content 0 == clipStartUtc) -
 // these round-trip tests have no recording pause, so a single-segment identity
@@ -35,7 +40,7 @@ function packAtUtc(
     opts: { includeAccel: boolean },
 ): ReturnType<typeof packGpmfSamples> {
     const frame: TripFrame = { startUtc: clipStartUtc, durationSec: 100_000, wallDurationSec: 100_000, channels: {} };
-    return packGpmfSamples(records, buildTripTimeline([frame]), 0, durationSec, opts);
+    return packGpmfSamples(records, buildTripTimeline([frame]), realTimeClip(durationSec), opts);
 }
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -314,9 +319,7 @@ describe("injectGpmdTrack - end-to-end round-trip on real mp4 fixture", () => {
                 makeRecord({ unixSeconds: baseUtc + i / count, lat: 55 + i / count, lon: 37, accelXg: 0.5 }),
             ),
         };
-        await expect(injectClipGpmf({ handle, trip, clipContentStartSec: 0, clipContentEndSec: 1 })).resolves.toBe(
-            true,
-        );
+        await expect(injectClipGpmf({ handle, trip, clip: realTimeClip(1) })).resolves.toBe(true);
         const file = await handle.getFile();
         const index = await buildMp4Index(file);
         const track = findGpmdTrack(index);
@@ -341,10 +344,10 @@ describe("injectGpmdTrack - end-to-end round-trip on real mp4 fixture", () => {
                 makeRecord({ unixSeconds: baseUtc + i / 65_536, lat: 55, lon: 37 }),
             ),
         };
-        expect(() => packGpmfSamples(trip.records, trip.timeline, 0, 1)).toThrow("repeat out of uint16 range");
-        await expect(injectClipGpmf({ handle, trip, clipContentStartSec: 0, clipContentEndSec: 1 })).resolves.toBe(
-            false,
+        expect(() => packGpmfSamples(trip.records, trip.timeline, realTimeClip(1))).toThrow(
+            "repeat out of uint16 range",
         );
+        await expect(injectClipGpmf({ handle, trip, clip: realTimeClip(1) })).resolves.toBe(false);
         expect(Buffer.from(await (await handle.getFile()).arrayBuffer()).equals(original)).toBe(true);
     });
 
@@ -369,8 +372,7 @@ describe("injectGpmdTrack - end-to-end round-trip on real mp4 fixture", () => {
             injectClipGpmf({
                 handle,
                 trip: { records, timeline: buildTripTimeline([frame]) },
-                clipContentStartSec: 0,
-                clipContentEndSec: 3,
+                clip: realTimeClip(3),
             }),
         ).rejects.toBe(aborted);
     });

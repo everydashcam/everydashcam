@@ -34,7 +34,7 @@
 import { throwIfCancelled } from "../abort-signals.js";
 import { findBox, findMoovInFile, type Box } from "../parsers/internal/mp4-walker.js";
 import { ascii, box, concat, fourCC, fullBox, identityMatrix, u16, u32 } from "./iso-write.js";
-import { type GpmfSample, packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
+import { type GpmfClipTimeline, type GpmfSample, packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
 import { createLogger } from "../log.js";
 import { captureSentryException } from "../sentry.js";
 import type { Trip } from "../trips.js";
@@ -74,7 +74,7 @@ export class OutputDamagedError extends Error {
 }
 
 /**
- * Packs the trip's GPS records for [startTripSec, endTripSec) into GPMF samples
+ * Packs the trip's GPS records for the clip's footage into GPMF samples
  * and injects a gpmd track into the finished mp4. Single entry point shared by
  * the stream-copy (export.ts) and transcode (export-flow.ts) paths so the pack
  * args and error policy live in one place.
@@ -96,11 +96,10 @@ export async function injectClipGpmf(args: {
      *  commit. Requires capturedMoov; ignored without it. */
     writable?: GpmdInjectionWritable;
     trip: Pick<Trip, "records" | "timeline">;
-    // Clip range on the trip's FOOTAGE (content) axis - the same axis the
-    // stream-copy video track is built on (pauses removed). Keeping gpmd and
-    // video on one axis is what guarantees they stay the same length and in sync.
-    clipContentStartSec: number;
-    clipContentEndSec: number;
+    // The clip's spans on the trip's FOOTAGE (content) axis and its speed-up -
+    // exactly what the video track plays. Keeping gpmd and video on one
+    // timeline is what guarantees they stay the same length and in sync.
+    clip: GpmfClipTimeline;
     signal?: AbortSignal;
     // moov bytes + absolute offset captured from mediabunny's onMoov callback
     // during muxing (relayed from the worker on the re-encode path). Without it
@@ -108,20 +107,14 @@ export async function injectClipGpmf(args: {
     // handle that is a full multi-GB getFile() snapshot.
     capturedMoov?: CapturedMoov;
 }): Promise<boolean> {
-    const { handle, writable, trip, clipContentStartSec, clipContentEndSec, signal, capturedMoov } = args;
+    const { handle, writable, trip, clip, signal, capturedMoov } = args;
     // Video's edit list hides its decoder preroll, so the requested footage
     // start is also the metadata track's zero. Preserve that edit list when
     // appending gpmd; GPSU carries the absolute UTC for external readers.
     let sampleCount = 0;
     try {
         signal?.throwIfAborted();
-        const samples = packGpmfSamples(
-            trip.records,
-            trip.timeline,
-            clipContentStartSec,
-            clipContentEndSec - clipContentStartSec,
-            { includeAccel: true },
-        );
+        const samples = packGpmfSamples(trip.records, trip.timeline, clip, { includeAccel: true });
         sampleCount = samples.length;
         if (writable && capturedMoov) await injectGpmdTrackIntoOpen(writable, samples, signal, capturedMoov);
         else await injectGpmdTrack(handle, samples, signal, capturedMoov);
@@ -170,7 +163,7 @@ function throwIfAbortedSignal(signal: AbortSignal | undefined): void {
  *
  * The native or in-memory handle must support getFile() and
  * createWritable({keepExistingData: true}). Samples come from packGpmfSamples,
- * with one payload and duration per clip second.
+ * with one payload and duration per footage second.
  */
 export async function injectGpmdTrack(
     handle: FileSystemFileHandle,

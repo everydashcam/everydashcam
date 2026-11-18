@@ -7,7 +7,7 @@
 // is in gpmd-inject.test.ts.
 
 import { describe, it, expect } from "vitest";
-import { packGpmfSamples } from "./gpmf-pack.js";
+import { type GpmfClipTimeline, packGpmfSamples } from "./gpmf-pack.js";
 import { decodeNumeric, decodeString, iterTokens, parseGpsuTimestamp } from "./gpmf.js";
 import { buildTripTimeline, type TripFrame } from "../../trips.js";
 import type { GpsRecord } from "../types.js";
@@ -28,6 +28,11 @@ function makeRecord(overrides: Partial<GpsRecord>): GpsRecord {
     };
 }
 
+/** A real-time clip of one footage span. */
+function realTimeClip(startSec: number, durationSec: number): GpmfClipTimeline {
+    return { spans: [{ startSec, endSec: startSec + durationSec }], speedFactor: 1 };
+}
+
 // Builds a gapless single-segment timeline and packs a clip starting at the
 // given absolute UTC. The segment is anchored 1000 s before the clip so that
 // records before the clip start project to content < clipContentStart and are
@@ -42,7 +47,7 @@ function packAtUtc(
     const anchor = clipStartUtc - 1000;
     const frame: TripFrame = { startUtc: anchor, durationSec: 100_000, wallDurationSec: 100_000, channels: {} };
     const timeline = buildTripTimeline([frame]);
-    return packGpmfSamples(records, timeline, clipStartUtc - anchor, durationSec, opts);
+    return packGpmfSamples(records, timeline, realTimeClip(clipStartUtc - anchor, durationSec), opts);
 }
 
 function viewOf(buf: Uint8Array): DataView {
@@ -204,7 +209,9 @@ describe("packGpmfSamples - GPS round-trip", () => {
             makeRecord({ unixSeconds: baseUtc + 1.25, lat: 56 }),
             ...Array.from({ length: 13_136 }, (_, i) => makeRecord({ unixSeconds: baseUtc + 1.375 + i, lat: 57 })),
         ];
-        const samples = packGpmfSamples(records, buildTripTimeline([frame]), 0, 1.375, { includeAccel: false });
+        const samples = packGpmfSamples(records, buildTripTimeline([frame]), realTimeClip(0, 1.375), {
+            includeAccel: false,
+        });
         expect(samples).toHaveLength(2);
         expect(decodeFirstGps5(samples[0]!.payload).map((r) => r.lat)).toEqual([55]);
         expect(decodeFirstGps5(samples[1]!.payload).map((r) => r.lat)).toEqual([56]);
@@ -279,6 +286,89 @@ describe("packGpmfSamples - ACCL round-trip", () => {
     });
 });
 
+describe("packGpmfSamples - clip spans and speed-up", () => {
+    const baseUtc = Date.UTC(2026, 4, 8, 12, 0, 0) / 1000;
+    const timeline = buildTripTimeline([{ startUtc: baseUtc, durationSec: 600, wallDurationSec: 600, channels: {} }]);
+
+    it("lasts the time-lapse video's length while keeping every footage second", () => {
+        const records = [makeRecord({ unixSeconds: baseUtc + 6.5, lat: 55 })];
+        const samples = packGpmfSamples(
+            records,
+            timeline,
+            { spans: [{ startSec: 0, endSec: 80 }], speedFactor: 8 },
+            { includeAccel: false },
+        );
+        expect(samples, "one sample per footage second").toHaveLength(80);
+        expect(
+            samples.reduce((sum, sample) => sum + sample.durationSec, 0),
+            "the 10 s video length",
+        ).toBeCloseTo(10, 9);
+        expect(samples[6]!.durationSec).toBeCloseTo(0.125, 9);
+        expect(decodeFirstGps5(samples[6]!.payload).map((record) => record.lat)).toEqual([55]);
+    });
+
+    it("plays the spans back to back and leaves out the footage between them", () => {
+        const records = [
+            makeRecord({ unixSeconds: baseUtc + 3, lat: 54 }),
+            makeRecord({ unixSeconds: baseUtc + 5.2, lat: 55 }),
+        ];
+        const samples = packGpmfSamples(
+            records,
+            timeline,
+            {
+                spans: [
+                    { startSec: 5, endSec: 7.5 },
+                    { startSec: 0, endSec: 2 },
+                ],
+                speedFactor: 1,
+            },
+            { includeAccel: false },
+        );
+        expect(samples.map((sample) => sample.durationSec)).toEqual([1, 1, 1, 1, 0.5]);
+        expect(decodeFirstGps5(samples[2]!.payload).map((record) => record.lat)).toEqual([55]);
+        const gps = samples.flatMap((sample) => decodeFirstGps5(sample.payload).map((record) => record.lat));
+        expect(gps, "a record between the spans is not in the clip").not.toContain(54);
+    });
+
+    it("continues the one-second grid across touching spans", () => {
+        const samples = packGpmfSamples(
+            [],
+            timeline,
+            {
+                spans: [
+                    { startSec: 0, endSec: 1.5 },
+                    { startSec: 1.5, endSec: 3 },
+                ],
+                speedFactor: 1,
+            },
+            { includeAccel: false },
+        );
+        expect(samples.map((sample) => sample.durationSec)).toEqual([1, 1, 1]);
+    });
+
+    it("writes the accelerometer in every span when any span has it", () => {
+        const records = [
+            makeRecord({ unixSeconds: baseUtc + 0.5, lat: 54 }),
+            makeRecord({ unixSeconds: baseUtc + 10.5, lat: 55, accelXg: 1 }),
+        ];
+        const samples = packGpmfSamples(
+            records,
+            timeline,
+            {
+                spans: [
+                    { startSec: 0, endSec: 1 },
+                    { startSec: 10, endSec: 11 },
+                ],
+                speedFactor: 1,
+            },
+            { includeAccel: true },
+        );
+        expect(samples).toHaveLength(2);
+        expect(findFirstToken(samples[0]!.payload, "ACCL"), "the span without accel data").not.toBeNull();
+        expect(findFirstToken(samples[1]!.payload, "ACCL")).not.toBeNull();
+    });
+});
+
 describe("packGpmfSamples - footage-time collapse across a pause", () => {
     const baseUtc = Date.UTC(2026, 4, 8, 12, 0, 0) / 1000;
 
@@ -303,14 +393,14 @@ describe("packGpmfSamples - footage-time collapse across a pause", () => {
     it("sample count equals footage seconds (pause not counted)", () => {
         const tl = gappedTimeline();
         // Whole clip on the content axis: 120 s of footage, NOT 420 s wall-clock.
-        const samples = packGpmfSamples([], tl, 0, tl.contentDurationSec, { includeAccel: false });
+        const samples = packGpmfSamples([], tl, realTimeClip(0, tl.contentDurationSec), { includeAccel: false });
         expect(tl.contentDurationSec).toBe(120);
         expect(samples).toHaveLength(120);
     });
 
     it("GPSU steps across the pause between the two segments", () => {
         const tl = gappedTimeline();
-        const samples = packGpmfSamples([], tl, 0, tl.contentDurationSec, { includeAccel: false });
+        const samples = packGpmfSamples([], tl, realTimeClip(0, tl.contentDurationSec), { includeAccel: false });
         // Last second of segment A vs first second of segment B: real UTC jumps
         // by the full 300 s pause, not by 1 s.
         expect(gpsuOf(samples[59]!.payload)).toBeCloseTo(baseUtc + 59, 1);
@@ -321,7 +411,7 @@ describe("packGpmfSamples - footage-time collapse across a pause", () => {
         const tl = gappedTimeline();
         // 10 s into segment B (real UTC baseUtc+370) -> footage second 70.
         const records: GpsRecord[] = [makeRecord({ unixSeconds: baseUtc + 370.4, lat: 55, lon: 37 })];
-        const samples = packGpmfSamples(records, tl, 0, tl.contentDurationSec, { includeAccel: false });
+        const samples = packGpmfSamples(records, tl, realTimeClip(0, tl.contentDurationSec), { includeAccel: false });
         expect(decodeFirstGps5(samples[70]!.payload)).toHaveLength(1);
         expect(decodeFirstGps5(samples[70]!.payload)[0]!.lat).toBeCloseTo(55, 6);
         // The footage second inside the pause (e.g. 60..61, segment B start) has
@@ -336,7 +426,7 @@ describe("packGpmfSamples - footage-time collapse across a pause", () => {
             makeRecord({ unixSeconds: baseUtc + 200, lat: 55, accelXg: 1 }),
             makeRecord({ unixSeconds: baseUtc + 360, lat: 56 }),
         ];
-        const samples = packGpmfSamples(records, gappedTimeline(), 60, 1);
+        const samples = packGpmfSamples(records, gappedTimeline(), realTimeClip(60, 1));
         expect(decodeFirstGps5(samples[0]!.payload).map((r) => r.lat)).toEqual([56]);
         expect(findFirstToken(samples[0]!.payload, "ACCL")).toBeNull();
     });

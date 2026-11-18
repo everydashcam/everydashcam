@@ -8,6 +8,7 @@ import {
     type FileSegment,
     rangeSourceBitrateBps,
     rangeSourceFps,
+    segmentContentSpans,
     sliceCandidatesForRange,
     sliceTripChannelForRange,
 } from "./export-range.js";
@@ -305,6 +306,29 @@ describe("sliceCandidatesForRange", () => {
             [0, 2],
         ]);
         expect(outside.reduce((total, segment) => total + segment.endInFile - segment.startInFile, 0)).toBe(30);
+    });
+
+    it("plays one camera's spans without the stretch only another camera recorded", () => {
+        const interior = makeCandidate({ name: "interior.mp4", startUtc: 1000, durationSec: 104 });
+        interior.channel = "interior";
+        const exterior = [0, 52, 78].map((offset) => {
+            const candidate = makeCandidate({
+                name: `exterior-${offset}.mp4`,
+                startUtc: 1000 + offset,
+                durationSec: 26,
+            });
+            candidate.channel = "front";
+            return candidate;
+        });
+        const trip = groupTrips([interior, ...exterior])[0]!;
+        expect(trip.timeline.contentDurationSec).toBe(104);
+
+        const spans = segmentContentSpans(sliceTripChannelForRange(trip, "front", 10, 90));
+        expect(spans.map(({ startSec, endSec }) => [startSec, endSec])).toEqual([
+            [10, 26],
+            [52, 78],
+            [78, 90],
+        ]);
     });
 
     it("exports paired media positions without adding the sibling GPS clock skew", () => {

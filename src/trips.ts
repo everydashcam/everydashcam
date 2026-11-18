@@ -326,6 +326,12 @@ export interface TripGap {
     durationSec: number;
 }
 
+/** A stretch of a trip's content (footage) axis: `[startSec, endSec)`. */
+export interface ContentSpan {
+    startSec: number;
+    endSec: number;
+}
+
 /**
  * Footage-time view of a trip. The content axis is the sum of frame durations
  * with pauses removed - this is the single coordinate system the player

@@ -27,10 +27,10 @@
 //       ACCL (3×i32 ×N)            X/Y/Z, scaled (g -> m/s² via G_TO_MS2)
 //
 // Each GPMF sample holds the records within one FOOTAGE (content) second.
-// The clip timeline is footage-time, with recording pauses
-// removed - identical to the stream-copy video track, which also collapses gaps
-// (export.ts videoAccumSec). Both tracks therefore have the same length and the
-// telemetry stays in sync. Records are projected onto the content axis via the
+// The clip timeline is footage-time, with recording pauses removed and the
+// clip's spans played back to back - identical to the video track, which also
+// collapses gaps (export.ts videoAccumSec) and compresses a time-lapse. Both
+// tracks therefore have the same length and the telemetry stays in sync. Records are projected onto the content axis via the
 // trip timeline before bucketing; each sample's GPSU still carries the real
 // absolute UTC of that footage moment (contentToWallUtc), which is what
 // gpmf-parser / Telemetry Overlay / GoPro Quik align on.
@@ -45,7 +45,7 @@ import { hasSpeed } from "../../gps-telemetry.js";
 import { concat } from "../../bytes.js";
 import { isValidGpsFix } from "../../parser.js";
 import type { GpsRecord } from "../types.js";
-import { type TripTimeline, wallToContentSecIfCovered, contentToWallUtc } from "../../trips.js";
+import { type ContentSpan, type TripTimeline, wallToContentSecIfCovered, contentToWallUtc } from "../../trips.js";
 
 /** g to m/s² conversion factor, matching GoPro's UNIT="m/s2" for the ACCL stream. */
 const G_TO_MS2 = 9.80665;
@@ -77,34 +77,62 @@ const GPSP_DEFAULT = 100;
 export interface GpmfSample {
     /** Fully packed DEVC block, ready to write to mdat. */
     payload: Uint8Array;
-    /** Sample duration in seconds for stts calculation. Typically exactly 1. */
+    /** Output duration in seconds for stts: 1 for a real-time footage second,
+     *  1/speedFactor in a time-lapse, shorter at a span end. */
     durationSec: number;
 }
 
 /**
- * Entry point. Serializes trip records into one GpmfSample per second of the
- * exported clip's FOOTAGE (content) timeline. Pauses in the recording are
- * removed from the axis - the same collapsing the stream-copy video track does -
- * so the produced gpmd track has the same length as the video and the telemetry
- * stays in sync even across a multi-file trip with a recording pause.
+ * The clip as the output plays it: these content-axis spans back to back, each
+ * sped up by `speedFactor`. A single-camera export splices the camera's files,
+ * so a stretch where only another camera recorded is absent; a time-lapse
+ * shows `speedFactor` footage seconds per output second.
+ */
+export interface GpmfClipTimeline {
+    spans: readonly ContentSpan[];
+    speedFactor: number;
+}
+
+/** Spans in axis order, empty ones dropped and touching ones merged, so the
+ *  one-second sample grid continues across a file boundary. */
+function normalizeSpans(spans: readonly ContentSpan[]): ContentSpan[] {
+    const sorted = spans.filter((span) => span.endSec > span.startSec).sort((a, b) => a.startSec - b.startSec);
+    const merged: ContentSpan[] = [];
+    for (const span of sorted) {
+        const previous = merged.at(-1);
+        if (previous && span.startSec - previous.endSec < SPAN_JOIN_TOLERANCE_SEC) {
+            previous.endSec = Math.max(previous.endSec, span.endSec);
+        } else {
+            merged.push({ ...span });
+        }
+    }
+    return merged;
+}
+
+// File slices of one camera meet on the content axis up to float rounding.
+const SPAN_JOIN_TOLERANCE_SEC = 1e-3;
+
+/**
+ * Entry point. Serializes trip records into one GpmfSample per FOOTAGE
+ * (content) second of each clip span, the spans back to back. Pauses in the
+ * recording are removed from the axis - the same collapsing the video track
+ * does - so the produced gpmd track has the same length as the video and the
+ * telemetry stays in sync. Each sample keeps one footage second of records but
+ * lasts 1/speedFactor output seconds, matching a time-lapse video track. The
+ * last sample of a span may be shorter.
  *
- * @param records      Full trip records (wall-clock unixSeconds); filtered and
- *                     projected onto the content axis here.
- * @param timeline     The trip's footage-time projection (wall <-> content).
- * @param clipContentStartSec Clip start on the trip's content axis (footage-sec).
- * @param clipContentDurationSec Clip footage duration in seconds. Ceiled for
- *                     sample count; the last sample may be < 1 second.
- * @param opts         { includeAccel } - include a second STRM with accelerometer.
+ * `records` are the full trip records (wall-clock unixSeconds), filtered and
+ * projected onto the content axis through `timeline` here. `opts.includeAccel`
+ * adds a second STRM with the accelerometer.
  */
 export function packGpmfSamples(
     records: readonly GpsRecord[],
     timeline: TripTimeline,
-    clipContentStartSec: number,
-    clipContentDurationSec: number,
+    clip: GpmfClipTimeline,
     opts: { includeAccel: boolean } = { includeAccel: true },
 ): GpmfSample[] {
-    const totalSeconds = Math.max(1, Math.ceil(clipContentDurationSec));
-    const clipContentEndSec = clipContentStartSec + clipContentDurationSec;
+    if (!(clip.speedFactor > 0)) throw new Error("gpmf clip speed factor must be positive");
+    const spans = normalizeSpans(clip.spans);
     const samples: GpmfSample[] = [];
 
     // Clamping records outside footage would pile a whole GPS-track tail into
@@ -113,7 +141,8 @@ export function packGpmfSamples(
     for (const record of records) {
         if (!record.active) continue;
         const contentSec = wallToContentSecIfCovered(timeline, record.unixSeconds);
-        if (contentSec === null || contentSec < clipContentStartSec || contentSec >= clipContentEndSec) continue;
+        if (contentSec === null) continue;
+        if (!spans.some((span) => contentSec >= span.startSec && contentSec < span.endSec)) continue;
         projected.push({ record, contentSec });
     }
     projected.sort((a, b) => a.contentSec - b.contentSec);
@@ -128,27 +157,27 @@ export function packGpmfSamples(
     // (See troubles/dashcamigo_20260429_192226.mp4 for the original regression.)
     const writeAccel = opts.includeAccel && hasAccel(projected.map((p) => p.record));
 
-    // projected is sorted ascending by contentSec and the per-second windows
-    // advance monotonically, so a single forward cursor replaces the per-second
-    // full-array rescan (was O(seconds x records)).
+    // projected is sorted ascending by contentSec, holds only records inside
+    // the spans, and the per-second windows advance monotonically across the
+    // ascending spans, so a single forward cursor replaces a per-second rescan.
     let cursor = 0;
-    for (let sec = 0; sec < totalSeconds; sec++) {
-        const winStart = clipContentStartSec + sec;
-        const winEnd = Math.min(winStart + 1, clipContentEndSec);
-        const inSecond: GpsRecord[] = [];
-        while (cursor < projected.length && projected[cursor]!.contentSec < winEnd) {
-            inSecond.push(projected[cursor]!.record);
-            cursor++;
+    for (const span of spans) {
+        // A float sliver past a whole second must not add a near-empty sample.
+        const secondCount = Math.max(1, Math.ceil(span.endSec - span.startSec - SPAN_JOIN_TOLERANCE_SEC));
+        for (let second = 0; second < secondCount; second++) {
+            const winStart = span.startSec + second;
+            const winEnd = second === secondCount - 1 ? span.endSec : winStart + 1;
+            const inSecond: GpsRecord[] = [];
+            while (cursor < projected.length && projected[cursor]!.contentSec < winEnd) {
+                inSecond.push(projected[cursor]!.record);
+                cursor++;
+            }
+            // GPSU stamp = the real absolute UTC of this footage second (the pause is
+            // skipped, so consecutive samples can jump across a gap in wall-clock).
+            const secondWallUtc = contentToWallUtc(timeline, winStart);
+            const payload = packDeviceSample(inSecond, secondWallUtc, writeAccel);
+            samples.push({ payload, durationSec: (winEnd - winStart) / clip.speedFactor });
         }
-        // GPSU stamp = the real absolute UTC of this footage second (the pause is
-        // skipped, so consecutive samples can jump across a gap in wall-clock).
-        const secondWallUtc = contentToWallUtc(timeline, winStart);
-        // Trim the last sample to the actual clip end so the gpmd track duration
-        // matches the video track.
-        const remaining = clipContentDurationSec - sec;
-        const durationSec = Math.min(1, remaining > 0 ? remaining : 1);
-        const payload = packDeviceSample(inSecond, secondWallUtc, writeAccel);
-        samples.push({ payload, durationSec });
     }
 
     return samples;

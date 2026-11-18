@@ -67,7 +67,7 @@ import { createLogger } from "./log.js";
 import { createRetryingBlobSource } from "./retrying-blob-source.js";
 import { getInputTimeOrigin } from "./media-time.js";
 import { isSourceReadError } from "./source-read-error.js";
-import { type AudioTrackFormat, sliceTripChannelForRange } from "./export-range.js";
+import { type AudioTrackFormat, segmentContentSpans, sliceTripChannelForRange } from "./export-range.js";
 import { injectClipGpmf, type CapturedMoov } from "./export/gpmd-inject.js";
 import { closeWritableWithWatchdog } from "./export/writable-finalize.js";
 import { clipBasename, formatBytes, formatTime } from "./ui/format.js";
@@ -795,16 +795,16 @@ export async function exportClip({
                 log.warn("withGpmf=true but mp4Handle not provided - skipping injection");
             } else {
                 onProgress({ stage: t("export.progress.embeddingGps") });
-                // GPMF lives on the footage axis, matching the stream-copy video
-                // track. The range is already content-sec, so pass it through.
+                // GPMF follows the video track: the copied file slices back to
+                // back on the footage axis, at real time.
+                const clip = { spans: segmentContentSpans(segments), speedFactor: 1 };
                 const capturedMoov = capturedMoovRef.current;
                 if (capturedMoov) {
                     gpmfInjected = await injectClipGpmf({
                         handle: mp4Handle,
                         writable: mp4Writable,
                         trip,
-                        clipContentStartSec: startTripSec,
-                        clipContentEndSec: endTripSec,
+                        clip,
                         signal,
                         capturedMoov,
                     });
@@ -814,8 +814,7 @@ export async function exportClip({
                     gpmfInjected = await injectClipGpmf({
                         handle: mp4Handle,
                         trip,
-                        clipContentStartSec: startTripSec,
-                        clipContentEndSec: endTripSec,
+                        clip,
                         signal,
                     });
                 }

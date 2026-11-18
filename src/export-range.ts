@@ -11,7 +11,7 @@ import type { AudioCodec } from "mediabunny";
 import { isValidGpsFix } from "./parser.js";
 import type { Channel, GpsRecord } from "./parsers/types.js";
 import { serializeGpx } from "./parsers/sidecars/gpx.js";
-import type { Trip, TripTimeline, VideoCandidate } from "./trips.js";
+import type { ContentSpan, Trip, TripTimeline, VideoCandidate } from "./trips.js";
 import {
     contentToWallUtc,
     displayClockDate,
@@ -149,6 +149,18 @@ export function sliceTripChannelForRange(
         }
     }
     return slices;
+}
+
+/**
+ * The footage a single-camera export plays, as content-axis spans in output
+ * order. Single-camera exports splice the camera's file slices back to back,
+ * so a stretch where only another camera recorded is not part of the clip.
+ */
+export function segmentContentSpans(segments: readonly FileSegment[]): ContentSpan[] {
+    return segments.map((segment) => ({
+        startSec: segment.tripStart + segment.startInFile,
+        endSec: segment.tripStart + segment.endInFile,
+    }));
 }
 
 /**

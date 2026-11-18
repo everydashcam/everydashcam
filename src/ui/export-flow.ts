@@ -31,7 +31,13 @@ import type { VideoCodec } from "mediabunny";
 import type { ExportClipResult } from "../export.js";
 import { resolveOutputFps } from "../transcode/frame-rate.js";
 import { reencodeBitrateForQuality } from "../export-bitrate.js";
-import { buildClipGpx, rangeSourceBitrateBps, rangeSourceFps, sliceTripChannelForRange } from "../export-range.js";
+import {
+    buildClipGpx,
+    rangeSourceBitrateBps,
+    rangeSourceFps,
+    segmentContentSpans,
+    sliceTripChannelForRange,
+} from "../export-range.js";
 import { recordsHaveGps } from "../parser.js";
 import { t, getCurrentLang, getDateLocale, type Lang } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
@@ -105,6 +111,7 @@ import {
     transcodeViaWorker as transcode,
 } from "./transcode-shim.js";
 import type { GpmdInjectionWritable } from "../export/gpmd-inject.js";
+import type { GpmfClipTimeline } from "../parsers/internal/gpmf-pack.js";
 
 const log = createLogger("export-flow");
 
@@ -687,8 +694,7 @@ type DownloadBlobFn = (blob: Blob, name: string) => void;
 
 async function postProcessTelemetry(
     trip: Trip,
-    startTripSec: number,
-    endTripSec: number,
+    clip: GpmfClipTimeline,
     mp4Handle: FileSystemFileHandle,
     withGpmf: boolean,
     onProgressStatus: (s: string) => void,
@@ -707,9 +713,8 @@ async function postProcessTelemetry(
     // the user asked for telemetry but it was not embedded.
     if (!withGpmf) return true;
     onProgressStatus(t("export.progress.embeddingGps"));
-    // GPMF lives on the footage axis to match the video track. startTripSec/
-    // endTripSec are already content-sec, so pass them through. capturedMoov
-    // (relayed from the transcode worker's muxer) lets the injection locate
+    // GPMF follows the video track's footage spans and speed-up (`clip`).
+    // capturedMoov (relayed from the transcode worker's muxer) lets the injection locate
     // moov without re-reading the finished file - on the in-memory handle that
     // re-read was a full multi-GB getFile() snapshot on the exact
     // memory-constrained path the RAM sink serves.
@@ -718,8 +723,7 @@ async function postProcessTelemetry(
         handle: mp4Handle,
         writable: openWritable,
         trip,
-        clipContentStartSec: startTripSec,
-        clipContentEndSec: endTripSec,
+        clip,
         signal,
         capturedMoov: capturedMoov ? { startAbs: capturedMoov.position, bytes: capturedMoov.bytes } : undefined,
     });
@@ -1367,13 +1371,21 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
             // Narrowed alias: the hook is a closure, where TypeScript forgets that
             // mp4Handle was assigned above.
             const outputHandle = mp4Handle;
+            // The footage the video track plays: the split layout ticks over the
+            // whole range, a single camera splices its own files (its missing
+            // stretches cut out). Either way compressed by the speed-up.
+            const telemetryClip: GpmfClipTimeline = {
+                spans: isSplit
+                    ? [{ startSec: startTripSec, endSec: endTripSec }]
+                    : segmentContentSpans(sliceTripChannelForRange(trip, channel, startTripSec, endTripSec)),
+                speedFactor,
+            };
             const injectBeforeCommit: BeforeCommitHook | undefined = withGpmf
                 ? async (openWritable, result) => {
                       if (!result.capturedMoov) return;
                       gpmfInjectedBeforeCommit = await postProcessTelemetry(
                           trip,
-                          startTripSec,
-                          endTripSec,
+                          telemetryClip,
                           outputHandle,
                           withGpmf,
                           hooks.onStatus,
@@ -1461,8 +1473,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
                 gpmfInjectedBeforeCommit ??
                 (await postProcessTelemetry(
                     trip,
-                    startTripSec,
-                    endTripSec,
+                    telemetryClip,
                     mp4Handle,
                     withGpmf,
                     hooks.onStatus,
