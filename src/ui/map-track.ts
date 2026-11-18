@@ -1,4 +1,5 @@
 import type { ExpressionSpecification, Map as MapLibreMap } from "maplibre-gl";
+import type { RadarSpec } from "../map-radar.js";
 import type { MiniMapData } from "./state.js";
 import { unwrapTrackCoordinates } from "../coordinates.js";
 import { themeColors } from "./theme.js";
@@ -21,7 +22,8 @@ export function addSpeedTrack(
         beforeId?: string;
         width: number;
         opacity?: number;
-        endpointDots?: boolean;
+        // Radar themes mark the route ends with map dots instead of DOM flags.
+        endpointDots?: RadarSpec["endpointDots"];
     },
 ): void {
     const { sourceId, layerId = sourceId, width, opacity = 1 } = options;
@@ -70,7 +72,8 @@ export function addSpeedTrack(
         },
         options.beforeId,
     );
-    if (options.endpointDots && data.coords.length >= 2) {
+    const dots = options.endpointDots;
+    if (dots && data.coords.length >= 2) {
         const endpoints = `${sourceId}-endpoints`;
         map.addSource(endpoints, {
             type: "geojson",
@@ -91,8 +94,8 @@ export function addSpeedTrack(
                 paint: {
                     "circle-radius": width * 1.45,
                     "circle-stroke-width": width * 0.65,
-                    "circle-color": ["case", ["get", "start"], "#5cc8e3", "#f6c26b"],
-                    "circle-stroke-color": ["case", ["get", "start"], "#1189ce", "#cb893c"],
+                    "circle-color": ["case", ["get", "start"], dots.start.fill, dots.end.fill],
+                    "circle-stroke-color": ["case", ["get", "start"], dots.start.stroke, dots.end.stroke],
                 },
             },
             options.beforeId,

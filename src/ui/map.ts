@@ -58,6 +58,7 @@ import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cad
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
 import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref.js";
 import radarPalettes from "./map-radar-palettes.json";
+import { isRadarTheme, radarSpec, radarTheme, type RadarTheme } from "../map-radar.js";
 import { currentMapTheme, themeColors } from "./theme.js";
 import type { MapStyleId } from "./theme.js";
 import {
@@ -1189,12 +1190,14 @@ function refreshMiniMap(data: MiniMapData | null): void {
     if (!data || data.coords.length === 0) return;
     const { coords } = data;
 
+    // The registry marks the container before it applies a radar style.
+    const radar = radarTheme(dom.miniMap.dataset.radar ?? "");
     // Thinner line on mini-map: at small scale a 4 px line turns into a blob.
     addSpeedTrack(mini, data, {
         sourceId: TRIP_SOURCE_ID,
         width: 3,
         opacity: 0.95,
-        endpointDots: dom.miniMap.dataset.radar === "tuner-04",
+        endpointDots: radar && radarSpec(radar).endpointDots,
     });
 
     state.miniMapMarker = new (loadedMaplibre().Marker)({
@@ -1204,7 +1207,7 @@ function refreshMiniMap(data: MiniMapData | null): void {
     })
         .setLngLat(coords[0]!)
         .addTo(mini);
-    if (!dom.miniMap.dataset.radar) {
+    if (!radar) {
         miniStartMarker = addEndpointMarker(mini, "start", coords[0]!);
         miniEndMarker = addEndpointMarker(mini, "end", coords[coords.length - 1]!);
     }
@@ -2728,6 +2731,14 @@ function firstSymbolLayerId(map: maplibregl.Map): string | undefined {
     return undefined;
 }
 
+// Neon: lit amber walls so buildings glow with the rest of the slot. Dark:
+// near-black. Light: bone.
+const BUILDING_WALLS: Record<Exclude<MapStyleId, RadarTheme>, string> = {
+    neon: "#7a4a16",
+    dark: "#2b2b30",
+    light: "#e4ddcd",
+};
+
 /**
  * Adds the 3D building extrusion layer if it is not already present and the map
  * carries an OpenFreeMap or Shortbread vector source. Idempotent. `theme` picks the wall
@@ -2747,14 +2758,8 @@ export function addBuildings3dLayer(map: maplibregl.Map, theme: MapStyleId): voi
     if (!hasOpenMapTiles && !hasShortbread) return;
     const source = hasOpenMapTiles ? VECTOR_SOURCE_ID : OSM_SHORTBREAD_SOURCE_ID;
     const sourceLayer = hasOpenMapTiles ? BUILDING_SOURCE_LAYER : OSM_SHORTBREAD_BUILDING_SOURCE_LAYER;
-    const walls = {
-        neon: "#7a4a16",
-        dark: "#2b2b30",
-        light: "#e4ddcd",
-        "la-92": radarPalettes["la-92"].landuse,
-        "miami-86": radarPalettes["miami-86"].landuse,
-        "tuner-04": radarPalettes["tuner-04"].landuse,
-    }[theme];
+    // Radar themes raise buildings in the colour of their urban ground.
+    const walls = isRadarTheme(theme) ? radarPalettes[theme].landuse : BUILDING_WALLS[theme];
     map.addLayer(
         {
             id: BUILDINGS_3D_LAYER_ID,

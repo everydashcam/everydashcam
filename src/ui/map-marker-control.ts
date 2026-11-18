@@ -1,8 +1,7 @@
-import type { RadarTheme } from "../map-radar.js";
+import { radarSpec, type MarkerSwatchId, type RadarTheme } from "../map-radar.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import {
-    radarMarkerAppearance,
     MAP_MARKER_SHAPES,
     MAP_MARKER_SIZE_PX,
     MAP_MARKER_SIZES,
@@ -21,15 +20,15 @@ const SHAPE_LABEL_KEYS = {
     truck: "settings.map.marker.shape.truck",
 } as const satisfies Record<MapMarkerShape, I18nKey>;
 
-const COLOR_PRESETS: ReadonlyArray<{ color: string; labelKey: I18nKey }> = [
-    { color: "#f4f4f2", labelKey: "settings.map.marker.color.white" },
-    { color: "#1c1d1f", labelKey: "settings.map.marker.color.black" },
-    { color: "#737a76", labelKey: "settings.map.marker.color.gray" },
-    { color: "#b9bec4", labelKey: "settings.map.marker.color.silver" },
-    { color: "#2f7ee6", labelKey: "settings.map.marker.color.blue" },
-    { color: "#e5484d", labelKey: "settings.map.marker.color.red" },
-    { color: "#30a46c", labelKey: "settings.map.marker.color.green" },
-    { color: "#ff9000", labelKey: "settings.map.marker.color.orange" },
+const COLOR_PRESETS: ReadonlyArray<{ id: MarkerSwatchId; color: string; labelKey: I18nKey }> = [
+    { id: "white", color: "#f4f4f2", labelKey: "settings.map.marker.color.white" },
+    { id: "black", color: "#1c1d1f", labelKey: "settings.map.marker.color.black" },
+    { id: "gray", color: "#737a76", labelKey: "settings.map.marker.color.gray" },
+    { id: "silver", color: "#b9bec4", labelKey: "settings.map.marker.color.silver" },
+    { id: "blue", color: "#2f7ee6", labelKey: "settings.map.marker.color.blue" },
+    { id: "red", color: "#e5484d", labelKey: "settings.map.marker.color.red" },
+    { id: "green", color: "#30a46c", labelKey: "settings.map.marker.color.green" },
+    { id: "orange", color: "#ff9000", labelKey: "settings.map.marker.color.orange" },
 ];
 
 const SIZE_LABEL_KEYS = {
@@ -116,10 +115,7 @@ export function renderMapMarkerControl(host: HTMLElement, options: MapMarkerCont
         const button = document.createElement("button");
         button.type = "button";
         button.className = "map-marker-control__swatch";
-        const color =
-            options.radar === "tuner-04" && preset.labelKey === "settings.map.marker.color.green"
-                ? radarMarkerAppearance(options.radar).color
-                : preset.color;
+        const color = (options.radar && radarSpec(options.radar).swatchColors?.[preset.id]) ?? preset.color;
         button.dataset.markerColor = color;
         button.style.setProperty("--marker-swatch", color);
         button.setAttribute("aria-label", t(preset.labelKey));

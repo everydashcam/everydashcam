@@ -17,7 +17,7 @@ import type { MapShape, OverlayStyleId, WatermarkAnchor } from "../transcode/typ
 import type { Trip } from "../trips.js";
 
 import type { StreetLabelDensity } from "./map-label-scale.js";
-import { getMapMarkerAppearance, type MapMarkerAppearance } from "./map-marker-pref.js";
+import { getSharedMapMarkerAppearance, type MapMarkerAppearance } from "./map-marker-pref.js";
 import type { OverlayMapProvider, OverlayMapProviderPreference } from "./map-provider.js";
 import { activeTrip, state } from "./state.js";
 import type { MapStyleId } from "./theme.js";
@@ -251,7 +251,7 @@ function freshOverlayPreferences(): OverlayPreferences {
             theme: "neon",
             labelScalePct: 100,
             labelDensity: "standard",
-            marker: getMapMarkerAppearance("neon"),
+            marker: getSharedMapMarkerAppearance(),
             radarMarkers: {},
             mode: "chase",
             pitchDeg: 58,
@@ -349,7 +349,7 @@ export function hasCustomOverlayPreferences(): boolean {
 }
 
 function refreshDefaultOverlayMarker(): void {
-    defaultOverlayPreferences.overlayMap.marker = getMapMarkerAppearance("neon");
+    defaultOverlayPreferences.overlayMap.marker = getSharedMapMarkerAppearance();
 }
 
 /** Restores only the Overlay fieldset; output, trim, cameras and privacy zones

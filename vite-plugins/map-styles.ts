@@ -2,16 +2,14 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
+import radarPalettes from "../src/ui/map-radar-palettes.json";
 
-function styleUrls(prefix: string) {
-    return {
-        light: `${prefix}light.json`,
-        dark: `${prefix}dark.json`,
-        neon: `${prefix}neon.json`,
-        "la-92": `${prefix}la-92.json`,
-        "miami-86": `${prefix}miami-86.json`,
-        "tuner-04": `${prefix}tuner-04.json`,
-    };
+// Generated radar styles are named after their palettes, so a new palette needs no edit here.
+type StyleId = "light" | "dark" | "neon" | keyof typeof radarPalettes;
+const STYLE_IDS = ["light", "dark", "neon", ...Object.keys(radarPalettes)] as StyleId[];
+
+function styleUrls(prefix: string): Record<StyleId, string> {
+    return Object.fromEntries(STYLE_IDS.map((id) => [id, `${prefix}${id}.json`])) as Record<StyleId, string>;
 }
 
 /** One immutable directory pairs styles with the local sprites they reference. */

@@ -6,6 +6,7 @@
 import type { ExpressionSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
 
 import radarPalettes from "./map-radar-palettes.json";
+import { RADAR_THEMES, type RadarTheme } from "../map-radar.js";
 import type { MapStyleId } from "./theme.js";
 import type { MapProvider } from "./map-provider.js";
 
@@ -40,7 +41,7 @@ interface Palette {
     waterLabel: string;
 }
 
-function radarPalette(theme: keyof typeof radarPalettes): Palette {
+function radarPalette(theme: RadarTheme): Palette {
     const colors = radarPalettes[theme];
     return {
         ...colors,
@@ -52,9 +53,7 @@ function radarPalette(theme: keyof typeof radarPalettes): Palette {
 }
 
 const PALETTES: Record<MapStyleId, Palette> = {
-    "la-92": radarPalette("la-92"),
-    "miami-86": radarPalette("miami-86"),
-    "tuner-04": radarPalette("tuner-04"),
+    ...(Object.fromEntries(RADAR_THEMES.map((theme) => [theme, radarPalette(theme)])) as Record<RadarTheme, Palette>),
     light: {
         background: "#f5f4ef",
         water: "#a8d1e7",

@@ -5,7 +5,7 @@ import type {
     SymbolLayerSpecification,
 } from "maplibre-gl";
 
-import type { RadarTheme } from "../map-radar.js";
+import { radarSpec, type RadarTheme } from "../map-radar.js";
 import type { MapStylePreset } from "./map-view-pref.js";
 
 const ROAD_HIDDEN = new Set(["poi", "address", "context-label", "landuse", "boundary"]);
@@ -143,7 +143,7 @@ export function radarBaseStyle(style: StyleSpecification, radar: RadarTheme): St
         const role = layerRole(layer);
         if (layer.type === "symbol" || role === "poi" || role === "poi-driver") continue;
         if (
-            radar !== "tuner-04" ||
+            radarSpec(radar).basemap === "full" ||
             layer.type === "background" ||
             layer.type === "raster" ||
             role === "water" ||

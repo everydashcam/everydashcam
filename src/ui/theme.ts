@@ -11,6 +11,7 @@ import type { EventKind } from "../events.js";
 
 import { state } from "./state.js";
 import radarPalettes from "./map-radar-palettes.json";
+import { RADAR_THEMES, radarSpec, type RadarTheme } from "../map-radar.js";
 import { getMapViewPreferences, type MapThemeChoice } from "./map-view-pref.js";
 
 export type MapTheme = Exclude<MapThemeChoice, "auto">;
@@ -69,28 +70,29 @@ export function currentMapTheme(): MapTheme {
     return "light";
 }
 
-const MAP_COLORS = {
-    light: { background: "#f5f4ef", trackVeil: "rgba(245,244,239,0.45)", markerStroke: "#0e0e0e" },
-    "la-92": {
-        background: radarPalettes["la-92"].background,
-        trackVeil: "rgba(128,136,76,0.45)",
-        markerStroke: "#0e0e0e",
-    },
-    "tuner-04": {
-        background: radarPalettes["tuner-04"].background,
-        trackVeil: "rgba(32,34,30,0.45)",
-        markerStroke: "#131810",
-    },
-    "miami-86": {
-        background: radarPalettes["miami-86"].background,
-        trackVeil: "rgba(210,207,210,0.45)",
-        markerStroke: "#0e0e0e",
-    },
-    dark: { background: "#14171c", trackVeil: "rgba(20,23,28,0.45)", markerStroke: "#fff" },
-} as const;
+interface MapThemeColors {
+    background: string;
+    /** Fades the undriven part of the route toward the basemap background. */
+    trackVeil: string;
+    markerStroke: string;
+}
+
+// Backgrounds are #rrggbb so the veil can reuse them with a fixed alpha.
+function mapColors(background: string, markerStroke: string): MapThemeColors {
+    const [red, green, blue] = [1, 3, 5].map((offset) => Number.parseInt(background.slice(offset, offset + 2), 16));
+    return { background, trackVeil: `rgba(${red},${green},${blue},0.45)`, markerStroke };
+}
+
+const MAP_COLORS: Record<MapTheme, MapThemeColors> = {
+    light: mapColors("#f5f4ef", "#0e0e0e"),
+    dark: mapColors("#14171c", "#fff"),
+    ...(Object.fromEntries(
+        RADAR_THEMES.map((theme) => [theme, mapColors(radarPalettes[theme].background, radarSpec(theme).markerStroke)]),
+    ) as Record<RadarTheme, MapThemeColors>),
+};
 
 /** Map overlays use the basemap palette even when the interface has a different theme. */
-export function mapThemeColors(theme: MapTheme): (typeof MAP_COLORS)[MapTheme] {
+export function mapThemeColors(theme: MapTheme): MapThemeColors {
     return MAP_COLORS[theme];
 }
 

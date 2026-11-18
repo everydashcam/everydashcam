@@ -1,4 +1,4 @@
-import { radarTheme, shapeForMapTheme } from "../map-radar.js";
+import { RADAR_THEMES, radarTheme, shapeForMapTheme } from "../map-radar.js";
 import { maybeShowPostExportToast } from "./pwa-install.js";
 // Export panel: side-drawer (desktop) / bottom-sheet (mobile) housing the
 // inline save UI - output frame size/aspect, quality, audio/gpmf/gpx, letterbox
@@ -2856,9 +2856,7 @@ function renderMapThemeSegment(): HTMLElement {
         choices: [
             ["light", t("export.overlays.mapTheme.light")],
             ["dark", t("export.overlays.mapTheme.dark")],
-            ["la-92", t("settings.map.theme.la-92")],
-            ["miami-86", t("settings.map.theme.miami-86")],
-            ["tuner-04", t("settings.map.theme.tuner-04")],
+            ...RADAR_THEMES.map((radar) => [radar, t(`settings.map.theme.${radar}`)] as const),
             ["neon", t("export.overlays.mapTheme.neon")],
         ],
         current: exportPanelState.overlayMap.theme,

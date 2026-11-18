@@ -1,4 +1,4 @@
-import { radarTheme, type RadarTheme } from "../map-radar.js";
+import { radarSpec, radarTheme, type RadarTheme } from "../map-radar.js";
 import { viewerRadarTheme } from "./map-view-pref.js";
 import { createSubscribers } from "../subscribers.js";
 import { readLocalStorageJson, writeLocalStorageJson, removeLocalStorage } from "../local-storage.js";
@@ -29,7 +29,7 @@ export const DEFAULT_MAP_MARKER_APPEARANCE: Readonly<MapMarkerAppearance> = {
 };
 
 export function radarMarkerAppearance(theme: RadarTheme): MapMarkerAppearance {
-    return { ...DEFAULT_MAP_MARKER_APPEARANCE, color: theme === "tuner-04" ? "#59e044" : "#f4f4f2" };
+    return { ...DEFAULT_MAP_MARKER_APPEARANCE, color: radarSpec(theme).markerColor };
 }
 
 export function markerForMapTheme(map: {
@@ -73,16 +73,15 @@ export function normalizeMapMarkerAppearance(
     };
 }
 
-function markerStorageKey(theme: string): string {
-    const radar = radarTheme(theme);
+function markerStorageKey(radar: RadarTheme | undefined): string {
     return radar ? `${STORAGE_KEY}:${radar}` : STORAGE_KEY;
 }
 
-export function getMapMarkerAppearance(theme: string = viewerRadarTheme() ?? "light"): MapMarkerAppearance {
-    const key = markerStorageKey(theme);
+/** Each radar theme keeps its own marker; every other palette shares one. */
+function storedAppearance(radar: RadarTheme | undefined): MapMarkerAppearance {
+    const key = markerStorageKey(radar);
     let appearance = sessionAppearances.get(key);
     if (!appearance) {
-        const radar = radarTheme(theme);
         const fallback = radar ? radarMarkerAppearance(radar) : DEFAULT_MAP_MARKER_APPEARANCE;
         appearance = normalizeMapMarkerAppearance(readLocalStorageJson(key), fallback);
         sessionAppearances.set(key, appearance);
@@ -90,11 +89,22 @@ export function getMapMarkerAppearance(theme: string = viewerRadarTheme() ?? "li
     return { ...appearance };
 }
 
+/** The marker the viewer draws for its current map theme and provider. */
+export function getMapMarkerAppearance(): MapMarkerAppearance {
+    return storedAppearance(viewerRadarTheme());
+}
+
+/** The marker shared by every palette that is not a radar theme. */
+export function getSharedMapMarkerAppearance(): MapMarkerAppearance {
+    return storedAppearance(undefined);
+}
+
+/** Saves the marker for the viewer's current map theme; other themes keep theirs. */
 export function setMapMarkerAppearance(appearance: MapMarkerAppearance): void {
     const next = normalizeMapMarkerAppearance(appearance);
     const current = getMapMarkerAppearance();
     if (current.shape === next.shape && current.color === next.color && current.size === next.size) return;
-    const key = markerStorageKey(viewerRadarTheme() ?? "light");
+    const key = markerStorageKey(viewerRadarTheme());
     sessionAppearances.set(key, next);
     writeLocalStorageJson(key, next);
     listeners.emitWith(() => [{ ...next }]);
