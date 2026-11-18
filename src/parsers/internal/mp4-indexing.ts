@@ -254,12 +254,13 @@ export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Pro
             // codec=null is treated optimistically downstream.
         }
 
-        // Matroska can carry IMA-ADPCM audio (A_MS/ACM + null codec: a PCM WAVE
-        // tag would be recognised, so null under A_MS/ACM is the ADPCM variant
-        // mediabunny cannot read). Some cameras also give ISO-BMFF recordings a
-        // `.TS` suffix; extension routing brings them here, but mediabunny still
-        // exposes their real QuickTime `ms\0\x11` sample-entry id. Flag either
-        // form so playback routes through the existing ADPCM transcode path.
+        // Matroska can carry IMA-ADPCM audio as A_MS/ACM with a null codec.
+        // mediabunny names no ACM codec, so the flag is optimistic; the Matroska
+        // ADPCM reader checks the WAVE tag and leaves any other ACM codec
+        // silent. Some cameras also give ISO-BMFF recordings a `.TS` suffix;
+        // extension routing brings them here, but mediabunny still exposes
+        // their real QuickTime `ms\0\x11` sample-entry id. Flag either form so
+        // playback routes through the existing ADPCM transcode path.
         let audioNeedsTranscode = false;
         let audio: IndexedMp4["audio"] = null;
         try {

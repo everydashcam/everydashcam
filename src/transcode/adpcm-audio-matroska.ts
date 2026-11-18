@@ -23,14 +23,33 @@ import { AudioSample, type AudioSampleSource } from "mediabunny";
 import { createLogger } from "../log.js";
 import type { AdpcmAudioReader, AdpcmRangeCursor } from "./adpcm-audio.js";
 import { decodeImaAdpcmBlock, imaAdpcmFramesPerBlock } from "./ima-adpcm.js";
+import { readMatroskaFirstAudioTrack } from "../parsers/internal/matroska-tracks.js";
 
 const log = createLogger("adpcm-matroska");
 
-// Matroska CodecID for WAVE-in-ACM tracks. Combined with getCodec()===null it
-// pins the IMA-ADPCM case: a PCM WAVE tag would be recognised by mediabunny
-// (getCodec() != null), so a null codec under A_MS/ACM is a non-PCM WAVE codec,
-// which for dashcam sources is IMA ADPCM.
+// Matroska CodecID for WAVE-in-ACM tracks. mediabunny maps no ACM codec, so
+// every such track reads as codec null - IMA ADPCM, but also MS ADPCM, G.711 or
+// PCM. The WAVEFORMATEX tag in CodecPrivate tells them apart; only IMA ADPCM
+// decodes here, anything else fed to this decoder would come out as noise.
 const MATROSKA_ACM_CODEC_ID = "A_MS/ACM";
+const WAVE_FORMAT_IMA_ADPCM = 0x0011;
+
+/**
+ * Whether the file's first audio track is an A_MS/ACM track tagged as some
+ * codec other than IMA ADPCM. False when the track header is not where the
+ * reader looks or names another codec ID: the tag is then unknown and the
+ * mediabunny probe decides, as before this check.
+ */
+async function isOtherAcmCodec(file: File): Promise<boolean> {
+    const header = await readMatroskaFirstAudioTrack(file);
+    if (header?.codecId !== MATROSKA_ACM_CODEC_ID) return false;
+    const waveFormat = header.codecPrivate;
+    if (!waveFormat || waveFormat.byteLength < 2) return true;
+    const formatTag = waveFormat[0]! | (waveFormat[1]! << 8);
+    if (formatTag === WAVE_FORMAT_IMA_ADPCM) return false;
+    log.info("matroska acm audio is not ima adpcm", { file: file.name, formatTag });
+    return true;
+}
 
 /**
  * Opens the audio track of a Matroska file and, if it is the IMA-ADPCM form
@@ -51,6 +70,7 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
         if (!at) return null;
         if ((await at.getCodec()) !== null) return null; // recognised codec - not our ADPCM
         if ((await at.getInternalCodecId()) !== MATROSKA_ACM_CODEC_ID) return null;
+        if (await isOtherAcmCodec(file)) return null;
         channels = at.numberOfChannels;
         sampleRate = at.sampleRate;
         if (channels < 1 || sampleRate < 1) return null;

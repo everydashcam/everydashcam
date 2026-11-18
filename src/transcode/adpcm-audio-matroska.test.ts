@@ -9,7 +9,24 @@ function fixture(): File {
     return new File([readFileSync(new URL(FIXTURE, import.meta.url))], "20260101_120000.mkv");
 }
 
+/** The fixture with its WAVE format tag rewritten, as an ACM track of another codec. */
+function withWaveFormatTag(formatTag: number): File {
+    const bytes = new Uint8Array(readFileSync(new URL(FIXTURE, import.meta.url)));
+    // wFormatTag 0x0011, mono, 32 kHz: the start of the fixture's WAVEFORMATEX.
+    const header = [0x11, 0x00, 0x01, 0x00, 0x00, 0x7d, 0x00, 0x00];
+    const offset = bytes.findIndex((_, i) => header.every((byte, j) => bytes[i + j] === byte));
+    if (offset < 0) throw new Error("fixture WAVE header not found");
+    bytes[offset] = formatTag & 0xff;
+    bytes[offset + 1] = formatTag >> 8;
+    return new File([bytes], "20260101_120000.mkv");
+}
+
 describe("openMatroskaAdpcmAudio", () => {
+    it("leaves another ACM codec to play silently instead of decoding it as IMA ADPCM", async () => {
+        expect(await openMatroskaAdpcmAudio(withWaveFormatTag(0x0002)), "MS ADPCM").toBeNull();
+        expect(await openMatroskaAdpcmAudio(withWaveFormatTag(0x0007)), "G.711 mu-law").toBeNull();
+    });
+
     it("reads the IMA ADPCM track that mediabunny cannot decode", async () => {
         const reader = await openMatroskaAdpcmAudio(fixture());
         expect(reader).not.toBeNull();
