@@ -1,7 +1,7 @@
 // Regression tests on real-anonymized LigoGPS-TS-trailer fixtures. The video
 // bodies are generated from scratch (testsrc2 + sine AAC); each trailer
 // retains its original structure, timestamps, speed and cadence while
-// coordinate fractions are zeroed to whole degrees.
+// coordinate fractions are zeroed to whole degrees and altitude to zero.
 //
 // Source: scripts/anonymize-ligogps-trailer-ts.mjs.
 
@@ -20,6 +20,23 @@ const AMPERSAND_FIXTURE = resolve(HERE, "real-anonymized-ampersand.TS");
 // The real camera's filename shape; the trailer clock is the camera-LOCAL
 // 2026-08-13 21:11:xx and tracks the filename stamp to the second.
 const NAME = "20260813211138_0000002F.ts";
+
+/**
+ * Checks that trailer text keeps exactly coordinateCount coordinates, all at
+ * whole degrees, and that every altitude field is zero.
+ */
+function expectAnonymizedTrailerText(text: string, coordinateCount: number): void {
+    const coordinates = [...text.matchAll(/[NSEW?]:(-?[\d.]+)/g)];
+    expect(coordinates).toHaveLength(coordinateCount);
+    for (const coordinate of coordinates) {
+        expect(Number.isInteger(Number(coordinate[1])), coordinate[0]).toBe(true);
+    }
+    // Tolerates a space after the tag so a spelling the anonymizer does not
+    // rewrite fails here instead of shipping real altitude.
+    for (const altitude of text.matchAll(/H:\s*(-?[\d.]+)/g)) {
+        expect(Number(altitude[1]), altitude[0]).toBe(0);
+    }
+}
 
 describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
     it("skips a damaged plaintext slot without losing the rest of the paired table", async () => {
@@ -43,9 +60,7 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
         const trailer = index.tsGpsTrailer!;
         const encryptedSlots = bytes.subarray(trailer.cleanLength + 92, trailer.cleanLength + 8680 - 8);
         expect(encryptedSlots.every((byte) => byte === 0)).toBe(true);
-        const coordinates = [...bytes.subarray(trailer.cleanLength).toString("latin1").matchAll(/[NSEW?]:(-?[\d.]+)/g)];
-        expect(coordinates).toHaveLength(120);
-        expect(coordinates.every((match) => Number.isInteger(Number(match[1])))).toBe(true);
+        expectAnonymizedTrailerText(bytes.subarray(trailer.cleanLength).toString("latin1"), 120);
 
         const result = await ligoGpsTrailerTsPrimitive.parse(vf, index);
         expect(result.skipped).toHaveLength(0);
@@ -70,15 +85,10 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
         ["real-anonymized-empty-capacity.TS", 0],
         ["real-anonymized-zero-header.TS", 28],
         ["real-anonymized-big-endian-count.TS", 360],
-    ])("keeps every trailer coordinate in %s at whole degrees", (name, count) => {
+    ])("keeps every trailer coordinate in %s at whole degrees and altitude at zero", (name, count) => {
         const bytes = readFileSync(resolve(HERE, name));
         const trailerLength = bytes.readUInt32BE(bytes.length - 4);
-        const text = bytes.subarray(-trailerLength).toString("latin1");
-        const coordinates = [...text.matchAll(/[NSEW?]:(-?[\d.]+)/g)];
-        expect(coordinates).toHaveLength(count);
-        for (const coordinate of coordinates) {
-            expect(Number.isInteger(Number(coordinate[1]))).toBe(true);
-        }
+        expectAnonymizedTrailerText(bytes.subarray(-trailerLength).toString("latin1"), count);
     });
 
     it("marker + parse end-to-end", async () => {
