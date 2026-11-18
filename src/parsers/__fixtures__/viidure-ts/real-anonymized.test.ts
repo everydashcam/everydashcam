@@ -114,6 +114,7 @@ describe("real anonymized Viidure MPEG-TS", () => {
                     firstGpsUnix: result.records[0]!.unixSeconds,
                     mvhdNaiveUnix: null,
                     durationSec: 180,
+                    lastGpsUnix: null,
                 },
             ],
             classifyFilenameTime,

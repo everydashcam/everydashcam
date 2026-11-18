@@ -1894,10 +1894,12 @@ export interface TzSample {
     // so this gives the same delta as filename-time.
     mvhdNaiveUnix: number | null;
     // Clip duration when already known (indexed candidates), null before the
-    // moov is read. Used only to chain samples into recording runs for the
-    // precise clock offset (estimatePreciseClockOffsetByFingerprint) - the
-    // 15-min TZ estimate does not need it.
+    // moov is read. Chains samples into recording runs for the precise clock
+    // offset (estimatePreciseClockOffsetByFingerprint) and, with lastGpsUnix,
+    // lets an mvhd sample tell which end of the clip mvhd names.
     durationSec: number | null;
+    // Last synced fix, or null when the caller has not read the clip's track.
+    lastGpsUnix: number | null;
 }
 
 /**
@@ -1913,9 +1915,17 @@ export interface FingerprintTzEstimate {
      *  no file of this camera yielded a parseable filename time. */
     filenameTzSec: number | null;
     /** Snapped median of (mvhd.creation_time read as naive UTC - first GPS
-     *  fix), or null when no file of this camera carried mvhd. */
+     *  fix), with each clip's duration removed first when mvhd names the end
+     *  of the clip. Null when no file of this camera carried mvhd. */
     mvhdTzSec: number | null;
+    /** Which end of the clip mvhd names on this camera, measured on its GPS
+     *  clips (see estimateMvhdClock). Null without that evidence. */
+    mvhdStamp: MvhdStamp | null;
 }
+
+/** The moment mvhd.creation_time names: recording start (70mai) or file
+ *  finalization (Vantrue, GoPro, BlackVue). */
+export type MvhdStamp = "start" | "finalize";
 
 /** Snap grid for TZ estimates: 15 minutes. Quarter-hour zones are real
  *  (Nepal +5:45, Chatham +12:45, Eucla +8:45) - a 30-minute grid misses
@@ -1996,33 +2006,76 @@ export function estimateTzByFingerprint(
     parseFilenameLocalTime: (file: VendorFile) => Date | null,
 ): Map<string, FingerprintTzEstimate> {
     const filenameDeltas = new Map<string, number[]>();
-    const mvhdDeltas = new Map<string, number[]>();
-    const push = (map: Map<string, number[]>, fingerprint: string, delta: number): void => {
-        let bucket = map.get(fingerprint);
-        if (!bucket) {
-            bucket = [];
-            map.set(fingerprint, bucket);
-        }
-        bucket.push(delta);
-    };
-    for (const { file, fingerprint, firstGpsUnix, mvhdNaiveUnix } of samples) {
-        const localDate = parseFilenameLocalTime(file);
+    const mvhdSamples = new Map<string, MvhdTzSample[]>();
+    for (const sample of samples) {
+        const localDate = parseFilenameLocalTime(sample.file);
         if (localDate !== null) {
-            push(filenameDeltas, fingerprint, localDate.getTime() / 1000 - firstGpsUnix);
+            pushToBucket(filenameDeltas, sample.fingerprint, localDate.getTime() / 1000 - sample.firstGpsUnix);
         }
-        if (mvhdNaiveUnix !== null) {
-            push(mvhdDeltas, fingerprint, mvhdNaiveUnix - firstGpsUnix);
+        if (sample.mvhdNaiveUnix !== null) {
+            pushToBucket(mvhdSamples, sample.fingerprint, { ...sample, mvhdNaiveUnix: sample.mvhdNaiveUnix });
         }
     }
     const out = new Map<string, FingerprintTzEstimate>();
-    const fingerprints = new Set([...filenameDeltas.keys(), ...mvhdDeltas.keys()]);
+    const fingerprints = new Set([...filenameDeltas.keys(), ...mvhdSamples.keys()]);
     for (const fingerprint of fingerprints) {
         const filenameTzSec = snappedMedianTz(filenameDeltas.get(fingerprint) ?? []);
-        const mvhdTzSec = snappedMedianTz(mvhdDeltas.get(fingerprint) ?? []);
-        if (filenameTzSec === null && mvhdTzSec === null) continue;
-        out.set(fingerprint, { filenameTzSec, mvhdTzSec });
+        const mvhd = estimateMvhdClock(mvhdSamples.get(fingerprint) ?? []);
+        if (filenameTzSec === null && mvhd.tzSec === null) continue;
+        out.set(fingerprint, { filenameTzSec, mvhdTzSec: mvhd.tzSec, mvhdStamp: mvhd.stamp });
     }
     return out;
+}
+
+interface MvhdTzSample extends TzSample {
+    mvhdNaiveUnix: number;
+}
+
+function pushToBucket<T>(map: Map<string, T[]>, key: string, value: T): void {
+    let bucket = map.get(key);
+    if (!bucket) {
+        bucket = [];
+        map.set(key, bucket);
+    }
+    bucket.push(value);
+}
+
+/**
+ * Fleet mvhd zone and stamp for one camera. A GPS-less clip has no window of
+ * its own to resolve the start/finalize ambiguity (see mvhdStartCandidates), so
+ * it inherits the stamp its GPS siblings prove: a fix cannot precede the
+ * video or outlive it, so only the matching reading, each with its own
+ * residual-free zone, puts a clip's track inside the clip. Clips fitting both
+ * readings or neither (a time-lapse wall span, a track of a few seconds) do
+ * not vote. A tie keeps the start reading, the behavior without evidence.
+ */
+function estimateMvhdClock(samples: readonly MvhdTzSample[]): { tzSec: number | null; stamp: MvhdStamp | null } {
+    const startTzSec = snappedMedianTz(samples.map((sample) => sample.mvhdNaiveUnix - sample.firstGpsUnix));
+    const timed = samples.filter((sample) => sample.durationSec !== null && sample.lastGpsUnix !== null);
+    const finalizeTzSec = snappedMedianTz(
+        timed.map((sample) => sample.mvhdNaiveUnix - sample.durationSec! - sample.firstGpsUnix),
+    );
+    if (startTzSec === null || finalizeTzSec === null) return { tzSec: startTzSec, stamp: null };
+    let votes = 0;
+    for (const sample of timed) {
+        const durationSec = sample.durationSec!;
+        const lastGpsUnix = sample.lastGpsUnix!;
+        const fitsStart = gpsFitsVideoWindow(
+            sample.firstGpsUnix,
+            lastGpsUnix,
+            sample.mvhdNaiveUnix - startTzSec,
+            durationSec,
+        );
+        const fitsFinalize = gpsFitsVideoWindow(
+            sample.firstGpsUnix,
+            lastGpsUnix,
+            sample.mvhdNaiveUnix - finalizeTzSec - durationSec,
+            durationSec,
+        );
+        if (fitsStart !== fitsFinalize) votes += fitsFinalize ? 1 : -1;
+    }
+    if (votes > 0) return { tzSec: finalizeTzSec, stamp: "finalize" };
+    return { tzSec: startTzSec, stamp: votes < 0 ? "start" : null };
 }
 
 /** Min files of one RUN needed to trust its precise clock offset. A lone
@@ -2706,8 +2759,11 @@ export function deriveStartUtc({
         const createdNaiveSec = createdUtc.getTime() / 1000;
         // The container and filename clocks may use different zones on
         // honest-UTC-mvhd firmware, so only the mvhd estimate applies here.
+        // A finalize stamp names the clip's end; anchoring there would put the
+        // clip on top of the next one on its channel.
         if (fingerprintTz?.mvhdTzSec != null) {
-            return { startUtc: createdNaiveSec - fingerprintTz.mvhdTzSec, source: "mp4" };
+            const stampedSpanSec = fingerprintTz.mvhdStamp === "finalize" ? windowSpanSec : 0;
+            return { startUtc: createdNaiveSec - fingerprintTz.mvhdTzSec - stampedSpanSec, source: "mp4" };
         }
         if (filenameLocalDate !== null) {
             const filenameNaiveSec = filenameLocalDate.getTime() / 1000;
@@ -2972,6 +3028,7 @@ export function rederiveStartUtcForCandidates(
             firstGpsUnix: firstSynced.unixSeconds,
             mvhdNaiveUnix: c.createdUtc !== null ? c.createdUtc.getTime() / 1000 : null,
             durationSec: c.durationSec,
+            lastGpsUnix: lastSyncedRecord(usableCandidateRecords(c))!.unixSeconds,
         });
     }
     const tzByFingerprint = estimateTzByFingerprint(tzSamples, memoizedFilenameTime);
@@ -3062,6 +3119,7 @@ export function rederiveStartUtcForCandidates(
                     firstGpsUnix: derived.startUtc,
                     mvhdNaiveUnix: null,
                     durationSec: c.durationSec,
+                    lastGpsUnix: null,
                 });
         }
     }

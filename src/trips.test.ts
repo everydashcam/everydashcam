@@ -1743,7 +1743,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: new Date((startReal + tzOffsetSec) * 1000),
             durationSec,
             records,
-            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0 },
+            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -1774,7 +1774,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: new Date(finalizeLocal * 1000),
             durationSec,
             records,
-            fingerprintTz: { filenameTzSec: tzOffsetSec, mvhdTzSec: tzOffsetSec },
+            fingerprintTz: { filenameTzSec: tzOffsetSec, mvhdTzSec: tzOffsetSec, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -1804,7 +1804,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: new Date(finalizeLocal * 1000),
             durationSec,
             records,
-            fingerprintTz: { filenameTzSec: tzOffsetSec, mvhdTzSec: tzOffsetSec },
+            fingerprintTz: { filenameTzSec: tzOffsetSec, mvhdTzSec: tzOffsetSec, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -1832,7 +1832,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: new Date(mvhdFakeUtc * 1000),
             durationSec,
             records,
-            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0 },
+            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -1854,7 +1854,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: new Date((startReal + tzOffsetSec) * 1000),
             durationSec: 60,
             records: [],
-            fingerprintTz: { filenameTzSec: tzOffsetSec, mvhdTzSec: tzOffsetSec },
+            fingerprintTz: { filenameTzSec: tzOffsetSec, mvhdTzSec: tzOffsetSec, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -1958,7 +1958,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: null,
             durationSec: 60.096,
             records: [],
-            fingerprintTz: { filenameTzSec: 18000, mvhdTzSec: null },
+            fingerprintTz: { filenameTzSec: 18000, mvhdTzSec: null, mvhdStamp: null },
             parseFilenameLocalTime: () => new Date(Date.UTC(2026, 5, 16, 23, 3, 59)),
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -1977,7 +1977,7 @@ describe("deriveStartUtc: mvhd start vs finalize semantics", () => {
             createdUtc: null,
             durationSec: 60,
             records: [],
-            fingerprintTz: { filenameTzSec: 18000, mvhdTzSec: null },
+            fingerprintTz: { filenameTzSec: 18000, mvhdTzSec: null, mvhdStamp: null },
             parseFilenameLocalTime: () => new Date(startUtc * 1000),
             preciseFilenameOffsetSec: 0,
             embeddedStartUtcHint: null,
@@ -2004,7 +2004,7 @@ describe("deriveStartUtc: mvhd-vs-GPS tripwire", () => {
             createdUtc: new Date((startReal + 3900) * 1000),
             durationSec,
             records,
-            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0 },
+            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -2022,7 +2022,7 @@ describe("deriveStartUtc: mvhd-vs-GPS tripwire", () => {
             createdUtc: new Date(startReal * 1000),
             durationSec,
             records,
-            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0 },
+            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -2063,7 +2063,7 @@ describe("deriveStartUtc: fleet mvhd TZ disambiguates >7.5min clips (A5)", () =>
                 createdUtc: new Date((S + T) * 1000), // start semantics: mvhd = S + T
                 durationSec,
                 records,
-                fingerprintTz: { filenameTzSec: T, mvhdTzSec: T },
+                fingerprintTz: { filenameTzSec: T, mvhdTzSec: T, mvhdStamp: null },
                 parseFilenameLocalTime: noFilenameTime,
                 preciseFilenameOffsetSec: null,
                 embeddedStartUtcHint: null,
@@ -2112,7 +2112,7 @@ describe("deriveStartUtc: fleet mvhd TZ disambiguates >7.5min clips (A5)", () =>
                 createdUtc: new Date((S + durationSec + T) * 1000), // finalize: mvhd = S + D + T
                 durationSec,
                 records,
-                fingerprintTz: { filenameTzSec: T, mvhdTzSec: T },
+                fingerprintTz: { filenameTzSec: T, mvhdTzSec: T, mvhdStamp: null },
                 parseFilenameLocalTime: noFilenameTime,
                 preciseFilenameOffsetSec: null,
                 embeddedStartUtcHint: null,
@@ -2153,7 +2153,7 @@ describe("deriveStartUtc: fleet mvhd TZ disambiguates >7.5min clips (A5)", () =>
             createdUtc: new Date((S + T) * 1000), // start semantics, true TZ = T
             durationSec: shortDur,
             records: [makeRecord(firstGps), makeRecord(S + 55)],
-            fingerprintTz: { filenameTzSec: T + 900, mvhdTzSec: T + 900 }, // corrupt: 900s off
+            fingerprintTz: { filenameTzSec: T + 900, mvhdTzSec: T + 900, mvhdStamp: null }, // corrupt: 900s off
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -2195,6 +2195,7 @@ describe("deriveStartUtc: run clock offset anchors back-to-back no-mvhd clips", 
             firstGpsUnix: FIRST_GPS_699,
             mvhdNaiveUnix: null,
             durationSec: DUR_699,
+            lastGpsUnix: null,
         },
         {
             file: makeVendorFile(NAME_700),
@@ -2202,6 +2203,7 @@ describe("deriveStartUtc: run clock offset anchors back-to-back no-mvhd clips", 
             firstGpsUnix: FIRST_GPS_700,
             mvhdNaiveUnix: null,
             durationSec: DUR_700,
+            lastGpsUnix: null,
         },
     ];
 
@@ -2343,6 +2345,7 @@ describe("deriveStartUtc: run offset robustness", () => {
             firstGpsUnix: trueF1,
             mvhdNaiveUnix: null,
             durationSec: 60,
+            lastGpsUnix: null,
         },
         {
             file: makeVendorFile("NO-002F.MP4"),
@@ -2350,6 +2353,7 @@ describe("deriveStartUtc: run offset robustness", () => {
             firstGpsUnix: trueF2,
             mvhdNaiveUnix: null,
             durationSec: 60,
+            lastGpsUnix: null,
         },
     ];
 
@@ -2361,7 +2365,7 @@ describe("deriveStartUtc: run offset robustness", () => {
             durationSec: 60,
             records,
             // snapped median = 18000 (drift rounded away) - the OLD rear path.
-            fingerprintTz: { filenameTzSec: 18_000, mvhdTzSec: null },
+            fingerprintTz: { filenameTzSec: 18_000, mvhdTzSec: null, mvhdStamp: null },
             parseFilenameLocalTime: nameOf,
             preciseFilenameOffsetSec: offset,
             embeddedStartUtcHint: null,
@@ -2440,6 +2444,7 @@ describe("deriveStartUtc: run offset robustness", () => {
             firstGpsUnix: base + 18_040 + idx * 60 - delta,
             mvhdNaiveUnix: null,
             durationSec: 60,
+            lastGpsUnix: null,
         });
         const runs = estimatePreciseClockOffsetByFingerprint(
             [mkSample(0, 18_040), mkSample(1, 25_240), mkSample(2, 18_040)],
@@ -2478,6 +2483,7 @@ describe("estimatePreciseClockOffsetByFingerprint: per-run offsets", () => {
         firstGpsUnix: nameUnixByFile.get(name)! - offset + lag,
         mvhdNaiveUnix: null,
         durationSec: 60,
+        lastGpsUnix: null,
     });
     const samples = [
         mkSample("a1.mp4", 8, 15), // cold start: 15s fix lag understates the offset
@@ -2510,6 +2516,51 @@ describe("estimatePreciseClockOffsetByFingerprint: per-run offsets", () => {
 
     it("a file with no parseable name time resolves to null", () => {
         expect(resolve("unknown.mp4")).toBeNull();
+    });
+});
+
+// Shape of a reported Mangoal card (dates synthetic): mvhd names the clip's end
+// in local time, the filename its start, and the camera sits in UTC-5.
+describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd", () => {
+    const ZONE_SEC = -5 * 3600;
+    type GpsClock = "none" | "utc";
+
+    function nameNaive(candidate: VideoCandidate): number {
+        return classifyFilenameTime(candidate)!.getTime() / 1000;
+    }
+
+    function clip(stamp: string, gps: GpsClock, durationSec = 180): VideoCandidate {
+        const name = `DVR${stamp}_000001_F.MP4`;
+        const relativePath = `CARDV/MOVIE_F/${name}`;
+        const vendorFile = { file: new File([], name), relativePath };
+        const startNaive = classifyFilenameTime(vendorFile)!.getTime() / 1000;
+        const trueStart = startNaive - ZONE_SEC;
+        const candidate = makeCandidate({
+            name,
+            relativePath,
+            startUtc: 0,
+            durationSec,
+            channel: "front",
+            fingerprint: cameraFingerprint(vendorFile),
+            recordingMode: "normal",
+            records:
+                gps === "none" ? [] : Array.from({ length: durationSec - 1 }, (_, i) => makeRecord(trueStart + 1 + i)),
+        });
+        candidate.createdUtc = new Date((startNaive + durationSec) * 1000);
+        return candidate;
+    }
+
+    it("starts a GPS-less cold-start clip at its own start, not at its mvhd stamp", () => {
+        const clips = [
+            clip("20260115092833", "none"),
+            clip("20260115093133", "utc"),
+            clip("20260115093433", "utc"),
+            clip("20260115094033", "none", 81),
+        ];
+        rederiveStartUtcForCandidates(clips, classifyFilenameTime);
+        expect(clips.map((c) => c.startUtc - nameNaive(c))).toEqual([18_000, 18_000, 18_000, 18_000]);
+        expect(clips.map((c) => c.startSource)).toEqual(["mp4", "mp4", "mp4", "mp4"]);
+        expect(groupTrips(clips.slice(0, 3)), "the cold-start clip stays in its drive").toHaveLength(1);
     });
 });
 
@@ -2613,6 +2664,7 @@ describe("estimateTzByFingerprint: snappedMedianTz lower-median + outlier guard 
             firstGpsUnix: firstGps,
             mvhdNaiveUnix: firstGps + d,
             durationSec: null,
+            lastGpsUnix: null,
         }));
     }
 
@@ -2645,6 +2697,26 @@ describe("estimateTzByFingerprint: snappedMedianTz lower-median + outlier guard 
         expect(est.get("fp")!.mvhdTzSec).toBe(tz);
     });
 
+    it("reads the mvhd stamp from where each clip's track fits", () => {
+        // 180 s clips with a fix 2 s in, through 2 s before the end.
+        const stampSamples = (fingerprint: string, finalize: boolean): TzSample[] =>
+            [0, 1, 2].map((i) => {
+                const start = F + i * 180;
+                return {
+                    file: makeVendorFile(`${fingerprint}-${i}.mp4`),
+                    fingerprint,
+                    firstGpsUnix: start + 2,
+                    mvhdNaiveUnix: start + tz + (finalize ? 180 : 0),
+                    durationSec: 180,
+                    lastGpsUnix: start + 178,
+                };
+            });
+        const est = estimateTzByFingerprint([...stampSamples("end", true), ...stampSamples("begin", false)], noName);
+        expect(est.get("end")).toEqual({ filenameTzSec: null, mvhdTzSec: tz, mvhdStamp: "finalize" });
+        expect(est.get("begin")).toEqual({ filenameTzSec: null, mvhdTzSec: tz, mvhdStamp: "start" });
+        expect(estimateTzByFingerprint(mvhdSamples("fp", F, [tz]), noName).get("fp")!.mvhdStamp).toBeNull();
+    });
+
     it("a fingerprint with no usable delta yields no entry (null median filtered out)", () => {
         const est = estimateTzByFingerprint(
             [
@@ -2654,6 +2726,7 @@ describe("estimateTzByFingerprint: snappedMedianTz lower-median + outlier guard 
                     firstGpsUnix: F,
                     mvhdNaiveUnix: null,
                     durationSec: null,
+                    lastGpsUnix: null,
                 },
             ],
             noName,
@@ -2700,7 +2773,7 @@ describe("deriveStartUtc: cold-start (timeUnsynced) records", () => {
             createdUtc: new Date(startReal * 1000),
             durationSec: 60,
             records,
-            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0 },
+            fingerprintTz: { filenameTzSec: 0, mvhdTzSec: 0, mvhdStamp: null },
             parseFilenameLocalTime: noFilenameTime,
             preciseFilenameOffsetSec: null,
             embeddedStartUtcHint: null,
@@ -3439,7 +3512,7 @@ describe("explicit camera timezone", () => {
             records,
             cameraTimezoneOverrideSec: 20700,
             embeddedStartUtcHint: nameNaive - 10800,
-            fingerprintTz: { filenameTzSec: 10800, mvhdTzSec: 0 },
+            fingerprintTz: { filenameTzSec: 10800, mvhdTzSec: 0, mvhdStamp: null },
             preciseFilenameOffsetSec: 10800,
         });
 

@@ -129,7 +129,7 @@ describe("70mai dated real-anonymized fixture", () => {
                 createdUtc: localClock,
                 durationSec: 180,
                 records: log.byFilename.get(logName!)!,
-                fingerprintTz: { filenameTzSec: 3600, mvhdTzSec: 3600 },
+                fingerprintTz: { filenameTzSec: 3600, mvhdTzSec: 3600, mvhdStamp: null },
                 parseFilenameLocalTime: (candidate) => matchFilenameTime(candidate)?.value ?? null,
                 preciseFilenameOffsetSec: 3600,
                 embeddedStartUtcHint: null,

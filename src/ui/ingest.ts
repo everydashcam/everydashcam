@@ -26,7 +26,7 @@ import { partitionByIndexCache } from "./ingest-cache.js";
 import { createLogger } from "../log.js";
 import { captureSentryException } from "../sentry.js";
 import { markStage } from "../perf.js";
-import { cloneRecordsAcrossChannels, firstSyncedRecord, mergeIntoGpsLog } from "../parser.js";
+import { cloneRecordsAcrossChannels, firstSyncedRecord, lastSyncedRecord, mergeIntoGpsLog } from "../parser.js";
 import {
     classifyFilesViaPool as dispatchClassifyFiles,
     dispatchParseAccelSidecarsViaPool as dispatchParseAccelSidecars,
@@ -643,6 +643,7 @@ async function ingestFilesInternal(
                     firstGpsUnix: firstSynced.unixSeconds,
                     mvhdNaiveUnix: null,
                     durationSec: null,
+                    lastGpsUnix: null,
                 });
                 seen.add(cf.file.file);
             }
@@ -656,6 +657,7 @@ async function ingestFilesInternal(
                     firstGpsUnix: firstSynced.unixSeconds,
                     mvhdNaiveUnix: c.createdUtc !== null ? c.createdUtc.getTime() / 1000 : null,
                     durationSec: c.durationSec,
+                    lastGpsUnix: lastSyncedRecord(usableCandidateRecords(c))!.unixSeconds,
                 });
                 seen.add(c.file);
             }
