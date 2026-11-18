@@ -92,25 +92,15 @@ describe("map style presets", () => {
 
     for (const theme of ["la-92", "miami-86", "tuner-04"] as const) {
         it.each(["openfreemap", "osm-vector"] as const)(
-            `prioritizes localized street names on the large ${theme} %s map`,
+            `draws street names above every other layer on the large ${theme} %s map`,
             (provider) => {
                 const base = provider === "openfreemap" ? loadStyle(theme) : createFallbackMapStyle(provider, theme);
                 const original = structuredClone(base);
-                const result = readableRadarThemeMap(base, "ru");
+                const result = readableRadarThemeMap(base);
                 expect(validateStyleMin(result)).toEqual([]);
                 const firstStreet = result.layers.findIndex(isStreetNameLayer);
                 expect(firstStreet).toBeGreaterThan(0);
                 expect(result.layers.slice(firstStreet).every(isStreetNameLayer)).toBe(true);
-                const street = result.layers[firstStreet]!;
-                if (street.type !== "symbol") throw new Error("street labels missing");
-                const field = createExpression(street.layout?.["text-field"], street.id);
-                if (field.result !== "success") throw new Error("invalid street name expression");
-                for (const [properties, name] of [
-                    [{ name: "Әл-Фараби даңғылы", "name:ru": "проспект Аль-Фараби" }, "проспект Аль-Фараби"],
-                    [{ name: "Әл-Фараби даңғылы" }, "Әл-Фараби даңғылы"],
-                ] as const) {
-                    expect(field.value.evaluate({ zoom: 15 }, { type: 2, properties })).toBe(name);
-                }
                 expect(base).toEqual(original);
             },
         );

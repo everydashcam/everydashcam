@@ -30,6 +30,7 @@ import {
     type MapProvider,
 } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
+import { localizeMapLabels } from "./map-label-language.js";
 import { loadMapStyleSource } from "./map-style-source.js";
 import { readableRadarThemeMap, radarBaseStyle, applyMapStylePreset } from "./map-style-preset.js";
 import { registerSharedMapTileCache } from "./map-tile-cache.js";
@@ -204,8 +205,11 @@ export function loadMapStyle(
     }
 
     if (provider !== "openfreemap") {
+        const fallback = provider === "yandex" ? null : createFallbackMapStyle(provider, theme);
         const style =
-            provider === "yandex" ? createYandexMapStyle(getCurrentLang()) : createFallbackMapStyle(provider, theme);
+            provider === "yandex"
+                ? createYandexMapStyle(getCurrentLang())
+                : fallback && localizeMapLabels(fallback, getCurrentLang());
         if (!style) return Promise.resolve(null);
         cachedMapStyles.set(key, style);
         clearMapStyleFailure(source, theme, provider);
@@ -221,8 +225,10 @@ export function loadMapStyle(
     const fetchStart = performance.now();
 
     const promise: Promise<maplibregl.StyleSpecification | null> = loadMapStyleSource(theme, ctrl.signal)
-        .then((style) => {
+        .then((loaded) => {
             if (ctrl.signal.aborted && ctrl.signal.reason === "superseded") return null;
+            // The interface language is fixed for the page, so the cache can hold the localized style.
+            const style = localizeMapLabels(loaded, getCurrentLang());
             // MapLibre refuses relative sprite/glyphs URLs at runtime
             // ("Invalid sprite URL ..., must be absolute"). Our self-hosted
             // dark style ships sprite: "/styles/sprite/sprite" - resolve it
@@ -370,7 +376,7 @@ function applyStyleTo(
         viewerMap.map.resize();
         if (radar) styled = radarBaseStyle(styled, radar);
     } else if (viewerMap.surface === "main" && viewerRadarTheme(provider)) {
-        styled = readableRadarThemeMap(styled, getCurrentLang());
+        styled = readableRadarThemeMap(styled);
     }
     setViewerMapStyle(viewerMap.map, styled);
     viewerMap.attribution.setProvider(provider);

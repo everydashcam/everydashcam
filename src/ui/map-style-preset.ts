@@ -71,7 +71,7 @@ export function isStreetNameLayer(layer: LayerSpecification): boolean {
 
 /** The large map of a radar theme uses quieter geometry beneath the street names. Keep
  * viewer text scale, street density and any reduced-context preset in effect. */
-export function readableRadarThemeMap(style: StyleSpecification, lang: string): StyleSpecification {
+export function readableRadarThemeMap(style: StyleSpecification): StyleSpecification {
     const layers: LayerSpecification[] = [];
     const streets: SymbolLayerSpecification[] = [];
     for (const layer of style.layers) {
@@ -81,7 +81,6 @@ export function readableRadarThemeMap(style: StyleSpecification, lang: string): 
                 ...layer,
                 layout: {
                     ...layer.layout,
-                    "text-field": ["coalesce", ["get", `name:${lang}`], ["get", `name_${lang}`], ["get", "name"], ""],
                     "text-offset": [0, -0.85],
                     "text-padding": 4,
                     "text-pitch-alignment": "viewport",
