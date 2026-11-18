@@ -633,8 +633,13 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
             // outTs is the (compressed) muxer timestamp; tripTimeSec is the real
             // source time (srcStep apart) used to fetch slot samples and
             // interpolate GPS overlays.
+            // Set when the audio producer fails. The ticks then stop at once: the
+            // error surfaces now rather than after the whole range, and the muxer
+            // stops holding video for an audio track that will not advance.
+            let hasAudioFailed = false;
             const runVideoTicks = async (): Promise<void> => {
                 for (let f = 0; f < framesTotal; f++) {
+                    if (hasAudioFailed) return;
                     throwIfCancelled(signal);
                     const outTs = f * frameDur;
                     const tripTimeSec = source.startTripSec + f * srcStep;
@@ -851,12 +856,25 @@ export async function transcodeSplit(args: TranscodeSplitArgs): Promise<Transcod
                 }
             };
 
+            // The audio runs ahead of the ticks and may end before the range does
+            // (the sound camera's last file ends early). Closing its track lets the
+            // muxer write the remaining video instead of holding it until finalize.
+            const runAudioToEnd = async (): Promise<void> => {
+                try {
+                    await runAudio();
+                } catch (err) {
+                    hasAudioFailed = true;
+                    throw err;
+                }
+                audioPlan?.source.close();
+            };
+
             // Concurrently, not back-to-back. Audio reads its own Inputs and feeds a
             // separate muxer track (mediabunny guards the muxer with its own mutex),
             // so running it after the ticks left every decoder and the video encoder
             // idle for the whole audio pass. It also interleaves the mdat properly:
             // serial passes wrote the entire video track before the first audio byte.
-            await joinAllOrThrowFirst([runVideoTicks(), runAudio()]);
+            await joinAllOrThrowFirst([runVideoTicks(), runAudioToEnd()]);
         } catch (err) {
             log.error("split transcode aborted or failed", { framesDone, err: String(err) });
             throw err;
