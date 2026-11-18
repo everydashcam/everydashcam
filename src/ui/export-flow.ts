@@ -73,7 +73,7 @@ import { isDestinationLostError, isSinkFailure, tagSinkFailures } from "./destin
 import { isMediabunnyReadAssert } from "./mediabunny-read-assert.js";
 import { isQuotaExceededError } from "./quota-error.js";
 import { isSourceReadError } from "../source-read-error.js";
-import { dom } from "./dom.js";
+import { channelPlayers, dom } from "./dom.js";
 import { showSaveFilePicker, withFilePicker } from "./file-picker.js";
 import { exportPanelState, OVERLAY_STATE_ACCESSORS, type Quality } from "./export-state.js";
 import { activeBlurRegions } from "./blur-regions-state.js";
@@ -141,8 +141,7 @@ const OUTPUT_PRESETS: Record<string, PresetSpec> = {
 
 /**
  * Resolves the selected output preset id into final {width, height, aspect}.
- * "source" reads the active video element's natural dims (must have loaded
- * metadata; otherwise 1920x1080 as a sane default). "custom" uses
+ * "source" reads the main exported camera's natural video dims (see below). "custom" uses
  * outputCustomW/H clamped to [240, 3840] and rounded to even.
  */
 export function resolveOutputDims(): OutputDims {
@@ -158,9 +157,13 @@ export function resolveOutputDims(): OutputDims {
         const w = ensureEven(Math.round(h * aspectRatio(preset.aspect)));
         return { width: w, height: h, aspect: preset.aspect };
     }
-    // "source": use the active <video> dims if available; else fall back to
-    // 1920x1080 (sane default for unknown sources).
-    const v = dom.player;
+    // "source": the natural dims of the exported main camera's <video>. Not
+    // dom.player alone: with no main-camera footage under the playhead it is
+    // another camera's element, whose size can differ (a 4K front, a 1080p
+    // rear). That element stands in only while the main one has no metadata;
+    // 1920x1080 while neither has.
+    const mainPlayer = channelPlayers[visibleChannels()[0] ?? mainChannel()];
+    const v = mainPlayer?.videoWidth ? mainPlayer : dom.player;
     const sourceW = ensureEven(v?.videoWidth || 1920);
     const sourceH = ensureEven(v?.videoHeight || 1080);
     return { width: sourceW, height: sourceH, aspect: { kind: "custom", w: sourceW, h: sourceH } };
