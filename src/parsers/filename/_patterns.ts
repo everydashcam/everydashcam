@@ -142,7 +142,7 @@ export const RX_HMS_CHANNEL_MODE = /^(\d{8})[-_](\d{2})h(\d{2})m(\d{2})s_([A-Z]{
 // Leaf folder of a card that splits streams into `<Mode>_<channel word>/`
 // siblings: RedTiger F17 (Video_Front/, Video_Inside/, Video_Rear/, with
 // Event_* next to them), GKU 600 Pro (Video_front/, Video_rear/) and GKU
-// D600Pro (video_front/, video_back/, protected clips in video_front_lock/).
+// D600 Pro (video_front/, video_back/, protected clips in video_front_lock/).
 // Groups: mode stem, channel word, lock suffix.
 const RX_MODE_CHANNEL_FOLDER = /^(video|event)_(front|rear|back|inside)(_lock)?$/i;
 
@@ -211,7 +211,7 @@ export const RX_360_CARDVR_REC_PATH = /(?:^|\/)360CARDVR\/REC\//i;
 // H.264 2560x1440 + AAC + a single JPEG poster frame on a private stream
 // (stream_type 0x89), and NO embedded GPS/telemetry. Brand is inferred from
 // the folder name + naming scheme, not from container metadata (the JPEG's
-// EXIF Make/Model are blank). A user-reported GKU D600Pro card uses the same
+// EXIF Make/Model are blank). A user-reported GKU D600 Pro card uses the same
 // names in video_front/ and video_back/ (+ `_lock` siblings), with a LigoGPS
 // trailer. Channel letters: `f` = front and `b` = rear are confirmed on these
 // cards; r/i keep the standard mnemonics without a sample.

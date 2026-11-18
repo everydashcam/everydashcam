@@ -204,7 +204,7 @@ describe("collected recording filenames", () => {
         expect(Object.keys(trips[0]!.frames[0]!.channels).sort()).toEqual(["front", "rear"]);
     });
 
-    it.each(["GKU", "\\"])("pairs GKU D600Pro video_front and video_back clips under %s", (root) => {
+    it.each(["GKU", "\\"])("pairs GKU D600 Pro video_front and video_back clips under %s", (root) => {
         // Layout and names from a reported card; `\` is the root name Chrome
         // gives a whole Windows drive.
         const front = vf(`${root}/video_front/2026-11-14_07_12_52_f.ts`);

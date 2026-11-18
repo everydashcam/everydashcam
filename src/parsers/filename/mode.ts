@@ -272,7 +272,7 @@ const fordMode: FilenameModeTechnique = {
     extract(file: VendorFile): RecordingMode | null {
         // The name carries no event/parking marker. Assert "normal" on a name
         // match, like the other name-only families (e-ace, carcam, ibox), so
-        // clips carry a mode instead of null. Only the GKU D600Pro folder layout
+        // clips carry a mode instead of null. Only the GKU D600 Pro folder layout
         // marks protected clips (video_front_lock/); Ford event/parking modes are
         // unknown.
         if (!RX_FORD.test(file.file.name)) return null;

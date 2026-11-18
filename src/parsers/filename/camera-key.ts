@@ -412,7 +412,7 @@ const fordCameraKey: FilenameCameraKeyTechnique = {
         // groupTrips. Same lastIndexOf+mask approach as the other trailing-letter
         // families (juscar/ibox/...).
         const masked = maskNameWithTrailingLetterStripped(file.file.name, m[7]!);
-        // Ford writes all channels into one folder. GKU D600Pro uses the same
+        // Ford writes all channels into one folder. GKU D600 Pro uses the same
         // names but splits channels into video_front/ and video_back/; collapse
         // that leaf so its channels pair. Its `_lock` folders keep their own key:
         // as with e-ace-camera-key, no card shows whether a locked clip is a copy

@@ -370,7 +370,7 @@ const fordChannel: FilenameChannelTechnique = {
         const m = file.file.name.match(RX_FORD);
         if (!m) return null;
         // `f` = front and `b` = rear are confirmed on real cards (Ford, GKU
-        // D600Pro). `r`/`i` follow the standard mnemonics without a sample. Treat
+        // D600 Pro). `r`/`i` follow the standard mnemonics without a sample. Treat
         // any other letter as a distinct non-front channel so it pairs with front
         // in one frame (same fingerprint, see ford-camera-key) instead of
         // defaulting to "front". An unknown letter goes to the FREE "side" slot,

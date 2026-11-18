@@ -174,7 +174,7 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
         }
     });
 
-    it("parses the GKU D600Pro table with a big-endian slot count and an altitude field", async () => {
+    it("parses the GKU D600 Pro table with a big-endian slot count and an altitude field", async () => {
         const name = "2026-11-16_09_56_34_b.ts";
         const bytes = readFileSync(resolve(HERE, "real-anonymized-big-endian-count.TS"));
         const trailerStart = bytes.length - bytes.readUInt32BE(bytes.length - 4);
