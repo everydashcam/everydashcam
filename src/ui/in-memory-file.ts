@@ -93,6 +93,22 @@ const ResizableArrayBufferCtor = ArrayBuffer as unknown as {
     new (byteLength: number, options: { maxByteLength: number }): ResizableArrayBuffer;
 };
 
+/**
+ * A resizable buffer of `byteLength` bytes that may grow to ARRAY_BUFFER_MAX, or
+ * null when the engine refuses that maximum. Engines may reserve address space
+ * for the whole maximum up front and reject it on a memory-constrained device
+ * with a RangeError even for a tiny initial size; the realloc+copy growth path
+ * still works within what the device allows. Other errors propagate.
+ */
+function createResizableBuffer(byteLength: number): ResizableArrayBuffer | null {
+    try {
+        return new ResizableArrayBufferCtor(byteLength, { maxByteLength: ARRAY_BUFFER_MAX });
+    } catch (err) {
+        if (!(err instanceof RangeError)) throw err;
+        return null;
+    }
+}
+
 // Growable byte store with random-access positional writes and truncate. Backed
 // by a resizable ArrayBuffer that grows in place; `logicalLen` is the file size
 // (capacity may exceed it). Gaps created by a write past the current end are
@@ -113,13 +129,9 @@ class GrowableBuffer {
     constructor(expectedBytes = 0) {
         const initial =
             expectedBytes > 0 ? Math.max(MIN_INITIAL, Math.min(expectedBytes, ARRAY_BUFFER_MAX)) : MIN_INITIAL;
-        if (supportsResizableArrayBuffer) {
-            this.backing = new ResizableArrayBufferCtor(initial, { maxByteLength: ARRAY_BUFFER_MAX });
-            this.resizable = true;
-        } else {
-            this.backing = new ArrayBuffer(initial);
-            this.resizable = false;
-        }
+        const resizableBacking = supportsResizableArrayBuffer ? createResizableBuffer(initial) : null;
+        this.backing = resizableBacking ?? new ArrayBuffer(initial);
+        this.resizable = resizableBacking !== null;
         this.view = new Uint8Array(this.backing);
     }
 
