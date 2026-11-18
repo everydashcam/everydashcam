@@ -19,7 +19,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
-import { DEGENERATE_VIDEO_PACKET_MAX_BYTES, createVideoSourceResolver } from "./normalize-degenerate-video.js";
+import {
+    DEGENERATE_VIDEO_PACKET_MAX_BYTES,
+    createVideoSourceResolver,
+    isDegenerateVideoPacket,
+} from "./normalize-degenerate-video.js";
 
 const FIXTURES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../parsers/__fixtures__/generic");
 
@@ -92,6 +96,19 @@ async function buildVideo(
     if (!buffer) throw new Error("mux produced no buffer");
     return new File([buffer], name, { type: isMkv ? "video/x-matroska" : "video/mp4" });
 }
+
+describe("isDegenerateVideoPacket", () => {
+    it("drops only empty H.264 and HEVC access units", () => {
+        expect(isDegenerateVideoPacket("avc", DEGENERATE_VIDEO_PACKET_MAX_BYTES)).toBe(true);
+        expect(isDegenerateVideoPacket("hevc", 4)).toBe(true);
+        expect(isDegenerateVideoPacket("avc", 5)).toBe(false);
+    });
+
+    it("keeps a tiny VP9 or AV1 packet, which can show an earlier frame", () => {
+        expect(isDegenerateVideoPacket("vp9", 1)).toBe(false);
+        expect(isDegenerateVideoPacket("av1", 3)).toBe(false);
+    });
+});
 
 describe("createVideoSourceResolver", () => {
     it("returns healthy MP4 and MOV files unchanged", async () => {

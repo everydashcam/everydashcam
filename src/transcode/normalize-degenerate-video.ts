@@ -10,6 +10,7 @@ import {
     Input,
     Mp4OutputFormat,
     Output,
+    type VideoCodec,
 } from "mediabunny";
 import { createLogger } from "../log.js";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
@@ -23,8 +24,17 @@ const MAX_CACHED_SOURCES = 4;
 // Max byte length of a video packet treated as an empty/phantom access unit and
 // dropped. A real coded H.264/HEVC picture - even a tiny P-frame - is well above
 // this; only a bare length-prefix (a zero-length NAL, ~4 bytes) falls under it.
-// Single source of truth: export.ts's stream-copy loop imports this constant.
 export const DEGENERATE_VIDEO_PACKET_MAX_BYTES = 4;
+
+/**
+ * Whether a video packet is an empty access unit to drop. Only H.264/HEVC: a
+ * VP9 or AV1 packet this small can be a real show-existing-frame command that
+ * displays an earlier decoded frame, so dropping it would lose that frame.
+ * Single source of truth for the stream-copy loop (export.ts) and this remux.
+ */
+export function isDegenerateVideoPacket(codec: VideoCodec, byteLength: number): boolean {
+    return (codec === "avc" || codec === "hevc") && byteLength <= DEGENERATE_VIDEO_PACKET_MAX_BYTES;
+}
 
 export interface VideoSourceResolver {
     /**
@@ -94,7 +104,7 @@ async function normalizeToCleanMp4(file: File, signal?: AbortSignal): Promise<Fi
         const sink = new EncodedPacketSink(track);
         if (!isMatroskaName(file.name)) {
             let packet = await sink.getFirstPacket({ metadataOnly: true });
-            while (packet && packet.byteLength > DEGENERATE_VIDEO_PACKET_MAX_BYTES) {
+            while (packet && !isDegenerateVideoPacket(codec, packet.byteLength)) {
                 throwIfCancelled(signal);
                 packet = await sink.getNextPacket(packet, { metadataOnly: true });
             }
@@ -123,7 +133,7 @@ async function normalizeToCleanMp4(file: File, signal?: AbortSignal): Promise<Fi
         let dropped = 0;
         while (packet) {
             throwIfCancelled(signal);
-            if (packet.byteLength <= DEGENERATE_VIDEO_PACKET_MAX_BYTES) {
+            if (isDegenerateVideoPacket(codec, packet.byteLength)) {
                 dropped++;
                 packet = await sink.getNextPacket(packet, { verifyKeyPackets: true });
                 continue;

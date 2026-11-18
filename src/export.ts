@@ -49,7 +49,7 @@ import {
 } from "mediabunny";
 
 import { VIDEO_INPUT_FORMATS } from "./video-formats.js";
-import { DEGENERATE_VIDEO_PACKET_MAX_BYTES } from "./transcode/normalize-degenerate-video.js";
+import { isDegenerateVideoPacket } from "./transcode/normalize-degenerate-video.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./transcode/adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./transcode/capabilities.js";
 import {
@@ -675,7 +675,7 @@ export async function exportClip({
                     // units and freeze on the last keyframe until the next one. The
                     // surrounding frames keep their timestamps, so dropping it just
                     // holds the previous frame ~33 ms longer - invisible.
-                    if (pkt.byteLength <= DEGENERATE_VIDEO_PACKET_MAX_BYTES) {
+                    if (isDegenerateVideoPacket(videoCodec, pkt.byteLength)) {
                         pkt = await videoSink.getNextPacket(pkt, { verifyKeyPackets: true });
                         continue;
                     }
