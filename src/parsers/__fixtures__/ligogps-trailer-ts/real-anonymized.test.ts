@@ -69,6 +69,7 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
         ["real-anonymized-empty.TS", 0],
         ["real-anonymized-empty-capacity.TS", 0],
         ["real-anonymized-zero-header.TS", 28],
+        ["real-anonymized-big-endian-count.TS", 360],
     ])("keeps every trailer coordinate in %s at whole degrees", (name, count) => {
         const bytes = readFileSync(resolve(HERE, name));
         const trailerLength = bytes.readUInt32BE(bytes.length - 4);
@@ -159,6 +160,41 @@ describe("real-anonymized LigoGPS-TS-trailer fixture", () => {
             expect(record.bearingDeg).toBeCloseTo(154.6);
             // The stationary source clip reads 0-1 km/h.
             expect(record.speedMs).toBeLessThanOrEqual(1 / 3.6 + 1e-9);
+            expect(record.mp4Filename).toBe(name);
+        }
+    });
+
+    it("parses the GKU D600Pro table with a big-endian slot count and an altitude field", async () => {
+        const name = "2026-11-16_09_56_34_b.ts";
+        const bytes = readFileSync(resolve(HERE, "real-anonymized-big-endian-count.TS"));
+        const trailerStart = bytes.length - bytes.readUInt32BE(bytes.length - 4);
+        // The dialect traits this fixture pins: space flags and a big-endian
+        // count where the other firmwares put a little-endian field.
+        expect(bytes.toString("latin1", trailerStart + 19, trailerStart + 24), "flags").toBe("     ");
+        expect(bytes.readUInt32BE(trailerStart + 24), "slot count").toBe(180);
+        expect(bytes.toString("latin1", trailerStart + 32, trailerStart + 160), "altitude tag").toContain(" H:");
+
+        const file = new File([Uint8Array.from(bytes)], name);
+        const vf = { file, relativePath: `video_back/${name}` };
+        const index = await buildMp4Index(file);
+        expect(await ligoGpsTrailerTsPrimitive.marker(vf, index)).toBe(true);
+        const result = await ligoGpsTrailerTsPrimitive.parse(vf, index);
+        expect(result.skipped).toHaveLength(0);
+        expect(result.records).toHaveLength(180);
+        expectPlausibleGpsTrack(result.records, { minCount: 180, monotonicTime: true });
+        const first = result.records[0]!;
+        // Unlike the GKU 600 Pro this clock is camera-local: the burned-in
+        // OSD matches the trailer and filename to the second, and the
+        // footage is in daylight that UTC would put after local sunset.
+        expect(first.unixSeconds).toBe(Date.UTC(2026, 10, 16, 9, 56, 34) / 1000);
+        expect(first.speedMs).toBeCloseTo(43 / 3.6);
+        expect(first.bearingDeg).toBeCloseTo(193);
+        expect(first.accelXg).toBeCloseTo(0.03);
+        expect(result.records[179]!.unixSeconds - first.unixSeconds).toBe(179);
+        for (const record of result.records) {
+            expect(record.lat).toBe(-34);
+            expect(record.lon).toBe(138);
+            expect(record.active).toBe(true);
             expect(record.mp4Filename).toBe(name);
         }
     });

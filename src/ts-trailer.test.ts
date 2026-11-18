@@ -61,6 +61,7 @@ describe("findTsGpsTrailer", () => {
         ["count", 7956],
         ["empty", 36],
         ["zero-header", 1884],
+        ["big-endian-count", 23796],
     ])("detects and demuxes the real %s dialect", async (dialect, trailerLength) => {
         const bytes = readFileSync(resolve(FIXTURES, `real-anonymized-${dialect}.TS`));
         const file = new File([Uint8Array.from(bytes)], "20260904_202849F.ts");

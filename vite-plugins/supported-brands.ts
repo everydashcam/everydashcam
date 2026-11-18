@@ -333,7 +333,7 @@ export const SUPPORTED_BRANDS: ReadonlyArray<SupportedBrand> = [
     },
     { displayName: "E-ACE", hasLandingPage: false, videoSamples: [] },
     { displayName: "Fujida", hasLandingPage: false, videoSamples: ["Karma Pro Max"] },
-    { displayName: "GKU", hasLandingPage: false, gpsSamples: ["600 Pro"], videoSamples: ["D900"] },
+    { displayName: "GKU", hasLandingPage: false, gpsSamples: ["600 Pro", "D600 Pro"], videoSamples: ["D900"] },
     { displayName: "Transcend", hasLandingPage: false, gpsSamples: ["DrivePro 550"] },
     { displayName: "Mikavi", hasLandingPage: false, gpsSamples: ["PQ6 3CH"] },
     { displayName: "WonVon", hasLandingPage: false, gpsSamples: ["W4K"] },

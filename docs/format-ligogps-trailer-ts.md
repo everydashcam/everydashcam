@@ -1,8 +1,9 @@
 # LigoGPS trailers on MPEG-TS
 
 Real recordings verify this family for Aspiring Expert 9, Blackview X5S PRO,
-GKU 600 Pro and INNOVV K3, plus an unidentified dual-camera sample. K3 uses
-the paired enciphered/plaintext dialect; N2 instead uses [Viidure PES records](format-viidure-ts.md).
+GKU 600 Pro, GKU D600 Pro and INNOVV K3, plus an unidentified dual-camera
+sample. K3 uses the paired enciphered/plaintext dialect; N2 instead uses
+[Viidure PES records](format-viidure-ts.md).
 
 The GPS table follows the last complete TS packet. It is not packetized:
 demuxers must stop before it, while telemetry extraction reads the original
@@ -11,18 +12,19 @@ file. Keep GPS-trailer detection shared between these consumers in
 sync establishes the last complete packet.
 
 The trailer contains a big-endian total length, `SKIP` plus GPS magic,
-five flag bytes, a little-endian header field, indexed NUL-padded ASCII
+five flag bytes, a u32 header field, indexed NUL-padded ASCII
 slots, then a terminator and another big-endian total length. Both length
 copies include the entire trailer. Reject unknown combinations and prefixes
 that do not end on the TS packet grid.
 
-Firmware interprets the little-endian field differently: LCAI with hashes
-stores the byte length or the written slot count, classic LIGO with ampersands
-a capacity that can exceed the written count on partial clips, and classic
-LIGO with hashes (GKU) zero. Detection and parsing ignore it, because the
-length copies and the slot grid already bound the table; strict checks of
-this field only ever rejected real recordings. The accepted magic/terminator
-pairs live in `src/ts-trailer.ts`.
+Firmware fills the header field differently: LCAI with hashes stores the
+byte length or the written slot count (little-endian), classic LIGO with
+ampersands a little-endian capacity that can exceed the written count on
+partial clips, and classic LIGO with hashes zero on the GKU 600 Pro and, with
+space flag bytes, a big-endian slot count on the GKU D600 Pro. Detection and
+parsing ignore it, because the length copies and the slot grid already bound
+the table; strict checks of this field only ever rejected real recordings.
+The accepted magic/terminator pairs live in `src/ts-trailer.ts`.
 
 The lowercase `skip` dialect pairs an enciphered `LIGOGPSINFO` block with
 a plaintext block carrying a firmware label, followed by preallocated zero
@@ -47,11 +49,18 @@ accept it only at the minimum size, all-zero, with the hash terminator.
 Time-lapse clips keep the LCAI magic and a nominal slot capacity with no
 slots. Both need the same AV clamp even though they supply no GPS.
 
-Plaintext speed is km/h. Timestamps are camera-local on most firmwares and
-UTC on GKU; both parse as UTC and the per-camera offset estimate absorbs the
-difference. Preserve gaps in the record cadence. Course can appear as `A:`
-or, in the LCAI count dialect, as a bare number after the x/y/z fields. Zero acceleration components do
-not establish that the hardware supplies usable acceleration.
+Firmware appends the table only when it closes a clip. A GKU D600 Pro clip
+cut by power loss ends at a 64 KiB write boundary, possibly inside a packet,
+with no table, although its OSD shows a live fix until the last frame. The
+clamp trims the partial packet; the GPS of that clip is not in the file.
+
+Plaintext speed is km/h. Timestamps are camera-local on most firmwares,
+including the GKU D600 Pro, and UTC on the GKU 600 Pro; both parse as UTC and
+the per-camera offset estimate absorbs the difference. Preserve gaps in the
+record cadence. Course can appear as `A:` or, in the LCAI count dialect, as
+a bare number after the x/y/z fields. Zero acceleration components do not
+establish that the hardware supplies usable acceleration. `H:` carries
+altitude, which no reader uses; fixture anonymization zeroes its digits.
 
 See `scripts/anonymize-ligogps-trailer-ts.mjs` for fixture preparation and
 `src/parsers/__fixtures__/ligogps-trailer-ts/real-anonymized.test.ts` for
