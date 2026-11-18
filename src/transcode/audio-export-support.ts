@@ -85,6 +85,18 @@ export function getPcmLayout(codec: AudioCodec, decoderConfig: AudioDecoderConfi
 }
 
 /**
+ * Whether a range's source audio packets may be copied instead of re-encoded.
+ * A file without audio leaves a copied track without packets for its whole
+ * span, and the MP4 muxer holds every video packet in memory until the audio
+ * track passes it or closes: a long silent stretch can exhaust the tab's memory
+ * even when the output streams to disk. Re-encoding fills the span with
+ * silence, so the muxer keeps writing.
+ */
+export function canCopyRangeAudio(probe: { hasAudiolessFiles: boolean }): boolean {
+    return !probe.hasAudiolessFiles;
+}
+
+/**
  * Frames of a PCM packet presented before `sec`, clamped to the packet. A copy
  * that starts inside a long chunk skips them: copied whole, the head would sit
  * in the output file behind the edit list, keeping footage the user trimmed off.

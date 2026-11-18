@@ -57,6 +57,7 @@ import {
     clonePcmPiece,
     getPcmLayout,
     getPrimaryAudioTrackWithPackets,
+    canCopyRangeAudio,
     nextPcmPiece,
     pcmFramesBefore,
     resolveReadableAudioPlan,
@@ -359,8 +360,9 @@ export async function exportClip({
         let audioDecoderConfig: AudioDecoderConfig | null = null;
         if (withAudio) {
             // One sample entry cannot describe incompatible audio. Files without
-            // audio are allowed, including before the first audio-bearing file.
-            const { uniform, firstFile } = await probeAudioUniformity(
+            // audio are allowed, including before the first audio-bearing file,
+            // but their spans need re-encoded silence (canCopyRangeAudio).
+            const { uniform, firstFile, hasAudiolessFiles } = await probeAudioUniformity(
                 segments.map((s) => s.file),
                 { reuseFirstInput: firstInput, signal },
             );
@@ -380,7 +382,11 @@ export async function exportClip({
                 if (firstAudioTrack) {
                     audioCodec = await firstAudioTrack.getCodec();
                     if (audioCodec) {
-                        const plan = await resolveReadableAudioPlan(firstAudioTrack, true, signal);
+                        const plan = await resolveReadableAudioPlan(
+                            firstAudioTrack,
+                            canCopyRangeAudio({ hasAudiolessFiles }),
+                            signal,
+                        );
                         if (plan.mode === "passthrough") {
                             audioSource = plan.source;
                             audioDecoderConfig = plan.decoderConfig;
@@ -846,7 +852,9 @@ export async function exportClip({
  * precondition for a single output audio track: the re-encode AAC source rejects
  * a mid-track input-format change, and stream-copy muxes every packet under the
  * first file's decoder config (a later mismatch would corrupt the audio). Files
- * with no audio track are ignored - on the re-encode path they become silence.
+ * with no audio track do not join the comparison; `hasAudiolessFiles` reports
+ * them, because they rule out copying the audio packets (see
+ * canCopyRangeAudio).
  *
  * `firstFile` identifies the first audio-bearing file, even when the range starts
  * silently. Its `format` also defines silence samples in the re-encode pipeline.
@@ -866,8 +874,10 @@ export async function probeAudioUniformity(
     format: AudioTrackFormat | null;
     firstHasDecoderConfig: boolean;
     firstFile: File | null;
+    hasAudiolessFiles: boolean;
 }> {
     let first: AudioTrackFormat | null = null;
+    let hasAudiolessFiles = false;
     let firstFile: File | null = null;
     let firstConfig: AudioDecoderConfig | null = null;
     // For the first audio-bearing track: does it actually carry a decoder config?
@@ -892,7 +902,10 @@ export async function probeAudioUniformity(
         try {
             // An empty track does not choose the output format or join the comparison.
             const track = await getPrimaryAudioTrackWithPackets(input);
-            if (!track) continue;
+            if (!track) {
+                hasAudiolessFiles = true;
+                continue;
+            }
             const fmt: AudioTrackFormat = {
                 codec: await track.getCodec(),
                 sampleRate: await track.getSampleRate(),
@@ -924,7 +937,7 @@ export async function probeAudioUniformity(
             if (!borrowed) input.dispose();
         }
     }
-    return { uniform, format: first, firstHasDecoderConfig, firstFile };
+    return { uniform, format: first, firstHasDecoderConfig, firstFile, hasAudiolessFiles };
 }
 
 function sameDecoderDescription(

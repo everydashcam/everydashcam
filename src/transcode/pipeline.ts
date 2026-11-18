@@ -206,8 +206,8 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
         // with a re-export) cannot share one track, so drop audio rather than
         // crash the muxer mid-stream. A range that starts on an audio-less clip
         // (e.g. parking mode) followed by clips with audio still keeps audio -
-        // the per-segment loop fills the leading clip with silence (encode) or a
-        // gap (passthrough). reuseFirstInput shares segment 0's already-open Input
+        // the plan re-encodes and the per-segment loop fills the leading clip
+        // with silence. reuseFirstInput shares segment 0's already-open Input
         // so a one-big-file recording does not read its moov twice.
         const audioProbe = output.withAudio
             ? probeAudioUniformity(
@@ -675,8 +675,8 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
 
                     // === Audio for this segment ===
                     // Single-channel segments are back-to-back on the output axis
-                    // (segBaseOutSec); the feed helpers cover an audio-less segment
-                    // (silence on encode, a gap on passthrough) internally.
+                    // (segBaseOutSec); the feed helpers fill an audio-less segment
+                    // with silence (such a range never copies, canCopyRangeAudio).
                     const runSegmentAudio = async (): Promise<void> => {
                         if (!audioPlan || !output.withAudio) return;
                         if (audioPlan.mode === "passthrough") {

@@ -381,26 +381,33 @@ describe("stream-copy export", () => {
         }
     });
 
-    it("starts the audio track when the first audio-bearing file starts", async () => {
-        const file = fixture(H264_FIXTURE);
-        const silent = await remuxFixture(file);
-        const probe = await probeAudioUniformity([silent, file]);
+    // A copied track has no packets for an audio-less file, and the MP4 muxer
+    // holds every video packet until the audio passes it. Such ranges re-encode
+    // the audio instead. Node decodes PCM but has no audio encoder, so there the
+    // re-encode path is visible as a track dropped for the missing encoder.
+    it("re-encodes instead of copying audio across a file without audio", async () => {
+        const pcm = await withPcmAudio(fixture(H264_FIXTURE), { format: "mov", sampleRate: 8000 });
+        const silent = await remuxFixture(fixture(H264_FIXTURE));
+        const probe = await probeAudioUniformity([silent, pcm]);
         expect(probe.uniform).toBe(true);
-        expect(probe.firstFile).toBe(file);
-        const saved = await save([silent, file]);
+        expect(probe.firstFile).toBe(pcm);
+        expect(probe.hasAudiolessFiles).toBe(true);
+
+        const alone = await save([pcm]);
+        expect(alone.result.audioDroppedNoEncoder, "a range with audio throughout copies it").toBe(false);
+        const saved = await save([silent, pcm]);
         expect(saved.result.audioDroppedHeterogeneous).toBe(false);
+        expect(saved.result.audioDroppedNoEncoder, "the copy is refused for a re-encode").toBe(true);
         const output = open(saved.file);
         try {
-            const audio = await output.getPrimaryAudioTrack();
-            expect(audio).not.toBeNull();
-            expect(await audio!.getFirstTimestamp()).toBeCloseTo(2);
-            expect(await audio!.computeDuration()).toBeCloseTo(4);
+            expect(await output.getPrimaryAudioTrack()).toBeNull();
+            expect(await (await output.getPrimaryVideoTrack())!.computeDuration()).toBeCloseTo(4, 1);
         } finally {
             output.dispose();
         }
     });
 
-    it("keeps later audio when the first file's repaired audio track has no packets", async () => {
+    it("counts a repaired audio track without packets as a file without audio", async () => {
         const file = fixture(H264_FIXTURE);
         const repaired = await withRepairedPhantomAudio(file);
         const repairedInput = open(repaired);
@@ -416,18 +423,8 @@ describe("stream-copy export", () => {
         const probe = await probeAudioUniformity([repaired, file]);
         expect(probe.uniform).toBe(true);
         expect(probe.firstFile).toBe(file);
-        const saved = await save([repaired, file]);
-        expect(saved.result.audioDroppedUnsupported).toBe(false);
-        expect(saved.result.audioDroppedHeterogeneous).toBe(false);
-        const output = open(saved.file);
-        try {
-            const audio = await output.getPrimaryAudioTrack();
-            expect(audio).not.toBeNull();
-            expect(await audio!.getFirstTimestamp()).toBeCloseTo(2);
-            expect(await audio!.computeDuration()).toBeCloseTo(4);
-        } finally {
-            output.dispose();
-        }
+        expect(probe.hasAudiolessFiles).toBe(true);
+        expect((await probeAudioUniformity([file, file])).hasAudiolessFiles).toBe(false);
     });
 
     it("keeps every video packet when AAC Main cannot be copied or decoded", async () => {

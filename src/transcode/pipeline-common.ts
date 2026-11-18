@@ -31,6 +31,7 @@ import { type AdpcmAudioReader, openAdpcmAudioAuto } from "./adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "./capabilities.js";
 import {
     type AudioRangeCursor,
+    canCopyRangeAudio,
     getPrimaryAudioTrackWithPackets,
     MIN_PARTIAL_AUDIO_FEED_SEC,
     resolveReadableAudioPlan,
@@ -170,10 +171,16 @@ export interface AudioPlanSetup {
  * - that would close an export -> pipeline -> pipeline-common cycle.
  *
  * @param allowPassthrough - true only at speed 1 (passthrough is real-time only).
+ *   A range with audio-less files re-encodes regardless (canCopyRangeAudio).
  */
 export async function applyAudioPlan(
     out: Output,
-    probe: { uniform: boolean; format: AudioTrackFormat | null; firstHasDecoderConfig: boolean },
+    probe: {
+        uniform: boolean;
+        format: AudioTrackFormat | null;
+        firstHasDecoderConfig: boolean;
+        hasAudiolessFiles: boolean;
+    },
     firstFile: File,
     allowPassthrough: boolean,
     opts: { input?: Input; signal?: AbortSignal } = {},
@@ -193,7 +200,13 @@ export async function applyAudioPlan(
         log.info("audio requested but no audio track in any source segment, skipping");
         return setup;
     }
-    const plan = await resolveAudioPlan(probe.format, firstFile, allowPassthrough, probe.firstHasDecoderConfig, opts);
+    const plan = await resolveAudioPlan(
+        probe.format,
+        firstFile,
+        allowPassthrough && canCopyRangeAudio(probe),
+        probe.firstHasDecoderConfig,
+        opts,
+    );
     if (plan.mode === "skip") {
         if (plan.reason === "no-encoder") {
             setup.audioDroppedNoEncoder = true;
@@ -510,7 +523,8 @@ export async function feedSegmentAudioAdpcm(opts: {
  * Copies AAC/MP3 onto the segment's video timeline, preserving any initial audio
  * delay. Encoded packets cannot be trimmed, so boundary overlaps are omitted
  * rather than shifting all later audio and accumulating drift across files.
- * An audio-less segment leaves a gap. The caller owns the input and carries
+ * An audio-less segment leaves a gap; canCopyRangeAudio keeps ranges with such
+ * files on the re-encode path. The caller owns the input and carries
  * the last emitted end and decoder-config state across segments.
  */
 export async function feedSegmentAudioCopy(opts: {
