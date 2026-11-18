@@ -31,6 +31,7 @@ import { fileIdentityKey, fileIdentityOf } from "../persist/identity.js";
 import type { RememberedFolder } from "../persist/types.js";
 
 import { buildLucideIcon } from "./icons.js";
+import { sourceRootOf } from "./ingest-source-key.js";
 import { notify } from "./notifications.js";
 import type { IngestOrigin } from "./state.js";
 
@@ -286,13 +287,6 @@ export function disambiguatedLabels(folders: RememberedFolder[]): Map<string, st
     return out;
 }
 
-/** Root folder name of a relative path, or "" when the file was dropped
- *  without a folder around it (a bare filename has no leading segment). */
-function rootNameOf(relativePath: string): string {
-    const segments = relativePath.split(/[/\\]/).filter((segment) => segment.length > 0);
-    return segments.length > 1 ? segments[0]! : "";
-}
-
 /**
  * Records the folders an ingested batch came from and binds its files to the
  * remembered folder when the batch came from one. Called for every drop
@@ -325,7 +319,7 @@ export function registerIngestSource(
         // Handle-less paths (classic input, drag-and-drop): the leading path
         // segment is all there is to group by.
         for (const vendorFile of files) {
-            const root = rootNameOf(vendorFile.relativePath);
+            const root = sourceRootOf(vendorFile.relativePath);
             const proposedKey = `drop:${vendorFile.sourceKey ?? "unscoped"}:${root}`;
             const mapKey = sourceAliases.get(proposedKey) ?? proposedKey;
             const group = groups.get(mapKey);
@@ -375,7 +369,7 @@ function duplicateSourceAliases(matches: readonly DuplicateSourceMatch[]): Map<s
     const incomingSourceKeys = new Map<string, string>();
     const ambiguous = new Set<string>();
     for (const { incoming, loaded } of matches) {
-        const proposedKey = `drop:${incoming.sourceKey ?? "unscoped"}:${rootNameOf(incoming.relativePath)}`;
+        const proposedKey = `drop:${incoming.sourceKey ?? "unscoped"}:${sourceRootOf(incoming.relativePath)}`;
         if (ambiguous.has(proposedKey)) continue;
         const loadedIdentity = fileIdentityKey(fileIdentityOf(loaded.file, loaded.relativePath));
         const candidates = [...sourcesByKey.entries()].filter(

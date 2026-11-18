@@ -65,7 +65,7 @@ import { cancelProgressiveIngest, resumeProgressiveIngest, startProgressiveInges
 import { cancelDeferredGpsLoad } from "./deferred-gps.js";
 import { countByExtension, countByField } from "./ingest-core.js";
 import { reportParseErrors } from "./ingest-diagnostics.js";
-import { scopeIngestFiles } from "./ingest-source-key.js";
+import { adoptDuplicatedDropSources, scopeIngestFiles } from "./ingest-source-key.js";
 import { reanchorRecordingCandidates } from "./ingest-regroup.js";
 import { resolveLooseGpxFiles } from "./loose-gpx-ingest.js";
 
@@ -311,7 +311,11 @@ async function ingestFilesInternal(
     // Match copies before indexing, including protected recordings renamed
     // across mode prefixes. Keep their names and event evidence for the survivor.
     setIngestStage(t("ingestOverlay.stage.checkingCopies"));
-    const dedup = await mark("dedup", () => dropDuplicateFiles(vfiles, alreadyLoaded, signal));
+    // A confirmed copy of an earlier ad-hoc drop folds this drop's root into
+    // that source before classify and indexing key anything by source.
+    const dedup = adoptDuplicatedDropSources(
+        await mark("dedup", () => dropDuplicateFiles(vfiles, alreadyLoaded, signal)),
+    );
     if (dedup.dropped.length > 0) {
         // Retain paths for diagnostics. User confirmation follows the trip
         // commit so cancellation never claims that event markers were kept.
