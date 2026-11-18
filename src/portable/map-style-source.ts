@@ -4,6 +4,8 @@ import type { MapStyleId } from "../ui/theme.js";
 const MAP_STYLE_LOADERS = {
     light: () => import("../../public/styles/light.json"),
     dark: () => import("../../public/styles/dark.json"),
+    "san-andreas": () => import("../../public/styles/san-andreas.json"),
+    "vice-city": () => import("../../public/styles/vice-city.json"),
     neon: () => import("../../public/styles/neon.json"),
 };
 

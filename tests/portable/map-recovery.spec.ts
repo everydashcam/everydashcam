@@ -141,6 +141,9 @@ test("restores the saved export map choice without changing the viewer preferenc
     await page.locator("#export-panel-ov-map").check();
     await expect(page.locator("#export-map-provider-select")).toHaveValue("openfreemap");
     await page.locator("#export-map-provider-select").selectOption("osm-vector");
+    await page.getByRole("button", { name: "ViceCity", exact: true }).click();
+    await page.locator('button[data-shape="rect"]').click();
+    await page.locator('#export-map-marker-control [data-marker-shape="suv"]').click();
     await expect(page.locator("#player-map-overlay-canvas")).toBeVisible();
 
     await page.reload();
@@ -152,5 +155,12 @@ test("restores the saved export map choice without changing the viewer preferenc
     await expect(page.locator("#export-panel-ov-map")).toBeChecked();
     await page.locator("#export-panel-map-overlay-row").getByRole("button", { name: "Map", exact: true }).click();
     await expect(page.locator("#export-map-provider-select")).toHaveValue("osm-vector");
+    await expect(page.getByRole("button", { name: "ViceCity", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('#export-map-marker-control [data-marker-shape="suv"]')).toHaveAttribute(
+        "aria-pressed",
+        "true",
+    );
+    await expect(page.locator("#player-map-overlay")).toHaveAttribute("data-radar", "vice-city");
+    await expect(page.locator("#player-map-overlay")).toHaveAttribute("data-shape", "rect");
     await expect(page.locator("#player-map-overlay-canvas")).toBeVisible();
 });

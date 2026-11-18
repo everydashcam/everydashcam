@@ -1636,3 +1636,16 @@ body.export-mode .video-grid::after {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
+
+.player-map-overlay[data-radar] {
+    container-type: size;
+}
+
+.player-map-overlay[data-radar][data-shape="circle"] {
+    border-radius: 50%;
+}
+
+.player-map-overlay[data-radar][data-shape] .player-map-overlay__canvas,
+.player-map-overlay[data-radar][data-shape].is-no-fix::after {
+    mask-image: none;
+}

@@ -1020,3 +1020,129 @@ body.map-unavailable #player-map {
     margin: 0;
     border-radius: 0;
 }
+
+.video-frame:has(.mini-map[data-shape="circle"]) {
+    --mini-map-width: 180px;
+}
+
+.mini-map.maplibregl-map[data-shape="circle"] {
+    height: var(--mini-map-width);
+    overflow: hidden;
+    border-radius: 50%;
+}
+
+.mini-map.maplibregl-map[data-radar] {
+    container-type: size;
+    overflow: hidden;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.mini-map[data-radar]::before,
+.player-map-overlay[data-radar]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: var(--radar-rim);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.mini-map[data-radar] .car-marker__canvas {
+    width: calc(var(--map-marker-size, 44px) * 0.48);
+    height: calc(var(--map-marker-size, 44px) * 0.48);
+}
+
+.mini-map:is([data-radar], [data-shape="circle"]) .maplibregl-canvas-container {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: inherit;
+}
+
+.dc-map-attrib-toggle,
+.dc-map-attrib-toggle svg {
+    display: none;
+}
+
+.mini-map:is([data-radar], [data-shape="circle"]) .maplibregl-ctrl-bottom-right {
+    bottom: 9%;
+    inset-inline: 0;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.mini-map:is([data-radar], [data-shape="circle"]) .dc-map-attrib {
+    position: relative;
+    padding: 0;
+    background: transparent;
+}
+
+.mini-map:is([data-radar], [data-shape="circle"]) .dc-map-attrib-toggle {
+    display: block;
+    min-height: 24px;
+    padding: 0 3px;
+    border: 0;
+    background: transparent;
+    color: var(--dc-white);
+    text-shadow:
+        0 1px 2px var(--dc-black),
+        0 0 2px var(--dc-black),
+        0 0 1px var(--dc-black);
+    font: 600 var(--dc-text-2xs) / 1.2 var(--dc-font-body);
+    cursor: pointer;
+}
+
+.mini-map:is([data-radar], [data-shape="circle"]) .dc-map-attrib-text {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    width: max-content;
+    max-width: 122px;
+    padding: 4px 6px;
+    transform: translateX(-50%);
+    border-radius: 4px;
+    background: var(--bg-elev);
+    text-align: center;
+}
+
+.mini-map:is([data-radar], [data-shape="circle"]) .dc-map-attrib-toggle[aria-expanded="false"] + .dc-map-attrib-text {
+    display: none;
+}
+
+.mini-map[data-shape="circle"] .maplibregl-ctrl-bottom-right:has(.dc-map-attrib-toggle) {
+    /* The caption descenders meet the inner edge of this theme's ring. */
+    bottom: max(0px, calc((1 - var(--radar-inner-radius, 1)) * 50% - 2px));
+}
+
+.mini-map[data-shape="circle"] .dc-map-attrib:has(.dc-map-attrib-toggle) {
+    width: calc(100% * 110 / 180);
+    margin: 0;
+}
+
+.mini-map[data-shape="circle"] .dc-map-attrib-toggle {
+    width: 100%;
+    padding: 0;
+    text-shadow: none;
+}
+
+.mini-map[data-shape="circle"] .dc-map-attrib-toggle span {
+    display: none;
+}
+
+.mini-map[data-shape="circle"] .dc-map-attrib-toggle svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.dc-map-attrib-toggle text {
+    fill: currentColor;
+    stroke: color-mix(in srgb, var(--dc-black) 80%, transparent);
+    stroke-width: 2px;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
+}

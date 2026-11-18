@@ -25,6 +25,8 @@
 
 // Type-only: the runtime namespace is loaded lazily via loadMaplibre (shared
 // with the viewer map module), so maplibre-gl stays out of the eager graph.
+import { radarBaseStyle } from "./map-style-preset.js";
+import { radarTheme } from "../map-radar.js";
 import { throwIfCancelled } from "../abort-signals.js";
 import type * as maplibregl from "maplibre-gl";
 
@@ -217,16 +219,16 @@ export async function createExportMapSnapshotter(
     host.id = "export-map-snapshot-host";
     document.body.appendChild(host);
 
-    // User-selected base layer (default "light" - higher contrast against the
-    // orange car marker and the typical daytime recording). ensureMap prefetches
-    // both themes at startup, so either is usually a cache hit.
+    // The export palette and provider are independent of the viewer settings.
     const providerSession = createOverlayMapProviderSession(provider);
     let activeProvider = providerSession.getProvider();
     const styleFromCache = await loadMapStyle(theme, false, source, activeProvider);
-    const style = applyStreetLabelDensity(
-        scaleStyleTextSizes(styleFromCache ?? EMPTY_MAP_STYLE, labelScalePct / 100),
-        labelDensity,
-    );
+    const radar = radarTheme(theme);
+    const snapshotStyle = (base: maplibregl.StyleSpecification) =>
+        radar
+            ? radarBaseStyle(base)
+            : applyStreetLabelDensity(scaleStyleTextSizes(base, labelScalePct / 100), labelDensity);
+    const style = snapshotStyle(styleFromCache ?? EMPTY_MAP_STYLE);
 
     // Seed the camera from a finite ACTIVE record, not records[0]: a leading
     // inactive/lost-fix entry can carry NaN coords, and a NaN center throws in
@@ -334,10 +336,7 @@ export async function createExportMapSnapshotter(
             .then(async () => {
                 const nextStyle = await loadMapStyle(theme, false, source, provider);
                 if (!nextStyle || isDisposed || provider !== activeProvider) return;
-                const styled = applyStreetLabelDensity(
-                    scaleStyleTextSizes(nextStyle, labelScalePct / 100),
-                    labelDensity,
-                );
+                const styled = snapshotStyle(nextStyle);
                 await waitForStyleLoad(map, styled);
                 if (isDisposed || provider !== activeProvider) return;
                 if (!map.getSource(TRACK_SOURCE_ID)) addTrackLayer(map, records);
@@ -402,7 +401,7 @@ export async function createExportMapSnapshotter(
                 await providerStyleChange;
                 const camera = MAP_PROVIDER_REGISTRY[activeProvider].camera;
                 const headingUp = camera.supportsHeadingUp && chase?.headingUp === true;
-                if (headingUp) addBuildings3dLayer(map, theme);
+                if (headingUp && !radar) addBuildings3dLayer(map, theme);
                 else removeBuildings3dLayer(map);
                 // Infinity = the full-speed end of the adaptive ramp, i.e. the
                 // widest zoom the run can reach.
@@ -418,7 +417,7 @@ export async function createExportMapSnapshotter(
                             zoom: targetZoom,
                             ...camera.orient(
                                 headingUp ? record.bearingDeg : 0,
-                                headingUp ? clampExportPitch(chase?.pitchDeg) : 0,
+                                headingUp && !radar ? clampExportPitch(chase?.pitchDeg) : 0,
                             ),
                         }),
                 });
@@ -464,7 +463,7 @@ export async function createExportMapSnapshotter(
             // preview after a chase preview does not keep the flat footprints.
             // Idempotent; the building geometry lives in the already-cached z14
             // tiles, so this adds render cost but no tile fetches.
-            if (headingUp) addBuildings3dLayer(map, theme);
+            if (headingUp && !radar) addBuildings3dLayer(map, theme);
             else removeBuildings3dLayer(map);
             let zoom = zoomForDiameterKm(req.lat, req.zoomKm, SNAPSHOT_WIDTH);
             // Speed-adaptive zoom-out. At wider zoomKm (or the default 1 km at
@@ -475,11 +474,11 @@ export async function createExportMapSnapshotter(
             if (headingUp && req.adaptiveZoom) zoom += exportAdaptiveZoomDelta(req.speedMs);
             const { bearing, pitch } = camera.orient(
                 headingUp ? req.bearingDeg : 0,
-                headingUp ? clampExportPitch(req.pitchDeg) : 0,
+                headingUp && !radar ? clampExportPitch(req.pitchDeg) : 0,
             );
             // Chase pushes the car into the lower third (road ahead in view) via
             // top camera padding; north-up keeps it centered.
-            const padTop = headingUp ? Math.round(SNAPSHOT_HEIGHT * CHASE_TOP_PADDING_FRAC) : 0;
+            const padTop = headingUp && !radar ? Math.round(SNAPSHOT_HEIGHT * CHASE_TOP_PADDING_FRAC) : 0;
             map.jumpTo({
                 center: [req.lon, req.lat],
                 zoom,
@@ -543,14 +542,18 @@ export async function createExportMapSnapshotter(
             const markerPoint = headingUp
                 ? map.project([req.lon, req.lat])
                 : { x: SNAPSHOT_WIDTH / 2, y: SNAPSHOT_HEIGHT / 2 };
+            const markerX = markerPoint.x * (composite.width / SNAPSHOT_WIDTH);
+            const markerY = markerPoint.y * (composite.height / SNAPSHOT_HEIGHT);
+            const markerBearing = headingUp ? 0 : req.bearingDeg;
             await drawMapMarker(
                 cctx,
                 activeMarkerAppearance,
-                markerPoint.x * (composite.width / SNAPSHOT_WIDTH),
-                markerPoint.y * (composite.height / SNAPSHOT_HEIGHT),
-                headingUp ? 0 : req.bearingDeg,
-                Math.min(composite.width, composite.height) * 0.105 * mapMarkerSizeScale(activeMarkerAppearance.size),
+                markerX,
+                markerY,
+                markerBearing,
+                composite.height * (radar ? 0.115 : 0.105) * mapMarkerSizeScale(activeMarkerAppearance.size),
                 pitch,
+                radar,
             );
 
             return await createImageBitmap(composite);

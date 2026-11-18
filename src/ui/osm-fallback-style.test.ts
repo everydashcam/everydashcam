@@ -2,6 +2,7 @@ import { featureFilter, validateStyleMin } from "@maplibre/maplibre-gl-style-spe
 import type { StyleSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
 
+import { MAP_THEMES } from "./map-view-pref.js";
 import { applyMapStylePreset } from "./map-style-preset.js";
 import {
     createFallbackMapStyle,
@@ -10,8 +11,10 @@ import {
 } from "./osm-fallback-style.js";
 import type { MapStyleId } from "./theme.js";
 
+const ALL_STYLES = [...MAP_THEMES, "neon"] as const;
+
 describe("OSM fallback styles", () => {
-    it.each<MapStyleId>(["light", "dark", "neon"])("builds a valid %s Shortbread style", (theme) => {
+    it.each<MapStyleId>(ALL_STYLES)("builds a valid %s Shortbread style", (theme) => {
         const style = createFallbackMapStyle("osm-vector", theme);
         expect(validateStyleMin(style)).toEqual([]);
         expect(style.glyphs).toBeUndefined();
@@ -30,13 +33,19 @@ describe("OSM fallback styles", () => {
         }
     });
 
+    it.each(["san-andreas", "vice-city"] as const)("paints water above urban land in %s", (theme) => {
+        const ids = createFallbackMapStyle("osm-vector", theme).layers.map((layer) => layer.id);
+        expect(ids).toContain("osm-urban-land");
+        expect(ids.indexOf("osm-water")).toBeGreaterThan(ids.indexOf("osm-urban-land"));
+    });
+
     it("builds a valid standard raster style", () => {
         const style = createFallbackMapStyle("osm-raster", "dark");
         expect(validateStyleMin(style)).toEqual([]);
         expect(style.layers).toEqual([{ id: "osm-raster", type: "raster", source: "osm-raster" }]);
     });
 
-    it.each<MapStyleId>(["light", "dark", "neon"])("keeps Shortbread park context in the %s road preset", (theme) => {
+    it.each<MapStyleId>(ALL_STYLES)("keeps Shortbread park context in the %s road preset", (theme) => {
         // Shortbread 1.0 puts parks and cemeteries in land, campuses and parking in sites.
         // https://shortbread-tiles.org/schema/1.0/#land-use-land-cover-buildings
         const matchingFills = (style: StyleSpecification, sourceLayer: string, kind: string) =>

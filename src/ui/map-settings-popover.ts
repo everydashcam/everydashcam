@@ -20,6 +20,7 @@ import {
     STREET_LABEL_DENSITY_LABEL_KEYS,
     STREET_LABEL_DENSITY_VALUES,
 } from "./map-label-scale.js";
+import { viewerRadarTheme } from "./map-view-pref.js";
 import { renderMapMarkerControl } from "./map-marker-control.js";
 import { getMapMarkerAppearance, setMapMarkerAppearance } from "./map-marker-pref.js";
 import { getMapProvider, subscribeMapProvider } from "./map-provider.js";
@@ -45,8 +46,8 @@ function renderSegment<Value extends string | number>(
         btn.className = "map-settings-seg-btn";
         btn.dataset.value = String(value);
         btn.textContent = labelOf(value);
-        btn.setAttribute("aria-pressed", String(value === current));
         btn.disabled = !MAP_PROVIDER_REGISTRY[getMapProvider()].supportsAppearanceSettings;
+        btn.setAttribute("aria-pressed", String(!btn.disabled && value === current));
         if (btn.disabled) btn.setAttribute("aria-describedby", "map-style-unavailable");
         btn.addEventListener("click", () => {
             if (!MAP_PROVIDER_REGISTRY[getMapProvider()].supportsAppearanceSettings) return;
@@ -66,6 +67,7 @@ function renderRows(): void {
     syncGpsSyncLaunchers();
     renderMapMarkerControl(dom.mapMarkerControl, {
         appearance: getMapMarkerAppearance(),
+        radar: viewerRadarTheme(),
         onChange: setMapMarkerAppearance,
         idPrefix: "map-popover",
         compact: true,
@@ -142,17 +144,10 @@ export function initMapSettingsPopover(): void {
             fitPopoverToPane();
         },
     });
-    initMapViewControls(dom.mapViewControl, "map");
-    subscribeMapProvider((provider) => {
-        for (const segment of [dom.mapLabelScaleSegment, dom.mapStreetNamesSegment]) {
-            for (const button of segment.querySelectorAll("button")) {
-                button.disabled = !MAP_PROVIDER_REGISTRY[provider].supportsAppearanceSettings;
-                if (button.disabled) button.setAttribute("aria-describedby", "map-style-unavailable");
-                else button.removeAttribute("aria-describedby");
-            }
-        }
-        fitPopoverToPane();
+    initMapViewControls(dom.mapViewControl, "map", () => {
+        if (dom.mapMarkerControl.childElementCount || !dom.mapSettingsPopover.hidden) renderRows();
     });
+    subscribeMapProvider(fitPopoverToPane);
     const resize = new ResizeObserver(fitPopoverToPane);
     resize.observe(dom.mapWrap);
     dom.viewer.addEventListener("scroll", fitPopoverToPane, { passive: true });

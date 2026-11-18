@@ -117,6 +117,16 @@ export function generateThirdPartyNotices(root = process.cwd()) {
     }
 
     sections.push(
+        [
+            RULE,
+            "Game-inspired map palettes",
+            "SanAndreas palette colors adapted from Waypoint (GPL-3.0-only).",
+            "Source: https://github.com/the-geeky-couldron/waypoint/blob/8c851656a47b113180c8a91a72a2f8196a089691/app/src/main/assets/styles/san_andreas.json",
+            "ViceCity colors inspired by Subin Siby's GTA Vice City style OpenStreetMap (public domain, 2025).",
+            "Source: https://github.com/subins2000/gta-vice-city-style-openstreetmap",
+            "",
+            readFileSync(join(ROOT, "public/models/face/LICENSE-GPL-3.0"), "utf8").trim(),
+        ].join("\n"),
         [RULE, "Bundled typefaces", readFileSync(join(ROOT, "public/fonts/OFL.txt"), "utf8").trim()].join("\n"),
         [
             RULE,

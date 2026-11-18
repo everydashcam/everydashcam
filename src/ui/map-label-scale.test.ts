@@ -21,7 +21,7 @@ import {
     setStreetLabelDensity,
 } from "./map-label-scale.js";
 
-const STYLE_NAMES = ["light", "dark", "neon"] as const;
+const STYLE_NAMES = ["light", "dark", "neon", "san-andreas", "vice-city"] as const;
 
 function loadStyle(name: string): StyleSpecification {
     const raw = readFileSync(join(__dirname, "..", "..", "public", "styles", `${name}.json`), "utf8");

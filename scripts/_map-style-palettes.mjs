@@ -1,6 +1,7 @@
 // Geometry and label placement live in light.json. Alternate palettes cannot
 // drop a bridge, road number or building merely because the UI theme changed.
 
+import gamePalettes from "../src/ui/map-game-palettes.json" with { type: "json" };
 import { roadColorExpression } from "./_map-road-layers.mjs";
 
 export const MAP_SDF_ICONS = ["arrow", "circle_11_black", "airport_11"];
@@ -63,6 +64,9 @@ const NEON = {
     driverPoi: "#ffd9a0",
 };
 
+const VARIANTS = { dark: { name: "Classic Dark", ...DARK }, neon: { name: "Neon", ...NEON }, ...gamePalettes };
+export const MAP_STYLE_VARIANTS = Object.keys(VARIANTS);
+
 function lineColor(layer, palette) {
     const kind = layer.metadata?.["everydashcam:road-kind"];
     if (kind) return roadColorExpression(palette, kind);
@@ -86,11 +90,22 @@ function usesSdfIcon(value) {
 }
 
 export function createMapStyleVariant(light, theme) {
-    const palette = theme === "dark" ? DARK : NEON;
+    const palette = VARIANTS[theme];
     const style = structuredClone(light);
-    style.name = theme === "dark" ? "everydashcam Classic Dark" : "everydashcam Neon";
+    style.name = `everydashcam ${palette.name}`;
     style.sprite = "/styles/sprite/sprite";
     style.metadata = { ...style.metadata, "everydashcam:theme": theme };
+    if (gamePalettes[theme]) {
+        // Urban areas extend down to street zoom. Parks and beaches inside
+        // their boundaries must still paint on top.
+        const residential = style.layers.findIndex((layer) => layer.id === "landuse_residential");
+        const [urban] = style.layers.splice(residential, 1);
+        style.layers.splice(
+            style.layers.findIndex((layer) => layer.id === "park"),
+            0,
+            urban,
+        );
+    }
     for (const layer of style.layers) {
         layer.paint ??= {};
         const p = layer.paint;
@@ -121,6 +136,27 @@ export function createMapStyleVariant(light, theme) {
             const color = colors[role];
             if (!color) throw new Error(`unclassified fill layer: ${layer.id}`);
             p["fill-color"] = palette[color];
+            if (palette.sand && layer.id === "landcover_wood") {
+                layer.filter = ["in", ["get", "class"], ["literal", ["wood", "grass", "farmland", "sand", "rock"]]];
+                p["fill-color"] = [
+                    "match",
+                    ["get", "class"],
+                    ["sand", "rock"],
+                    palette.sand,
+                    "wood",
+                    palette.forest,
+                    palette.park,
+                ];
+                p["fill-opacity"] = 1;
+            }
+            if (palette.sand && layer.id === "landuse_residential") {
+                delete layer.maxzoom;
+                layer.filter = [
+                    "in",
+                    ["get", "class"],
+                    ["literal", ["residential", "commercial", "industrial", "retail"]],
+                ];
+            }
             if (p["fill-outline-color"] !== undefined) {
                 p["fill-outline-color"] = role === "building" ? palette.buildingOutline : palette.parkOutline;
             }

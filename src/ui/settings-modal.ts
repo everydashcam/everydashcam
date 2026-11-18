@@ -52,6 +52,7 @@ import {
     setStreetLabelDensity,
     STREET_LABEL_DENSITY_VALUES,
 } from "./map-label-scale.js";
+import { viewerRadarTheme } from "./map-view-pref.js";
 import { renderMapMarkerControl } from "./map-marker-control.js";
 import { getMapMarkerAppearance, setMapMarkerAppearance } from "./map-marker-pref.js";
 import { getMapProvider, subscribeMapProvider } from "./map-provider.js";
@@ -222,9 +223,9 @@ function syncEncoderSelect(): void {
 
 function syncMapLabelScaleSelect(): void {
     const sel = document.getElementById("settings-map-label-scale-select") as HTMLSelectElement | null;
-    if (sel) sel.value = String(getMapLabelScale());
+    if (sel) sel.value = sel.disabled ? "" : String(getMapLabelScale());
     const density = document.getElementById("settings-map-street-names-select") as HTMLSelectElement | null;
-    if (density) density.value = getStreetLabelDensity();
+    if (density) density.value = density.disabled ? "" : getStreetLabelDensity();
 }
 
 function syncMapMarkerControl(): void {
@@ -232,6 +233,7 @@ function syncMapMarkerControl(): void {
     if (!host) return;
     renderMapMarkerControl(host, {
         appearance: getMapMarkerAppearance(),
+        radar: viewerRadarTheme(),
         onChange: setMapMarkerAppearance,
         idPrefix: "settings",
     });
@@ -481,7 +483,10 @@ export function initSettingsModal(): void {
     // --- Map provider ---
 
     const mapViewControl = document.getElementById("settings-map-view-control");
-    if (mapViewControl) initMapViewControls(mapViewControl, "settings-map");
+    if (mapViewControl)
+        initMapViewControls(mapViewControl, "settings-map", () => {
+            if (isOpen(modalEl())) syncMapMarkerControl();
+        });
 
     // The trip map's close button writes the same preference.
     const tripMapToggle = document.getElementById("settings-trip-map-toggle") as HTMLInputElement | null;
@@ -507,6 +512,7 @@ export function initSettingsModal(): void {
             if (select.disabled) select.setAttribute("aria-describedby", "settings-map-style-unavailable");
             else select.removeAttribute("aria-describedby");
         }
+        syncMapLabelScaleSelect();
     });
 
     // --- Map labels ---

@@ -1,3 +1,4 @@
+import type { RadarTheme } from "../map-radar.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import {
@@ -42,6 +43,7 @@ export interface MapMarkerControlOptions {
     idPrefix: string;
     /** Icon-first layout for the map gear popover. Full settings keep labels. */
     compact?: boolean;
+    radar?: RadarTheme;
 }
 
 export function renderMapMarkerControl(host: HTMLElement, options: MapMarkerControlOptions): void {
@@ -71,7 +73,7 @@ export function renderMapMarkerControl(host: HTMLElement, options: MapMarkerCont
         customInput.value = current.color;
         if (paintPreviews) {
             for (const [shape, canvas] of canvases) {
-                void renderMapMarkerIntoCanvas(canvas, { ...current, shape });
+                void renderMapMarkerIntoCanvas(canvas, { ...current, shape }, "perspective", options.radar);
             }
         }
     };

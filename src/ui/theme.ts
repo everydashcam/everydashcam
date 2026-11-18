@@ -10,18 +10,12 @@ import { createSubscribers } from "../subscribers.js";
 import type { EventKind } from "../events.js";
 
 import { state } from "./state.js";
-import { getMapViewPreferences } from "./map-view-pref.js";
+import gamePalettes from "./map-game-palettes.json";
+import { getMapViewPreferences, type MapThemeChoice } from "./map-view-pref.js";
 
-export type MapTheme = "light" | "dark";
+export type MapTheme = Exclude<MapThemeChoice, "auto">;
 
-/**
- * Which base-map style.json to load. Superset of MapTheme: the live app map only
- * ever uses light/dark, but the export "map overlay" lets
- * the user pick "neon" too - a semi-transparent black slot with orange-glowing
- * roads/buildings/cities, independent of the app theme. Kept separate from
- * MapTheme so currentMapTheme()'s contract (it returns the effective map theme,
- * never "neon") stays honest.
- */
+/** Neon is a translucent, export-only palette. */
 export type MapStyleId = MapTheme | "neon";
 
 /** UX-24: user theme choice. "auto" follows OS (default), "light"/"dark" is an explicit override. */
@@ -77,6 +71,16 @@ export function currentMapTheme(): MapTheme {
 
 const MAP_COLORS = {
     light: { background: "#f5f4ef", trackVeil: "rgba(245,244,239,0.45)", markerStroke: "#0e0e0e" },
+    "san-andreas": {
+        background: gamePalettes["san-andreas"].background,
+        trackVeil: "rgba(128,136,76,0.45)",
+        markerStroke: "#0e0e0e",
+    },
+    "vice-city": {
+        background: gamePalettes["vice-city"].background,
+        trackVeil: "rgba(210,207,210,0.45)",
+        markerStroke: "#0e0e0e",
+    },
     dark: { background: "#14171c", trackVeil: "rgba(20,23,28,0.45)", markerStroke: "#fff" },
 } as const;
 

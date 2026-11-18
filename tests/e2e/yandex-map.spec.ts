@@ -176,7 +176,69 @@ test("Yandex selection syncs map settings and limits the camera to north-up", as
     await expectControlsDisabled(modalAppearance, true);
 });
 
-test("every mini-map is rectangular and Yandex credits stay visible on both maps", async ({ page }) => {
+test("switches between the ViceCity radar and the raster marker without losing either choice", async ({ page }) => {
+    await loadTrip(page);
+    await pausePlayback(page);
+    const mini = page.locator("#mini-map");
+    const marker = mini.locator(".car-marker__canvas");
+    const settings = page.locator("#settings-btn");
+    const close = page.locator("#settings-modal-header-close");
+    const provider = page.locator("#settings-map-provider-select");
+    const theme = page.locator("#settings-map-theme-select");
+    const shape = page.locator("#settings-map-minimap-shape-select");
+    const controls = page.locator("#settings-map-marker-control");
+    await settings.click();
+    await theme.selectOption("vice-city");
+    await close.click();
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:vice-city");
+    const credits = mini.locator(".dc-map-attrib-toggle");
+    await expect(credits).toBeVisible();
+    await expect(mini.locator(".dc-map-attrib a").first()).toBeHidden();
+    await credits.click();
+    await expectCreditsInside(mini);
+    await expectCreditsClickable(mini);
+    await page.keyboard.press("Tab");
+    await expect(mini.locator(".dc-map-attrib a").first()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(credits).toBeFocused();
+    await expect(credits).toHaveAttribute("aria-expanded", "false");
+
+    await settings.click();
+    await provider.selectOption("yandex");
+    await expect(theme).toBeDisabled();
+    await expect(theme).toHaveValue("");
+    await expect(page.locator("#settings-map-style-select")).toHaveValue("");
+    await expect(page.locator("#settings-map-label-scale-select")).toHaveValue("");
+    await expect(page.locator("#settings-map-street-names-select")).toHaveValue("");
+    await expect(page.locator("#settings-map-buildings3d-toggle")).not.toBeChecked();
+    await expect(shape).toHaveValue("rect");
+    await expect(controls.locator('[data-marker-shape="arrow"] canvas')).toHaveAttribute(
+        "data-marker-render-key",
+        "arrow:#ff9000",
+    );
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#ff9000");
+    await expect(page.locator("#map .car-marker__canvas")).toHaveAttribute("data-marker-render-key", "arrow:#ff9000");
+    await controls.locator('[data-marker-shape="sedan"]').click();
+    await shape.selectOption("circle");
+    await close.click();
+    await expectCreditsClickable(mini);
+    await expectYandexLogo(mini, "Open in Maps");
+    await settings.click();
+    await provider.selectOption("openfreemap");
+    await expect(theme).toHaveValue("vice-city");
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:vice-city");
+    await shape.selectOption("rect");
+    await provider.selectOption("yandex");
+    await expect(shape).toHaveValue("circle");
+    await expect(marker).toHaveAttribute("data-marker-render-key", "sedan:#ff9000:overhead");
+    await provider.selectOption("openfreemap");
+    await expect(shape).toHaveValue("rect");
+    await theme.selectOption("san-andreas");
+    await expect(shape).toHaveValue("circle");
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:san-andreas");
+});
+
+test("mini-maps default to a rectangle and Yandex credits stay visible on both maps", async ({ page }) => {
     const requests: URL[] = [];
     page.on("request", (request) => {
         const url = new URL(request.url());

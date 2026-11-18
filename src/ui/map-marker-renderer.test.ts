@@ -26,6 +26,15 @@ describe("map marker view", () => {
         }
     });
 
+    it("caches each game arrow separately and shares vehicle art across themes", () => {
+        const arrow = DEFAULT_MAP_MARKER_APPEARANCE;
+        const truck = { ...arrow, shape: "truck" } as const;
+        expect(mapMarkerRenderKey(arrow, "overhead", "san-andreas")).not.toBe(
+            mapMarkerRenderKey(arrow, "overhead", "vice-city"),
+        );
+        expect(mapMarkerRenderKey(truck, "overhead", "vice-city")).toBe(mapMarkerRenderKey(truck, "overhead"));
+    });
+
     it("separates vehicle views in render caches while sharing the arrow", () => {
         for (const shape of MAP_MARKER_SHAPES) {
             const appearance = { ...DEFAULT_MAP_MARKER_APPEARANCE, shape };

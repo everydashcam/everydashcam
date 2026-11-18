@@ -4,9 +4,11 @@ import { createExpression, featureFilter, validateStyleMin } from "@maplibre/map
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
 
-import { applyMapStylePreset } from "./map-style-preset.js";
-import type { MapStylePreset } from "./map-view-pref.js";
+import { applyMapStylePreset, isStreetNameLayer, readableGameMap } from "./map-style-preset.js";
+import { MAP_THEMES, type MapStylePreset } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
+
+const ALL_STYLES = [...MAP_THEMES, "neon"] as const;
 
 function loadStyle(theme: string): StyleSpecification {
     return JSON.parse(
@@ -36,7 +38,7 @@ function matchingRoads(
 }
 
 describe("map style presets", () => {
-    it.each(["light", "dark", "neon"])("applies presets to a cached %s style with legacy metadata", (theme) => {
+    it.each(ALL_STYLES)("applies presets to a cached %s style with legacy metadata", (theme) => {
         const original = loadStyle(theme);
         const cached = structuredClone(original);
         for (const layer of cached.layers) {
@@ -50,7 +52,7 @@ describe("map style presets", () => {
         }
     });
 
-    for (const theme of ["light", "dark", "neon"] as const) {
+    for (const theme of ALL_STYLES) {
         for (const provider of ["openfreemap", "osm-vector"] as const) {
             const original = provider === "openfreemap" ? loadStyle(theme) : createFallbackMapStyle(provider, theme);
             it(`${provider} ${theme} preserves transport and landmarks while reducing context`, () => {
@@ -86,6 +88,32 @@ describe("map style presets", () => {
                 expect(applyMapStylePreset(original, "classic")).toBe(original);
             });
         }
+    }
+
+    for (const theme of ["san-andreas", "vice-city"] as const) {
+        it.each(["openfreemap", "osm-vector"] as const)(
+            `prioritizes localized street names on the large ${theme} %s map`,
+            (provider) => {
+                const base = provider === "openfreemap" ? loadStyle(theme) : createFallbackMapStyle(provider, theme);
+                const original = structuredClone(base);
+                const result = readableGameMap(base, "ru");
+                expect(validateStyleMin(result)).toEqual([]);
+                const firstStreet = result.layers.findIndex(isStreetNameLayer);
+                expect(firstStreet).toBeGreaterThan(0);
+                expect(result.layers.slice(firstStreet).every(isStreetNameLayer)).toBe(true);
+                const street = result.layers[firstStreet]!;
+                if (street.type !== "symbol") throw new Error("street labels missing");
+                const field = createExpression(street.layout?.["text-field"], street.id);
+                if (field.result !== "success") throw new Error("invalid street name expression");
+                for (const [properties, name] of [
+                    [{ name: "Әл-Фараби даңғылы", "name:ru": "проспект Аль-Фараби" }, "проспект Аль-Фараби"],
+                    [{ name: "Әл-Фараби даңғылы" }, "Әл-Фараби даңғылы"],
+                ] as const) {
+                    expect(field.value.evaluate({ zoom: 15 }, { type: 2, properties })).toBe(name);
+                }
+                expect(base).toEqual(original);
+            },
+        );
     }
 
     it("makes road context quieter and minimal removes it without altering the cache", () => {
@@ -139,42 +167,39 @@ describe("shared OpenMapTiles cartography", () => {
         }
     });
 
-    it.each(["light", "dark", "neon"])(
-        "resolves every supported road shield against the sprite atlas in %s",
-        (theme) => {
-            const style = loadStyle(theme);
-            for (const scale of ["", "@2x"]) {
-                const atlas: unknown = JSON.parse(
-                    readFileSync(join(__dirname, `../../public/styles/sprite/sprite${scale}.json`), "utf8"),
-                );
-                if (!atlas || typeof atlas !== "object") throw new Error("sprite atlas is invalid");
-                const images = Object.keys(atlas);
-                for (const [id, network] of [
-                    ["highway-shield-non-us", "de:national"],
-                    ["highway-shield-us-interstate", "us-interstate"],
-                    ["road_shield_us", "us-highway"],
-                    ["road_shield_us", "us-state"],
-                ] as const) {
-                    const layer = style.layers.find((candidate) => candidate.id === id);
-                    if (layer?.type !== "symbol") throw new Error("road shield missing");
-                    const expression = createExpression(layer.layout?.["icon-image"], "road shield");
-                    if (expression.result !== "success") throw new Error("road shield expression is invalid");
-                    for (let length = 1; length <= 6; length++) {
-                        const feature = {
-                            type: 2 as const,
-                            properties: { network, ref: "1".repeat(length), ref_length: length },
-                        };
-                        expect(featureFilter(layer.filter, layer.id).filter({ zoom: 16 }, feature)).toBe(true);
-                        const image = String(expression.value.evaluate({ zoom: 16 }, feature, {}, undefined, images));
-                        expect(images, `${scale} ${network} reference length ${length}: ${image}`).toContain(image);
-                        if (length <= 3 && network !== "de:national") expect(image).toBe(`${network}_${length}`);
-                    }
+    it.each(ALL_STYLES)("resolves every supported road shield against the sprite atlas in %s", (theme) => {
+        const style = loadStyle(theme);
+        for (const scale of ["", "@2x"]) {
+            const atlas: unknown = JSON.parse(
+                readFileSync(join(__dirname, `../../public/styles/sprite/sprite${scale}.json`), "utf8"),
+            );
+            if (!atlas || typeof atlas !== "object") throw new Error("sprite atlas is invalid");
+            const images = Object.keys(atlas);
+            for (const [id, network] of [
+                ["highway-shield-non-us", "de:national"],
+                ["highway-shield-us-interstate", "us-interstate"],
+                ["road_shield_us", "us-highway"],
+                ["road_shield_us", "us-state"],
+            ] as const) {
+                const layer = style.layers.find((candidate) => candidate.id === id);
+                if (layer?.type !== "symbol") throw new Error("road shield missing");
+                const expression = createExpression(layer.layout?.["icon-image"], "road shield");
+                if (expression.result !== "success") throw new Error("road shield expression is invalid");
+                for (let length = 1; length <= 6; length++) {
+                    const feature = {
+                        type: 2 as const,
+                        properties: { network, ref: "1".repeat(length), ref_length: length },
+                    };
+                    expect(featureFilter(layer.filter, layer.id).filter({ zoom: 16 }, feature)).toBe(true);
+                    const image = String(expression.value.evaluate({ zoom: 16 }, feature, {}, undefined, images));
+                    expect(images, `${scale} ${network} reference length ${length}: ${image}`).toContain(image);
+                    if (length <= 3 && network !== "de:national") expect(image).toBe(`${network}_${length}`);
                 }
             }
-        },
-    );
+        }
+    });
 
-    it.each(["light", "dark", "neon"])("renders bridges above surface roads and tunnels in %s", (theme) => {
+    it.each(ALL_STYLES)("renders bridges above surface roads and tunnels in %s", (theme) => {
         const style = loadStyle(theme);
         const tunnel = matchingRoads(style, { class: "motorway", brunnel: "tunnel", layer: -1, ramp: 0 });
         const surface = matchingRoads(style, { class: "motorway", layer: 0, ramp: 0 });
@@ -195,7 +220,7 @@ describe("shared OpenMapTiles cartography", () => {
         ]);
     });
 
-    it.each(["light", "dark", "neon"])("finishes lower bridge fills before higher bridge casings in %s", (theme) => {
+    it.each(ALL_STYLES)("finishes lower bridge fills before higher bridge casings in %s", (theme) => {
         const style = loadStyle(theme);
         const lower = matchingRoads(style, { class: "motorway", brunnel: "bridge", layer: 1 });
         const upper = matchingRoads(style, { class: "minor", brunnel: "bridge", layer: 2 });
@@ -265,7 +290,7 @@ describe("shared OpenMapTiles cartography", () => {
         }
     });
 
-    it.each(["light", "dark", "neon"])("keeps flat buildings at street zoom and below symbols in %s", (theme) => {
+    it.each(ALL_STYLES)("keeps flat buildings at street zoom and below symbols in %s", (theme) => {
         const style = loadStyle(theme);
         const buildingIndex = style.layers.findIndex((layer) => layer.id === "building");
         const building = style.layers[buildingIndex]!;

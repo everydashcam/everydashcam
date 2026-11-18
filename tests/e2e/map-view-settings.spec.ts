@@ -331,6 +331,62 @@ test("map gear and general settings share style, theme and buildings choices", a
     await expect(page.locator("#map-style-select")).toHaveValue("road");
     await expect(page.locator("#map-theme-select")).toHaveValue("light");
     const lightBackground = await mapBackground(page);
+    for (const [theme, name] of [
+        ["san-andreas", "SanAndreas"],
+        ["vice-city", "ViceCity"],
+    ] as const) {
+        await page.locator("#map-theme-select").selectOption({ label: name });
+        await expect(page.locator("#settings-map-theme-select")).toHaveValue(theme);
+        await expect(page.locator("#mini-map")).toHaveAttribute("data-radar", theme);
+        const markerKey = `arrow:#f4f4f2:${theme}`;
+        await expect(page.locator("#mini-map .car-marker__canvas")).toHaveAttribute(
+            "data-marker-render-key",
+            markerKey,
+        );
+        const markerControl = popover.locator('[data-marker-control="map-popover"]');
+        await expect(markerControl.locator('[data-marker-shape="arrow"] canvas')).toHaveAttribute(
+            "data-marker-render-key",
+            markerKey,
+        );
+        await markerControl.locator('[data-marker-shape="truck"]').click();
+        await expect(page.locator("#mini-map .car-marker__canvas")).toHaveAttribute(
+            "data-marker-render-key",
+            "truck:#f4f4f2:overhead",
+        );
+        await expect(page.locator("#map-minimap-shape-select")).toHaveValue("circle");
+        await expect(page.locator("#mini-map")).toHaveCSS("border-radius", "50%");
+        await page.locator("#map-minimap-shape-select").selectOption("rect");
+        await expect(page.locator("#mini-map")).not.toHaveCSS("border-radius", "50%");
+        await expect(page.locator("#settings-map-minimap-shape-select")).toHaveValue("rect");
+        await expect
+            .poll(() =>
+                page.evaluate((name) => {
+                    const style = window.__everydashcam.state.miniMap?.getStyle();
+                    return (
+                        style?.name === `everydashcam ${name}` && !style.layers.some((layer) => layer.type === "symbol")
+                    );
+                }, name),
+            )
+            .toBe(true);
+        await expect
+            .poll(() =>
+                page.evaluate((name) => {
+                    const style = window.__everydashcam.state.map?.getStyle();
+                    if (style?.name !== `everydashcam ${name}`) return false;
+                    const ids = style.layers.map((layer) => layer.id);
+                    const trail = ids.indexOf("trip-line-trail");
+                    return (
+                        trail >= 0 &&
+                        trail < ids.indexOf("highway-name-minor") &&
+                        trail < ids.indexOf("highway-name-major")
+                    );
+                }, name),
+            )
+            .toBe(true);
+        await expect(page.locator("#map-style-select")).toHaveValue("road");
+    }
+    await page.locator("#map-theme-select").selectOption("light");
+    await expect(page.locator("#mini-map")).not.toHaveAttribute("data-radar", /.+/);
     await page.locator('.theme-toggle-btn[data-theme="light"]').click();
     await page.locator('.theme-toggle-btn[data-theme="dark"]').click();
     await expect(page.locator("html")).toHaveClass(/dc-dark/);

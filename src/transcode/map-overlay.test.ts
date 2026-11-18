@@ -26,6 +26,16 @@ describe("mapOverlayRect", () => {
         expect(portrait).toEqual({ x: 540, y: 1380, width: 540, height: 540 });
     });
 
+    it("uses the selected shape for both game radars", () => {
+        const circle = mapOverlayRect(1920, 1080, { ...rightBottom, shape: "circle" });
+        for (const radar of ["san-andreas", "vice-city"] as const) {
+            expect(mapOverlayRect(1920, 1080, { ...rightBottom, radar })).toEqual(
+                mapOverlayRect(1920, 1080, rightBottom),
+            );
+            expect(mapOverlayRect(1920, 1080, { ...rightBottom, radar, shape: "circle" })).toEqual(circle);
+        }
+    });
+
     it("preserves output-pixel minimum sizes for a small custom output", () => {
         expect(mapOverlayRect(240, 240, { ...rightBottom, scalePct: 50 })).toEqual({
             x: 180,

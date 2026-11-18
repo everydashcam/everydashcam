@@ -1216,7 +1216,7 @@ test.describe("export", () => {
         await expect(inspector.locator('input[type="range"][data-drag-probe="1"]')).toHaveCount(1);
     });
 
-    test("map overlay theme segment toggles light/dark/neon", async ({ page }) => {
+    test("map overlay theme segment switches classic, neon and game palettes", async ({ page }) => {
         await page.locator("#export-panel-ov-map").check();
         const inspector = page.locator("#export-panel-overlay-inspector");
         await expect(inspector).toBeVisible();
@@ -1231,7 +1231,33 @@ test.describe("export", () => {
         await light.click();
         await expect(light).toHaveClass(/is-active/);
         await expect(dark).not.toHaveClass(/is-active/);
-        await expect(page.locator("#player-map-overlay")).toBeVisible();
+        const rect = inspector.locator('button[data-shape="rect"]');
+        const overlay = page.locator("#player-map-overlay");
+        await rect.click();
+        for (const name of ["SanAndreas", "ViceCity"]) {
+            const option = inspector.getByRole("button", { name, exact: true });
+            await option.click();
+            await expect(option).toHaveAttribute("aria-pressed", "true");
+            await expect(overlay).toHaveAttribute("data-shape", "circle");
+            await expect(inspector.locator('button[data-shape="circle"]')).toHaveAttribute("aria-pressed", "true");
+            await rect.click();
+            await expect(overlay).toHaveAttribute("data-shape", "rect");
+            await option.click();
+            await expect(rect).toHaveAttribute("aria-pressed", "true");
+            const marker = inspector.locator("#export-map-marker-control");
+            await expect(marker.locator('[data-marker-shape="arrow"]')).toHaveAttribute("aria-pressed", "true");
+            await expect(marker.locator('[data-marker-color="#f4f4f2"]')).toHaveAttribute("aria-pressed", "true");
+            await marker.locator('[data-marker-shape="sedan"]').click();
+            await marker.locator('[data-marker-color="#30a46c"]').click();
+            await marker.locator('[data-marker-size="large"]').click();
+        }
+        await neon.click();
+        await expect(rect).toBeVisible();
+        await expect(overlay).toHaveAttribute("data-shape", "rect");
+        await expect(inspector.locator('[data-marker-color="#ff9000"]')).toHaveAttribute("aria-pressed", "true");
+        await inspector.getByRole("button", { name: "SanAndreas", exact: true }).click();
+        await expect(inspector.locator('[data-marker-shape="sedan"]')).toHaveAttribute("aria-pressed", "true");
+        await expect(inspector.locator('[data-marker-size="large"]')).toHaveAttribute("aria-pressed", "true");
     });
 
     test("map marker starts from settings, stays separate, and persists with overlays", async ({ page }) => {

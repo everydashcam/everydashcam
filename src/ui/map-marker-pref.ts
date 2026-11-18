@@ -1,3 +1,5 @@
+import { radarTheme, type RadarTheme } from "../map-radar.js";
+import { viewerRadarTheme } from "./map-view-pref.js";
 import { createSubscribers } from "../subscribers.js";
 import { readLocalStorageJson, writeLocalStorageJson, removeLocalStorage } from "../local-storage.js";
 export const MAP_MARKER_SHAPES = ["arrow", "sedan", "suv", "motorcycle", "van", "truck"] as const;
@@ -26,10 +28,25 @@ export const DEFAULT_MAP_MARKER_APPEARANCE: Readonly<MapMarkerAppearance> = {
     size: "medium",
 };
 
+export const RADAR_MARKER_APPEARANCE: Readonly<MapMarkerAppearance> = {
+    shape: "arrow",
+    color: "#f4f4f2",
+    size: "medium",
+};
+
+export function markerForMapTheme(map: {
+    theme: string;
+    marker: MapMarkerAppearance;
+    gameMarkers?: Partial<Record<RadarTheme, MapMarkerAppearance>>;
+}): MapMarkerAppearance {
+    const game = radarTheme(map.theme);
+    return game ? (map.gameMarkers?.[game] ?? RADAR_MARKER_APPEARANCE) : map.marker;
+}
+
 const STORAGE_KEY = "everydashcam:mapMarker";
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-let sessionAppearance: MapMarkerAppearance | null = null;
+const sessionAppearances = new Map<string, MapMarkerAppearance>();
 type Listener = (appearance: MapMarkerAppearance) => void;
 const listeners = createSubscribers<Parameters<Listener>>("map-marker");
 
@@ -41,37 +58,46 @@ function isMapMarkerSize(value: unknown): value is MapMarkerSize {
     return typeof value === "string" && (MAP_MARKER_SIZES as readonly string[]).includes(value);
 }
 
-function normalizeColor(value: unknown): string {
-    return typeof value === "string" && HEX_COLOR.test(value)
-        ? value.toLowerCase()
-        : DEFAULT_MAP_MARKER_APPEARANCE.color;
+function normalizeColor(value: unknown, fallback: string): string {
+    return typeof value === "string" && HEX_COLOR.test(value) ? value.toLowerCase() : fallback;
 }
 
-export function normalizeMapMarkerAppearance(value: unknown): MapMarkerAppearance {
-    if (typeof value !== "object" || value === null) return { ...DEFAULT_MAP_MARKER_APPEARANCE };
+export function normalizeMapMarkerAppearance(
+    value: unknown,
+    fallback = DEFAULT_MAP_MARKER_APPEARANCE,
+): MapMarkerAppearance {
+    if (typeof value !== "object" || value === null) return { ...fallback };
     const candidate = value as { shape?: unknown; color?: unknown; size?: unknown };
     return {
-        shape: isMapMarkerShape(candidate.shape) ? candidate.shape : DEFAULT_MAP_MARKER_APPEARANCE.shape,
-        color: normalizeColor(candidate.color),
-        size: isMapMarkerSize(candidate.size) ? candidate.size : DEFAULT_MAP_MARKER_APPEARANCE.size,
+        shape: isMapMarkerShape(candidate.shape) ? candidate.shape : fallback.shape,
+        color: normalizeColor(candidate.color, fallback.color),
+        size: isMapMarkerSize(candidate.size) ? candidate.size : fallback.size,
     };
 }
 
-function readStoredAppearance(): MapMarkerAppearance {
-    return normalizeMapMarkerAppearance(readLocalStorageJson(STORAGE_KEY));
+function markerStorageKey(theme: string): string {
+    const game = radarTheme(theme);
+    return game ? `${STORAGE_KEY}:${game}` : STORAGE_KEY;
 }
 
-export function getMapMarkerAppearance(): MapMarkerAppearance {
-    sessionAppearance ??= readStoredAppearance();
-    return { ...sessionAppearance };
+export function getMapMarkerAppearance(theme: string = viewerRadarTheme() ?? "light"): MapMarkerAppearance {
+    const key = markerStorageKey(theme);
+    let appearance = sessionAppearances.get(key);
+    if (!appearance) {
+        const fallback = radarTheme(theme) ? RADAR_MARKER_APPEARANCE : DEFAULT_MAP_MARKER_APPEARANCE;
+        appearance = normalizeMapMarkerAppearance(readLocalStorageJson(key), fallback);
+        sessionAppearances.set(key, appearance);
+    }
+    return { ...appearance };
 }
 
 export function setMapMarkerAppearance(appearance: MapMarkerAppearance): void {
     const next = normalizeMapMarkerAppearance(appearance);
     const current = getMapMarkerAppearance();
     if (current.shape === next.shape && current.color === next.color && current.size === next.size) return;
-    sessionAppearance = next;
-    writeLocalStorageJson(STORAGE_KEY, next);
+    const key = markerStorageKey(viewerRadarTheme() ?? "light");
+    sessionAppearances.set(key, next);
+    writeLocalStorageJson(key, next);
     listeners.emitWith(() => [{ ...next }]);
 }
 
@@ -88,7 +114,8 @@ export function mapMarkerSizeScale(size: MapMarkerSize): number {
 }
 
 export function _resetForTests(): void {
-    sessionAppearance = null;
+    for (const key of sessionAppearances.keys()) removeLocalStorage(key);
+    sessionAppearances.clear();
     listeners.clear();
     removeLocalStorage(STORAGE_KEY);
 }

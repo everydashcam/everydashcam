@@ -1,3 +1,4 @@
+import { drawRadarArrow, type RadarTheme } from "../map-radar.js";
 import { mapMarkerAppearanceKey, type MapMarkerAppearance, type MapMarkerShape } from "./map-marker-pref.js";
 import motorcycleOverheadSpriteUrl from "../assets/map-markers/motorcycle-overhead.webp?no-inline";
 import motorcycleSpriteUrl from "../assets/map-markers/motorcycle.webp?no-inline";
@@ -43,8 +44,13 @@ export function mapMarkerViewForPitch(pitchDeg: number): MapMarkerView {
     return Number.isFinite(pitchDeg) && pitchDeg >= PERSPECTIVE_MIN_PITCH_DEG ? "perspective" : "overhead";
 }
 
-export function mapMarkerRenderKey(appearance: MapMarkerAppearance, view: MapMarkerView = "perspective"): string {
+export function mapMarkerRenderKey(
+    appearance: MapMarkerAppearance,
+    view: MapMarkerView = "perspective",
+    radar?: RadarTheme,
+): string {
     const key = mapMarkerAppearanceKey(appearance);
+    if (radar && appearance.shape === "arrow") return `${key}:${radar}`;
     return appearance.shape !== "arrow" && view === "overhead" ? `${key}:overhead` : key;
 }
 
@@ -237,14 +243,19 @@ function drawArrow(context: CanvasRenderingContext2D, color: string): void {
     context.stroke();
 }
 
-async function buildRenderedMarker(appearance: MapMarkerAppearance, view: MapMarkerView): Promise<HTMLCanvasElement> {
+async function buildRenderedMarker(
+    appearance: MapMarkerAppearance,
+    view: MapMarkerView,
+    radar?: RadarTheme,
+): Promise<HTMLCanvasElement> {
     const canvas = document.createElement("canvas");
     canvas.width = RENDER_SIZE;
     canvas.height = RENDER_SIZE;
     const context = canvas.getContext("2d", { willReadFrequently: appearance.shape !== "arrow" });
     if (!context) throw new Error("map marker canvas context unavailable");
     if (appearance.shape === "arrow") {
-        drawArrow(context, appearance.color);
+        if (radar) drawRadarArrow(context, RENDER_SIZE, appearance.color, radar);
+        else drawArrow(context, appearance.color);
         return canvas;
     }
     let image: HTMLImageElement;
@@ -270,11 +281,12 @@ async function buildRenderedMarker(appearance: MapMarkerAppearance, view: MapMar
 export function renderMapMarkerImage(
     appearance: MapMarkerAppearance,
     view: MapMarkerView = "perspective",
+    radar?: RadarTheme,
 ): Promise<HTMLCanvasElement> {
-    const key = mapMarkerRenderKey(appearance, view);
+    const key = mapMarkerRenderKey(appearance, view, radar);
     const cached = renderCache.get(key);
     if (cached) return cached;
-    const rendered = buildRenderedMarker(appearance, view);
+    const rendered = buildRenderedMarker(appearance, view, radar);
     if (renderCache.size >= MAX_RENDER_CACHE_ENTRIES) {
         const oldestKey = renderCache.keys().next().value;
         if (typeof oldestKey === "string") renderCache.delete(oldestKey);
@@ -287,10 +299,11 @@ export async function renderMapMarkerIntoCanvas(
     canvas: HTMLCanvasElement,
     appearance: MapMarkerAppearance,
     view: MapMarkerView = "perspective",
+    radar?: RadarTheme,
 ): Promise<void> {
-    const key = mapMarkerRenderKey(appearance, view);
+    const key = mapMarkerRenderKey(appearance, view, radar);
     canvas.dataset.markerRenderKey = key;
-    const image = await renderMapMarkerImage(appearance, view);
+    const image = await renderMapMarkerImage(appearance, view, radar);
     if (canvas.dataset.markerRenderKey !== key) return;
     canvas.width = RENDER_SIZE;
     canvas.height = RENDER_SIZE;
@@ -308,8 +321,9 @@ export async function drawMapMarker(
     bearingDeg: number,
     sizePx: number,
     pitchDeg = 0,
+    radar?: RadarTheme,
 ): Promise<void> {
-    const image = await renderMapMarkerImage(appearance, mapMarkerViewForPitch(pitchDeg));
+    const image = await renderMapMarkerImage(appearance, mapMarkerViewForPitch(pitchDeg), radar);
     context.save();
     context.translate(cx, cy);
     // Screen-space Y compression happens after local rotation, matching the

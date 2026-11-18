@@ -873,6 +873,10 @@ fieldset.export-panel__group {
     cursor: pointer;
 }
 
+.export-panel__segment button[data-maptheme] {
+    flex-basis: auto;
+}
+
 .export-panel__segment button:hover:not(:disabled) {
     background: var(--bg-hover);
 }
@@ -1265,4 +1269,9 @@ fieldset.export-panel__group {
             var(--dc-space-3)
         );
     }
+}
+
+#export-panel-overlay-inspector[data-radar] .export-panel__ov-field:has([data-maplabelsize], [data-mapstreetnames]),
+#export-panel-overlay-inspector[data-radar] #export-map-chase-controls .export-panel__slider {
+    display: none;
 }

@@ -1,15 +1,15 @@
 // Map overlay drawing for the transcode pipeline. Given a rendered map
 // ImageBitmap (produced by the main-thread snapshotter) and the user-controlled
-// placement / scale, this module paints it onto the composite canvas. The slot
-// has NO hard border: its edges feather to transparent so the map dissolves
-// into the video instead of reading as a bordered inset box. The live preview
-// (player-composition.css, .player-map-overlay__canvas) mirrors this feather
-// with a CSS mask - keep the two in sync (MAP_FEATHER_FRAC below).
+// placement / scale, this module paints it onto the composite canvas. Game radars
+// have a solid ring. Other styles feather to transparent, mirrored by the CSS
+// mask on the live preview (.player-map-overlay__canvas).
 
+import { drawRadarRim, type RadarTheme } from "../map-radar.js";
 import { clamp, drawNoFixIcon } from "./canvas-draw.js";
 import type { MapShape } from "./types.js";
 
 export interface MapOverlayDrawOpts {
+    radar?: RadarTheme;
     /** Top-left anchor, fraction of frame width. */
     xPct: number;
     /** Top-left anchor, fraction of frame height. */
@@ -152,6 +152,12 @@ export function drawMapOverlay(
     // High-quality downscale: maplibre source is 640×480, slot is typically
     // 200-500 px wide. Default smoothing is bilinear - fine at this size.
     const src = coverFit(bitmap.width, bitmap.height, widthPx, heightPx);
+    if (opts.radar) {
+        drawRadar(ctx, xClamped, yClamped, widthPx, heightPx, opts.shape, opts.radar, () => {
+            ctx.drawImage(bitmap, src.sx, src.sy, src.sw, src.sh, 0, 0, widthPx, heightPx);
+        });
+        return;
+    }
     const sctx = getScratch(widthPx, heightPx);
     if (sctx) {
         sctx.imageSmoothingEnabled = true;
@@ -190,6 +196,14 @@ export function drawMapPlaceholder(
     } = mapOverlayRect(frameWidth, frameHeight, opts);
 
     const iconPx = Math.min(widthPx, heightPx) * 0.36;
+    if (opts.radar) {
+        drawRadar(ctx, xClamped, yClamped, widthPx, heightPx, opts.shape, opts.radar, () => {
+            ctx.fillStyle = "rgba(16, 20, 24, 0.85)";
+            ctx.fillRect(0, 0, widthPx, heightPx);
+            drawNoFixIcon(ctx, widthPx / 2, heightPx / 2, iconPx, "rgba(255,255,255,0.6)");
+        });
+        return;
+    }
     const sctx = getScratch(widthPx, heightPx);
     if (sctx) {
         sctx.fillStyle = "rgba(16, 20, 24, 0.85)";
@@ -204,6 +218,27 @@ export function drawMapPlaceholder(
     ctx.fillStyle = "rgba(16, 20, 24, 0.85)";
     ctx.fillRect(xClamped, yClamped, widthPx, heightPx);
     drawNoFixIcon(ctx, xClamped + widthPx / 2, yClamped + heightPx / 2, iconPx, "rgba(255,255,255,0.6)");
+    ctx.restore();
+}
+
+function drawRadar(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    shape: MapShape,
+    theme: RadarTheme,
+    paint: () => void,
+): void {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.beginPath();
+    if (shape === "circle") ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2);
+    else ctx.rect(0, 0, width, height);
+    ctx.clip();
+    paint();
+    drawRadarRim(ctx, width, height, shape, theme);
     ctx.restore();
 }
 

@@ -9,12 +9,12 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
-import { createMapStyleVariant, MAP_SDF_ICONS } from "./_map-style-palettes.mjs";
+import { createMapStyleVariant, MAP_SDF_ICONS, MAP_STYLE_VARIANTS } from "./_map-style-palettes.mjs";
 import { updateOpenMapTilesRoadLayers } from "./_map-road-layers.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const STYLES = ["public/styles/light.json", "public/styles/dark.json", "public/styles/neon.json"];
+const THEMES = ["light", ...MAP_STYLE_VARIANTS];
 
 let failed = 0;
 // MapLibre ignores icon-color and halos on bitmap atlas entries.
@@ -35,13 +35,13 @@ if (JSON.stringify(light) !== JSON.stringify(updateOpenMapTilesRoadLayers(light)
     failed++;
 }
 
-for (const rel of STYLES) {
+for (const theme of THEMES) {
+    const rel = `public/styles/${theme}.json`;
     const path = resolve(ROOT, rel);
     const raw = await readFile(path, "utf8");
     const style = JSON.parse(raw);
 
-    if (rel !== "public/styles/light.json") {
-        const theme = rel.includes("neon") ? "neon" : "dark";
+    if (theme !== "light") {
         if (JSON.stringify(style) !== JSON.stringify(createMapStyleVariant(light, theme))) {
             console.error(`[${rel}] stale generated palette; run node scripts/build-map-styles.mjs`);
             failed++;

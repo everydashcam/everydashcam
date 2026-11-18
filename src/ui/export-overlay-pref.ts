@@ -3,7 +3,8 @@
 // cameras and blur zones keep their existing per-trip/session lifecycles.
 
 import { readLocalStorageJson, removeLocalStorage, writeLocalStorageJson } from "../local-storage.js";
-import { MAP_MARKER_SHAPES, MAP_MARKER_SIZES, type MapMarkerAppearance } from "./map-marker-pref.js";
+import { RADAR_MARKER_APPEARANCE, normalizeMapMarkerAppearance } from "./map-marker-pref.js";
+import { MAP_THEMES } from "./map-view-pref.js";
 import type { OverlayMapProviderPreference } from "./map-provider.js";
 import type { OverlayMapState, OverlayPreferences, OverlayTextState } from "./export-state.js";
 
@@ -15,7 +16,7 @@ const MAP_SHAPES = ["rect", "circle"] as const;
 const MAP_PROVIDERS: readonly OverlayMapProviderPreference[] = __PORTABLE__
     ? ["route-only", "openfreemap", "osm-vector"]
     : ["openfreemap", "osm-vector"];
-const MAP_THEMES = ["light", "dark", "neon"] as const;
+const EXPORT_MAP_THEMES = [...MAP_THEMES, "neon"] as const;
 const MAP_LABEL_SIZES = [100, 125, 150, 200] as const;
 const MAP_LABEL_DENSITIES = ["standard", "more", "max"] as const;
 const MAP_MODES = ["north", "chase"] as const;
@@ -51,19 +52,20 @@ function normalizeText(value: unknown, fallback: OverlayTextState): OverlayTextS
     };
 }
 
-function normalizeMarker(value: unknown, fallback: MapMarkerAppearance): MapMarkerAppearance {
+function normalizeGameMarkers(value: unknown): OverlayMapState["gameMarkers"] {
     const candidate = record(value);
-    if (!candidate) return { ...fallback };
-    return {
-        shape: oneOf(candidate.shape, MAP_MARKER_SHAPES, fallback.shape),
-        color: color(candidate.color, fallback.color).toLowerCase(),
-        size: oneOf(candidate.size, MAP_MARKER_SIZES, fallback.size),
-    };
+    const markers: OverlayMapState["gameMarkers"] = {};
+    for (const theme of ["san-andreas", "vice-city"] as const) {
+        if (record(candidate?.[theme]))
+            markers[theme] = normalizeMapMarkerAppearance(candidate?.[theme], RADAR_MARKER_APPEARANCE);
+    }
+    return markers;
 }
 
 function normalizeMap(value: unknown, fallback: OverlayMapState): OverlayMapState {
     const candidate = record(value);
-    if (!candidate) return { ...fallback, marker: { ...fallback.marker } };
+    if (!candidate)
+        return { ...fallback, marker: { ...fallback.marker }, gameMarkers: normalizeGameMarkers(fallback.gameMarkers) };
     return {
         enabled: bool(candidate.enabled, fallback.enabled),
         provider: oneOf(candidate.provider, MAP_PROVIDERS, fallback.provider),
@@ -72,10 +74,11 @@ function normalizeMap(value: unknown, fallback: OverlayMapState): OverlayMapStat
         scalePct: finiteInRange(candidate.scalePct, fallback.scalePct, 50, 200),
         zoomKm: finiteInRange(candidate.zoomKm, fallback.zoomKm, 0.1, 10),
         shape: oneOf(candidate.shape, MAP_SHAPES, fallback.shape),
-        theme: oneOf(candidate.theme, MAP_THEMES, fallback.theme),
+        theme: oneOf(candidate.theme, EXPORT_MAP_THEMES, fallback.theme),
         labelScalePct: oneOf(candidate.labelScalePct, MAP_LABEL_SIZES, fallback.labelScalePct),
         labelDensity: oneOf(candidate.labelDensity, MAP_LABEL_DENSITIES, fallback.labelDensity),
-        marker: normalizeMarker(candidate.marker, fallback.marker),
+        marker: normalizeMapMarkerAppearance(candidate.marker, fallback.marker),
+        gameMarkers: normalizeGameMarkers(candidate.gameMarkers),
         mode: oneOf(candidate.mode, MAP_MODES, fallback.mode),
         pitchDeg: finiteInRange(candidate.pitchDeg, fallback.pitchDeg, 0, 70),
         adaptiveZoom: bool(candidate.adaptiveZoom, fallback.adaptiveZoom),
@@ -109,7 +112,11 @@ export function cloneOverlayPreferences(preferences: OverlayPreferences): Overla
         overlayScrim: preferences.overlayScrim,
         overlaySpeed: { ...preferences.overlaySpeed },
         overlayCoords: { ...preferences.overlayCoords },
-        overlayMap: { ...preferences.overlayMap, marker: { ...preferences.overlayMap.marker } },
+        overlayMap: {
+            ...preferences.overlayMap,
+            marker: { ...preferences.overlayMap.marker },
+            gameMarkers: structuredClone(preferences.overlayMap.gameMarkers),
+        },
         overlayClock: { ...preferences.overlayClock },
         overlayCompass: { ...preferences.overlayCompass },
         overlayGforce: { ...preferences.overlayGforce },

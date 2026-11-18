@@ -3,13 +3,23 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 
+function styleUrls(prefix: string) {
+    return {
+        light: `${prefix}light.json`,
+        dark: `${prefix}dark.json`,
+        neon: `${prefix}neon.json`,
+        "san-andreas": `${prefix}san-andreas.json`,
+        "vice-city": `${prefix}vice-city.json`,
+    };
+}
+
 /** One immutable directory pairs styles with the local sprites they reference. */
 export function computeMapStyles(command: "build" | "serve" = "build", root = process.cwd()) {
     // Vite serves public files directly in dev, so edits are visible on reload.
     // Only deployed styles need immutable URLs paired with their sprites.
     if (command === "serve") {
         return {
-            urls: { light: "/styles/light.json", dark: "/styles/dark.json", neon: "/styles/neon.json" },
+            urls: styleUrls("/styles/"),
             files: new Map<string, Buffer>(),
         };
     }
@@ -30,7 +40,7 @@ export function computeMapStyles(command: "build" | "serve" = "build", root = pr
                 : bytes,
         );
     }
-    return { urls: { light: `${prefix}light.json`, dark: `${prefix}dark.json`, neon: `${prefix}neon.json` }, files };
+    return { urls: styleUrls(prefix), files };
 }
 
 export function mapStylesPlugin(assets: ReturnType<typeof computeMapStyles>): Plugin {

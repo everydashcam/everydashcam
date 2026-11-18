@@ -15,6 +15,8 @@
 // exportPanelState. All UI inputs persist in exportPanelState; this module
 // only reads.
 
+import { markerForMapTheme } from "./map-marker-pref.js";
+import { radarTheme } from "../map-radar.js";
 import { createSubscribers } from "../subscribers.js";
 import { hasCameraFlip } from "../camera-flip.js";
 import { cameraFlipForChannel } from "./camera-flip-pref.js";
@@ -388,6 +390,7 @@ export function buildOverlayPipelineArgs(trip: Trip): OverlayPipelineArgs | null
                   scalePct: s.overlayMap.scalePct,
                   zoomKm: s.overlayMap.zoomKm,
                   shape: s.overlayMap.shape,
+                  radar: radarTheme(s.overlayMap.theme),
                   headingUp: s.overlayMap.mode === "chase",
                   adaptiveZoom: s.overlayMap.adaptiveZoom,
               }
@@ -909,7 +912,7 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     const watermarkAnchor = watermarkAnchorForExport();
     const overlays = buildOverlayPipelineArgs(trip);
     const mapConfig = overlays?.map
-        ? { ...exportPanelState.overlayMap, marker: { ...exportPanelState.overlayMap.marker } }
+        ? { ...exportPanelState.overlayMap, marker: { ...markerForMapTheme(exportPanelState.overlayMap) } }
         : null;
     const dims = resolveOutputDims();
     const desiredBitrate = resolveReencodeBitrate(trip, dims);

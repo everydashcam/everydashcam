@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import light from "../../public/styles/light.json";
 import dark from "../../public/styles/dark.json";
+import sanAndreas from "../../public/styles/san-andreas.json";
+import viceCity from "../../public/styles/vice-city.json";
 import neon from "../../public/styles/neon.json";
 import { loadMapStyleSource } from "./map-style-source.js";
 
@@ -9,6 +11,8 @@ describe("portable map styles", () => {
         ["light", light],
         ["dark", dark],
         ["neon", neon],
+        ["san-andreas", sanAndreas],
+        ["vice-city", viceCity],
     ] as const)("preserves the %s style and isolates map mutations", async (theme, source) => {
         const original = structuredClone(source);
         const expected = { ...original, sprite: "dcasset://assets/sprite" };

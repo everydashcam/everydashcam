@@ -9,6 +9,7 @@
 // preset, export-panel itself, range pull-tabs, watermark overlay) subscribe
 // here.
 
+import type { RadarTheme } from "../map-radar.js";
 import { createSubscribers } from "../subscribers.js";
 import type { BlurStyle } from "../blur-regions.js";
 import { createLogger } from "../log.js";
@@ -114,6 +115,7 @@ export interface OverlayMapState {
     /** Current-position marker for exported overlays. The first default comes
      *  from the global map preference, then the overlay choice is independent. */
     marker: MapMarkerAppearance;
+    gameMarkers: Partial<Record<RadarTheme, MapMarkerAppearance>>;
     /** Camera view. "north" = north-up (the legacy look); "chase" = tilted,
      *  heading-up (the car points up, road ahead in view). Default "north". */
     mode: MapViewMode;
@@ -249,7 +251,8 @@ function freshOverlayPreferences(): OverlayPreferences {
             theme: "neon",
             labelScalePct: 100,
             labelDensity: "standard",
-            marker: getMapMarkerAppearance(),
+            marker: getMapMarkerAppearance("neon"),
+            gameMarkers: {},
             mode: "chase",
             pitchDeg: 58,
             adaptiveZoom: true,
@@ -329,6 +332,7 @@ function applyOverlayPreferences(preferences: OverlayPreferences): void {
     Object.assign(exportPanelState.overlayCoords, preferences.overlayCoords);
     Object.assign(exportPanelState.overlayMap, preferences.overlayMap, {
         marker: { ...preferences.overlayMap.marker },
+        gameMarkers: structuredClone(preferences.overlayMap.gameMarkers),
     });
     Object.assign(exportPanelState.overlayClock, preferences.overlayClock);
     Object.assign(exportPanelState.overlayCompass, preferences.overlayCompass);
@@ -345,7 +349,7 @@ export function hasCustomOverlayPreferences(): boolean {
 }
 
 function refreshDefaultOverlayMarker(): void {
-    defaultOverlayPreferences.overlayMap.marker = getMapMarkerAppearance();
+    defaultOverlayPreferences.overlayMap.marker = getMapMarkerAppearance("neon");
 }
 
 /** Restores only the Overlay fieldset; output, trim, cameras and privacy zones

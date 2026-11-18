@@ -6,6 +6,7 @@
 // Type-only import: erased at build, so it does NOT pull the ~1MB maplibre-gl
 // lib into the bundle. The runtime namespace is loaded lazily via loadMaplibre().
 // Namespace form: v6 is ESM-only and has no default export.
+import { setRadarFrame } from "../map-radar.js";
 import type * as maplibregl from "maplibre-gl";
 // Worker entry URL, resolved at build time to a string - the lib itself stays
 // out of the eager graph. Keep `?worker&url` so Vite builds the worker and the
@@ -30,13 +31,13 @@ import {
 } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { loadMapStyleSource } from "./map-style-source.js";
-import { applyMapStylePreset } from "./map-style-preset.js";
+import { readableGameMap, radarBaseStyle, applyMapStylePreset } from "./map-style-preset.js";
 import { registerSharedMapTileCache } from "./map-tile-cache.js";
-import { getMapViewPreferences, subscribeMapViewPreferences } from "./map-view-pref.js";
+import { getMapViewPreferences, subscribeMapViewPreferences, viewerRadarTheme } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
 import { createPortableMapAssetLoader } from "./portable-map-assets.js";
 import { currentMapTheme, mapThemeColors } from "./theme.js";
-import type { MapStyleId, MapTheme } from "./theme.js";
+import type { MapStyleId } from "./theme.js";
 import { createYandexMapStyle } from "./yandex-map.js";
 
 // Shares the trip map's logger name: browser tests recognize the
@@ -95,12 +96,7 @@ export const EMPTY_MAP_STYLE: maplibregl.StyleSpecification = {
     layers: [],
 };
 
-// Style cache: every map shares one URL per theme, no double fetch. The promise
-// is cleared after failure so retry triggers a real re-request. Both themes are
-// prefetched when a map registers (the inactive one with source="prefetch",
-// silent on failure) so theme toggles and the export-overlay snapshotter (always
-// "light") hit the cache instead of triggering a fresh fetch with its own
-// failure surface.
+// Viewer and export share one style load per provider and palette. Failures remain retryable.
 type MapStyleCacheKey = `${MapProvider}:${MapStyleId}`;
 const cachedMapStyles = new Map<MapStyleCacheKey, maplibregl.StyleSpecification>();
 interface PendingMapStyle {
@@ -347,8 +343,9 @@ export function registerViewerMap(viewerMap: ViewerMap): () => void {
     }
     // Warm the alternate palette for map settings and export; background
     // requests must not show a failure banner for an unselected style.
-    const otherTheme: MapTheme = theme === "light" ? "dark" : "light";
-    void loadMapStyle(otherTheme, false, "prefetch", provider);
+    if (theme === "light" || theme === "dark") {
+        void loadMapStyle(theme === "light" ? "dark" : "light", false, "prefetch", provider);
+    }
     return unregister;
 }
 
@@ -367,6 +364,14 @@ function applyStyleTo(
     shouldPreserveCamera: boolean,
 ): void {
     viewerMap.beforeStyleSwap?.(shouldPreserveCamera);
+    if (viewerMap.surface === "mini") {
+        const radar = viewerRadarTheme(provider);
+        setRadarFrame(viewerMap.map.getContainer(), radar);
+        viewerMap.map.resize();
+        if (radar) styled = radarBaseStyle(styled);
+    } else if (viewerMap.surface === "main" && viewerRadarTheme(provider)) {
+        styled = readableGameMap(styled, getCurrentLang());
+    }
     setViewerMapStyle(viewerMap.map, styled);
     viewerMap.attribution.setProvider(provider);
 }
@@ -422,8 +427,7 @@ export function viewerMapColors(): ReturnType<typeof mapThemeColors> {
 }
 
 /**
- * Fetches and applies the map style for the current theme. Both themes are
- * prefetched when a map registers, so this is usually a cache hit.
+ * Fetches and applies the map style for the current theme.
  * applyLoadedStyle verifies theme freshness before applying so a stale result
  * from a double-switch is discarded.
  */

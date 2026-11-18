@@ -3,6 +3,7 @@ import type { IControl, Map as MapLibreMap } from "maplibre-gl";
 import yandexLogoEn from "../assets/credits/yandex-en.svg?no-inline";
 import yandexLogoRu from "../assets/credits/yandex-ru.svg?no-inline";
 import { getCurrentLang, t } from "../i18n/index.js";
+import { SVG_NS } from "./icons.js";
 import type { MapProvider } from "./map-provider.js";
 
 interface MapAttributionOptions {
@@ -31,6 +32,17 @@ export class MapAttributionControl implements IControl {
         root.className = "maplibregl-ctrl dc-map-attrib";
         root.setAttribute("aria-label", t("map.ctrl.attribution"));
         this.root = root;
+        root.addEventListener("keydown", (event) => {
+            const toggle = root.querySelector<HTMLButtonElement>('.dc-map-attrib-toggle[aria-expanded="true"]');
+            if (event.key !== "Escape" || !toggle || !toggle.offsetWidth) return;
+            event.stopPropagation();
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.focus();
+        });
+        root.addEventListener("focusout", (event) => {
+            if (!root.contains(event.relatedTarget as Node | null))
+                root.querySelector(".dc-map-attrib-toggle")?.setAttribute("aria-expanded", "false");
+        });
         this.map = map;
         this.bottomInset = 0;
         this.reservedBottom = 0;
@@ -80,9 +92,10 @@ export class MapAttributionControl implements IControl {
     }
 
     setProvider(provider: MapProvider): void {
-        this.provider = provider;
         const root = this.root;
-        if (!root) return;
+        const unchanged = this.provider === provider && root?.hasChildNodes();
+        this.provider = provider;
+        if (!root || unchanged) return;
         root.replaceChildren();
         root.classList.toggle("dc-map-attrib--yandex", provider === "yandex");
         root.hidden = provider === "route-only";
@@ -113,6 +126,23 @@ export class MapAttributionControl implements IControl {
                     ? `${osm} · © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>` +
                       ' · © <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>'
                     : osm;
+            if (this.options.reserveBottomSpace) {
+                const toggle = document.createElement("button");
+                toggle.type = "button";
+                toggle.className = "dc-map-attrib-toggle";
+                const label = document.createElement("span");
+                label.textContent = "© OpenStreetMap";
+                toggle.title = t("map.ctrl.attribution");
+                toggle.setAttribute("aria-label", `${label.textContent} · ${toggle.title}`);
+                toggle.setAttribute("aria-expanded", "false");
+                text.id = `${this.map!.getContainer().id}-credits`;
+                toggle.append(label, curvedCredit(label.textContent, `${text.id}-arc`));
+                toggle.setAttribute("aria-controls", text.id);
+                toggle.addEventListener("click", () => {
+                    toggle.setAttribute("aria-expanded", String(toggle.getAttribute("aria-expanded") !== "true"));
+                });
+                root.append(toggle);
+            }
             root.append(text);
         }
         this.scheduleLayout();
@@ -134,7 +164,8 @@ export class MapAttributionControl implements IControl {
         const mapBounds = container.getBoundingClientRect();
         const credits = root.getBoundingClientRect();
         if (this.options.reserveBottomSpace) {
-            const bottom = Math.ceil(credits.height);
+            const bottom =
+                container.dataset.radar || container.dataset.shape === "circle" ? 0 : Math.ceil(credits.height);
             if (bottom !== this.reservedBottom) {
                 this.reservedBottom = bottom;
                 map.setPadding({ bottom });
@@ -177,6 +208,26 @@ export class MapAttributionControl implements IControl {
         }
         if (this.controlContainer) this.controlContainer.style.bottom = `${inset}px`;
     }
+}
+
+function curvedCredit(label: string, pathId: string): SVGSVGElement {
+    // Crop the lower arc of the 180-unit radar so the button only covers the caption.
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "-55 49 110 39");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.id = pathId;
+    path.setAttribute("d", "M -84 0 A 84 84 0 0 0 84 0");
+    path.setAttribute("fill", "none");
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("text-anchor", "middle");
+    const caption = document.createElementNS(SVG_NS, "textPath");
+    caption.setAttribute("href", `#${pathId}`);
+    caption.setAttribute("startOffset", "50%");
+    caption.textContent = label;
+    text.append(caption);
+    svg.append(path, text);
+    return svg;
 }
 
 function attributionLink(href: string, label: string): HTMLAnchorElement {

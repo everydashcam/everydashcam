@@ -1,4 +1,4 @@
-import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
+import type { LayerSpecification, StyleSpecification, SymbolLayerSpecification } from "maplibre-gl";
 
 import type { MapStylePreset } from "./map-view-pref.js";
 
@@ -40,4 +40,85 @@ export function applyMapStylePreset(style: StyleSpecification, preset: MapStyleP
         }
     }
     return clone;
+}
+
+export function isStreetNameLayer(layer: LayerSpecification): boolean {
+    return layer.type === "symbol" && (layer.id.startsWith("highway-name-") || layer.id === "osm-street-labels");
+}
+
+/** The large game map uses quieter geometry beneath the street names. Keep
+ * viewer text scale, street density and any reduced-context preset in effect. */
+export function readableGameMap(style: StyleSpecification, lang: string): StyleSpecification {
+    const layers: LayerSpecification[] = [];
+    const streets: SymbolLayerSpecification[] = [];
+    for (const layer of style.layers) {
+        const role = layerRole(layer);
+        if (layer.type === "symbol" && isStreetNameLayer(layer)) {
+            streets.push({
+                ...layer,
+                layout: {
+                    ...layer.layout,
+                    "text-field": ["coalesce", ["get", `name:${lang}`], ["get", `name_${lang}`], ["get", "name"], ""],
+                    "text-offset": [0, -0.85],
+                    "text-padding": 4,
+                    "text-pitch-alignment": "viewport",
+                },
+                paint: { ...layer.paint, "text-halo-width": 1.8, "text-halo-blur": 0.25 },
+            });
+        } else if (
+            layer.type === "line" &&
+            (layer["source-layer"] === "transportation" || layer["source-layer"] === "streets")
+        ) {
+            const opacity = layer.paint?.["line-opacity"] ?? 1;
+            // Retain the existing tunnel opacity and the hierarchy of overpasses.
+            if (typeof opacity !== "number" && !Array.isArray(opacity)) {
+                layers.push(layer);
+                continue;
+            }
+            layers.push({
+                ...layer,
+                paint: {
+                    ...layer.paint,
+                    "line-opacity": [
+                        "*",
+                        opacity,
+                        [
+                            "match",
+                            ["get", layer["source-layer"] === "streets" ? "kind" : "class"],
+                            ["path", "track", "footway", "cycleway", "bridleway", "steps", "service", "pedestrian"],
+                            0.24,
+                            ["minor", "residential", "living_street", "unclassified"],
+                            0.62,
+                            1,
+                        ],
+                    ],
+                },
+            });
+        } else if (layer.type === "fill" && (role === "building" || role === "park" || role === "landcover")) {
+            const opacity = layer.paint?.["fill-opacity"] ?? 1;
+            const cap = role === "building" ? 0.36 : 0.56;
+            layers.push(
+                typeof opacity === "number"
+                    ? { ...layer, paint: { ...layer.paint, "fill-opacity": Math.min(opacity, cap) } }
+                    : layer,
+            );
+        } else if (layer.type === "symbol" && (role === "poi" || role === "poi-driver")) {
+            layers.push({ ...layer, minzoom: Math.max(layer.minzoom ?? 0, role === "poi-driver" ? 16 : 17) });
+        } else {
+            layers.push(layer);
+        }
+    }
+    // Later symbol layers get first choice of collision space.
+    return { ...style, layers: [...layers, ...streets] };
+}
+
+/** A moving radar shows roads and terrain. Nearby addresses, street names and
+ * POI icons compete with the route at this size. Only the basemap is filtered. */
+export function radarBaseStyle(style: StyleSpecification): StyleSpecification {
+    return {
+        ...style,
+        layers: style.layers.filter(
+            (layer) => layer.type !== "symbol" && layerRole(layer) !== "poi" && layerRole(layer) !== "poi-driver",
+        ),
+    };
 }

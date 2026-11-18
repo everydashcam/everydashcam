@@ -12,6 +12,7 @@
 // freely. The map overlay paints from a hidden MapLibre snapshotter (the same
 // export-map-snapshot.ts the pipeline uses), refreshed on timeupdate.
 
+import { radarTheme, setRadarFrame } from "../map-radar.js";
 import { createLogger } from "../log.js";
 import { createSerialQueue } from "../serial-queue.js";
 import { interpolatePosition } from "../parser.js";
@@ -41,7 +42,7 @@ import { syncPlayerBackdrop } from "./player-backdrop.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeFrame, activeTripHasGps, state } from "./state.js";
 import type { MapStyleId } from "./theme.js";
-import { mapMarkerAppearanceKey } from "./map-marker-pref.js";
+import { markerForMapTheme, mapMarkerAppearanceKey } from "./map-marker-pref.js";
 
 // The element the overlays are positioned/sized within - the OUTPUT-FRAME
 // reference, which is the full grid. All overlay geometry (drag clamping,
@@ -312,6 +313,7 @@ function patchPreviewArgsLight(): void {
         a.map.yPct = exportPanelState.overlayMap.yPct;
         a.map.scalePct = exportPanelState.overlayMap.scalePct;
         a.map.shape = exportPanelState.overlayMap.shape;
+        a.map.radar = radarTheme(exportPanelState.overlayMap.theme);
         a.map.zoomKm = exportPanelState.overlayMap.zoomKm;
     }
 }
@@ -525,8 +527,10 @@ function sizeMapOverlay(): void {
     if (!mp || mp.hidden) return;
     const overlayMap = exportPanelState.overlayMap;
     const output = resolveOutputDims();
+    const radar = radarTheme(overlayMap.theme);
     const rect = mapOverlayRect(output.width, output.height, overlayMap);
     mp.dataset.shape = overlayMap.shape;
+    setRadarFrame(mp, radar);
     mp.style.width = `${(rect.width / output.width) * 100}%`;
     mp.style.height = `${(rect.height / output.height) * 100}%`;
     mp.style.left = `${(rect.x / output.width) * 100}%`;
@@ -713,12 +717,13 @@ async function refreshMapSnapshot(
     const om = exportPanelState.overlayMap;
     const zoomKm = om.zoomKm;
     const theme = om.theme;
+    const marker = markerForMapTheme(om);
     const headingUp = om.mode === "chase";
     // Every render-affecting setting joins the dedup key so changing it (at the
     // same playhead position) is not skipped by the early-return below. Speed is
     // included only when adaptive zoom is on (it changes the zoom then).
     const speedBucket = headingUp && om.adaptiveZoom ? Math.round(pos.speedMs) : 0;
-    const key = `${pos.lat.toFixed(4)}|${pos.lon.toFixed(4)}|${zoomKm}|${Math.round(pos.bearingDeg)}|${om.provider}|${theme}|${om.labelScalePct}|${om.labelDensity}|${om.mode}|${om.pitchDeg}|${om.adaptiveZoom ? 1 : 0}|${speedBucket}|${mapMarkerAppearanceKey(om.marker)}|${om.marker.size}`;
+    const key = `${pos.lat.toFixed(4)}|${pos.lon.toFixed(4)}|${zoomKm}|${Math.round(pos.bearingDeg)}|${om.provider}|${theme}|${om.labelScalePct}|${om.labelDensity}|${om.mode}|${om.pitchDeg}|${om.adaptiveZoom ? 1 : 0}|${speedBucket}|${mapMarkerAppearanceKey(marker)}|${marker.size}`;
     const shouldRebuild =
         !mapSnapshotterPromise ||
         mapSnapshotterTripUtc !== tripStartUtc ||
@@ -752,7 +757,7 @@ async function refreshMapSnapshot(
                 provider: providerPreference,
                 labelScalePct: om.labelScalePct,
                 labelDensity: om.labelDensity,
-                markerAppearance: om.marker,
+                markerAppearance: marker,
                 onProviderChange: (provider) => {
                     if (myPromise !== mapSnapshotterPromise) return;
                     setExportMapPreviewProvider(providerPreference, provider);
@@ -785,7 +790,7 @@ async function refreshMapSnapshot(
     }
     const snap = await mapSnapshotterPromise;
     if (!snap) return;
-    snap.setMarkerAppearance(om.marker);
+    snap.setMarkerAppearance(marker);
     if (!exportPanelState.overlayMap.enabled || seqAtStart !== mapSnapshotSeq) return;
 
     // Serialize the snapshot+draw: `snap` is ONE MapLibre instance

@@ -5,6 +5,7 @@
 
 import type { ExpressionSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
 
+import gamePalettes from "./map-game-palettes.json";
 import type { MapStyleId } from "./theme.js";
 import type { MapProvider } from "./map-provider.js";
 
@@ -13,6 +14,9 @@ export const OSM_SHORTBREAD_SOURCE_ID = "osm-shortbread";
 export const OSM_SHORTBREAD_BUILDING_SOURCE_LAYER = "buildings";
 
 interface Palette {
+    sand?: string;
+    bridgeCasing?: string;
+    transportArea?: string;
     background: string;
     water: string;
     waterLine: string;
@@ -34,7 +38,20 @@ interface Palette {
     waterLabel: string;
 }
 
+function gamePalette(theme: keyof typeof gamePalettes): Palette {
+    const colors = gamePalettes[theme];
+    return {
+        ...colors,
+        roadMinor: colors.minor,
+        roadMajor: colors.primary,
+        site: colors.landuse,
+        labelHalo: colors.halo,
+    };
+}
+
 const PALETTES: Record<MapStyleId, Palette> = {
+    "san-andreas": gamePalette("san-andreas"),
+    "vice-city": gamePalette("vice-city"),
     light: {
         background: "#f5f4ef",
         water: "#a8d1e7",
@@ -161,6 +178,31 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
     const layers: LayerSpecification[] = [
         { id: "osm-bg", type: "background", paint: { "background-color": p.background } },
         { id: "osm-ocean", type: "fill", source, "source-layer": "ocean", paint: { "fill-color": p.water } },
+        ...(p.sand
+            ? ([
+                  {
+                      id: "osm-urban-land",
+                      type: "fill",
+                      source,
+                      "source-layer": "land",
+                      filter: [
+                          "in",
+                          ["get", "kind"],
+                          ["literal", ["residential", "commercial", "industrial", "retail"]],
+                      ],
+                      metadata: { "everydashcam:role": "landuse" },
+                      paint: { "fill-color": p.site },
+                  },
+                  {
+                      id: "osm-sand",
+                      type: "fill",
+                      source,
+                      "source-layer": "land",
+                      filter: ["in", ["get", "kind"], ["literal", ["sand", "beach", "bare_rock"]]],
+                      paint: { "fill-color": p.sand },
+                  },
+              ] satisfies LayerSpecification[])
+            : []),
         {
             id: "osm-water",
             type: "fill",
@@ -231,7 +273,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             source,
             "source-layer": "street_polygons",
             minzoom: 11,
-            paint: { "fill-color": p.roadMinor, "fill-opacity": 0.8 },
+            paint: { "fill-color": p.transportArea ?? p.roadMinor, "fill-opacity": 0.8 },
         },
         {
             id: "osm-paths",
@@ -287,7 +329,12 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
                 ],
             ],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.roadCasing, "line-width": roadCasingWidth() },
+            paint: {
+                "line-color": p.bridgeCasing
+                    ? ["case", ["==", ["get", "bridge"], true], p.bridgeCasing, p.roadCasing]
+                    : p.roadCasing,
+                "line-width": roadCasingWidth(),
+            },
         },
         {
             id: "osm-roads-minor",

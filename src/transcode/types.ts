@@ -3,6 +3,7 @@
 // - this is a viewer, not an editor. Extend only if multi-segment splicing
 // from a single trip is ever needed.
 
+import type { RadarTheme } from "../map-radar.js";
 import type { CameraFlip } from "../camera-flip.js";
 import type { BlurRegion } from "../blur-regions.js";
 import type { Channel, GpsRecord } from "../parsers/types.js";
@@ -167,6 +168,7 @@ export interface OverlayTextPipelineOpts {
 }
 
 export interface OverlayMapPipelineOpts {
+    radar?: RadarTheme;
     xPct: number;
     yPct: number;
     scalePct: number;

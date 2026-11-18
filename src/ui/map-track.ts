@@ -15,7 +15,7 @@ export function speedTrackOuterWidth(width: number): number {
 export function addSpeedTrack(
     map: MapLibreMap,
     data: MiniMapData,
-    options: { sourceId: string; layerId?: string; width: number; opacity?: number },
+    options: { sourceId: string; layerId?: string; beforeId?: string; width: number; opacity?: number },
 ): void {
     const { sourceId, layerId = sourceId, width, opacity = 1 } = options;
     map.addSource(sourceId, {
@@ -34,29 +34,35 @@ export function addSpeedTrack(
         { id: `${layerId}-halo`, width: speedTrackOuterWidth(width), color: colors.trackHalo },
         { id: `${layerId}-outline`, width: width + 2 * TRACK_OUTLINE_WIDTH_PX, color: colors.trackOutline },
     ]) {
-        map.addLayer({
-            id: casing.id,
+        map.addLayer(
+            {
+                id: casing.id,
+                type: "line",
+                source: sourceId,
+                layout: { "line-join": "round", "line-cap": "round" },
+                paint: {
+                    "line-width": casing.width,
+                    "line-color": casing.color,
+                    "line-opacity": opacity,
+                },
+            },
+            options.beforeId,
+        );
+    }
+    map.addLayer(
+        {
+            id: layerId,
             type: "line",
             source: sourceId,
             layout: { "line-join": "round", "line-cap": "round" },
             paint: {
-                "line-width": casing.width,
-                "line-color": casing.color,
+                "line-width": width,
                 "line-opacity": opacity,
+                "line-gradient": data.gradient as ExpressionSpecification,
             },
-        });
-    }
-    map.addLayer({
-        id: layerId,
-        type: "line",
-        source: sourceId,
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-            "line-width": width,
-            "line-opacity": opacity,
-            "line-gradient": data.gradient as ExpressionSpecification,
         },
-    });
+        options.beforeId,
+    );
 }
 
 export function removeSpeedTrack(map: MapLibreMap, sourceId: string, layerId = sourceId): void {

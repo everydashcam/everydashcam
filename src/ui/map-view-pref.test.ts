@@ -15,14 +15,24 @@ describe("map view preferences", () => {
 
     it("defaults to classic with the interface theme and 3D buildings", () => {
         vi.stubGlobal("localStorage", { getItem: () => null });
-        expect(getMapViewPreferences()).toEqual({ style: "classic", theme: "auto", buildings3d: true });
+        expect(getMapViewPreferences()).toEqual({
+            miniMapShape: "rect",
+            style: "classic",
+            theme: "auto",
+            buildings3d: true,
+        });
     });
 
     it("preserves valid fields when a saved choice is unknown", () => {
         vi.stubGlobal("localStorage", {
             getItem: () => JSON.stringify({ style: "obsolete", theme: "dark", buildings3d: false }),
         });
-        expect(getMapViewPreferences()).toEqual({ style: "classic", theme: "dark", buildings3d: false });
+        expect(getMapViewPreferences()).toEqual({
+            miniMapShape: "rect",
+            style: "classic",
+            theme: "dark",
+            buildings3d: false,
+        });
     });
 
     it("keeps both panels in sync when persistence fails", () => {
@@ -39,7 +49,7 @@ describe("map view preferences", () => {
             observed.push(preferences);
             preferences.style = "classic";
         });
-        const preferences = { style: "minimal", theme: "light", buildings3d: false } as const;
+        const preferences = { miniMapShape: "rect", style: "minimal", theme: "light", buildings3d: false } as const;
         setMapViewPreferences(preferences);
         expect(getMapViewPreferences()).toEqual(preferences);
         setMapViewPreferences(preferences);
@@ -49,13 +59,24 @@ describe("map view preferences", () => {
         expect(observed).toHaveLength(1);
     });
 
+    it("keeps a manual shape until another game theme is selected", () => {
+        vi.stubGlobal("localStorage", { getItem: () => JSON.stringify({ theme: "san-andreas" }), setItem: () => {} });
+        expect(getMapViewPreferences().miniMapShape).toBe("circle");
+        setMapViewPreferences({ ...getMapViewPreferences(), miniMapShape: "rect" });
+        setMapViewPreferences({ ...getMapViewPreferences(), style: "minimal" });
+        expect(getMapViewPreferences().miniMapShape).toBe("rect");
+        setMapViewPreferences({ ...getMapViewPreferences(), theme: "vice-city" });
+        expect(getMapViewPreferences().miniMapShape).toBe("circle");
+    });
+
     it("restores the selection after a new page session", () => {
         const storage = new Map<string, string>();
         vi.stubGlobal("localStorage", {
             getItem: (key: string) => storage.get(key) ?? null,
             setItem: (key: string, value: string) => storage.set(key, value),
         });
-        const preferences = { style: "road", theme: "dark", buildings3d: false } as const;
+        setMapViewPreferences({ ...getMapViewPreferences(), theme: "vice-city" });
+        const preferences = { miniMapShape: "rect", style: "road", theme: "vice-city", buildings3d: false } as const;
         setMapViewPreferences(preferences);
         _resetForTests();
         expect(getMapViewPreferences()).toEqual(preferences);

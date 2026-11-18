@@ -1,3 +1,4 @@
+import { radarTheme, shapeForMapTheme } from "../map-radar.js";
 import { maybeShowPostExportToast } from "./pwa-install.js";
 // Export panel: side-drawer (desktop) / bottom-sheet (mobile) housing the
 // inline save UI - output frame size/aspect, quality, audio/gpmf/gpx, letterbox
@@ -122,6 +123,7 @@ import {
 } from "./blur-assets.js";
 import { isMapAvailable } from "./map.js";
 import { STREET_LABEL_DENSITY_LABEL_KEYS, STREET_LABEL_DENSITY_VALUES } from "./map-label-scale.js";
+import { markerForMapTheme } from "./map-marker-pref.js";
 import { renderMapMarkerControl } from "./map-marker-control.js";
 import { createMapProviderSelect } from "./map-provider-control.js";
 import { MAP_PROVIDER_REGISTRY, MAX_MAP_PITCH_DEG } from "./map-provider-registry.js";
@@ -2808,19 +2810,27 @@ function renderMapMarkerField(): HTMLElement {
     label.textContent = t("export.overlays.mapMarker");
     const host = document.createElement("div");
     host.id = "export-map-marker-control";
-    renderMapMarkerControl(host, {
-        appearance: exportPanelState.overlayMap.marker,
-        onChange: (appearance) => {
-            exportPanelState.overlayMap.marker = appearance;
-            notifyExportStateChanged();
-        },
-        idPrefix: "export",
-    });
+    syncExportMarkerControl(host);
     const note = document.createElement("p");
     note.className = "export-panel__note";
     note.textContent = t("export.overlays.mapMarker.description");
     wrap.append(label, host, note);
     return wrap;
+}
+
+function syncExportMarkerControl(host: HTMLElement): void {
+    const map = exportPanelState.overlayMap;
+    const game = radarTheme(map.theme);
+    renderMapMarkerControl(host, {
+        appearance: markerForMapTheme(map),
+        radar: game,
+        onChange: (appearance) => {
+            if (game) map.gameMarkers[game] = appearance;
+            else map.marker = appearance;
+            notifyExportStateChanged();
+        },
+        idPrefix: "export",
+    });
 }
 
 function renderMapShapeSegment(): HTMLElement {
@@ -2846,11 +2856,18 @@ function renderMapThemeSegment(): HTMLElement {
         choices: [
             ["light", t("export.overlays.mapTheme.light")],
             ["dark", t("export.overlays.mapTheme.dark")],
+            ["san-andreas", t("settings.map.theme.san-andreas")],
+            ["vice-city", t("settings.map.theme.vice-city")],
             ["neon", t("export.overlays.mapTheme.neon")],
         ],
         current: exportPanelState.overlayMap.theme,
         onChange: (theme) => {
-            exportPanelState.overlayMap.theme = theme;
+            const map = exportPanelState.overlayMap;
+            if (map.theme === theme) return;
+            map.shape = shapeForMapTheme(theme, map.shape);
+            map.theme = theme;
+            const host = document.getElementById("export-map-marker-control");
+            if (host) syncExportMarkerControl(host);
         },
     });
 }
@@ -2940,6 +2957,10 @@ function syncExportMapControls(): void {
         button.disabled = button.dataset.mapmode === "chase" && !camera.supportsHeadingUp;
         setToggleSelected(button, button.dataset.mapmode === mode);
     }
+    for (const button of overlayInspectorEl.querySelectorAll<HTMLButtonElement>("button[data-shape]")) {
+        setToggleSelected(button, button.dataset.shape === exportPanelState.overlayMap.shape);
+    }
+    overlayInspectorEl.toggleAttribute("data-radar", !!radarTheme(exportPanelState.overlayMap.theme));
     const extras = overlayInspectorEl.querySelector<HTMLElement>("#export-map-chase-controls");
     if (extras) extras.hidden = mode !== "chase";
     const hint = overlayInspectorEl.querySelector<HTMLElement>("#export-map-appearance-unavailable");

@@ -81,11 +81,24 @@ test("renders configured Yandex tiles and the embedded attribution logo from a f
     await page.goto(pathToFileURL(join(directory, portableFilename(version, "en"))).href);
     await expect(page.locator("html")).not.toHaveClass(/is-loading/);
     await page.locator("#settings-btn").click();
-    await page.locator("#settings-map-provider-select").selectOption("yandex");
+    const provider = page.locator("#settings-map-provider-select");
+    await provider.selectOption("route-only");
+    await page.locator("#settings-map-theme-select").selectOption("vice-city");
+    await provider.selectOption("yandex");
     await page.locator("#settings-modal-header-close").click();
     await loadTrip(page, SAMPLE_70MAI);
     await pausePlayback(page);
     await expectYandexMap(page);
+    const mini = page.locator("#mini-map");
+    await expect(mini).toHaveAttribute("data-shape", "rect");
+    await expect(mini.locator(".car-marker__canvas")).toHaveAttribute("data-marker-render-key", "arrow:#ff9000");
+    await page.locator("#settings-btn").click();
+    await provider.selectOption("route-only");
+    await expect(mini).toHaveAttribute("data-shape", "circle");
+    await expect(mini.locator(".car-marker__canvas")).toHaveAttribute(
+        "data-marker-render-key",
+        "arrow:#f4f4f2:vice-city",
+    );
 });
 
 test("preserves the selected Yandex preference through local fallback and reconnection", async ({ page, requests }) => {

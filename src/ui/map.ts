@@ -57,9 +57,15 @@ import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
 import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref.js";
+import gamePalettes from "./map-game-palettes.json";
 import { currentMapTheme, themeColors } from "./theme.js";
 import type { MapStyleId } from "./theme.js";
-import { getMapViewPreferences, subscribeMapViewPreferences } from "./map-view-pref.js";
+import {
+    getMapViewPreferences,
+    subscribeMapViewPreferences,
+    viewerRadarTheme,
+    viewerMiniMapShape,
+} from "./map-view-pref.js";
 import { getMapMarkerAppearance, MAP_MARKER_SIZE_PX, subscribeMapMarkerAppearance } from "./map-marker-pref.js";
 import {
     mapMarkerPitchScale,
@@ -79,6 +85,7 @@ import {
     projectTrack,
     type ProjectedTrack,
 } from "./map-nearest-record.js";
+import { isStreetNameLayer } from "./map-style-preset.js";
 import { addSpeedTrack, removeSpeedTrack, speedTrackOuterWidth } from "./map-track.js";
 import { buildLucideIcon } from "./icons.js";
 import { mapPositionAt } from "./map-position.js";
@@ -612,6 +619,7 @@ export function ensureMiniMap(): maplibregl.Map | null {
 
     let mini: maplibregl.Map;
     try {
+        dom.miniMap.dataset.shape = viewerMiniMapShape();
         refreshMiniMapWidth();
         mini = new (loadedMaplibre().Map)({
             container: "mini-map",
@@ -708,7 +716,7 @@ function buildCarMarkerElement(pitchDeg = 0): HTMLDivElement {
     canvas.height = 192;
     marker.appendChild(canvas);
     wrap.appendChild(marker);
-    void renderMapMarkerIntoCanvas(canvas, appearance, mapMarkerViewForPitch(pitchDeg));
+    void renderMapMarkerIntoCanvas(canvas, appearance, mapMarkerViewForPitch(pitchDeg), viewerRadarTheme());
     return wrap;
 }
 
@@ -722,7 +730,12 @@ function refreshLiveMapMarkerAppearance(): void {
         const canvas = inner?.querySelector<HTMLCanvasElement>(".car-marker__canvas");
         if (!inner || !canvas) continue;
         inner.style.setProperty("--map-marker-size", `${MAP_MARKER_SIZE_PX[appearance.size]}px`);
-        void renderMapMarkerIntoCanvas(canvas, appearance, mapMarkerViewForPitch(map?.getPitch() ?? 0));
+        void renderMapMarkerIntoCanvas(
+            canvas,
+            appearance,
+            mapMarkerViewForPitch(map?.getPitch() ?? 0),
+            viewerRadarTheme(),
+        );
     }
 }
 
@@ -906,29 +919,33 @@ export function refreshMap(trip: Trip | null, preserveCamera = false): void {
     trackTotalDist = trailProgress.total;
 
     const trackWidth = 4;
-    addSpeedTrack(map, { coords, gradient }, { sourceId: TRIP_SOURCE_ID, width: trackWidth, opacity: 0.9 });
+    const beforeId = viewerRadarTheme() ? map.getStyle().layers.find(isStreetNameLayer)?.id : undefined;
+    addSpeedTrack(map, { coords, gradient }, { sourceId: TRIP_SOURCE_ID, width: trackWidth, opacity: 0.9, beforeId });
     // Trail overlay: same geometry, line-gradient is a 4-stop transparent ->
     // dim mask. setTrailProgress() rewrites it on every rAF tick so the un-
     // driven part of the track fades toward the map background. The driven
     // part stays unveiled - the base layer's speed gradient shines through.
-    map.addLayer({
-        id: trailLayerId,
-        type: "line",
-        source: TRIP_SOURCE_ID,
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-            "line-width": speedTrackOuterWidth(trackWidth) + 1,
-            "line-gradient": [
-                "interpolate",
-                ["linear"],
-                ["line-progress"],
-                0,
-                viewerMapColors().trackVeil,
-                1,
-                viewerMapColors().trackVeil,
-            ] as never,
+    map.addLayer(
+        {
+            id: trailLayerId,
+            type: "line",
+            source: TRIP_SOURCE_ID,
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+                "line-width": speedTrackOuterWidth(trackWidth) + 1,
+                "line-gradient": [
+                    "interpolate",
+                    ["linear"],
+                    ["line-progress"],
+                    0,
+                    viewerMapColors().trackVeil,
+                    1,
+                    viewerMapColors().trackVeil,
+                ] as never,
+            },
         },
-    });
+        beforeId,
+    );
 
     addTrackListeners(map);
 
@@ -1182,8 +1199,10 @@ function refreshMiniMap(data: MiniMapData | null): void {
     })
         .setLngLat(coords[0]!)
         .addTo(mini);
-    miniStartMarker = addEndpointMarker(mini, "start", coords[0]!);
-    miniEndMarker = addEndpointMarker(mini, "end", coords[coords.length - 1]!);
+    if (!dom.miniMap.dataset.radar) {
+        miniStartMarker = addEndpointMarker(mini, "start", coords[0]!);
+        miniEndMarker = addEndpointMarker(mini, "end", coords[coords.length - 1]!);
+    }
     syncGpsStatus(currentInterpolatedPosition() !== null);
 
     // Initial view at the first point; rAF loop will center on current position
@@ -1217,8 +1236,9 @@ function setMarkerPitch(marker: maplibregl.Marker | null, pitchDeg: number): voi
     const appearance = getMapMarkerAppearance();
     const view = mapMarkerViewForPitch(pitchDeg);
     // Pitch animates every frame; repaint only when the artwork view changes.
-    if (canvas.dataset.markerRenderKey !== mapMarkerRenderKey(appearance, view)) {
-        void renderMapMarkerIntoCanvas(canvas, appearance, view);
+    const radar = viewerRadarTheme();
+    if (canvas.dataset.markerRenderKey !== mapMarkerRenderKey(appearance, view, radar)) {
+        void renderMapMarkerIntoCanvas(canvas, appearance, view, radar);
     }
 }
 
@@ -1959,12 +1979,13 @@ function initMiniMapDrag(): void {
                 applyFromStorage();
             });
             ro.observe(frame);
+            ro.observe(dom.miniMap);
         }
     }
 
     attachPointerDrag(dom.miniMap, {
         onStart: (e) => {
-            if (e.target instanceof Element && e.target.closest("a")) return false;
+            if (e.target instanceof Element && e.target.closest("a, .dc-map-attrib")) return false;
             dragging = true;
             suppressNextClick = false;
             startClientX = e.clientX;
@@ -1992,7 +2013,7 @@ function initMiniMapDrag(): void {
     });
 
     dom.miniMap.addEventListener("click", (e) => {
-        if (e.target instanceof Element && e.target.closest("a")) return;
+        if (e.target instanceof Element && e.target.closest("a, .dc-map-attrib")) return;
         if (suppressNextClick) {
             // This was a drag, not a click - suppress map expand.
             suppressNextClick = false;
@@ -2721,9 +2742,13 @@ export function addBuildings3dLayer(map: maplibregl.Map, theme: MapStyleId): voi
     if (!hasOpenMapTiles && !hasShortbread) return;
     const source = hasOpenMapTiles ? VECTOR_SOURCE_ID : OSM_SHORTBREAD_SOURCE_ID;
     const sourceLayer = hasOpenMapTiles ? BUILDING_SOURCE_LAYER : OSM_SHORTBREAD_BUILDING_SOURCE_LAYER;
-    // Neon: lit amber walls so buildings glow with the rest of the slot. Dark:
-    // near-black. Light: bone.
-    const walls = theme === "neon" ? "#7a4a16" : theme === "dark" ? "#2b2b30" : "#e4ddcd";
+    const walls = {
+        neon: "#7a4a16",
+        dark: "#2b2b30",
+        light: "#e4ddcd",
+        "san-andreas": gamePalettes["san-andreas"].landuse,
+        "vice-city": gamePalettes["vice-city"].landuse,
+    }[theme];
     map.addLayer(
         {
             id: BUILDINGS_3D_LAYER_ID,
@@ -2884,8 +2909,18 @@ export function initMap(cb: MapCallbacks): void {
     state.mapExpanded = getPreferredMapMode() === "large";
     subscribeMapMarkerAppearance(refreshLiveMapMarkerAppearance);
     let mapPreferences = getMapViewPreferences();
+    const syncMiniMapShape = (): void => {
+        const shape = viewerMiniMapShape();
+        if (dom.miniMap.dataset.shape === shape) return;
+        dom.miniMap.dataset.shape = shape;
+        state.miniMap?.resize();
+        ensureMarkerLoop();
+    };
     subscribeMapViewPreferences((next) => {
-        const needsStyle = next.style !== mapPreferences.style || next.theme !== mapPreferences.theme;
+        syncMiniMapShape();
+        const themeChanged = next.theme !== mapPreferences.theme;
+        if (themeChanged) refreshLiveMapMarkerAppearance();
+        const needsStyle = next.style !== mapPreferences.style || themeChanged;
         mapPreferences = next;
         // The registry swaps the style; style.load re-adds the buildings.
         if (needsStyle) return;
@@ -2897,6 +2932,8 @@ export function initMap(cb: MapCallbacks): void {
     // The registry reloads the style for a new provider; the camera limits are ours.
     subscribeMapProvider((_provider, previous) => {
         if (previous === null) return;
+        syncMiniMapShape();
+        refreshLiveMapMarkerAppearance();
         syncProviderCamera();
     });
 

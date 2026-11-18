@@ -16,6 +16,9 @@ import {
     type MapThemeChoice,
     type MapViewPreferences,
     setMapViewPreferences,
+    setViewerMiniMapShape,
+    viewerMiniMapShape,
+    viewerRadarTheme,
     subscribeMapViewPreferences,
 } from "./map-view-pref.js";
 
@@ -28,6 +31,8 @@ const STYLE_LABEL_KEYS = {
 const THEME_LABEL_KEYS = {
     auto: "settings.map.theme.auto",
     light: "settings.map.theme.light",
+    "san-andreas": "settings.map.theme.san-andreas",
+    "vice-city": "settings.map.theme.vice-city",
     dark: "settings.map.theme.dark",
 } as const satisfies Record<MapThemeChoice, I18nKey>;
 
@@ -63,7 +68,7 @@ function createSelect<Value extends string>(
 }
 
 /** Both hosts live for the page lifetime; syncing values preserves keyboard focus. */
-export function initMapViewControls(host: HTMLElement, idPrefix: string): void {
+export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppearanceChange: () => void): void {
     host.classList.add("map-view-controls");
     const providerRow = document.createElement("label");
     providerRow.className = "map-view-controls__row";
@@ -113,6 +118,14 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string): void {
         THEME_LABEL_KEYS,
         (value) => setMapViewPreferences({ ...getMapViewPreferences(), theme: value }),
     );
+    const shape = createSelect(
+        host,
+        `${idPrefix}-minimap-shape-select`,
+        "settings.map.miniMapShape",
+        ["rect", "circle"] as const,
+        { rect: "export.overlays.shape.rect", circle: "export.overlays.shape.circle" },
+        setViewerMiniMapShape,
+    );
     const buildingsRow = document.createElement("label");
     buildingsRow.className = "map-view-controls__buildings";
     const buildings = document.createElement("input");
@@ -136,10 +149,19 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string): void {
     buildingsRow.append(buildings, copy);
     host.append(buildingsRow);
 
+    let lastTheme = viewerRadarTheme();
+    let wasDisabled = false;
     const sync = (prefs: MapViewPreferences): void => {
-        style.value = prefs.style;
-        theme.value = prefs.theme;
-        buildings.checked = prefs.buildings3d;
+        style.value = style.disabled ? "" : prefs.style;
+        theme.value = theme.disabled ? "" : prefs.theme;
+        const activeTheme = viewerRadarTheme();
+        if (lastTheme !== activeTheme || wasDisabled !== theme.disabled) {
+            wasDisabled = theme.disabled;
+            lastTheme = activeTheme;
+            onAppearanceChange();
+        }
+        shape.value = viewerMiniMapShape();
+        buildings.checked = !buildings.disabled && prefs.buildings3d;
     };
     sync(getMapViewPreferences());
     subscribeMapViewPreferences(sync);
@@ -156,5 +178,6 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string): void {
         buildings.disabled = unavailable;
         buildings.setAttribute("aria-describedby", unavailable ? `${description.id} ${styleHint.id}` : description.id);
         styleHint.hidden = !unavailable;
+        sync(getMapViewPreferences());
     });
 }
