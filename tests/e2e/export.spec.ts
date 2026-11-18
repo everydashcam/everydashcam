@@ -1216,7 +1216,7 @@ test.describe("export", () => {
         await expect(inspector.locator('input[type="range"][data-drag-probe="1"]')).toHaveCount(1);
     });
 
-    test("map overlay theme segment switches classic, neon and game palettes", async ({ page }) => {
+    test("map overlay theme segment switches classic, neon and radar palettes", async ({ page }) => {
         await page.locator("#export-panel-ov-map").check();
         const inspector = page.locator("#export-panel-overlay-inspector");
         await expect(inspector).toBeVisible();
@@ -1234,7 +1234,7 @@ test.describe("export", () => {
         const rect = inspector.locator('button[data-shape="rect"]');
         const overlay = page.locator("#player-map-overlay");
         await rect.click();
-        for (const name of ["SanAndreas", "ViceCity", "Underground 2"]) {
+        for (const name of ["LA 92", "Miami 86", "Tuner 04"]) {
             const option = inspector.getByRole("button", { name, exact: true });
             await option.click();
             await expect(option).toHaveAttribute("aria-pressed", "true");
@@ -1247,7 +1247,7 @@ test.describe("export", () => {
             const marker = inspector.locator("#export-map-marker-control");
             await expect(marker.locator('[data-marker-shape="arrow"]')).toHaveAttribute("aria-pressed", "true");
             await expect(marker.locator('input[type="color"]')).toHaveValue(
-                name === "Underground 2" ? "#59e044" : "#f4f4f2",
+                name === "Tuner 04" ? "#59e044" : "#f4f4f2",
             );
             await marker.locator('[data-marker-shape="sedan"]').click();
             await marker.locator('[data-marker-color="#e5484d"]').click();
@@ -1257,7 +1257,7 @@ test.describe("export", () => {
         await expect(rect).toBeVisible();
         await expect(overlay).toHaveAttribute("data-shape", "rect");
         await expect(inspector.locator('[data-marker-color="#ff9000"]')).toHaveAttribute("aria-pressed", "true");
-        await inspector.getByRole("button", { name: "SanAndreas", exact: true }).click();
+        await inspector.getByRole("button", { name: "LA 92", exact: true }).click();
         await expect(inspector.locator('[data-marker-shape="sedan"]')).toHaveAttribute("aria-pressed", "true");
         await expect(inspector.locator('[data-marker-size="large"]')).toHaveAttribute("aria-pressed", "true");
     });

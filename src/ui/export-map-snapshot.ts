@@ -317,7 +317,7 @@ export async function createExportMapSnapshotter(
         throw err;
     }
 
-    addTrackLayer(map, records, radar === "underground-2");
+    addTrackLayer(map, records, radar === "tuner-04");
 
     let isDisposed = false;
     let shouldRefreshOnIdle = false;
@@ -339,7 +339,7 @@ export async function createExportMapSnapshotter(
                 const styled = snapshotStyle(nextStyle);
                 await waitForStyleLoad(map, styled);
                 if (isDisposed || provider !== activeProvider) return;
-                if (!map.getSource(TRACK_SOURCE_ID)) addTrackLayer(map, records, radar === "underground-2");
+                if (!map.getSource(TRACK_SOURCE_ID)) addTrackLayer(map, records, radar === "tuner-04");
                 onInvalidate?.();
             })
             .catch((err: unknown) => {

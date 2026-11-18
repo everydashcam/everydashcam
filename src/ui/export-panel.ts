@@ -2820,12 +2820,12 @@ function renderMapMarkerField(): HTMLElement {
 
 function syncExportMarkerControl(host: HTMLElement): void {
     const map = exportPanelState.overlayMap;
-    const game = radarTheme(map.theme);
+    const radar = radarTheme(map.theme);
     renderMapMarkerControl(host, {
         appearance: markerForMapTheme(map),
-        radar: game,
+        radar,
         onChange: (appearance) => {
-            if (game) map.gameMarkers[game] = appearance;
+            if (radar) map.radarMarkers[radar] = appearance;
             else map.marker = appearance;
             notifyExportStateChanged();
         },
@@ -2856,9 +2856,9 @@ function renderMapThemeSegment(): HTMLElement {
         choices: [
             ["light", t("export.overlays.mapTheme.light")],
             ["dark", t("export.overlays.mapTheme.dark")],
-            ["san-andreas", t("settings.map.theme.san-andreas")],
-            ["vice-city", t("settings.map.theme.vice-city")],
-            ["underground-2", t("settings.map.theme.underground-2")],
+            ["la-92", t("settings.map.theme.la-92")],
+            ["miami-86", t("settings.map.theme.miami-86")],
+            ["tuner-04", t("settings.map.theme.tuner-04")],
             ["neon", t("export.overlays.mapTheme.neon")],
         ],
         current: exportPanelState.overlayMap.theme,

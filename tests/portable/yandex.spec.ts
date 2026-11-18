@@ -83,7 +83,7 @@ test("renders configured Yandex tiles and the embedded attribution logo from a f
     await page.locator("#settings-btn").click();
     const provider = page.locator("#settings-map-provider-select");
     await provider.selectOption("route-only");
-    await page.locator("#settings-map-theme-vice-city").check();
+    await page.locator("#settings-map-theme-miami-86").check();
     await provider.selectOption("yandex");
     await page.locator("#settings-modal-header-close").click();
     await loadTrip(page, SAMPLE_70MAI);
@@ -97,7 +97,7 @@ test("renders configured Yandex tiles and the embedded attribution logo from a f
     await expect(mini).toHaveAttribute("data-shape", "circle");
     await expect(mini.locator(".car-marker__canvas")).toHaveAttribute(
         "data-marker-render-key",
-        "arrow:#f4f4f2:vice-city",
+        "arrow:#f4f4f2:miami-86",
     );
 });
 

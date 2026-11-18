@@ -253,7 +253,7 @@ test.describe("export run", () => {
         await end.fill("1");
         await end.press("Enter");
         await page.locator("#export-panel-ov-map").check();
-        await page.getByRole("button", { name: "SanAndreas", exact: true }).click();
+        await page.getByRole("button", { name: "LA 92", exact: true }).click();
         await page.locator("#export-panel-watermark").uncheck();
         await page.locator("#export-panel-save-btn").click();
         await expect(page.locator("#export-panel-done-summary")).toBeVisible({ timeout: 100_000 });

@@ -115,7 +115,7 @@ export interface OverlayMapState {
     /** Current-position marker for exported overlays. The first default comes
      *  from the global map preference, then the overlay choice is independent. */
     marker: MapMarkerAppearance;
-    gameMarkers: Partial<Record<RadarTheme, MapMarkerAppearance>>;
+    radarMarkers: Partial<Record<RadarTheme, MapMarkerAppearance>>;
     /** Camera view. "north" = north-up (the legacy look); "chase" = tilted,
      *  heading-up (the car points up, road ahead in view). Default "north". */
     mode: MapViewMode;
@@ -252,7 +252,7 @@ function freshOverlayPreferences(): OverlayPreferences {
             labelScalePct: 100,
             labelDensity: "standard",
             marker: getMapMarkerAppearance("neon"),
-            gameMarkers: {},
+            radarMarkers: {},
             mode: "chase",
             pitchDeg: 58,
             adaptiveZoom: true,
@@ -332,7 +332,7 @@ function applyOverlayPreferences(preferences: OverlayPreferences): void {
     Object.assign(exportPanelState.overlayCoords, preferences.overlayCoords);
     Object.assign(exportPanelState.overlayMap, preferences.overlayMap, {
         marker: { ...preferences.overlayMap.marker },
-        gameMarkers: structuredClone(preferences.overlayMap.gameMarkers),
+        radarMarkers: structuredClone(preferences.overlayMap.radarMarkers),
     });
     Object.assign(exportPanelState.overlayClock, preferences.overlayClock);
     Object.assign(exportPanelState.overlayCompass, preferences.overlayCompass);

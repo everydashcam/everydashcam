@@ -4,9 +4,9 @@ import type { MapStyleId } from "../ui/theme.js";
 const MAP_STYLE_LOADERS = {
     light: () => import("../../public/styles/light.json"),
     dark: () => import("../../public/styles/dark.json"),
-    "san-andreas": () => import("../../public/styles/san-andreas.json"),
-    "vice-city": () => import("../../public/styles/vice-city.json"),
-    "underground-2": () => import("../../public/styles/underground-2.json"),
+    "la-92": () => import("../../public/styles/la-92.json"),
+    "miami-86": () => import("../../public/styles/miami-86.json"),
+    "tuner-04": () => import("../../public/styles/tuner-04.json"),
     neon: () => import("../../public/styles/neon.json"),
 };
 

@@ -57,7 +57,7 @@ import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
 import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref.js";
-import gamePalettes from "./map-game-palettes.json";
+import radarPalettes from "./map-radar-palettes.json";
 import { currentMapTheme, themeColors } from "./theme.js";
 import type { MapStyleId } from "./theme.js";
 import {
@@ -1194,7 +1194,7 @@ function refreshMiniMap(data: MiniMapData | null): void {
         sourceId: TRIP_SOURCE_ID,
         width: 3,
         opacity: 0.95,
-        endpointDots: dom.miniMap.dataset.radar === "underground-2",
+        endpointDots: dom.miniMap.dataset.radar === "tuner-04",
     });
 
     state.miniMapMarker = new (loadedMaplibre().Marker)({
@@ -2751,9 +2751,9 @@ export function addBuildings3dLayer(map: maplibregl.Map, theme: MapStyleId): voi
         neon: "#7a4a16",
         dark: "#2b2b30",
         light: "#e4ddcd",
-        "san-andreas": gamePalettes["san-andreas"].landuse,
-        "vice-city": gamePalettes["vice-city"].landuse,
-        "underground-2": gamePalettes["underground-2"].landuse,
+        "la-92": radarPalettes["la-92"].landuse,
+        "miami-86": radarPalettes["miami-86"].landuse,
+        "tuner-04": radarPalettes["tuner-04"].landuse,
     }[theme];
     map.addLayer(
         {

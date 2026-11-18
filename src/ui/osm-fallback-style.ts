@@ -5,7 +5,7 @@
 
 import type { ExpressionSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
 
-import gamePalettes from "./map-game-palettes.json";
+import radarPalettes from "./map-radar-palettes.json";
 import type { MapStyleId } from "./theme.js";
 import type { MapProvider } from "./map-provider.js";
 
@@ -40,8 +40,8 @@ interface Palette {
     waterLabel: string;
 }
 
-function gamePalette(theme: keyof typeof gamePalettes): Palette {
-    const colors = gamePalettes[theme];
+function radarPalette(theme: keyof typeof radarPalettes): Palette {
+    const colors = radarPalettes[theme];
     return {
         ...colors,
         roadMinor: colors.minor,
@@ -52,9 +52,9 @@ function gamePalette(theme: keyof typeof gamePalettes): Palette {
 }
 
 const PALETTES: Record<MapStyleId, Palette> = {
-    "san-andreas": gamePalette("san-andreas"),
-    "vice-city": gamePalette("vice-city"),
-    "underground-2": gamePalette("underground-2"),
+    "la-92": radarPalette("la-92"),
+    "miami-86": radarPalette("miami-86"),
+    "tuner-04": radarPalette("tuner-04"),
     light: {
         background: "#f5f4ef",
         water: "#a8d1e7",

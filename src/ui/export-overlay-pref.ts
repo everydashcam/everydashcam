@@ -53,9 +53,9 @@ function normalizeText(value: unknown, fallback: OverlayTextState): OverlayTextS
     };
 }
 
-function normalizeGameMarkers(value: unknown): OverlayMapState["gameMarkers"] {
+function normalizeRadarMarkers(value: unknown): OverlayMapState["radarMarkers"] {
     const candidate = record(value);
-    const markers: OverlayMapState["gameMarkers"] = {};
+    const markers: OverlayMapState["radarMarkers"] = {};
     for (const theme of RADAR_THEMES) {
         if (record(candidate?.[theme]))
             markers[theme] = normalizeMapMarkerAppearance(candidate?.[theme], radarMarkerAppearance(theme));
@@ -66,7 +66,11 @@ function normalizeGameMarkers(value: unknown): OverlayMapState["gameMarkers"] {
 function normalizeMap(value: unknown, fallback: OverlayMapState): OverlayMapState {
     const candidate = record(value);
     if (!candidate)
-        return { ...fallback, marker: { ...fallback.marker }, gameMarkers: normalizeGameMarkers(fallback.gameMarkers) };
+        return {
+            ...fallback,
+            marker: { ...fallback.marker },
+            radarMarkers: normalizeRadarMarkers(fallback.radarMarkers),
+        };
     return {
         enabled: bool(candidate.enabled, fallback.enabled),
         provider: oneOf(candidate.provider, MAP_PROVIDERS, fallback.provider),
@@ -79,7 +83,7 @@ function normalizeMap(value: unknown, fallback: OverlayMapState): OverlayMapStat
         labelScalePct: oneOf(candidate.labelScalePct, MAP_LABEL_SIZES, fallback.labelScalePct),
         labelDensity: oneOf(candidate.labelDensity, MAP_LABEL_DENSITIES, fallback.labelDensity),
         marker: normalizeMapMarkerAppearance(candidate.marker, fallback.marker),
-        gameMarkers: normalizeGameMarkers(candidate.gameMarkers),
+        radarMarkers: normalizeRadarMarkers(candidate.radarMarkers),
         mode: oneOf(candidate.mode, MAP_MODES, fallback.mode),
         pitchDeg: finiteInRange(candidate.pitchDeg, fallback.pitchDeg, 0, 70),
         adaptiveZoom: bool(candidate.adaptiveZoom, fallback.adaptiveZoom),
@@ -116,7 +120,7 @@ export function cloneOverlayPreferences(preferences: OverlayPreferences): Overla
         overlayMap: {
             ...preferences.overlayMap,
             marker: { ...preferences.overlayMap.marker },
-            gameMarkers: structuredClone(preferences.overlayMap.gameMarkers),
+            radarMarkers: structuredClone(preferences.overlayMap.radarMarkers),
         },
         overlayClock: { ...preferences.overlayClock },
         overlayCompass: { ...preferences.overlayCompass },

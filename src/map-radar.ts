@@ -2,17 +2,17 @@
 // encoded video keep the same proportions at every output resolution.
 import type { MapShape } from "./transcode/types.js";
 
-export const RADAR_THEMES = ["san-andreas", "vice-city", "underground-2"] as const;
+export const RADAR_THEMES = ["la-92", "miami-86", "tuner-04"] as const;
 export type RadarTheme = (typeof RADAR_THEMES)[number];
 type Ring = readonly [innerRadius: number, outerRadius: number, color: string];
 
 const RINGS: Record<RadarTheme, readonly Ring[]> = {
-    "san-andreas": [[0.935, 1, "#121212"]],
-    "underground-2": [
+    "la-92": [[0.935, 1, "#121212"]],
+    "tuner-04": [
         [0.936, 0.944, "#524f45"],
         [0.944, 1, "#a39d8d"],
     ],
-    "vice-city": [
+    "miami-86": [
         [0.904, 0.925, "#231824"],
         [0.925, 0.98, "#e6a4cd"],
         [0.98, 1, "#231824"],
@@ -23,7 +23,7 @@ export function radarTheme(theme: string): RadarTheme | undefined {
     return RADAR_THEMES.find((candidate) => candidate === theme);
 }
 
-/** Only an explicit switch to a game palette suggests a new shape. */
+/** Only an explicit switch to a radar theme suggests a new shape. */
 export function shapeForMapTheme(theme: string, current: MapShape): MapShape {
     return radarTheme(theme) ? "circle" : current;
 }
@@ -70,14 +70,14 @@ export function drawRadarArrow(ctx: DrawingContext, size: number, color: string,
     ctx.translate(size / 2, size / 2);
     ctx.scale(size, size);
     ctx.beginPath();
-    if (theme === "vice-city") {
+    if (theme === "miami-86") {
         // The widest point sits halfway down, with a tapered, rounded heel.
         ctx.moveTo(0, -0.445);
         ctx.bezierCurveTo(0.075, -0.28, 0.25, -0.075, 0.25, 0.055);
         ctx.bezierCurveTo(0.25, 0.19, 0.09, 0.38, 0, 0.38);
         ctx.bezierCurveTo(-0.09, 0.38, -0.25, 0.19, -0.25, 0.055);
         ctx.bezierCurveTo(-0.25, -0.075, -0.075, -0.28, 0, -0.445);
-    } else if (theme === "underground-2") {
+    } else if (theme === "tuner-04") {
         ctx.moveTo(0, -0.4);
         ctx.lineTo(0.22, 0.34);
         ctx.lineTo(-0.22, 0.34);

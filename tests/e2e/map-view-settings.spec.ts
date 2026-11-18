@@ -332,9 +332,9 @@ test("map gear and general settings share style, theme and buildings choices", a
     await expect(page.locator("#map-theme-select")).toHaveValue("light");
     const lightBackground = await mapBackground(page);
     for (const [theme, name, color] of [
-        ["san-andreas", "SanAndreas", "#f4f4f2"],
-        ["vice-city", "ViceCity", "#f4f4f2"],
-        ["underground-2", "Underground 2", "#59e044"],
+        ["la-92", "LA 92", "#f4f4f2"],
+        ["miami-86", "Miami 86", "#f4f4f2"],
+        ["tuner-04", "Tuner 04", "#59e044"],
     ] as const) {
         await page.locator("#map-theme-select").selectOption({ label: name });
         await expect(page.locator(`#settings-map-theme-${theme}`)).toBeChecked();
@@ -348,7 +348,7 @@ test("map gear and general settings share style, theme and buildings choices", a
             .poll(() =>
                 page.evaluate(() => Boolean(window.__everydashcam.state.miniMap?.getLayer("trip-line-endpoints"))),
             )
-            .toBe(theme === "underground-2");
+            .toBe(theme === "tuner-04");
         const markerControl = popover.locator('[data-marker-control="map-popover"]');
         await expect(markerControl.locator('[data-marker-shape="arrow"] canvas')).toHaveAttribute(
             "data-marker-render-key",

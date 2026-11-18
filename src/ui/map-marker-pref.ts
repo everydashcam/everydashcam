@@ -29,16 +29,16 @@ export const DEFAULT_MAP_MARKER_APPEARANCE: Readonly<MapMarkerAppearance> = {
 };
 
 export function radarMarkerAppearance(theme: RadarTheme): MapMarkerAppearance {
-    return { ...DEFAULT_MAP_MARKER_APPEARANCE, color: theme === "underground-2" ? "#59e044" : "#f4f4f2" };
+    return { ...DEFAULT_MAP_MARKER_APPEARANCE, color: theme === "tuner-04" ? "#59e044" : "#f4f4f2" };
 }
 
 export function markerForMapTheme(map: {
     theme: string;
     marker: MapMarkerAppearance;
-    gameMarkers?: Partial<Record<RadarTheme, MapMarkerAppearance>>;
+    radarMarkers?: Partial<Record<RadarTheme, MapMarkerAppearance>>;
 }): MapMarkerAppearance {
-    const game = radarTheme(map.theme);
-    return game ? (map.gameMarkers?.[game] ?? radarMarkerAppearance(game)) : map.marker;
+    const radar = radarTheme(map.theme);
+    return radar ? (map.radarMarkers?.[radar] ?? radarMarkerAppearance(radar)) : map.marker;
 }
 
 const STORAGE_KEY = "everydashcam:mapMarker";
@@ -74,16 +74,16 @@ export function normalizeMapMarkerAppearance(
 }
 
 function markerStorageKey(theme: string): string {
-    const game = radarTheme(theme);
-    return game ? `${STORAGE_KEY}:${game}` : STORAGE_KEY;
+    const radar = radarTheme(theme);
+    return radar ? `${STORAGE_KEY}:${radar}` : STORAGE_KEY;
 }
 
 export function getMapMarkerAppearance(theme: string = viewerRadarTheme() ?? "light"): MapMarkerAppearance {
     const key = markerStorageKey(theme);
     let appearance = sessionAppearances.get(key);
     if (!appearance) {
-        const game = radarTheme(theme);
-        const fallback = game ? radarMarkerAppearance(game) : DEFAULT_MAP_MARKER_APPEARANCE;
+        const radar = radarTheme(theme);
+        const fallback = radar ? radarMarkerAppearance(radar) : DEFAULT_MAP_MARKER_APPEARANCE;
         appearance = normalizeMapMarkerAppearance(readLocalStorageJson(key), fallback);
         sessionAppearances.set(key, appearance);
     }

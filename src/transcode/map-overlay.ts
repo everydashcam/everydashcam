@@ -1,6 +1,6 @@
 // Map overlay drawing for the transcode pipeline. Given a rendered map
 // ImageBitmap (produced by the main-thread snapshotter) and the user-controlled
-// placement / scale, this module paints it onto the composite canvas. Game radars
+// placement / scale, this module paints it onto the composite canvas. Radar themes
 // have a solid ring. Other styles feather to transparent, mirrored by the CSS
 // mask on the live preview (.player-map-overlay__canvas).
 

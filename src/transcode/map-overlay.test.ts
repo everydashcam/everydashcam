@@ -26,9 +26,9 @@ describe("mapOverlayRect", () => {
         expect(portrait).toEqual({ x: 540, y: 1380, width: 540, height: 540 });
     });
 
-    it("uses the selected shape for both game radars", () => {
+    it("uses the selected shape for every radar theme", () => {
         const circle = mapOverlayRect(1920, 1080, { ...rightBottom, shape: "circle" });
-        for (const radar of ["san-andreas", "vice-city", "underground-2"] as const) {
+        for (const radar of ["la-92", "miami-86", "tuner-04"] as const) {
             expect(mapOverlayRect(1920, 1080, { ...rightBottom, radar })).toEqual(
                 mapOverlayRect(1920, 1080, rightBottom),
             );

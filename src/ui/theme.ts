@@ -10,7 +10,7 @@ import { createSubscribers } from "../subscribers.js";
 import type { EventKind } from "../events.js";
 
 import { state } from "./state.js";
-import gamePalettes from "./map-game-palettes.json";
+import radarPalettes from "./map-radar-palettes.json";
 import { getMapViewPreferences, type MapThemeChoice } from "./map-view-pref.js";
 
 export type MapTheme = Exclude<MapThemeChoice, "auto">;
@@ -71,18 +71,18 @@ export function currentMapTheme(): MapTheme {
 
 const MAP_COLORS = {
     light: { background: "#f5f4ef", trackVeil: "rgba(245,244,239,0.45)", markerStroke: "#0e0e0e" },
-    "san-andreas": {
-        background: gamePalettes["san-andreas"].background,
+    "la-92": {
+        background: radarPalettes["la-92"].background,
         trackVeil: "rgba(128,136,76,0.45)",
         markerStroke: "#0e0e0e",
     },
-    "underground-2": {
-        background: gamePalettes["underground-2"].background,
+    "tuner-04": {
+        background: radarPalettes["tuner-04"].background,
         trackVeil: "rgba(32,34,30,0.45)",
         markerStroke: "#131810",
     },
-    "vice-city": {
-        background: gamePalettes["vice-city"].background,
+    "miami-86": {
+        background: radarPalettes["miami-86"].background,
         trackVeil: "rgba(210,207,210,0.45)",
         markerStroke: "#0e0e0e",
     },

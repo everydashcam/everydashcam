@@ -31,7 +31,7 @@ import {
 } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { loadMapStyleSource } from "./map-style-source.js";
-import { readableGameMap, radarBaseStyle, applyMapStylePreset } from "./map-style-preset.js";
+import { readableRadarThemeMap, radarBaseStyle, applyMapStylePreset } from "./map-style-preset.js";
 import { registerSharedMapTileCache } from "./map-tile-cache.js";
 import { getMapViewPreferences, subscribeMapViewPreferences, viewerRadarTheme } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
@@ -370,7 +370,7 @@ function applyStyleTo(
         viewerMap.map.resize();
         if (radar) styled = radarBaseStyle(styled, radar);
     } else if (viewerMap.surface === "main" && viewerRadarTheme(provider)) {
-        styled = readableGameMap(styled, getCurrentLang());
+        styled = readableRadarThemeMap(styled, getCurrentLang());
     }
     setViewerMapStyle(viewerMap.map, styled);
     viewerMap.attribution.setProvider(provider);

@@ -33,7 +33,7 @@ describe("OSM fallback styles", () => {
         }
     });
 
-    it.each(["san-andreas", "vice-city", "underground-2"] as const)("paints water above urban land in %s", (theme) => {
+    it.each(["la-92", "miami-86", "tuner-04"] as const)("paints water above urban land in %s", (theme) => {
         const ids = createFallbackMapStyle("osm-vector", theme).layers.map((layer) => layer.id);
         expect(ids).toContain("osm-urban-land");
         expect(ids.indexOf("osm-water")).toBeGreaterThan(ids.indexOf("osm-urban-land"));

@@ -132,8 +132,8 @@ test("persists explicit route-only mode without tile requests or reconnect probe
 });
 
 for (const [theme, name] of [
-    ["vice-city", "ViceCity"],
-    ["underground-2", "Underground 2"],
+    ["miami-86", "Miami 86"],
+    ["tuner-04", "Tuner 04"],
 ] as const) {
     test(`restores the saved ${name} export map without changing the viewer preference`, async ({ page }, info) => {
         await presetLocalStorage(page);

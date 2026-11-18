@@ -59,13 +59,13 @@ describe("map view preferences", () => {
         expect(observed).toHaveLength(1);
     });
 
-    it("keeps a manual shape until another game theme is selected", () => {
-        vi.stubGlobal("localStorage", { getItem: () => JSON.stringify({ theme: "san-andreas" }), setItem: () => {} });
+    it("keeps a manual shape until another radar theme is selected", () => {
+        vi.stubGlobal("localStorage", { getItem: () => JSON.stringify({ theme: "la-92" }), setItem: () => {} });
         expect(getMapViewPreferences().miniMapShape).toBe("circle");
         setMapViewPreferences({ ...getMapViewPreferences(), miniMapShape: "rect" });
         setMapViewPreferences({ ...getMapViewPreferences(), style: "minimal" });
         expect(getMapViewPreferences().miniMapShape).toBe("rect");
-        setMapViewPreferences({ ...getMapViewPreferences(), theme: "vice-city" });
+        setMapViewPreferences({ ...getMapViewPreferences(), theme: "miami-86" });
         expect(getMapViewPreferences().miniMapShape).toBe("circle");
     });
 
@@ -75,8 +75,8 @@ describe("map view preferences", () => {
             getItem: (key: string) => storage.get(key) ?? null,
             setItem: (key: string, value: string) => storage.set(key, value),
         });
-        setMapViewPreferences({ ...getMapViewPreferences(), theme: "vice-city" });
-        const preferences = { miniMapShape: "rect", style: "road", theme: "vice-city", buildings3d: false } as const;
+        setMapViewPreferences({ ...getMapViewPreferences(), theme: "miami-86" });
+        const preferences = { miniMapShape: "rect", style: "road", theme: "miami-86", buildings3d: false } as const;
         setMapViewPreferences(preferences);
         _resetForTests();
         expect(getMapViewPreferences()).toEqual(preferences);

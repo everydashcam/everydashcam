@@ -32,9 +32,9 @@ const STYLE_LABEL_KEYS = {
 const THEME_LABEL_KEYS = {
     auto: "settings.map.theme.auto",
     light: "settings.map.theme.light",
-    "san-andreas": "settings.map.theme.san-andreas",
-    "vice-city": "settings.map.theme.vice-city",
-    "underground-2": "settings.map.theme.underground-2",
+    "la-92": "settings.map.theme.la-92",
+    "miami-86": "settings.map.theme.miami-86",
+    "tuner-04": "settings.map.theme.tuner-04",
     dark: "settings.map.theme.dark",
 } as const satisfies Record<MapThemeChoice, I18nKey>;
 

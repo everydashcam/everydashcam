@@ -1,7 +1,7 @@
 // Geometry and label placement live in light.json. Alternate palettes cannot
 // drop a bridge, road number or building merely because the UI theme changed.
 
-import gamePalettes from "../src/ui/map-game-palettes.json" with { type: "json" };
+import radarPalettes from "../src/ui/map-radar-palettes.json" with { type: "json" };
 import { roadColorExpression, roadWidth } from "./_map-road-layers.mjs";
 
 export const MAP_SDF_ICONS = ["arrow", "circle_11_black", "airport_11"];
@@ -64,7 +64,7 @@ const NEON = {
     driverPoi: "#ffd9a0",
 };
 
-const VARIANTS = { dark: { name: "Classic Dark", ...DARK }, neon: { name: "Neon", ...NEON }, ...gamePalettes };
+const VARIANTS = { dark: { name: "Classic Dark", ...DARK }, neon: { name: "Neon", ...NEON }, ...radarPalettes };
 export const MAP_STYLE_VARIANTS = Object.keys(VARIANTS);
 
 function lineColor(layer, palette) {
@@ -96,7 +96,7 @@ export function createMapStyleVariant(light, theme) {
     style.name = `everydashcam ${palette.name}`;
     style.sprite = "/styles/sprite/sprite";
     style.metadata = { ...style.metadata, "everydashcam:theme": theme };
-    if (gamePalettes[theme]) {
+    if (radarPalettes[theme]) {
         // Urban areas extend down to street zoom. Parks and beaches inside
         // their boundaries must still paint on top.
         const residential = style.layers.findIndex((layer) => layer.id === "landuse_residential");

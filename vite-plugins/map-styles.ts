@@ -8,9 +8,9 @@ function styleUrls(prefix: string) {
         light: `${prefix}light.json`,
         dark: `${prefix}dark.json`,
         neon: `${prefix}neon.json`,
-        "san-andreas": `${prefix}san-andreas.json`,
-        "vice-city": `${prefix}vice-city.json`,
-        "underground-2": `${prefix}underground-2.json`,
+        "la-92": `${prefix}la-92.json`,
+        "miami-86": `${prefix}miami-86.json`,
+        "tuner-04": `${prefix}tuner-04.json`,
     };
 }
 

@@ -176,7 +176,7 @@ test("Yandex selection syncs map settings and limits the camera to north-up", as
     await expectControlsDisabled(modalAppearance, true);
 });
 
-test("switches between the ViceCity radar and the raster marker without losing either choice", async ({ page }) => {
+test("switches between the Miami 86 radar and the raster marker without losing either choice", async ({ page }) => {
     await loadTrip(page);
     await pausePlayback(page);
     const mini = page.locator("#mini-map");
@@ -188,9 +188,9 @@ test("switches between the ViceCity radar and the raster marker without losing e
     const shape = page.locator("#settings-map-minimap-shape-select");
     const controls = page.locator("#settings-map-marker-control");
     await settings.click();
-    await theme.locator('[value="vice-city"]').check();
+    await theme.locator('[value="miami-86"]').check();
     await close.click();
-    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:vice-city");
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:miami-86");
     const credits = mini.locator(".dc-map-attrib-toggle");
     await expect(credits).toBeVisible();
     await expect(mini.locator(".dc-map-attrib a").first()).toBeHidden();
@@ -225,17 +225,17 @@ test("switches between the ViceCity radar and the raster marker without losing e
     await expectYandexLogo(mini, "Open in Maps");
     await settings.click();
     await provider.selectOption("openfreemap");
-    await expect(theme.locator('[value="vice-city"]')).toBeChecked();
-    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:vice-city");
+    await expect(theme.locator('[value="miami-86"]')).toBeChecked();
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:miami-86");
     await shape.selectOption("rect");
     await provider.selectOption("yandex");
     await expect(shape).toHaveValue("circle");
     await expect(marker).toHaveAttribute("data-marker-render-key", "sedan:#ff9000:overhead");
     await provider.selectOption("openfreemap");
     await expect(shape).toHaveValue("rect");
-    await theme.locator('[value="san-andreas"]').check();
+    await theme.locator('[value="la-92"]').check();
     await expect(shape).toHaveValue("circle");
-    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:san-andreas");
+    await expect(marker).toHaveAttribute("data-marker-render-key", "arrow:#f4f4f2:la-92");
 });
 
 test("mini-maps default to a rectangle and Yandex credits stay visible on both maps", async ({ page }) => {

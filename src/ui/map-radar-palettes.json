@@ -1,6 +1,6 @@
 {
-    "san-andreas": {
-        "name": "SanAndreas",
+    "la-92": {
+        "name": "LA 92",
         "background": "#80884c",
         "water": "#6f8fb8",
         "waterLine": "#789dba",
@@ -29,8 +29,8 @@
         "poi": "#464744",
         "driverPoi": "#553e25"
     },
-    "vice-city": {
-        "name": "ViceCity",
+    "miami-86": {
+        "name": "Miami 86",
         "background": "#d2cfd2",
         "water": "#a4cafa",
         "waterLine": "#8bb8ea",
@@ -59,8 +59,8 @@
         "poi": "#5a475a",
         "driverPoi": "#793c62"
     },
-    "underground-2": {
-        "name": "Underground 2",
+    "tuner-04": {
+        "name": "Tuner 04",
         "background": "#20221e",
         "water": "#202e30",
         "waterLine": "#465155",

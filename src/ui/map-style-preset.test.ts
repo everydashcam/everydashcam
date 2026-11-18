@@ -4,7 +4,7 @@ import { createExpression, featureFilter, validateStyleMin } from "@maplibre/map
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
 
-import { applyMapStylePreset, isStreetNameLayer, radarBaseStyle, readableGameMap } from "./map-style-preset.js";
+import { applyMapStylePreset, isStreetNameLayer, radarBaseStyle, readableRadarThemeMap } from "./map-style-preset.js";
 import { MAP_THEMES, type MapStylePreset } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
 
@@ -90,13 +90,13 @@ describe("map style presets", () => {
         }
     }
 
-    for (const theme of ["san-andreas", "vice-city", "underground-2"] as const) {
+    for (const theme of ["la-92", "miami-86", "tuner-04"] as const) {
         it.each(["openfreemap", "osm-vector"] as const)(
             `prioritizes localized street names on the large ${theme} %s map`,
             (provider) => {
                 const base = provider === "openfreemap" ? loadStyle(theme) : createFallbackMapStyle(provider, theme);
                 const original = structuredClone(base);
-                const result = readableGameMap(base, "ru");
+                const result = readableRadarThemeMap(base, "ru");
                 expect(validateStyleMin(result)).toEqual([]);
                 const firstStreet = result.layers.findIndex(isStreetNameLayer);
                 expect(firstStreet).toBeGreaterThan(0);
@@ -117,13 +117,11 @@ describe("map style presets", () => {
     }
 
     it.each(["openfreemap", "osm-vector"] as const)(
-        "keeps driving roads and drops paths on the %s Underground radar",
+        "keeps driving roads and drops paths on the %s Tuner 04 radar",
         (provider) => {
             const style =
-                provider === "openfreemap"
-                    ? loadStyle("underground-2")
-                    : createFallbackMapStyle(provider, "underground-2");
-            const radar = radarBaseStyle(style, "underground-2");
+                provider === "openfreemap" ? loadStyle("tuner-04") : createFallbackMapStyle(provider, "tuner-04");
+            const radar = radarBaseStyle(style, "tuner-04");
             expect(validateStyleMin(radar)).toEqual([]);
             const roads = radar.layers.filter((layer) => layer.type === "line" && role(layer) === "transport");
             const matches = (kind: string) =>

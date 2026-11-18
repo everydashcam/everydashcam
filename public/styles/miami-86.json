@@ -13,7 +13,7 @@
       "id": "background",
       "type": "background",
       "paint": {
-        "background-color": "#80884c"
+        "background-color": "#d2cfd2"
       },
       "metadata": {
         "everydashcam:role": "background"
@@ -41,7 +41,7 @@
         ]
       ],
       "paint": {
-        "fill-color": "#b9b9b9"
+        "fill-color": "#d2cfd2"
       },
       "metadata": {
         "everydashcam:role": "landuse"
@@ -53,9 +53,9 @@
       "source": "openmaptiles",
       "source-layer": "park",
       "paint": {
-        "fill-color": "#708643",
+        "fill-color": "#36844e",
         "fill-opacity": 0.8,
-        "fill-outline-color": "#596d3d"
+        "fill-outline-color": "#317547"
       },
       "metadata": {
         "everydashcam:role": "park"
@@ -67,7 +67,7 @@
       "source": "openmaptiles",
       "source-layer": "park",
       "paint": {
-        "line-color": "#596d3d",
+        "line-color": "#317547",
         "line-dasharray": [
           1,
           1.5
@@ -111,10 +111,10 @@
             "sand",
             "rock"
           ],
-          "#c8aa78",
+          "#ffffd2",
           "wood",
-          "#486636",
-          "#708643"
+          "#287243",
+          "#36844e"
         ],
         "fill-opacity": 1
       },
@@ -136,7 +136,7 @@
         "tunnel"
       ],
       "paint": {
-        "line-color": "#789dba",
+        "line-color": "#8bb8ea",
         "line-dasharray": [
           3,
           3
@@ -202,7 +202,7 @@
         "line-cap": "round"
       },
       "paint": {
-        "line-color": "#789dba",
+        "line-color": "#8bb8ea",
         "line-width": [
           "interpolate",
           [
@@ -250,7 +250,7 @@
         "line-cap": "round"
       },
       "paint": {
-        "line-color": "#789dba",
+        "line-color": "#8bb8ea",
         "line-width": [
           "interpolate",
           [
@@ -284,7 +284,7 @@
         "tunnel"
       ],
       "paint": {
-        "fill-color": "#6f8fb8"
+        "fill-color": "#a4cafa"
       },
       "metadata": {
         "everydashcam:role": "water"
@@ -297,8 +297,8 @@
       "source-layer": "building",
       "minzoom": 13,
       "paint": {
-        "fill-color": "#fafafa",
-        "fill-outline-color": "#b1b1a7"
+        "fill-color": "#fffef9",
+        "fill-outline-color": "#acaaa6"
       },
       "metadata": {
         "everydashcam:role": "building"
@@ -322,7 +322,7 @@
         "ferry"
       ],
       "paint": {
-        "line-color": "#789dba",
+        "line-color": "#8bb8ea",
         "line-width": 1.5,
         "line-dasharray": [
           3,
@@ -348,7 +348,7 @@
         false
       ],
       "paint": {
-        "fill-color": "#a5a49c"
+        "fill-color": "#b7b6b8"
       },
       "metadata": {
         "everydashcam:role": "transport"
@@ -653,30 +653,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -1420,8 +1420,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -2423,30 +2423,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -3207,8 +3207,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -4227,30 +4227,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -4994,8 +4994,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -5997,30 +5997,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -6764,8 +6764,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -7767,30 +7767,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -8551,8 +8551,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -9571,30 +9571,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -10338,8 +10338,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -11341,30 +11341,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -12108,8 +12108,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -13111,30 +13111,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -13895,8 +13895,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -14915,30 +14915,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -15682,8 +15682,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -16685,30 +16685,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -17452,8 +17452,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -18455,30 +18455,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -19239,8 +19239,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -20259,30 +20259,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -21026,8 +21026,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -22029,30 +22029,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -22796,8 +22796,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -23799,30 +23799,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -24583,8 +24583,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -25603,30 +25603,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -26370,8 +26370,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -27373,30 +27373,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -28140,8 +28140,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -29143,30 +29143,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -29927,8 +29927,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -30947,30 +30947,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -31714,8 +31714,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -32717,30 +32717,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -33484,8 +33484,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -34487,30 +34487,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -35271,8 +35271,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -36291,30 +36291,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -37058,8 +37058,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -38061,30 +38061,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -38828,8 +38828,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -39831,30 +39831,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -40615,8 +40615,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -41635,30 +41635,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -42402,8 +42402,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -43405,30 +43405,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -44172,8 +44172,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -45175,30 +45175,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -45959,8 +45959,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -46979,30 +46979,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -47746,8 +47746,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -48749,30 +48749,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -49516,8 +49516,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -50519,30 +50519,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -51303,8 +51303,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -52323,30 +52323,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -53090,8 +53090,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -54093,30 +54093,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -54860,8 +54860,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -55863,30 +55863,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -56647,8 +56647,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -57667,30 +57667,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -58434,8 +58434,8 @@
             ],
             "bridge"
           ],
-          "#f4f0d8",
-          "#8e8e8e"
+          "#fffef9",
+          "#989499"
         ],
         "line-width": [
           "let",
@@ -59437,30 +59437,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -60071,30 +60071,30 @@
             "class"
           ],
           "motorway",
-          "#0c0c0c",
+          "#07060b",
           [
             "trunk",
             "primary"
           ],
-          "#0c0c0c",
+          "#07060b",
           [
             "secondary",
             "tertiary"
           ],
-          "#191916",
+          "#1c1a20",
           [
             "service",
             "track"
           ],
-          "#4c4839",
+          "#68656b",
           "path",
-          "#766447",
+          "#77706c",
           [
             "rail",
             "transit"
           ],
-          "#55463c",
-          "#242420"
+          "#5a5563",
+          "#353238"
         ],
         "line-width": [
           "let",
@@ -60425,8 +60425,8 @@
         "symbol-placement": "line"
       },
       "paint": {
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -60453,8 +60453,8 @@
         "symbol-placement": "line"
       },
       "paint": {
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -60510,7 +60510,7 @@
         ]
       ],
       "paint": {
-        "line-color": "#766e57",
+        "line-color": "#99939b",
         "line-dasharray": [
           1,
           1
@@ -60578,7 +60578,7 @@
         "line-join": "round"
       },
       "paint": {
-        "line-color": "#766e57",
+        "line-color": "#99939b",
         "line-opacity": [
           "interpolate",
           [
@@ -60637,7 +60637,7 @@
         ]
       ],
       "paint": {
-        "line-color": "#766e57",
+        "line-color": "#99939b",
         "line-dasharray": [
           1,
           2
@@ -60686,8 +60686,8 @@
         "text-padding": 2
       },
       "paint": {
-        "text-color": "#3d453f",
-        "text-halo-color": "#f4f0d8",
+        "text-color": "#48424c",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1
       }
     },
@@ -60800,8 +60800,8 @@
         ]
       },
       "paint": {
-        "text-color": "#464744",
-        "text-halo-color": "#f4f0d8",
+        "text-color": "#5a475a",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1.2
       }
     },
@@ -60886,8 +60886,8 @@
         ]
       },
       "paint": {
-        "text-color": "#553e25",
-        "text-halo-color": "#f4f0d8",
+        "text-color": "#793c62",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1.2
       }
     },
@@ -60950,8 +60950,8 @@
         "text-size": 14
       },
       "paint": {
-        "text-color": "#263950",
-        "text-halo-color": "#f4f0d8",
+        "text-color": "#294d71",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1.5
       },
       "metadata": {
@@ -61016,8 +61016,8 @@
         "text-size": 14
       },
       "paint": {
-        "text-color": "#263950",
-        "text-halo-color": "#f4f0d8",
+        "text-color": "#294d71",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1.5
       },
       "metadata": {
@@ -61089,8 +61089,8 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
-        "text-halo-color": "#f4f0d8",
+        "text-color": "#29232c",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 0.5
       },
       "metadata": {
@@ -61183,10 +61183,10 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 0.5,
         "text-halo-width": 1,
-        "text-halo-color": "#f4f0d8"
+        "text-halo-color": "#fffef9"
       },
       "metadata": {
         "everydashcam:role": "transport-label"
@@ -61264,10 +61264,10 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 0.5,
         "text-halo-width": 1,
-        "text-halo-color": "#f4f0d8"
+        "text-halo-color": "#fffef9"
       },
       "metadata": {
         "everydashcam:role": "transport-label"
@@ -61689,12 +61689,12 @@
         "text-size": 12
       },
       "paint": {
-        "text-color": "#3d453f",
+        "text-color": "#48424c",
         "text-halo-blur": 0.5,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1,
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -61776,9 +61776,9 @@
         "text-transform": "uppercase"
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1
       },
       "metadata": {
@@ -61863,12 +61863,12 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1,
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -61953,12 +61953,12 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1,
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -62032,9 +62032,9 @@
         "text-transform": "uppercase"
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1
       },
       "metadata": {
@@ -62136,12 +62136,12 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1,
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -62243,12 +62243,12 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1,
-        "icon-color": "#252d27",
-        "icon-halo-color": "#f4f0d8",
+        "icon-color": "#29232c",
+        "icon-halo-color": "#fffef9",
         "icon-halo-width": 1
       },
       "metadata": {
@@ -62331,9 +62331,9 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1
       },
       "metadata": {
@@ -62415,9 +62415,9 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1
       },
       "metadata": {
@@ -62499,9 +62499,9 @@
         ]
       },
       "paint": {
-        "text-color": "#252d27",
+        "text-color": "#29232c",
         "text-halo-blur": 1,
-        "text-halo-color": "#f4f0d8",
+        "text-halo-color": "#fffef9",
         "text-halo-width": 1
       },
       "metadata": {
@@ -62509,8 +62509,8 @@
       }
     }
   ],
-  "name": "everydashcam SanAndreas",
+  "name": "everydashcam Miami 86",
   "metadata": {
-    "everydashcam:theme": "san-andreas"
+    "everydashcam:theme": "miami-86"
   }
 }

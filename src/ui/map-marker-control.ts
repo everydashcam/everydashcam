@@ -117,7 +117,7 @@ export function renderMapMarkerControl(host: HTMLElement, options: MapMarkerCont
         button.type = "button";
         button.className = "map-marker-control__swatch";
         const color =
-            options.radar === "underground-2" && preset.labelKey === "settings.map.marker.color.green"
+            options.radar === "tuner-04" && preset.labelKey === "settings.map.marker.color.green"
                 ? radarMarkerAppearance(options.radar).color
                 : preset.color;
         button.dataset.markerColor = color;

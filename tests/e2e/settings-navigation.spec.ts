@@ -27,12 +27,12 @@ for (const [name, width, height] of [
             if (name === "desktop") await modal.getByRole("link", { name: "Карта", exact: true }).click();
             else await jump.selectOption({ label: "Карта" });
             await expect(modal.getByRole("heading", { name: "Карта", exact: true })).toBeFocused();
-            const vice = modal.getByRole("radio", { name: "ViceCity" });
-            await vice.check();
+            const miami = modal.getByRole("radio", { name: "Майами 86" });
+            await miami.check();
             await expect(modal.locator("#settings-map-minimap-shape-select")).toHaveValue("circle");
-            await vice.press("ArrowLeft");
-            await expect(modal.getByRole("radio", { name: "SanAndreas" })).toBeChecked();
-            await vice.check();
+            await miami.press("ArrowLeft");
+            await expect(modal.getByRole("radio", { name: "ЛА 92" })).toBeChecked();
+            await miami.check();
             await expect(jump).toHaveValue("settings-map-section");
             const content = modal.locator(".settings-content");
             expect(await content.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -50,7 +50,7 @@ for (const [name, width, height] of [
             await openSettings();
             await expect(modal.getByRole("heading", { name: "Воспроизведение", exact: true })).toBeInViewport();
             await expect(jump).toHaveValue("settings-playback-section");
-            await expect(vice).toBeChecked();
+            await expect(miami).toBeChecked();
         });
     });
 }

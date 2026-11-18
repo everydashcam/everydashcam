@@ -69,9 +69,9 @@ export function isStreetNameLayer(layer: LayerSpecification): boolean {
     return layer.type === "symbol" && (layer.id.startsWith("highway-name-") || layer.id === "osm-street-labels");
 }
 
-/** The large game map uses quieter geometry beneath the street names. Keep
+/** The large map of a radar theme uses quieter geometry beneath the street names. Keep
  * viewer text scale, street density and any reduced-context preset in effect. */
-export function readableGameMap(style: StyleSpecification, lang: string): StyleSpecification {
+export function readableRadarThemeMap(style: StyleSpecification, lang: string): StyleSpecification {
     const layers: LayerSpecification[] = [];
     const streets: SymbolLayerSpecification[] = [];
     for (const layer of style.layers) {
@@ -143,7 +143,7 @@ export function radarBaseStyle(style: StyleSpecification, radar: RadarTheme): St
         const role = layerRole(layer);
         if (layer.type === "symbol" || role === "poi" || role === "poi-driver") continue;
         if (
-            radar !== "underground-2" ||
+            radar !== "tuner-04" ||
             layer.type === "background" ||
             layer.type === "raster" ||
             role === "water" ||
