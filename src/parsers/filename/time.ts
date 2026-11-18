@@ -34,7 +34,7 @@ import {
     RX_NEOLINE,
     RX_NEXTBASE,
     RX_NOVATEK_TS,
-    RX_NOVATEK_VANTRUE,
+    matchVantrueFilename,
     RX_NOVATEK_VIOFO,
     RX_REC_SINGLE,
     RX_SEI_DOUBLE_GPS,
@@ -98,9 +98,8 @@ const novatekTsTime: FilenameTimeTechnique = {
 const novatekVantrueTime: FilenameTimeTechnique = {
     id: "novatek-vantrue-time",
     extract(file: VendorFile): Date | null {
-        const m = file.file.name.match(RX_NOVATEK_VANTRUE);
-        if (!m) return null;
-        return ymdHmsFromSplit(m[1]!, m[2]!);
+        const vantrue = matchVantrueFilename(file.file.name);
+        return vantrue ? ymdHmsFromSplit(vantrue.ymd, vantrue.hms) : null;
     },
 };
 

@@ -212,6 +212,15 @@ describe("matchFilenameChannel", () => {
         expect(r.value).toEqual({ channel: "interior", confident: false });
     });
 
+    it("Vantrue split-date spelling resolves through the Vantrue techniques, not the generic clock", () => {
+        const file = vf("2026_11_16_160129_E_C.MP4");
+        expect(matchFilenameChannel(file).matchedId).toBe("novatek-vantrue-channel");
+        expect(matchFilenameTime(file).matchedId).toBe("novatek-vantrue-time");
+        expect(matchFilenameMode(file).matchedId).toBe("novatek-mode");
+        expect(matchFilenameSequence(file).matchedId).toBeNull();
+        expect(cameraFingerprint(file).startsWith("novatek-vantrue|")).toBe(true);
+    });
+
     it("Tesla path -> confident (camera spelled out)", () => {
         const r = matchFilenameChannel(
             vf("2025-06-07_18-06-17-back.mp4", "TeslaCam/RecentClips/2025-06-07_18-06-17-back.mp4"),

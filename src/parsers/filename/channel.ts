@@ -49,7 +49,7 @@ import {
     RX_NAVITEL,
     RX_NEOLINE,
     RX_NEXTBASE,
-    RX_NOVATEK_VANTRUE,
+    matchVantrueFilename,
     RX_NOVATEK_VIOFO,
     RX_REDTIGER,
     RX_REC_SINGLE,
@@ -542,10 +542,10 @@ const novatekSingleChannel: FilenameChannelTechnique = {
 const novatekVantrueChannel: FilenameChannelTechnique = {
     id: "novatek-vantrue-channel",
     extract(file: VendorFile): ChannelMatch | null {
-        const m = file.file.name.match(RX_NOVATEK_VANTRUE);
-        if (!m) return null;
+        const vantrue = matchVantrueFilename(file.file.name);
+        if (!vantrue) return null;
         // A/B/C are index letters (B=cabin is not a mnemonic) - guess the mount.
-        const ch = m[5]!.toUpperCase();
+        const ch = vantrue.channelLetter.toUpperCase();
         if (ch === "A") return guess("front");
         if (ch === "B") return guess("interior"); // Vantrue B = cabin
         if (ch === "C") return guess("rear");

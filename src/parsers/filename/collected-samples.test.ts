@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupTrips, tripAllCandidates } from "../../trips.js";
+import { frameRecordingMode, groupTrips, tripAllCandidates } from "../../trips.js";
 import { buildProvisionalCandidate } from "../../ui/ingest-candidate.js";
 import { cameraFingerprint } from "../camera-fingerprint.js";
 import { shouldTryEmbeddedGps } from "../gps-source-hints.js";
@@ -289,5 +289,86 @@ describe("collected recording filenames", () => {
         expect(tripAllCandidates(trips[0]!)).toHaveLength(names.length);
         expect(new Set(candidates.map((candidate) => candidate.channel)).size).toBe(names.length);
         expect(classifyFilenameChannel(files[1]!)?.confident).toBe(false);
+    });
+
+    // Vantrue N4 card from a user report: split-date names with no counter.
+    // The manual E clip starts one second before the loop clip ends and fills
+    // the gap until the next loop clip, so it belongs to the same drive.
+    const vantrueN4Clips = [
+        ["2026_11_16_155830_N_A.MP4", 180],
+        ["2026_11_16_155830_N_B.MP4", 180],
+        ["2026_11_16_155830_N_C.MP4", 180],
+        ["2026_11_16_160129_E_A.MP4", 22],
+        ["2026_11_16_160129_E_B.MP4", 21],
+        ["2026_11_16_160129_E_C.MP4", 21],
+        ["2026_11_16_160150_N_A.MP4", 180],
+        ["2026_11_16_160150_N_B.MP4", 180],
+        ["2026_11_16_160150_N_C.MP4", 180],
+        ["2026_11_16_160450_N_A.MP4", 180],
+        ["2026_11_16_160450_N_B.MP4", 180],
+        ["2026_11_16_160450_N_C.MP4", 180],
+        ["2026_11_16_160751_N_A.MP4", 88],
+        ["2026_11_16_160751_N_B.MP4", 89],
+        ["2026_11_16_160751_N_C.MP4", 89],
+    ] as const;
+
+    it("reads the Vantrue N4 split-date clock, channel and mode letters", () => {
+        const front = vf("card/2026_11_16_160129_E_A.MP4");
+        expect(classifyFilenameTime(front)?.toISOString()).toBe("2026-11-16T16:01:29.000Z");
+        expect(classifyFilenameMode(front)).toBe("event");
+        expect(classifyFilenameSequence(front)).toBeNull();
+        expect(classifyFilenameChannel(front)).toEqual({ channel: "front", confident: false });
+        expect(classifyFilenameChannel(vf("card/2026_11_16_160129_E_B.MP4"))).toEqual({
+            channel: "interior",
+            confident: false,
+        });
+        expect(classifyFilenameChannel(vf("card/2026_11_16_160129_E_C.MP4"))).toEqual({
+            channel: "rear",
+            confident: false,
+        });
+        expect(classifyFilenameMode(vf("card/2026_11_16_155830_N_A.MP4"))).toBe("normal");
+        expect(classifyFilenameMode(vf("card/2026_11_16_155830_P_A.MP4"))).toBe("parking");
+        // The optional GPS mount shares the Novatek probe with the counter spelling.
+        expect(shouldTryEmbeddedGps(front, false)).toBe(true);
+        expect(classifyFilenameChannel(vf("card/2026_11_16_155830_X_A.MP4"))).toBeNull();
+        expect(classifyFilenameTime(vf("card/2026_13_16_155830_N_A.MP4"))).toBeNull();
+    });
+
+    it("groups the Vantrue N4 loop and event clips of all channels into one drive", () => {
+        const candidates = vantrueN4Clips.map(([name, durationSec]) => {
+            const file = vf(`card/${name}`);
+            return buildProvisionalCandidate({
+                file,
+                fingerprint: cameraFingerprint(file),
+                startUtc: classifyFilenameTime(file)!.getTime() / 1000,
+                startSource: "name",
+                cameraTzSec: null,
+                durationSec,
+                records: [],
+                appliedExtractors: [],
+            });
+        });
+        expect(new Set(candidates.map((candidate) => candidate.fingerprint)).size).toBe(1);
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expect(tripAllCandidates(trip)).toHaveLength(vantrueN4Clips.length);
+        expect(trip.frames.map((frame) => Object.keys(frame.channels).sort())).toEqual(
+            trip.frames.map(() => ["front", "interior", "rear"]),
+        );
+        expect(trip.frames.map(frameRecordingMode)).toEqual(["normal", "event", "normal", "normal", "normal"]);
+    });
+
+    it("keeps Vantrue event and parking clips on the loop clips' camera key", () => {
+        const loop = vf("DCIM/Video/Normal/20241223_195136_00305_N_A.MP4");
+        const event = vf("DCIM/Video/Event/20241223_195436_00306_E_B.MP4");
+        const parking = vf("DCIM/Video/Normal/20241223_205436_00307_P_C.MP4");
+        expect(cameraFingerprint(event)).toBe(cameraFingerprint(loop));
+        expect(cameraFingerprint(parking)).toBe(cameraFingerprint(loop));
+        const splitLoop = vf("DCIM/Video/Normal/2026_11_16_155830_N_A.MP4");
+        const splitEvent = vf("DCIM/Video/Event/2026_11_16_160129_E_A.MP4");
+        expect(cameraFingerprint(splitEvent)).toBe(cameraFingerprint(splitLoop));
+        // The spellings are different firmware families, not one camera.
+        expect(cameraFingerprint(splitLoop)).not.toBe(cameraFingerprint(loop));
     });
 });

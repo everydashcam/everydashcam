@@ -20,7 +20,7 @@ import {
     RX_NEOLINE,
     RX_NEXTBASE,
     RX_NOVATEK_TS,
-    RX_NOVATEK_VANTRUE,
+    matchVantrueFilename,
     RX_NOVATEK_VIOFO,
     RX_REC_SINGLE,
     RX_REDTIGER,
@@ -163,9 +163,7 @@ const novatekSequence: FilenameSequenceTechnique = {
         }
         const single = matchNovatekSingleFilename(file.file.name);
         if (single) return Number(single[4]);
-        const vantrue = file.file.name.match(RX_NOVATEK_VANTRUE);
-        if (vantrue) return Number(vantrue[3]);
-        return null;
+        return matchVantrueFilename(file.file.name)?.sequence ?? null;
     },
 };
 

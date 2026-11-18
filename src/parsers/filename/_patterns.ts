@@ -395,8 +395,60 @@ export function matchNovatekNvtMovFilename(name: string): RegExpMatchArray | nul
 export function matchNovatekSingleFilename(name: string): RegExpMatchArray | null {
     return matchNovatekNvtMovFilename(name) ?? name.match(RX_NOVATEK_SINGLE);
 }
-// Vantrue: YYYYMMDD_HHMMSS_NNNN_<N|E|P>_<A|B|C>.mp4.
-export const RX_NOVATEK_VANTRUE = /^(\d{8})_(\d{6})_(\d+)_([NEP])_([A-Z])\.mp4$/i;
+// Vantrue writes one `_<mode>_<channel>.mp4` tail after two clock spellings:
+// - counter: YYYYMMDD_HHMMSS_NNNN_<mode>_<channel>.mp4 (N2X, S1 Pro Max; the
+//   N4 Pro manual documents the same grammar);
+// - split date, no counter: YYYY_MM_DD_HHMMSS_<mode>_<channel>.mp4 (N4,
+//   real report). Disjoint from RX_WOLFBOX, whose fifth field is two digits.
+// Mode letter: N = loop, E = event (g-sensor or manual lock), P = parking.
+// Channel letter: A = front, B = cabin, C = rear (N4 and N4 Pro manuals).
+const RX_VANTRUE_COUNTER = /^(\d{8})_(\d{6})_(\d+)_([NEP])_([A-Z])\.mp4$/i;
+const RX_VANTRUE_SPLIT_DATE = /^(\d{4})_(\d{2})_(\d{2})_(\d{6})_([NEP])_([A-Z])\.mp4$/i;
+// The documented card folders. Loop, parking, time-lapse and privacy clips
+// share Normal; locked clips move to Event.
+export const VANTRUE_MODE_FOLDERS = ["normal", "event"] as const;
+
+/** Fields of a Vantrue recording filename, normalized across both spellings. */
+export interface VantrueFilename {
+    /** Camera-local calendar date as YYYYMMDD. */
+    ymd: string;
+    /** Camera-local clock as HHMMSS. */
+    hms: string;
+    /** Loop counter; null for the split-date spelling, which writes none. */
+    sequence: number | null;
+    /** Recording-mode letter as written (N, E or P, either case). */
+    modeLetter: string;
+    /** Channel index letter as written. */
+    channelLetter: string;
+}
+
+/**
+ * Parses either Vantrue filename spelling into one shape, so every filename
+ * field reads the same grammar. Returns null for any other name.
+ */
+export function matchVantrueFilename(name: string): VantrueFilename | null {
+    const counter = name.match(RX_VANTRUE_COUNTER);
+    if (counter) {
+        return {
+            ymd: counter[1]!,
+            hms: counter[2]!,
+            sequence: Number(counter[3]),
+            modeLetter: counter[4]!,
+            channelLetter: counter[5]!,
+        };
+    }
+    const split = name.match(RX_VANTRUE_SPLIT_DATE);
+    if (split) {
+        return {
+            ymd: `${split[1]}${split[2]}${split[3]}`,
+            hms: split[4]!,
+            sequence: null,
+            modeLetter: split[5]!,
+            channelLetter: split[6]!,
+        };
+    }
+    return null;
+}
 // Novatek MPEG-TS OEMs: 14-digit timestamp _ 6-digit counter + .ts - the
 // RX_DDPAI_NORMAL name scheme in a TS container (GPS rides a private PES
 // stream; extraction is a separate primitive concern). Disjoint from
@@ -419,7 +471,7 @@ export function isNovatekFamilyFilename(name: string): boolean {
         RX_NOVATEK_VIOFO.test(name) ||
         RX_NOVATEK_SINGLE.test(name) ||
         RX_NOVATEK_NVT_MOV.test(name) ||
-        RX_NOVATEK_VANTRUE.test(name)
+        matchVantrueFilename(name) !== null
     );
 }
 

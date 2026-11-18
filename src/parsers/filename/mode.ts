@@ -42,7 +42,7 @@ import {
     RX_MIVUE_PATH_MODE,
     RX_NOVATEK_PATH_RO,
     RX_NOVATEK_TS,
-    RX_NOVATEK_VANTRUE,
+    matchVantrueFilename,
     RX_NOVATEK_VIOFO,
     RX_REC_SINGLE,
     RX_REC_SINGLE_PATH_CHANNEL,
@@ -384,9 +384,9 @@ const novatekMode: FilenameModeTechnique = {
         if (RX_NOVATEK_TS.test(file.file.name)) {
             return RX_NOVATEK_PATH_RO.test(file.relativePath) ? "event" : "normal";
         }
-        const vantrue = file.file.name.match(RX_NOVATEK_VANTRUE);
+        const vantrue = matchVantrueFilename(file.file.name);
         if (vantrue) {
-            switch (vantrue[4]!.toUpperCase()) {
+            switch (vantrue.modeLetter.toUpperCase()) {
                 case "N":
                     return "normal";
                 case "E":
