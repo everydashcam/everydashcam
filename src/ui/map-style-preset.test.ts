@@ -4,7 +4,7 @@ import { createExpression, featureFilter, validateStyleMin } from "@maplibre/map
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
 import { describe, expect, it } from "vitest";
 
-import { applyMapStylePreset, isStreetNameLayer, readableGameMap } from "./map-style-preset.js";
+import { applyMapStylePreset, isStreetNameLayer, radarBaseStyle, readableGameMap } from "./map-style-preset.js";
 import { MAP_THEMES, type MapStylePreset } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
 
@@ -90,7 +90,7 @@ describe("map style presets", () => {
         }
     }
 
-    for (const theme of ["san-andreas", "vice-city"] as const) {
+    for (const theme of ["san-andreas", "vice-city", "underground-2"] as const) {
         it.each(["openfreemap", "osm-vector"] as const)(
             `prioritizes localized street names on the large ${theme} %s map`,
             (provider) => {
@@ -115,6 +115,31 @@ describe("map style presets", () => {
             },
         );
     }
+
+    it.each(["openfreemap", "osm-vector"] as const)(
+        "keeps driving roads and drops paths on the %s Underground radar",
+        (provider) => {
+            const style =
+                provider === "openfreemap"
+                    ? loadStyle("underground-2")
+                    : createFallbackMapStyle(provider, "underground-2");
+            const radar = radarBaseStyle(style, "underground-2");
+            expect(validateStyleMin(radar)).toEqual([]);
+            const roads = radar.layers.filter((layer) => layer.type === "line" && role(layer) === "transport");
+            const matches = (kind: string) =>
+                roads.some(
+                    (layer) =>
+                        "filter" in layer &&
+                        featureFilter(layer.filter, layer.id).filter(
+                            { zoom: 16 },
+                            { type: 2, properties: { class: kind, kind } },
+                        ),
+                );
+            expect(matches("service")).toBe(true);
+            expect(matches("path")).toBe(false);
+            expect(matches("rail")).toBe(false);
+        },
+    );
 
     it("makes road context quieter and minimal removes it without altering the cache", () => {
         const original = loadStyle("light");

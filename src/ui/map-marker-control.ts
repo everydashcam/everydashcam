@@ -2,6 +2,7 @@ import type { RadarTheme } from "../map-radar.js";
 import { t } from "../i18n/index.js";
 import type { I18nKey } from "../i18n/keys.js";
 import {
+    radarMarkerAppearance,
     MAP_MARKER_SHAPES,
     MAP_MARKER_SIZE_PX,
     MAP_MARKER_SIZES,
@@ -115,10 +116,14 @@ export function renderMapMarkerControl(host: HTMLElement, options: MapMarkerCont
         const button = document.createElement("button");
         button.type = "button";
         button.className = "map-marker-control__swatch";
-        button.dataset.markerColor = preset.color;
-        button.style.setProperty("--marker-swatch", preset.color);
+        const color =
+            options.radar === "underground-2" && preset.labelKey === "settings.map.marker.color.green"
+                ? radarMarkerAppearance(options.radar).color
+                : preset.color;
+        button.dataset.markerColor = color;
+        button.style.setProperty("--marker-swatch", color);
         button.setAttribute("aria-label", t(preset.labelKey));
-        button.addEventListener("click", () => apply({ ...current, color: preset.color }));
+        button.addEventListener("click", () => apply({ ...current, color }));
         colorRow.appendChild(button);
     }
     const customLabel = document.createElement("label");

@@ -57,7 +57,11 @@ const MIN_LEVEL = -5;
 const MAX_LEVEL = 5;
 
 export function roadColorExpression(palette, kind) {
-    if (kind === "casing") return ["case", IS_BRIDGE, palette.bridgeCasing, palette.roadCasing];
+    if (kind === "fill" && palette.roadInterior) {
+        return ["match", CLASS, "path", palette.path, ["rail", "transit"], palette.rail, palette.roadInterior];
+    }
+    if (kind === "casing" && !palette.roadInterior)
+        return ["case", IS_BRIDGE, palette.bridgeCasing, palette.roadCasing];
     return [
         "match",
         CLASS,
@@ -124,9 +128,13 @@ const MIN_ZOOM = [
     ],
 ];
 
-function roadWidth(kind) {
+export function roadWidth(kind, scale = 1) {
     const stops = WIDTHS.flatMap((row) => {
-        const width = ["*", ["case", IS_RAMP, 0.65, 1], ["at", ["var", "width_index"], ["literal", row.slice(1)]]];
+        const width = [
+            "*",
+            ["case", IS_RAMP, 0.65, 1],
+            ["at", ["var", "width_index"], ["literal", row.slice(1).map((value) => value * scale)]],
+        ];
         const value =
             kind === "fill"
                 ? width

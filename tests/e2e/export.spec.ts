@@ -1234,7 +1234,7 @@ test.describe("export", () => {
         const rect = inspector.locator('button[data-shape="rect"]');
         const overlay = page.locator("#player-map-overlay");
         await rect.click();
-        for (const name of ["SanAndreas", "ViceCity"]) {
+        for (const name of ["SanAndreas", "ViceCity", "Underground 2"]) {
             const option = inspector.getByRole("button", { name, exact: true });
             await option.click();
             await expect(option).toHaveAttribute("aria-pressed", "true");
@@ -1246,9 +1246,11 @@ test.describe("export", () => {
             await expect(rect).toHaveAttribute("aria-pressed", "true");
             const marker = inspector.locator("#export-map-marker-control");
             await expect(marker.locator('[data-marker-shape="arrow"]')).toHaveAttribute("aria-pressed", "true");
-            await expect(marker.locator('[data-marker-color="#f4f4f2"]')).toHaveAttribute("aria-pressed", "true");
+            await expect(marker.locator('input[type="color"]')).toHaveValue(
+                name === "Underground 2" ? "#59e044" : "#f4f4f2",
+            );
             await marker.locator('[data-marker-shape="sedan"]').click();
-            await marker.locator('[data-marker-color="#30a46c"]').click();
+            await marker.locator('[data-marker-color="#e5484d"]').click();
             await marker.locator('[data-marker-size="large"]').click();
         }
         await neon.click();

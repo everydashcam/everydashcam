@@ -1,9 +1,32 @@
-import type { LayerSpecification, StyleSpecification, SymbolLayerSpecification } from "maplibre-gl";
+import type {
+    ExpressionSpecification,
+    LayerSpecification,
+    StyleSpecification,
+    SymbolLayerSpecification,
+} from "maplibre-gl";
 
+import type { RadarTheme } from "../map-radar.js";
 import type { MapStylePreset } from "./map-view-pref.js";
 
 const ROAD_HIDDEN = new Set(["poi", "address", "context-label", "landuse", "boundary"]);
 const MINIMAL_HIDDEN = new Set([...ROAD_HIDDEN, "poi-driver", "park", "landcover", "water-label"]);
+
+const DRIVING_ROAD_CLASSES = [
+    "motorway",
+    "trunk",
+    "primary",
+    "secondary",
+    "tertiary",
+    "minor",
+    "residential",
+    "living_street",
+    "unclassified",
+    "service",
+    "road",
+    "busway",
+    "bus_guideway",
+    "raceway",
+];
 
 function layerRole(layer: LayerSpecification): string | undefined {
     const metadata: unknown = layer.metadata;
@@ -114,11 +137,33 @@ export function readableGameMap(style: StyleSpecification, lang: string): StyleS
 
 /** A moving radar shows roads and terrain. Nearby addresses, street names and
  * POI icons compete with the route at this size. Only the basemap is filtered. */
-export function radarBaseStyle(style: StyleSpecification): StyleSpecification {
-    return {
-        ...style,
-        layers: style.layers.filter(
-            (layer) => layer.type !== "symbol" && layerRole(layer) !== "poi" && layerRole(layer) !== "poi-driver",
-        ),
-    };
+export function radarBaseStyle(style: StyleSpecification, radar: RadarTheme): StyleSpecification {
+    const layers: LayerSpecification[] = [];
+    for (const layer of style.layers) {
+        const role = layerRole(layer);
+        if (layer.type === "symbol" || role === "poi" || role === "poi-driver") continue;
+        if (
+            radar !== "underground-2" ||
+            layer.type === "background" ||
+            layer.type === "raster" ||
+            role === "water" ||
+            (layer.type === "fill" && role === "park")
+        ) {
+            layers.push(layer);
+        } else if (layer.type === "line" && role === "transport") {
+            const sourceLayer = layer["source-layer"];
+            if (sourceLayer !== "transportation" && sourceLayer !== "streets") continue;
+            // Both local vector styles use expression filters for roads. Keep their crossing and zoom
+            // rules while omitting trails and railways from the driving radar.
+            layers.push({
+                ...layer,
+                filter: [
+                    "all",
+                    (layer.filter as ExpressionSpecification | undefined) ?? true,
+                    ["in", ["get", sourceLayer === "streets" ? "kind" : "class"], ["literal", DRIVING_ROAD_CLASSES]],
+                ],
+            });
+        }
+    }
+    return { ...style, layers };
 }

@@ -1036,6 +1036,7 @@ export const jaDict = {
     "settings.map.theme.light": "ライト",
     "settings.map.theme.dark": "ダーク",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "建物を立体表示",
     "settings.map.buildings3d.description": "傾けた表示でのみ有効。",

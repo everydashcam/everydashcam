@@ -1022,6 +1022,7 @@ export const deDict = {
     "settings.map.theme.light": "Hell",
     "settings.map.theme.dark": "Dunkel",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "3D-Gebäude",
     "settings.map.buildings3d.description": "Nur in geneigter Ansicht.",

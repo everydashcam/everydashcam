@@ -3,7 +3,8 @@
 // cameras and blur zones keep their existing per-trip/session lifecycles.
 
 import { readLocalStorageJson, removeLocalStorage, writeLocalStorageJson } from "../local-storage.js";
-import { RADAR_MARKER_APPEARANCE, normalizeMapMarkerAppearance } from "./map-marker-pref.js";
+import { RADAR_THEMES } from "../map-radar.js";
+import { radarMarkerAppearance, normalizeMapMarkerAppearance } from "./map-marker-pref.js";
 import { MAP_THEMES } from "./map-view-pref.js";
 import type { OverlayMapProviderPreference } from "./map-provider.js";
 import type { OverlayMapState, OverlayPreferences, OverlayTextState } from "./export-state.js";
@@ -55,9 +56,9 @@ function normalizeText(value: unknown, fallback: OverlayTextState): OverlayTextS
 function normalizeGameMarkers(value: unknown): OverlayMapState["gameMarkers"] {
     const candidate = record(value);
     const markers: OverlayMapState["gameMarkers"] = {};
-    for (const theme of ["san-andreas", "vice-city"] as const) {
+    for (const theme of RADAR_THEMES) {
         if (record(candidate?.[theme]))
-            markers[theme] = normalizeMapMarkerAppearance(candidate?.[theme], RADAR_MARKER_APPEARANCE);
+            markers[theme] = normalizeMapMarkerAppearance(candidate?.[theme], radarMarkerAppearance(theme));
     }
     return markers;
 }

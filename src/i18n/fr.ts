@@ -1024,6 +1024,7 @@ export const frDict = {
     "settings.map.theme.light": "Clair",
     "settings.map.theme.dark": "Sombre",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "Bâtiments en 3D",
     "settings.map.buildings3d.description": "Uniquement en vue inclinée.",

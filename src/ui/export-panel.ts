@@ -2858,6 +2858,7 @@ function renderMapThemeSegment(): HTMLElement {
             ["dark", t("export.overlays.mapTheme.dark")],
             ["san-andreas", t("settings.map.theme.san-andreas")],
             ["vice-city", t("settings.map.theme.vice-city")],
+            ["underground-2", t("settings.map.theme.underground-2")],
             ["neon", t("export.overlays.mapTheme.neon")],
         ],
         current: exportPanelState.overlayMap.theme,

@@ -1022,6 +1022,7 @@ export const zhDict = {
     "settings.map.theme.light": "浅色",
     "settings.map.theme.dark": "深色",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "立体建筑",
     "settings.map.buildings3d.description": "仅在倾斜视图中显示。",

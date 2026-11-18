@@ -226,7 +226,7 @@ export async function createExportMapSnapshotter(
     const radar = radarTheme(theme);
     const snapshotStyle = (base: maplibregl.StyleSpecification) =>
         radar
-            ? radarBaseStyle(base)
+            ? radarBaseStyle(base, radar)
             : applyStreetLabelDensity(scaleStyleTextSizes(base, labelScalePct / 100), labelDensity);
     const style = snapshotStyle(styleFromCache ?? EMPTY_MAP_STYLE);
 
@@ -317,7 +317,7 @@ export async function createExportMapSnapshotter(
         throw err;
     }
 
-    addTrackLayer(map, records);
+    addTrackLayer(map, records, radar === "underground-2");
 
     let isDisposed = false;
     let shouldRefreshOnIdle = false;
@@ -339,7 +339,7 @@ export async function createExportMapSnapshotter(
                 const styled = snapshotStyle(nextStyle);
                 await waitForStyleLoad(map, styled);
                 if (isDisposed || provider !== activeProvider) return;
-                if (!map.getSource(TRACK_SOURCE_ID)) addTrackLayer(map, records);
+                if (!map.getSource(TRACK_SOURCE_ID)) addTrackLayer(map, records, radar === "underground-2");
                 onInvalidate?.();
             })
             .catch((err: unknown) => {
@@ -619,7 +619,7 @@ function finiteActiveRecords(recs: GpsRecord[]): GpsRecord[] {
     return recs.filter(isValidGpsFix);
 }
 
-function addTrackLayer(map: maplibregl.Map, records: GpsRecord[]): void {
+function addTrackLayer(map: maplibregl.Map, records: GpsRecord[], endpointDots: boolean): void {
     const usable = finiteActiveRecords(records);
     if (usable.length < 2) return;
     const coords: [number, number][] = usable.map((r) => [r.lon, r.lat]);
@@ -628,5 +628,9 @@ function addTrackLayer(map: maplibregl.Map, records: GpsRecord[]): void {
     // the same metric MapLibre measures line-progress in.
     const { cumDist, total } = buildMercatorCumulativeDistances(usable);
     const gradient = buildSpeedGradient(usable, cumDist, total);
-    addSpeedTrack(map, { coords, gradient }, { sourceId: TRACK_SOURCE_ID, layerId: TRACK_LAYER_ID, width: 5 });
+    addSpeedTrack(
+        map,
+        { coords, gradient },
+        { sourceId: TRACK_SOURCE_ID, layerId: TRACK_LAYER_ID, width: 5, endpointDots },
+    );
 }

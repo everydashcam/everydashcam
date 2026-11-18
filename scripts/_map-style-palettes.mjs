@@ -2,7 +2,7 @@
 // drop a bridge, road number or building merely because the UI theme changed.
 
 import gamePalettes from "../src/ui/map-game-palettes.json" with { type: "json" };
-import { roadColorExpression } from "./_map-road-layers.mjs";
+import { roadColorExpression, roadWidth } from "./_map-road-layers.mjs";
 
 export const MAP_SDF_ICONS = ["arrow", "circle_11_black", "airport_11"];
 
@@ -69,6 +69,7 @@ export const MAP_STYLE_VARIANTS = Object.keys(VARIANTS);
 
 function lineColor(layer, palette) {
     const kind = layer.metadata?.["everydashcam:road-kind"];
+    if (palette.roadInterior && layer.metadata?.["everydashcam:road-crossing"] === "all") return palette.roadCasing;
     if (kind) return roadColorExpression(palette, kind);
     const id = layer.id;
     if (layer["source-layer"] === "waterway" || id === "road_ferry") return palette.waterLine;
@@ -113,6 +114,9 @@ export function createMapStyleVariant(light, theme) {
         if (layer.type === "background") p["background-color"] = palette.background;
         if (layer.type === "line") {
             p["line-color"] = lineColor(layer, palette);
+            if (palette.roadInterior && layer.metadata?.["everydashcam:road-kind"] === "fill") {
+                p["line-width"] = roadWidth("fill", 0.78);
+            }
             if (
                 theme === "neon" &&
                 layer.metadata?.["everydashcam:road-kind"] === "casing" &&

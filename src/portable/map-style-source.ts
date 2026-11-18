@@ -6,6 +6,7 @@ const MAP_STYLE_LOADERS = {
     dark: () => import("../../public/styles/dark.json"),
     "san-andreas": () => import("../../public/styles/san-andreas.json"),
     "vice-city": () => import("../../public/styles/vice-city.json"),
+    "underground-2": () => import("../../public/styles/underground-2.json"),
     neon: () => import("../../public/styles/neon.json"),
 };
 

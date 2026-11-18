@@ -1296,6 +1296,7 @@ export type I18nKey =
     | "settings.map.theme.light"
     | "settings.map.theme.dark"
     | "settings.map.theme.vice-city"
+    | "settings.map.theme.underground-2"
     | "settings.map.theme.san-andreas"
     | "settings.map.buildings3d.label"
     | "settings.map.buildings3d.description"

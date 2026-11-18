@@ -1190,7 +1190,12 @@ function refreshMiniMap(data: MiniMapData | null): void {
     const { coords } = data;
 
     // Thinner line on mini-map: at small scale a 4 px line turns into a blob.
-    addSpeedTrack(mini, data, { sourceId: TRIP_SOURCE_ID, width: 3, opacity: 0.95 });
+    addSpeedTrack(mini, data, {
+        sourceId: TRIP_SOURCE_ID,
+        width: 3,
+        opacity: 0.95,
+        endpointDots: dom.miniMap.dataset.radar === "underground-2",
+    });
 
     state.miniMapMarker = new (loadedMaplibre().Marker)({
         element: buildCarMarkerElement(),
@@ -2748,6 +2753,7 @@ export function addBuildings3dLayer(map: maplibregl.Map, theme: MapStyleId): voi
         light: "#e4ddcd",
         "san-andreas": gamePalettes["san-andreas"].landuse,
         "vice-city": gamePalettes["vice-city"].landuse,
+        "underground-2": gamePalettes["underground-2"].landuse,
     }[theme];
     map.addLayer(
         {

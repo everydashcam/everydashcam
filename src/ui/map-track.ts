@@ -15,7 +15,14 @@ export function speedTrackOuterWidth(width: number): number {
 export function addSpeedTrack(
     map: MapLibreMap,
     data: MiniMapData,
-    options: { sourceId: string; layerId?: string; beforeId?: string; width: number; opacity?: number },
+    options: {
+        sourceId: string;
+        layerId?: string;
+        beforeId?: string;
+        width: number;
+        opacity?: number;
+        endpointDots?: boolean;
+    },
 ): void {
     const { sourceId, layerId = sourceId, width, opacity = 1 } = options;
     map.addSource(sourceId, {
@@ -63,9 +70,40 @@ export function addSpeedTrack(
         },
         options.beforeId,
     );
+    if (options.endpointDots && data.coords.length >= 2) {
+        const endpoints = `${sourceId}-endpoints`;
+        map.addSource(endpoints, {
+            type: "geojson",
+            data: {
+                type: "FeatureCollection",
+                features: [data.coords[0]!, data.coords[data.coords.length - 1]!].map((coordinates, index) => ({
+                    type: "Feature",
+                    properties: { start: index === 0 },
+                    geometry: { type: "Point", coordinates },
+                })),
+            },
+        });
+        map.addLayer(
+            {
+                id: endpoints,
+                type: "circle",
+                source: endpoints,
+                paint: {
+                    "circle-radius": width * 1.45,
+                    "circle-stroke-width": width * 0.65,
+                    "circle-color": ["case", ["get", "start"], "#5cc8e3", "#f6c26b"],
+                    "circle-stroke-color": ["case", ["get", "start"], "#1189ce", "#cb893c"],
+                },
+            },
+            options.beforeId,
+        );
+    }
 }
 
 export function removeSpeedTrack(map: MapLibreMap, sourceId: string, layerId = sourceId): void {
+    const endpoints = `${sourceId}-endpoints`;
+    if (map.getLayer(endpoints)) map.removeLayer(endpoints);
+    if (map.getSource(endpoints)) map.removeSource(endpoints);
     for (const id of [layerId, `${layerId}-outline`, `${layerId}-halo`]) {
         if (map.getLayer(id)) map.removeLayer(id);
     }

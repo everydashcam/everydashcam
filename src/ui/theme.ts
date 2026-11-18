@@ -76,6 +76,11 @@ const MAP_COLORS = {
         trackVeil: "rgba(128,136,76,0.45)",
         markerStroke: "#0e0e0e",
     },
+    "underground-2": {
+        background: gamePalettes["underground-2"].background,
+        trackVeil: "rgba(32,34,30,0.45)",
+        markerStroke: "#131810",
+    },
     "vice-city": {
         background: gamePalettes["vice-city"].background,
         trackVeil: "rgba(210,207,210,0.45)",

@@ -33,6 +33,7 @@ const THEME_LABEL_KEYS = {
     light: "settings.map.theme.light",
     "san-andreas": "settings.map.theme.san-andreas",
     "vice-city": "settings.map.theme.vice-city",
+    "underground-2": "settings.map.theme.underground-2",
     dark: "settings.map.theme.dark",
 } as const satisfies Record<MapThemeChoice, I18nKey>;
 

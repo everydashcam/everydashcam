@@ -10,6 +10,7 @@ function styleUrls(prefix: string) {
         neon: `${prefix}neon.json`,
         "san-andreas": `${prefix}san-andreas.json`,
         "vice-city": `${prefix}vice-city.json`,
+        "underground-2": `${prefix}underground-2.json`,
     };
 }
 

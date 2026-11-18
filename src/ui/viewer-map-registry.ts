@@ -368,7 +368,7 @@ function applyStyleTo(
         const radar = viewerRadarTheme(provider);
         setRadarFrame(viewerMap.map.getContainer(), radar);
         viewerMap.map.resize();
-        if (radar) styled = radarBaseStyle(styled);
+        if (radar) styled = radarBaseStyle(styled, radar);
     } else if (viewerMap.surface === "main" && viewerRadarTheme(provider)) {
         styled = readableGameMap(styled, getCurrentLang());
     }

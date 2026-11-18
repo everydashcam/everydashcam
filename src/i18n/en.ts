@@ -1025,6 +1025,7 @@ export const enDict = {
     "settings.map.theme.light": "Light",
     "settings.map.theme.dark": "Dark",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "3D buildings",
     "settings.map.buildings3d.description": "Only in tilted view.",

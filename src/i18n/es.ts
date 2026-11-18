@@ -1024,6 +1024,7 @@ export const esDict = {
     "settings.map.theme.light": "Claro",
     "settings.map.theme.dark": "Oscuro",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "Edificios en 3D",
     "settings.map.buildings3d.description": "Solo en la vista inclinada.",

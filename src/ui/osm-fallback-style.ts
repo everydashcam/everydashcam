@@ -16,6 +16,8 @@ export const OSM_SHORTBREAD_BUILDING_SOURCE_LAYER = "buildings";
 interface Palette {
     sand?: string;
     bridgeCasing?: string;
+    roadInterior?: string;
+    service?: string;
     transportArea?: string;
     background: string;
     water: string;
@@ -52,6 +54,7 @@ function gamePalette(theme: keyof typeof gamePalettes): Palette {
 const PALETTES: Record<MapStyleId, Palette> = {
     "san-andreas": gamePalette("san-andreas"),
     "vice-city": gamePalette("vice-city"),
+    "underground-2": gamePalette("underground-2"),
     light: {
         background: "#f5f4ef",
         water: "#a8d1e7",
@@ -330,9 +333,21 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             ],
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
-                "line-color": p.bridgeCasing
-                    ? ["case", ["==", ["get", "bridge"], true], p.bridgeCasing, p.roadCasing]
-                    : p.roadCasing,
+                "line-color": p.roadInterior
+                    ? [
+                          "match",
+                          ["get", "kind"],
+                          ["motorway", "trunk"],
+                          p.motorway,
+                          ["primary", "secondary", "tertiary"],
+                          p.roadMajor,
+                          "service",
+                          p.service ?? p.roadMinor,
+                          p.roadMinor,
+                      ]
+                    : p.bridgeCasing
+                      ? ["case", ["==", ["get", "bridge"], true], p.bridgeCasing, p.roadCasing]
+                      : p.roadCasing,
                 "line-width": roadCasingWidth(),
             },
         },
@@ -359,7 +374,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
                 ],
             ],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.roadMinor, "line-width": roadLineWidth(0.5, 2.4) },
+            paint: { "line-color": p.roadInterior ?? p.roadMinor, "line-width": roadLineWidth(0.5, 2.4) },
         },
         {
             id: "osm-roads-major",
@@ -368,7 +383,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             "source-layer": "streets",
             filter: ["in", ["get", "kind"], ["literal", ["trunk", "primary", "secondary", "tertiary"]]],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.roadMajor, "line-width": roadLineWidth(0.7, 3.6) },
+            paint: { "line-color": p.roadInterior ?? p.roadMajor, "line-width": roadLineWidth(0.7, 3.6) },
         },
         {
             id: "osm-motorways",
@@ -377,7 +392,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             "source-layer": "streets",
             filter: ["==", ["get", "kind"], "motorway"],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.motorway, "line-width": roadLineWidth(0.9, 4.6) },
+            paint: { "line-color": p.roadInterior ?? p.motorway, "line-width": roadLineWidth(0.9, 4.6) },
         },
         {
             id: "osm-ferries",

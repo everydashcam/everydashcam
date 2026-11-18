@@ -331,18 +331,24 @@ test("map gear and general settings share style, theme and buildings choices", a
     await expect(page.locator("#map-style-select")).toHaveValue("road");
     await expect(page.locator("#map-theme-select")).toHaveValue("light");
     const lightBackground = await mapBackground(page);
-    for (const [theme, name] of [
-        ["san-andreas", "SanAndreas"],
-        ["vice-city", "ViceCity"],
+    for (const [theme, name, color] of [
+        ["san-andreas", "SanAndreas", "#f4f4f2"],
+        ["vice-city", "ViceCity", "#f4f4f2"],
+        ["underground-2", "Underground 2", "#59e044"],
     ] as const) {
         await page.locator("#map-theme-select").selectOption({ label: name });
         await expect(page.locator("#settings-map-theme-select")).toHaveValue(theme);
         await expect(page.locator("#mini-map")).toHaveAttribute("data-radar", theme);
-        const markerKey = `arrow:#f4f4f2:${theme}`;
+        const markerKey = `arrow:${color}:${theme}`;
         await expect(page.locator("#mini-map .car-marker__canvas")).toHaveAttribute(
             "data-marker-render-key",
             markerKey,
         );
+        await expect
+            .poll(() =>
+                page.evaluate(() => Boolean(window.__everydashcam.state.miniMap?.getLayer("trip-line-endpoints"))),
+            )
+            .toBe(theme === "underground-2");
         const markerControl = popover.locator('[data-marker-control="map-popover"]');
         await expect(markerControl.locator('[data-marker-shape="arrow"] canvas')).toHaveAttribute(
             "data-marker-render-key",
@@ -351,7 +357,7 @@ test("map gear and general settings share style, theme and buildings choices", a
         await markerControl.locator('[data-marker-shape="truck"]').click();
         await expect(page.locator("#mini-map .car-marker__canvas")).toHaveAttribute(
             "data-marker-render-key",
-            "truck:#f4f4f2:overhead",
+            `truck:${color}:overhead`,
         );
         await expect(page.locator("#map-minimap-shape-select")).toHaveValue("circle");
         await expect(page.locator("#mini-map")).toHaveCSS("border-radius", "50%");

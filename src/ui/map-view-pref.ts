@@ -1,13 +1,13 @@
 import type { MapShape } from "../transcode/types.js";
 import { getMapProvider } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
-import { radarTheme, shapeForMapTheme } from "../map-radar.js";
+import { RADAR_THEMES, radarTheme, shapeForMapTheme } from "../map-radar.js";
 import { createSubscribers } from "../subscribers.js";
 import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
 export const MAP_STYLE_PRESETS = ["classic", "road", "minimal"] as const;
 export type MapStylePreset = (typeof MAP_STYLE_PRESETS)[number];
 
-export const MAP_THEMES = ["light", "dark", "san-andreas", "vice-city"] as const;
+export const MAP_THEMES = ["light", "dark", ...RADAR_THEMES] as const;
 export const MAP_THEME_CHOICES = ["auto", ...MAP_THEMES] as const;
 export type MapThemeChoice = (typeof MAP_THEME_CHOICES)[number];
 

@@ -1034,6 +1034,7 @@ export const koDict = {
     "settings.map.theme.light": "라이트",
     "settings.map.theme.dark": "다크",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "3D 건물",
     "settings.map.buildings3d.description": "기울어진 보기에서만 표시해요.",

@@ -1024,6 +1024,7 @@ export const plDict = {
     "settings.map.theme.light": "Jasny",
     "settings.map.theme.dark": "Ciemny",
     "settings.map.theme.vice-city": "ViceCity",
+    "settings.map.theme.underground-2": "Underground 2",
     "settings.map.theme.san-andreas": "SanAndreas",
     "settings.map.buildings3d.label": "Budynki 3D",
     "settings.map.buildings3d.description": "Tylko w widoku nachylonym.",

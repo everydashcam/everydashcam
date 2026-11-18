@@ -28,7 +28,7 @@ describe("mapOverlayRect", () => {
 
     it("uses the selected shape for both game radars", () => {
         const circle = mapOverlayRect(1920, 1080, { ...rightBottom, shape: "circle" });
-        for (const radar of ["san-andreas", "vice-city"] as const) {
+        for (const radar of ["san-andreas", "vice-city", "underground-2"] as const) {
             expect(mapOverlayRect(1920, 1080, { ...rightBottom, radar })).toEqual(
                 mapOverlayRect(1920, 1080, rightBottom),
             );
