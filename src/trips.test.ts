@@ -4006,18 +4006,41 @@ describe("timelapse cadence wall spans (A810 Lapse/, no per-file evidence)", () 
     // pairs, no GPS rows while parked and no mvhd creation time - so
     // deriveWallDurationSec has nothing and the cadence factor is the only
     // wall-span signal.
-    function laPair(hhmmss: string, seq: string): VideoCandidate[] {
+    function laPair(hhmmss: string, seq: string, sourceKey?: string): VideoCandidate[] {
         const nameNaive = classifyFilenameTime(makeVendorFile(`LA20260714-${hhmmss}-${seq}F.MP4`))!.getTime() / 1000;
-        return (["F", "R"] as const).map((ch) =>
-            makeCandidate({
+        return (["F", "R"] as const).map((ch) => ({
+            ...makeCandidate({
                 name: `LA20260714-${hhmmss}-${seq}${ch}.MP4`,
                 startUtc: nameNaive,
                 durationSec: 60,
                 channel: ch === "F" ? "front" : "rear",
                 isTimelapse: true,
             }),
-        );
+            ...(sourceKey === undefined ? {} : { sourceKey }),
+        }));
     }
+
+    it("measures each source's cadence apart when two cards share one layout", () => {
+        // Two identical cameras loaded as separate sources, the second offset
+        // by half a cadence step. Mixed together, their clip times would read
+        // as a 450 s cadence and split each parked session into single clips.
+        const cardA = [
+            ...laPair("145315", "000295", "drop:1"),
+            ...laPair("150815", "000296", "drop:1"),
+            ...laPair("152315", "000297", "drop:1"),
+        ];
+        const cardB = [
+            ...laPair("150045", "000295", "drop:2"),
+            ...laPair("151545", "000296", "drop:2"),
+            ...laPair("153045", "000297", "drop:2"),
+        ];
+        const cands = [...cardA, ...cardB];
+        applyTimelapseCadenceWallSpans(cands, classifyFilenameTime);
+        for (const c of cands) expect(c.wallDurationSec).toBe(900);
+        const trips = groupTrips(cands);
+        expect(trips).toHaveLength(2);
+        expect(trips.map((trip) => trip.frames.length)).toEqual([3, 3]);
+    });
 
     it("derives the speed factor from the clip cadence and fills every clip, including the last of the run", () => {
         const cands = [...laPair("145315", "000295"), ...laPair("150815", "000296"), ...laPair("152315", "000297")];

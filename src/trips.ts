@@ -985,7 +985,14 @@ function isDriveTimelapse(candidate: VideoCandidate): boolean {
     return candidate.isTimelapse && candidate.recordingMode === "normal";
 }
 
-function candidateGroupingKey(candidate: VideoCandidate): string {
+/**
+ * Identity of one camera within the session: its fingerprint scoped by the
+ * source it was loaded from. Two cards with the same layout share a
+ * fingerprint, so every per-camera estimate (clock zone, run offsets,
+ * time-lapse cadence, provisional spacing) must key by this, exactly like the
+ * trip partition, or one card's clips calibrate the other's.
+ */
+export function candidateGroupingKey(candidate: Pick<VideoCandidate, "sourceKey" | "fingerprint">): string {
     return JSON.stringify([candidate.sourceKey ?? null, candidate.fingerprint]);
 }
 
@@ -2376,37 +2383,38 @@ const TIMELAPSE_MAX_CADENCE_FACTOR = 120;
  * starts where the previous ends), so gap-to-next / video duration = the
  * capture speed factor (e.g. 900s / 60s = 15x).
  *
- * Returns fingerprint -> median factor. Median over all consecutive pairs,
+ * Returns camera key (candidateGroupingKey) -> median factor. Median over all consecutive pairs,
  * not per-clip gaps: a real recording pause between two lapse sessions is an
  * outlier gap, and the factor range filter plus the median keep it from
  * inflating the estimate. Only filename-timed time-lapse clips participate;
- * a fingerprint with fewer than two distinct clip times yields nothing.
+ * a camera with fewer than two distinct clip times yields nothing.
  * Deltas of naive filename times are TZ-independent, so no startUtc needed.
  */
 export function estimateTimelapseCadenceFactors(
     candidates: readonly VideoCandidate[],
     parseFilenameLocalTime: (file: VendorFile) => Date | null,
 ): Map<string, number> {
-    // fingerprint -> sorted-later map of distinct clip times. Channels of one
+    // camera key -> sorted-later map of distinct clip times. Channels of one
     // frame (F+R) share a filename time; keep one entry per distinct time with
     // the largest video duration among its channels as the gap denominator.
-    const byFingerprint = new Map<string, Map<number, number>>();
+    const byCamera = new Map<string, Map<number, number>>();
     for (const c of candidates) {
         if (!c.isTimelapse || !(c.durationSec > 0)) continue;
         const nameLocal = parseFilenameLocalTime({ file: c.file, relativePath: c.relativePath });
         if (nameLocal === null) continue;
         const nameSec = nameLocal.getTime() / 1000;
-        let times = byFingerprint.get(c.fingerprint);
+        const cameraKey = candidateGroupingKey(c);
+        let times = byCamera.get(cameraKey);
         if (!times) {
             times = new Map();
-            byFingerprint.set(c.fingerprint, times);
+            byCamera.set(cameraKey, times);
         }
         const prev = times.get(nameSec);
         if (prev === undefined || c.durationSec > prev) times.set(nameSec, c.durationSec);
     }
 
     const factors = new Map<string, number>();
-    for (const [fingerprint, times] of byFingerprint) {
+    for (const [cameraKey, times] of byCamera) {
         const sorted = [...times.entries()].sort((a, b) => a[0] - b[0]);
         const ratios: number[] = [];
         for (let i = 0; i + 1 < sorted.length; i++) {
@@ -2419,7 +2427,7 @@ export function estimateTimelapseCadenceFactors(
         // Lower median (an observed element) - same convention as the TZ
         // estimator; on the regular cadence of a real lapse run all ratios are
         // near-identical anyway.
-        factors.set(fingerprint, ratios[(ratios.length - 1) >> 1]!);
+        factors.set(cameraKey, ratios[(ratios.length - 1) >> 1]!);
     }
     return factors;
 }
@@ -2439,7 +2447,7 @@ export function applyTimelapseCadenceWallSpans(
     if (cadenceFactors.size === 0) return;
     for (const c of candidates) {
         if (c.wallDurationSec !== null || !c.isTimelapse || !(c.durationSec > 0)) continue;
-        const factor = cadenceFactors.get(c.fingerprint);
+        const factor = cadenceFactors.get(candidateGroupingKey(c));
         if (factor !== undefined) {
             c.wallDurationSec = Math.min(c.durationSec * factor, TIMELAPSE_WALL_SPAN_CAP_SEC);
         }

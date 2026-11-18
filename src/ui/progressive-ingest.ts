@@ -30,6 +30,7 @@ import type { CachedRecordingMetadata } from "../persist/types.js";
 import type { IndexedMp4, IndexerRepair } from "../workers/indexer-protocol.js";
 import {
     applyTimelapseCadenceWallSpans,
+    candidateGroupingKey,
     deriveStartUtc,
     estimatePreciseClockOffsetByFingerprint,
     estimateProvisionalDurationByFingerprint,
@@ -346,6 +347,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     const derived: Array<{
         cf: ClassifiedFile;
         fingerprint: string;
+        cameraKey: string;
         startUtc: number;
         source: VideoCandidate["startSource"];
         records: VideoCandidate["records"];
@@ -353,6 +355,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     }> = [];
     for (const cf of ctx.newVideos) {
         const fingerprint = cameraFingerprint(cf.file);
+        const cameraKey = candidateGroupingKey({ sourceKey: cf.file.sourceKey, fingerprint });
         const classifierFields = filenameClassifierFields(cf.file);
         const logTiming = ctx.videoTimingByFileKey.get(vendorFileKey(cf.file));
         const records = state.gpsLog ? recordsForVideo(state.gpsLog, cf.file, ctx.videoAssociation) : [];
@@ -362,11 +365,11 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
             createdUtc: null,
             durationSec: NOMINAL_DERIVE_DURATION_SEC,
             records,
-            fingerprintTz: ctx.tzByFingerprint.get(fingerprint) ?? null,
+            fingerprintTz: ctx.tzByFingerprint.get(cameraKey) ?? null,
             parseFilenameLocalTime: classifyFilenameTime,
             preciseFilenameOffsetSec: resolvePreciseClockOffsetForFile(
                 ctx.preciseOffsetRuns,
-                fingerprint,
+                cameraKey,
                 cf.file,
                 classifyFilenameTime,
             ),
@@ -379,7 +382,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
             isTimelapse: classifierFields.isTimelapse,
             wallDurationSec: null,
         });
-        derived.push({ cf, fingerprint, startUtc, source, records, classifierFields });
+        derived.push({ cf, fingerprint, cameraKey, startUtc, source, records, classifierFields });
     }
 
     // Provisional per-fingerprint duration from the inter-clip spacing of BOTH
@@ -387,13 +390,13 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     // then splits on real pauses; contiguous clips stay merged.
     const spacingSamples = [
         ...ctx.allCandidates.map((c) => ({
-            fingerprint: c.fingerprint,
+            fingerprint: candidateGroupingKey(c),
             startUtc: c.startUtc,
             channel: c.channel,
             sequence: c.sequence,
         })),
         ...derived.map((d) => ({
-            fingerprint: d.fingerprint,
+            fingerprint: d.cameraKey,
             startUtc: d.startUtc,
             channel: d.classifierFields.channel,
             sequence: d.classifierFields.sequence,
@@ -409,8 +412,8 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
             fingerprint: d.fingerprint,
             startUtc: d.startUtc,
             startSource: d.source,
-            cameraTzSec: ctx.tzByFingerprint.get(d.fingerprint)?.filenameTzSec ?? null,
-            durationSec: provisionalDuration.get(d.fingerprint) ?? NOMINAL_DERIVE_DURATION_SEC,
+            cameraTzSec: ctx.tzByFingerprint.get(d.cameraKey)?.filenameTzSec ?? null,
+            durationSec: provisionalDuration.get(d.cameraKey) ?? NOMINAL_DERIVE_DURATION_SEC,
             records: d.records,
             appliedExtractors: [],
             classifierFields: d.classifierFields,

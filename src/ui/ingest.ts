@@ -36,7 +36,12 @@ import {
 import type { VendorFile, VideoWithRecordingCopies } from "../parsers/types.js";
 import { cameraFingerprint } from "../parsers/camera-fingerprint.js";
 import { classifyFilenameTime } from "../parsers/filename/index.js";
-import { estimatePreciseClockOffsetByFingerprint, estimateTzByFingerprint, tripAllCandidates } from "../trips.js";
+import {
+    candidateGroupingKey,
+    estimatePreciseClockOffsetByFingerprint,
+    estimateTzByFingerprint,
+    tripAllCandidates,
+} from "../trips.js";
 import { usableCandidateRecords } from "../stale-gps.js";
 import type { Trip, TzSample, VideoCandidate } from "../trips.js";
 
@@ -639,7 +644,10 @@ async function ingestFilesInternal(
                 // fallback gap until the post-index sweep re-estimates.
                 tzSamples.push({
                     file: cf.file,
-                    fingerprint: cameraFingerprint(cf.file),
+                    fingerprint: candidateGroupingKey({
+                        sourceKey: cf.file.sourceKey,
+                        fingerprint: cameraFingerprint(cf.file),
+                    }),
                     firstGpsUnix: firstSynced.unixSeconds,
                     mvhdNaiveUnix: null,
                     durationSec: null,
@@ -653,7 +661,7 @@ async function ingestFilesInternal(
             if (firstSynced && !seen.has(c.file)) {
                 tzSamples.push({
                     file: { file: c.file, relativePath: c.relativePath },
-                    fingerprint: c.fingerprint,
+                    fingerprint: candidateGroupingKey(c),
                     firstGpsUnix: firstSynced.unixSeconds,
                     mvhdNaiveUnix: c.createdUtc !== null ? c.createdUtc.getTime() / 1000 : null,
                     durationSec: c.durationSec,
