@@ -171,10 +171,18 @@ async function withPcmAudio(file: File, options: PcmFixtureOptions): Promise<Fil
     }
 }
 
-async function remuxFixture(file: File, withPcm8Audio = false, metadata?: VideoTrackMetadata): Promise<File> {
+async function remuxFixture(
+    file: File,
+    withPcm8Audio = false,
+    metadata?: VideoTrackMetadata,
+    fastStart: "in-memory" | false = false,
+): Promise<File> {
     const input = open(file);
     const target = new BufferTarget();
-    const output = new Output({ target, format: withPcm8Audio ? new MovOutputFormat() : new Mp4OutputFormat() });
+    const output = new Output({
+        target,
+        format: withPcm8Audio ? new MovOutputFormat({ fastStart }) : new Mp4OutputFormat({ fastStart }),
+    });
     try {
         const track = await input.getPrimaryVideoTrack();
         if (!track) throw new Error("fixture has no video track");
@@ -569,6 +577,30 @@ describe("stream-copy export", () => {
             expect(actual.map((packet) => packet.data)).toEqual(expected.map((packet) => packet.data));
         } finally {
             source.dispose();
+            output.dispose();
+        }
+    });
+
+    it("reports a file whose data ends before its index", async () => {
+        const whole = await remuxFixture(fixture(H264_FIXTURE), false, undefined, "in-memory");
+        const cut = new File([whole.slice(0, Math.floor(whole.size * 0.6))], whole.name);
+        const source = open(cut);
+        try {
+            const track = (await source.getPrimaryVideoTrack())!;
+            expect(await track.computeDuration(), "the index still covers the whole clip").toBeCloseTo(2, 1);
+        } finally {
+            source.dispose();
+        }
+
+        expect((await save([whole])).result.decodeTruncated, "an intact file is not reported").toBe(false);
+        const saved = await save([cut]);
+        expect(saved.result.decodeTruncated).toBe(true);
+        const output = open(saved.file);
+        try {
+            const duration = await (await output.getPrimaryVideoTrack())!.computeDuration();
+            expect(duration, "the clip keeps the footage that exists").toBeGreaterThan(0.5);
+            expect(duration, "the clip lacks the missing footage").toBeLessThan(1.6);
+        } finally {
             output.dispose();
         }
     });

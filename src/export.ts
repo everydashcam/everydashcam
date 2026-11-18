@@ -662,9 +662,11 @@ export async function exportClip({
                     decodedAudio ? decodedAudio.feedBefore(untilSec - origin) : copyAudioBefore(untilSec, false);
 
                 let pkt: EncodedPacket | null = videoStartPacket;
+                let lastReadSequenceNumber = -1;
                 while (pkt) {
                     throwIfCancelled(signal);
                     if (pkt.sequenceNumber > videoEndPacket.sequenceNumber) break;
+                    lastReadSequenceNumber = pkt.sequenceNumber;
                     // Skip degenerate packets: some muxers (seen on Matroska
                     // re-exports) emit an empty ~4-byte access unit (a zero-length
                     // NAL) about once a second. A coded H.264/HEVC picture is always
@@ -698,6 +700,18 @@ export async function exportClip({
                     pkt = await videoSink.getNextPacket(pkt, { verifyKeyPackets: true });
                 }
                 if (videoCount === 0) throw new Error("no decodable video packets in file");
+                // The index found the range's last packet, but the walk met the end of
+                // the data first: the file was cut short after its index was written
+                // (an interrupted copy off the card). The clip is saved without the
+                // missing footage, so say so instead of reporting the full range.
+                if (lastReadSequenceNumber < videoEndPacket.sequenceNumber) {
+                    decodeTruncated = true;
+                    log.warn("source file ends before its indexed video", {
+                        file: seg.file.name,
+                        lastCopiedSec: Number((videoLastEndSec - origin).toFixed(2)),
+                        expectedEndSec: Number((videoEndPacket.timestamp - origin).toFixed(2)),
+                    });
+                }
 
                 // A following file starts on the recording clock, including any
                 // audio-only tail. B-frame references can still extend that span.
