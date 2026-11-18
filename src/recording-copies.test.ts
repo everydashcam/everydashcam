@@ -215,6 +215,26 @@ describe("recording copies", () => {
         expect(first.isTimelapse).toBe(true);
     });
 
+    it("restores a filename-declared drive time-lapse to its own mode after removing an event copy", () => {
+        const garmin = (sourceKey: string, folder: string): VendorFile => ({
+            file: new File([new Uint8Array([1, 2, 3])], "GRMN0003.MP4", { lastModified: 1 }),
+            relativePath: `card/DCIM/${folder}/GRMN0003.MP4`,
+            sourceKey,
+        });
+        const first = candidate(garmin("card-a", "104TLPSE"));
+        const second = candidate(garmin("card-b", "104TLPSE"));
+        expect(first.isTimelapse, "garmin travelapse is a filename-declared time-lapse").toBe(true);
+        expect(first.recordingMode).toBe("normal");
+        const event = garmin("copy-drop", "100EVENT");
+        applyRecordingCopies([first], [{ ...first, recordingCopies: [event] }]);
+        expect(first.recordingMode).toBe("event");
+
+        const videos = mergeRecordingCopies([first, second], [{ kept: second, duplicate: event }]);
+        applyRecordingCopies([first, second], videos);
+        expect(first.recordingCopies).toEqual([]);
+        expect(first.recordingMode).toBe("normal");
+    });
+
     it.each(["event", "parking"] as const)(
         "preserves independent %s evidence when a manual alias is removed",
         (mode) => {

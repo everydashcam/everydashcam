@@ -969,10 +969,20 @@ export function frameRecordingMode(frame: TripFrame): RecordingMode | null {
     return frameCanonicalCandidate(frame)?.recordingMode ?? null;
 }
 
-/** Protected copies may overlap their source without creating a new session. */
-function isCandidateNormalOrUnknown(candidate: VideoCandidate): boolean {
+/** Loop clips own a session's channel timeline. Protected copies and a drive
+ *  time-lapse overlap the loop by design without creating a new session. */
+function isLoopCandidate(candidate: VideoCandidate): boolean {
     const mode = candidate.recordingMode;
-    return mode === null || mode === "normal";
+    return (mode === null || mode === "normal") && !isDriveTimelapse(candidate);
+}
+
+/**
+ * A time-lapse its format files as the normal recording (Garmin Travelapse)
+ * compresses a drive while the loop keeps recording it in real time. Parking
+ * time-lapse families report the parking mode, or no mode at all.
+ */
+function isDriveTimelapse(candidate: VideoCandidate): boolean {
+    return candidate.isTimelapse && candidate.recordingMode === "normal";
 }
 
 function candidateGroupingKey(candidate: VideoCandidate): string {
@@ -998,7 +1008,7 @@ function collisionFrameOwners(candidates: readonly VideoCandidate[]): Map<VideoC
         let firstNameTime = Number.POSITIVE_INFINITY;
         let lastNameTime = Number.NEGATIVE_INFINITY;
         for (const candidate of bucket) {
-            if (!isCandidateNormalOrUnknown(candidate) || candidate.isTimelapse) continue;
+            if (!isLoopCandidate(candidate) || candidate.isTimelapse) continue;
             const recording = classifyFilenameRecordingKey(candidate);
             if (recording !== null) {
                 const nameTime = classifyFilenameTime(candidate)?.getTime();
@@ -1078,7 +1088,7 @@ function collisionFrameOwners(candidates: readonly VideoCandidate[]): Map<VideoC
 function rememberNormalChannels(frame: TripFrame, latest: Map<Channel, VideoCandidate>): void {
     for (const channel of frameChannels(frame)) {
         const candidate = frame.channels[channel]!;
-        if (isCandidateNormalOrUnknown(candidate)) latest.set(channel, candidate);
+        if (isLoopCandidate(candidate)) latest.set(channel, candidate);
     }
 }
 
@@ -1086,7 +1096,7 @@ function hasNormalChannelOverlap(frame: TripFrame, latest: ReadonlyMap<Channel, 
     return frameChannels(frame).some((channel) => {
         const candidate = frame.channels[channel]!;
         const previous = latest.get(channel);
-        if (!previous || !isCandidateNormalOrUnknown(candidate)) return false;
+        if (!previous || !isLoopCandidate(candidate)) return false;
         const end = candidate.startUtc + (candidate.wallDurationSec ?? candidate.durationSec);
         const previousEnd = previous.startUtc + (previous.wallDurationSec ?? previous.durationSec);
         return (
@@ -1123,7 +1133,7 @@ function normalizeChannelIntervals(frames: TripFrame[]): TripFrame[] {
     if (
         candidates.some(
             (candidate) =>
-                !isCandidateNormalOrUnknown(candidate) ||
+                !isLoopCandidate(candidate) ||
                 candidate.isTimelapse ||
                 (candidate.driftLeadSec ?? 0) !== 0 ||
                 candidate.metadataReady === false ||
@@ -1345,18 +1355,19 @@ function splitPairedFrameIntervals(frame: TripFrame): TripFrame[] {
 
 /**
  * Mode class of a frame for the driving<->parking trip split in groupTrips.
- * "parking" = the background parked loop (parking mode, or a filename-flagged
- * time-lapse - today every isTimelapse format is a parking feature); "driving" =
- * the normal loop. null = the frame does not DEFINE a class and sticks to the
- * surrounding trip: event/manual clips mark an incident, not a loop - a
- * g-sensor capture fired while parked (70mai PA maps to "event") belongs to
- * the parking session it interrupted, one fired on the road to the drive. A
- * camera that reports no mode at all yields null everywhere, so its grouping
- * is untouched.
+ * "parking" = the background parked loop (parking mode, or a time-lapse whose
+ * format reports no driving mode); "driving" = the normal loop. null = the
+ * frame does not DEFINE a class and sticks to the surrounding trip:
+ * event/manual clips mark an incident, not a loop - a g-sensor capture fired
+ * while parked (70mai PA maps to "event") belongs to the parking session it
+ * interrupted, one fired on the road to the drive. A drive time-lapse runs
+ * alongside the loop that defines the class. A camera that reports no mode at
+ * all yields null everywhere, so its grouping is untouched.
  */
 function frameTripClass(frame: TripFrame): "driving" | "parking" | null {
     const c = frameCanonicalCandidate(frame);
     if (!c) return null;
+    if (isDriveTimelapse(c)) return null;
     if (c.recordingMode === "parking" || c.isTimelapse) return "parking";
     if (c.recordingMode === "normal") return "driving";
     return null;
@@ -3118,9 +3129,9 @@ export function rederiveStartUtcForCandidates(
         });
         if (!c.isTimelapse && canInferTimelapse && c.wallDurationSec !== null) {
             c.isTimelapse = true;
-            // Every currently-supported time-lapse family is the background
-            // parking loop. The mode makes the sidebar and trip boundary agree
-            // with frameTripClass, which already treats time-lapse as parking.
+            // Every clock-inferred time-lapse family is the background parking
+            // loop. Without the mode, a "normal" filename would read as a
+            // drive time-lapse in frameTripClass and the sidebar would agree.
             // Keep a more specific protected/manual classification: that says
             // why this clip was retained, while isTimelapse still supplies its
             // parking trip class and wall-clock scale.

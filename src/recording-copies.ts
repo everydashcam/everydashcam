@@ -1,5 +1,5 @@
 import type { RecordingCopy } from "./ingest-dedup.js";
-import { classifyFilenameMode } from "./parsers/filename/index.js";
+import { classifyFilenameMode, classifyFilenameTimelapse } from "./parsers/filename/index.js";
 import type { VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
 import type { VideoCandidate } from "./trips.js";
 import { vendorFileKey } from "./vendor-file-key.js";
@@ -67,12 +67,15 @@ export function applyRecordingCopies(
         candidate.recordingCopies = [...copies];
         const mode = candidate.recordingMode;
         // Retract only protection contributed by removed copies. The survivor's
-        // own filename and inferred time-lapse parking remain independent evidence.
+        // own filename and clock-inferred time-lapse parking remain independent
+        // evidence. A time-lapse the filename itself declares keeps the
+        // filename's mode: a "normal" one is a drive time-lapse, not parking.
         if ((mode === "event" || mode === "manual") && previousModes.has(mode) && !modes.has(mode)) {
             const filenameMode = classifyFilenameMode(candidate);
             if (filenameMode !== mode) {
+                const isInferredTimelapse = candidate.isTimelapse && !classifyFilenameTimelapse(candidate);
                 candidate.recordingMode =
-                    candidate.isTimelapse && (filenameMode === null || filenameMode === "normal")
+                    isInferredTimelapse && (filenameMode === null || filenameMode === "normal")
                         ? "parking"
                         : filenameMode;
             }

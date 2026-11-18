@@ -1390,6 +1390,44 @@ describe("groupTrips: driving<->parking mode-class split (70mai A810 field case)
         expect(trips).toHaveLength(2);
         expect(trips.map((t) => t.isParking)).toEqual([false, true]);
     });
+
+    it("keeps a Garmin Travelapse clip inside the drive the loop records alongside it", () => {
+        // Garmin records Travelapse in parallel with the loop, so the
+        // time-lapse wall span overlaps both loop clips by design.
+        const garmin = (
+            folder: string,
+            name: string,
+            startUtc: number,
+            durationSec: number,
+            wallSec: number | null,
+        ) => {
+            const relativePath = `card/DCIM/${folder}/${name}`;
+            const vendorFile = { file: new File([], name), relativePath };
+            return makeCandidate({
+                name,
+                relativePath,
+                startUtc,
+                durationSec,
+                wallDurationSec: wallSec,
+                recordingMode: classifyFilenameMode(vendorFile),
+                isTimelapse: classifyFilenameTimelapse(vendorFile),
+            });
+        };
+        const loop1 = garmin("100UNSVD", "GRMN0001.MP4", 1000, 60, null);
+        const loop2 = garmin("100UNSVD", "GRMN0002.MP4", 1060, 60, null);
+        const travelapse = garmin("104TLPSE", "GRMN0003.MP4", 1010, 10, 100);
+        expect(travelapse.recordingMode, "garmin files travelapse as the normal recording").toBe("normal");
+        expect(travelapse.isTimelapse, "garmin travelapse is a filename-declared time-lapse").toBe(true);
+
+        const trips = groupTrips([loop1, loop2, travelapse]);
+        expect(trips).toHaveLength(1);
+        expect(trips[0]!.isParking).toBe(false);
+        expect(trips[0]!.frames.map((frame) => frame.channels.front?.file.name)).toEqual([
+            "GRMN0001.MP4",
+            "GRMN0003.MP4",
+            "GRMN0002.MP4",
+        ]);
+    });
 });
 
 describe("groupTrips: orphan channels", () => {
