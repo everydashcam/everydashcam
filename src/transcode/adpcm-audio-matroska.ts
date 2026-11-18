@@ -65,6 +65,7 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
     const probe = new Input({ source: createRetryingBlobSource(file), formats: [MATROSKA] });
     let channels: number;
     let sampleRate: number;
+    let trackEndSec: number;
     try {
         const at = await probe.getPrimaryAudioTrack();
         if (!at) return null;
@@ -74,6 +75,7 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
         channels = at.numberOfChannels;
         sampleRate = at.sampleRate;
         if (channels < 1 || sampleRate < 1) return null;
+        trackEndSec = await at.computeDuration();
     } catch (err) {
         log.warn("matroska adpcm probe failed", { file: file.name, err: err instanceof Error ? err.message : err });
         return null;
@@ -200,9 +202,11 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
     return {
         channels,
         sampleRate,
-        // Not tracked for the packet-driven reader (no external consumer reads
-        // it; the ISOBMFF reader exposes it only for its own frame-index math).
-        totalFrames: 0,
+        // From the track's end, not a count of decoded frames: blocks are read
+        // only on demand here. The MSE player compares it with the video end
+        // and plays video alone when the audio would end too early, so a zero
+        // here silenced every Matroska ADPCM clip.
+        totalFrames: Math.round(trackEndSec * sampleRate),
         async feedRange(source, startInFileSec, endInFileSec, outStartSec, signal) {
             const cursor = openRange(source, startInFileSec, outStartSec, signal);
             await cursor.finish(endInFileSec);

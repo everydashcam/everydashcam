@@ -34,6 +34,16 @@ describe("openMatroskaAdpcmAudio", () => {
         expect(reader!.sampleRate).toBe(32_000);
     });
 
+    it("reports the decoded track's length for the player's audio-tail check", async () => {
+        const reader = (await openMatroskaAdpcmAudio(fixture()))!;
+        const { source, samples } = captureAudioSamples("s16");
+        await reader.feedToEnd(source, 0, 0);
+        const decodedEndSec = expectContiguousSamples(samples, 0);
+        const reportedEndSec = reader.totalFrames / reader.sampleRate;
+        expect(reportedEndSec).toBeGreaterThan(1.95);
+        expect(Math.abs(reportedEndSec - decodedEndSec), "within the player's 0.25 s tolerance").toBeLessThan(0.25);
+    });
+
     it("feeds the same blocks in steps as feedRange over the whole range", async () => {
         const reader = (await openMatroskaAdpcmAudio(fixture()))!;
         const whole = captureAudioSamples("s16");
