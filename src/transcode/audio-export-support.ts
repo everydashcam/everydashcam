@@ -84,6 +84,21 @@ export function getPcmLayout(codec: AudioCodec, decoderConfig: AudioDecoderConfi
     };
 }
 
+/**
+ * Frames of a PCM packet presented before `sec`, clamped to the packet. A copy
+ * that starts inside a long chunk skips them: copied whole, the head would sit
+ * in the output file behind the edit list, keeping footage the user trimmed off.
+ */
+export function pcmFramesBefore(
+    packet: { timestamp: number; byteLength: number },
+    layout: PcmLayout,
+    sec: number,
+): number {
+    const frameCount = Math.floor(packet.byteLength / layout.bytesPerFrame);
+    const frames = Math.floor((sec - packet.timestamp) * layout.sampleRate + 1e-6);
+    return Math.min(frameCount, Math.max(0, frames));
+}
+
 /** Frames of one PCM packet due for copying; see nextPcmPiece. */
 export interface PcmPiece {
     /** First frame of the piece within the packet. */

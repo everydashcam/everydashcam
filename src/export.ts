@@ -58,6 +58,7 @@ import {
     getPcmLayout,
     getPrimaryAudioTrackWithPackets,
     nextPcmPiece,
+    pcmFramesBefore,
     resolveReadableAudioPlan,
     type ReadableAudioPlan,
 } from "./transcode/audio-export-support.js";
@@ -558,7 +559,12 @@ export async function exportClip({
                         ? ((await audioSink.getPacket(videoStartShift)) ?? (await audioSink.getFirstPacket()))
                         : null;
                 // Frames of `apkt` already copied while splitting a long PCM packet.
-                let apktCopiedFrames = 0;
+                // A clip starting inside a PCM chunk skips the chunk's earlier frames.
+                let apktCopiedFrames = apkt && pcmLayout ? pcmFramesBefore(apkt, pcmLayout, videoStartShift) : 0;
+                if (apkt && pcmLayout && apktCopiedFrames >= Math.floor(apkt.byteLength / pcmLayout.bytesPerFrame)) {
+                    apkt = audioSink ? await audioSink.getNextPacket(apkt) : null;
+                    apktCopiedFrames = 0;
+                }
                 // Copies audio packets presented before `untilSec` (source time).
                 // Keeps the source A/V offset; dropping a boundary frame avoids
                 // accumulating audio-frame rounding at every file join. Both tracks

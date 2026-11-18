@@ -534,6 +534,31 @@ describe("stream-copy export", () => {
         }
     });
 
+    it("leaves the part of a one-chunk PCM track before the clip out of the file", async () => {
+        const file = await withPcmAudio(fixture(H264_FIXTURE), { format: "mov", sampleRate: 8000 });
+        const source = open(file);
+        let output: Input | undefined;
+        try {
+            const sourceAudio = (await source.getPrimaryAudioTrack())!;
+            const sourcePackets = await packets(sourceAudio);
+            expect(sourcePackets, "the source audio is one packet").toHaveLength(1);
+            const start = (await sourceAudio.computeDuration()) / 2;
+            const saved = await save([file], { start });
+            output = open(saved.file);
+            const outputPackets = await packets((await output.getPrimaryAudioTrack())!);
+            expect(outputPackets[0]!.timestamp, "the copy starts at the clip start").toBeCloseTo(0, 3);
+            const copied = Buffer.concat(outputPackets.map((packet) => packet.data));
+            const skippedBytes = sourcePackets[0]!.byteLength - copied.byteLength;
+            expect(skippedBytes / 2 / 8000, "the stored audio skips the trimmed head").toBeCloseTo(start, 2);
+            expect(copied.equals(sourcePackets[0]!.data.subarray(skippedBytes)), "the copy is a lossless suffix").toBe(
+                true,
+            );
+        } finally {
+            source.dispose();
+            output?.dispose();
+        }
+    });
+
     it("keeps video when MOV audio cannot be represented in an MP4 track", async () => {
         const file = await remuxFixture(fixture(H264_FIXTURE), true);
         const source = open(file);

@@ -6,6 +6,7 @@ import {
     MIN_PARTIAL_AUDIO_FEED_SEC,
     nextPcmPiece,
     type PcmLayout,
+    pcmFramesBefore,
 } from "./audio-export-support.js";
 
 describe("getPcmLayout", () => {
@@ -31,6 +32,22 @@ describe("getPcmLayout", () => {
     it("leaves compressed audio and unusable configurations unsplit", () => {
         expect(getPcmLayout("aac", { codec: "mp4a.40.2", sampleRate: 48_000, numberOfChannels: 2 })).toBeNull();
         expect(getPcmLayout("pcm-s16", { codec: "pcm-s16", sampleRate: 8000, numberOfChannels: 0 })).toBeNull();
+    });
+});
+
+describe("pcmFramesBefore", () => {
+    // One two-second packet of 16-bit mono at 8 kHz, presented at 10 s.
+    const layout: PcmLayout = { bytesPerFrame: 2, sampleRate: 8000 };
+    const packet = { timestamp: 10, byteLength: 16_000 * 2 };
+
+    it("counts the frames presented before a time inside the packet", () => {
+        expect(pcmFramesBefore(packet, layout, 10.5)).toBe(4000);
+        expect(pcmFramesBefore(packet, layout, 10 + 1 / 8000), "a time on a frame boundary").toBe(1);
+    });
+
+    it("clamps to the packet", () => {
+        expect(pcmFramesBefore(packet, layout, 9)).toBe(0);
+        expect(pcmFramesBefore(packet, layout, 13)).toBe(16_000);
     });
 });
 
