@@ -118,11 +118,20 @@ function runInWorker(
     beforeCommit?: BeforeCommitHook,
 ): Promise<TranscodeResult> {
     const transferArgs = request.args;
-    // name is static - Vite's worker plugin requires static options.
-    const worker = new Worker(new URL("../workers/transcode-worker.ts", import.meta.url), {
-        type: "module",
-        name: "transcode-worker",
-    });
+    let worker: Worker;
+    try {
+        // name is static - Vite's worker plugin requires static options.
+        worker = new Worker(new URL("../workers/transcode-worker.ts", import.meta.url), {
+            type: "module",
+            name: "transcode-worker",
+        });
+    } catch (err) {
+        // A constructor that throws (a CSP or security refusal) leaves the open
+        // writable unowned: the cleanup below is not installed yet. Discard it so
+        // a native save does not keep its temp file until the page unloads.
+        void writable.abort().catch(() => undefined);
+        throw err;
+    }
 
     // MessagePort bridge over the real FSA writable. The main side keeps the real writable and
     // applies write/close/abort the worker posts over the port; finalized resolves when the main-side
