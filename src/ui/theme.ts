@@ -87,7 +87,10 @@ const MAP_COLORS: Record<MapTheme, MapThemeColors> = {
     light: mapColors("#f5f4ef", "#0e0e0e"),
     dark: mapColors("#14171c", "#fff"),
     ...(Object.fromEntries(
-        RADAR_THEMES.map((theme) => [theme, mapColors(radarPalettes[theme].background, radarSpec(theme).markerStroke)]),
+        RADAR_THEMES.map((theme) => [
+            theme,
+            mapColors(radarPalettes[theme].colors.background, radarSpec(theme).markerStroke),
+        ]),
     ) as Record<RadarTheme, MapThemeColors>),
 };
 

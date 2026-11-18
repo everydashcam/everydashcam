@@ -15,6 +15,8 @@ export const OSM_SHORTBREAD_SOURCE_ID = "osm-shortbread";
 export const OSM_SHORTBREAD_BUILDING_SOURCE_LAYER = "buildings";
 
 interface Palette {
+    /** Opt-in geometry of radar palettes; see scripts/_map-style-palettes.mjs. */
+    geometry?: { fillsGround: boolean; outlinedRoads: boolean };
     sand?: string;
     bridgeCasing?: string;
     roadInterior?: string;
@@ -42,9 +44,10 @@ interface Palette {
 }
 
 function radarPalette(theme: RadarTheme): Palette {
-    const colors = radarPalettes[theme];
+    const { geometry, colors } = radarPalettes[theme];
     return {
         ...colors,
+        geometry,
         roadMinor: colors.minor,
         roadMajor: colors.primary,
         site: colors.landuse,
@@ -177,10 +180,12 @@ function roadCasingWidth(): ExpressionSpecification {
 function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
     const p = PALETTES[theme];
     const source = OSM_SHORTBREAD_SOURCE_ID;
+    const groundSand = p.geometry?.fillsGround ? p.sand : undefined;
+    const roadInterior = p.geometry?.outlinedRoads ? p.roadInterior : undefined;
     const layers: LayerSpecification[] = [
         { id: "osm-bg", type: "background", paint: { "background-color": p.background } },
         { id: "osm-ocean", type: "fill", source, "source-layer": "ocean", paint: { "fill-color": p.water } },
-        ...(p.sand
+        ...(groundSand
             ? ([
                   {
                       id: "osm-urban-land",
@@ -201,7 +206,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
                       source,
                       "source-layer": "land",
                       filter: ["in", ["get", "kind"], ["literal", ["sand", "beach", "bare_rock"]]],
-                      paint: { "fill-color": p.sand },
+                      paint: { "fill-color": groundSand },
                   },
               ] satisfies LayerSpecification[])
             : []),
@@ -332,7 +337,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             ],
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
-                "line-color": p.roadInterior
+                "line-color": roadInterior
                     ? [
                           "match",
                           ["get", "kind"],
@@ -373,7 +378,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
                 ],
             ],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.roadInterior ?? p.roadMinor, "line-width": roadLineWidth(0.5, 2.4) },
+            paint: { "line-color": roadInterior ?? p.roadMinor, "line-width": roadLineWidth(0.5, 2.4) },
         },
         {
             id: "osm-roads-major",
@@ -382,7 +387,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             "source-layer": "streets",
             filter: ["in", ["get", "kind"], ["literal", ["trunk", "primary", "secondary", "tertiary"]]],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.roadInterior ?? p.roadMajor, "line-width": roadLineWidth(0.7, 3.6) },
+            paint: { "line-color": roadInterior ?? p.roadMajor, "line-width": roadLineWidth(0.7, 3.6) },
         },
         {
             id: "osm-motorways",
@@ -391,7 +396,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
             "source-layer": "streets",
             filter: ["==", ["get", "kind"], "motorway"],
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": p.roadInterior ?? p.motorway, "line-width": roadLineWidth(0.9, 4.6) },
+            paint: { "line-color": roadInterior ?? p.motorway, "line-width": roadLineWidth(0.9, 4.6) },
         },
         {
             id: "osm-ferries",

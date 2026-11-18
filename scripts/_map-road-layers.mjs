@@ -56,12 +56,13 @@ const SORT_KEY = ["+", ["*", LEVEL, 100], ["case", IS_TUNNEL, 0, IS_BRIDGE, 20, 
 const MIN_LEVEL = -5;
 const MAX_LEVEL = 5;
 
-export function roadColorExpression(palette, kind) {
-    if (kind === "fill" && palette.roadInterior) {
+// Outlined roads swap the roles: the casing carries the class colour and every
+// drivable road shares one dark interior.
+export function roadColorExpression(palette, kind, outlined = false) {
+    if (kind === "fill" && outlined) {
         return ["match", CLASS, "path", palette.path, ["rail", "transit"], palette.rail, palette.roadInterior];
     }
-    if (kind === "casing" && !palette.roadInterior)
-        return ["case", IS_BRIDGE, palette.bridgeCasing, palette.roadCasing];
+    if (kind === "casing" && !outlined) return ["case", IS_BRIDGE, palette.bridgeCasing, palette.roadCasing];
     return [
         "match",
         CLASS,

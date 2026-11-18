@@ -2759,7 +2759,7 @@ export function addBuildings3dLayer(map: maplibregl.Map, theme: MapStyleId): voi
     const source = hasOpenMapTiles ? VECTOR_SOURCE_ID : OSM_SHORTBREAD_SOURCE_ID;
     const sourceLayer = hasOpenMapTiles ? BUILDING_SOURCE_LAYER : OSM_SHORTBREAD_BUILDING_SOURCE_LAYER;
     // Radar themes raise buildings in the colour of their urban ground.
-    const walls = isRadarTheme(theme) ? radarPalettes[theme].landuse : BUILDING_WALLS[theme];
+    const walls = isRadarTheme(theme) ? radarPalettes[theme].colors.landuse : BUILDING_WALLS[theme];
     map.addLayer(
         {
             id: BUILDINGS_3D_LAYER_ID,

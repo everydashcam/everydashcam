@@ -1,5 +1,7 @@
-// Geometry and label placement live in light.json. Alternate palettes cannot
-// drop a bridge, road number or building merely because the UI theme changed.
+// Geometry and label placement live in light.json; palettes recolour it. A
+// radar palette may opt into the geometry flags in map-radar-palettes.json,
+// which only add ground cover or outline roads. No palette may drop a bridge,
+// road number or building merely because the UI theme changed.
 
 import radarPalettes from "../src/ui/map-radar-palettes.json" with { type: "json" };
 import { roadColorExpression, roadWidth } from "./_map-road-layers.mjs";
@@ -64,13 +66,17 @@ const NEON = {
     driverPoi: "#ffd9a0",
 };
 
-const VARIANTS = { dark: { name: "Classic Dark", ...DARK }, neon: { name: "Neon", ...NEON }, ...radarPalettes };
+const VARIANTS = {
+    dark: { name: "Classic Dark", geometry: {}, colors: DARK },
+    neon: { name: "Neon", geometry: {}, colors: NEON },
+    ...radarPalettes,
+};
 export const MAP_STYLE_VARIANTS = Object.keys(VARIANTS);
 
-function lineColor(layer, palette) {
+function lineColor(layer, palette, geometry) {
     const kind = layer.metadata?.["everydashcam:road-kind"];
-    if (palette.roadInterior && layer.metadata?.["everydashcam:road-crossing"] === "all") return palette.roadCasing;
-    if (kind) return roadColorExpression(palette, kind);
+    if (geometry.outlinedRoads && layer.metadata?.["everydashcam:road-crossing"] === "all") return palette.roadCasing;
+    if (kind) return roadColorExpression(palette, kind, geometry.outlinedRoads);
     const id = layer.id;
     if (layer["source-layer"] === "waterway" || id === "road_ferry") return palette.waterLine;
     if (layer["source-layer"] === "boundary") return palette.boundary;
@@ -91,12 +97,14 @@ function usesSdfIcon(value) {
 }
 
 export function createMapStyleVariant(light, theme) {
-    const palette = VARIANTS[theme];
+    const { name, geometry, colors: palette } = VARIANTS[theme];
     const style = structuredClone(light);
-    style.name = `everydashcam ${palette.name}`;
+    style.name = `everydashcam ${name}`;
     style.sprite = "/styles/sprite/sprite";
     style.metadata = { ...style.metadata, "everydashcam:theme": theme };
-    if (radarPalettes[theme]) {
+    // fillsGround: a radar map has no empty background. Urban land and natural
+    // ground (grass, farmland, sand, rock) are painted at every zoom.
+    if (geometry.fillsGround) {
         // Urban areas extend down to street zoom. Parks and beaches inside
         // their boundaries must still paint on top.
         const residential = style.layers.findIndex((layer) => layer.id === "landuse_residential");
@@ -113,8 +121,8 @@ export function createMapStyleVariant(light, theme) {
         const role = layer.metadata?.["everydashcam:role"];
         if (layer.type === "background") p["background-color"] = palette.background;
         if (layer.type === "line") {
-            p["line-color"] = lineColor(layer, palette);
-            if (palette.roadInterior && layer.metadata?.["everydashcam:road-kind"] === "fill") {
+            p["line-color"] = lineColor(layer, palette, geometry);
+            if (geometry.outlinedRoads && layer.metadata?.["everydashcam:road-kind"] === "fill") {
                 p["line-width"] = roadWidth("fill", 0.78);
             }
             if (
@@ -140,7 +148,7 @@ export function createMapStyleVariant(light, theme) {
             const color = colors[role];
             if (!color) throw new Error(`unclassified fill layer: ${layer.id}`);
             p["fill-color"] = palette[color];
-            if (palette.sand && layer.id === "landcover_wood") {
+            if (geometry.fillsGround && layer.id === "landcover_wood") {
                 layer.filter = ["in", ["get", "class"], ["literal", ["wood", "grass", "farmland", "sand", "rock"]]];
                 p["fill-color"] = [
                     "match",
@@ -153,7 +161,7 @@ export function createMapStyleVariant(light, theme) {
                 ];
                 p["fill-opacity"] = 1;
             }
-            if (palette.sand && layer.id === "landuse_residential") {
+            if (geometry.fillsGround && layer.id === "landuse_residential") {
                 delete layer.maxzoom;
                 layer.filter = [
                     "in",
