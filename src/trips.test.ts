@@ -2631,6 +2631,38 @@ describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd
         expect(morning.records[0]!.gpsDateSlipAppliedSec).toBe(DAY_SEC);
     });
 
+    // 11:00 local is 16:00 UTC, where UTC+8 passes midnight on the old date;
+    // 19:00 local is 00:00 UTC, where the date catches up. The middle clip of
+    // each run records across that moment.
+    it.each([
+        ["the morning wrap past the firmware's midnight", ["20260115105500", "20260115105800", "20260115110100"]],
+        ["the evening catch-up of the UTC date", ["20260115185600", "20260115185900", "20260115190200"]],
+    ])("corrects both sides of %s inside one clip", (_label, stamps) => {
+        const clips = stamps.map((stamp) => clip(stamp, "utc8-on-utc-date"));
+        rederiveStartUtcForCandidates(clips, classifyFilenameTime);
+        const crossingClip = clips[1]!;
+        const recordSpanSec =
+            crossingClip.records[crossingClip.records.length - 1]!.unixSeconds - crossingClip.records[0]!.unixSeconds;
+        expect(recordSpanSec, "the crossing clip's track stays inside its footage").toBe(178);
+        expect(new Set(clips.map((c) => c.startUtc - nameNaive(c))).size, "one camera clock").toBe(1);
+        expect(groupTrips(clips)).toHaveLength(1);
+    });
+
+    it("lands on the single-pass result when GPS clips arrive in stages", () => {
+        const stamps = ["20260115105400", "20260115105700", "20260115110300", "20260115140000", "20260115140300"];
+        const oneShot = stamps.map((stamp) => clip(stamp, "utc8-on-utc-date"));
+        rederiveStartUtcForCandidates(oneShot, classifyFilenameTime);
+
+        const staged = stamps.map((stamp) => clip(stamp, "utc8-on-utc-date"));
+        rederiveStartUtcForCandidates(staged.slice(0, 3), classifyFilenameTime);
+        rederiveStartUtcForCandidates(staged.slice(3), classifyFilenameTime);
+        rederiveStartUtcForCandidates(staged, classifyFilenameTime);
+
+        expect(staged.map((c) => c.startUtc)).toEqual(oneShot.map((c) => c.startUtc));
+        expect(staged.map((c) => c.cameraTzSec)).toEqual(oneShot.map((c) => c.cameraTzSec));
+        expect(staged.map((c) => c.records[0]!.unixSeconds)).toEqual(oneShot.map((c) => c.records[0]!.unixSeconds));
+    });
+
     it("keeps a GPS clock that is off by other than a whole day", () => {
         const clips = [clip("20260115110237", "utc"), clip("20260115110537", "utc"), clip("20260115110837", "utc")];
         for (const record of clips[0]!.records) record.unixSeconds += DAY_SEC - 2 * 3600;

@@ -2973,63 +2973,109 @@ function applyLocalClockCorrections(candidates: readonly VideoCandidate[]): void
 
 const DAY_SEC = 86_400;
 
+/** GPS records of one clip between two date slips, with the camera-clock
+ *  offset their own date implies. */
+interface DateSlipSegment {
+    records: GpsRecord[];
+    offsetSec: number;
+}
+
+/** The record time as its source wrote it, before any date slip correction. */
+function dateSlipRawUnix(record: GpsRecord): number {
+    return record.unixSeconds + (record.gpsDateSlipAppliedSec ?? 0);
+}
+
 /**
- * Moves a clip's GPS records by one day when their date disagrees with the
- * camera clock by exactly that much. A camera's zone cannot change by a day
- * between clips minutes apart, but firmware that converts the receiver's UTC
- * into a fixed zone without carrying the date (a Mangoal card: UTC+8 time of
- * day on the UTC date) jumps by one where that zone passes midnight. Left
- * alone, such clips self-calibrate a zone a day away and their trips list
- * under the wrong date.
+ * Splits one clip's synced records where consecutive raw times jump by a day.
+ * A clip recorded across the firmware's midnight carries both dates, so each
+ * side needs its own correction. The first segment keeps the clip offset; a
+ * later one shifts by the days its records lost or gained.
+ */
+function splitAtDateSlips(records: readonly GpsRecord[], clipOffsetSec: number): DateSlipSegment[] {
+    const segments: DateSlipSegment[] = [{ records: [records[0]!], offsetSec: clipOffsetSec }];
+    for (let i = 1; i < records.length; i++) {
+        const stepSec = dateSlipRawUnix(records[i]!) - dateSlipRawUnix(records[i - 1]!);
+        const stepDays = Math.round(stepSec / DAY_SEC);
+        const current = segments[segments.length - 1]!;
+        if (Math.abs(stepDays) === 1 && Math.abs(stepSec - stepDays * DAY_SEC) <= CLOCK_OFFSET_OUTLIER_BOUND_SEC) {
+            segments.push({ records: [records[i]!], offsetSec: current.offsetSec - stepDays * DAY_SEC });
+        } else {
+            current.records.push(records[i]!);
+        }
+    }
+    return segments;
+}
+
+/**
+ * Moves GPS records by one day when their date disagrees with the camera clock
+ * by exactly that much. A camera's zone cannot change by a day between clips
+ * minutes apart, but firmware that converts the receiver's UTC into a fixed
+ * zone without carrying the date (a Mangoal card: UTC+8 time of day on the UTC
+ * date) jumps by one where that zone passes midnight. Left alone, such clips
+ * self-calibrate a zone a day away and their trips list under the wrong date.
+ * A clip recorded across that moment holds both dates, so the shift is chosen
+ * per segment between jumps, not per clip.
  *
- * The majority side wins (lower median, as in snappedMedianTz). Its absolute
- * UTC is unknowable from these clocks, but every clip then agrees with the
- * filename and OSD clock. Only a clean one-day remainder within
- * CLOCK_OFFSET_OUTLIER_BOUND_SEC is a date slip; other gaps are other faults.
- * Sidecar logs and external tracks keep their own clocks. Idempotent through
- * GpsRecord.gpsDateSlipAppliedSec, like applyLocalClockCorrections: the
- * evidence is re-read from the shifted records on every sweep.
+ * The majority side wins: each clip votes with the date of its first synced
+ * record (lower median, as in snappedMedianTz). Its absolute UTC is unknowable
+ * from these clocks, but every clip then agrees with the filename and OSD
+ * clock. Only a clean one-day remainder within CLOCK_OFFSET_OUTLIER_BOUND_SEC
+ * is a date slip; other gaps are other faults. Sidecar logs, external tracks
+ * and unsynced placeholders keep their own clocks.
+ *
+ * The vote reads the raw record times and the shift is set, not added,
+ * through GpsRecord.gpsDateSlipAppliedSec. A sweep over a subset may pick
+ * another majority, but the next sweep over the full set restores the result
+ * of a single pass, whatever order the clips arrived in.
  */
 function applyGpsDateSlipCorrections(
     candidates: readonly VideoCandidate[],
     parseFilenameLocalTime: (file: VendorFile) => Date | null,
 ): void {
-    const evidenceByFingerprint = new Map<string, { records: GpsRecord[]; offsetSec: number }[]>();
+    const evidenceByCamera = new Map<string, { offsetSec: number; segments: DateSlipSegment[] }[]>();
     for (const candidate of candidates) {
         const records = usableCandidateRecords(candidate).filter(
-            (record) => !record.externalTrack && !record.timeAssociation,
+            (record) => !record.externalTrack && !record.timeAssociation && !record.timeUnsynced,
         );
-        const firstSynced = firstSyncedRecord(records);
         const nameTime = parseFilenameLocalTime(candidate);
-        if (!firstSynced || nameTime === null) continue;
-        pushToBucket(evidenceByFingerprint, candidateGroupingKey(candidate), {
-            records,
-            offsetSec: nameTime.getTime() / 1000 - firstSynced.unixSeconds,
+        if (records.length === 0 || nameTime === null) continue;
+        const offsetSec = nameTime.getTime() / 1000 - dateSlipRawUnix(records[0]!);
+        pushToBucket(evidenceByCamera, candidateGroupingKey(candidate), {
+            offsetSec,
+            segments: splitAtDateSlips(records, offsetSec),
         });
     }
-    // Channels may share record objects; each record moves once per sweep.
-    const moved = new Set<GpsRecord>();
-    for (const evidence of evidenceByFingerprint.values()) {
+    // Channels may share record objects; the first clip to claim a record
+    // decides its shift for this sweep.
+    const desiredByRecord = new Map<GpsRecord, number>();
+    for (const evidence of evidenceByCamera.values()) {
         const offsets = evidence.map((entry) => entry.offsetSec).sort((a, b) => a - b);
         const centerSec = offsets[(offsets.length - 1) >> 1]!;
-        for (const { records, offsetSec } of evidence) {
-            const slipDays = Math.round((offsetSec - centerSec) / DAY_SEC);
-            if (Math.abs(slipDays) !== 1) continue;
-            if (Math.abs(offsetSec - centerSec - slipDays * DAY_SEC) > CLOCK_OFFSET_OUTLIER_BOUND_SEC) continue;
-            // The offset is camera clock minus GPS: an offset a day below the
-            // center means a GPS date a day ahead, which loses that day.
-            const subtractSec = -slipDays * DAY_SEC;
-            for (const record of records) {
-                if (moved.has(record)) continue;
-                moved.add(record);
-                record.unixSeconds -= subtractSec;
-                const appliedSec = (record.gpsDateSlipAppliedSec ?? 0) + subtractSec;
-                if (appliedSec === 0) delete record.gpsDateSlipAppliedSec;
-                else record.gpsDateSlipAppliedSec = appliedSec;
+        for (const { segments } of evidence) {
+            for (const segment of segments) {
+                const slipDays = Math.round((segment.offsetSec - centerSec) / DAY_SEC);
+                const isSlip =
+                    Math.abs(slipDays) === 1 &&
+                    Math.abs(segment.offsetSec - centerSec - slipDays * DAY_SEC) <= CLOCK_OFFSET_OUTLIER_BOUND_SEC;
+                // The offset is camera clock minus GPS: an offset a day below
+                // the center means a GPS date a day ahead, which loses that day.
+                const desiredSec = isSlip ? -slipDays * DAY_SEC : 0;
+                for (const record of segment.records) {
+                    if (!desiredByRecord.has(record)) desiredByRecord.set(record, desiredSec);
+                }
             }
         }
     }
-    if (moved.size > 0) log.info("gps date slip correction", { records: moved.size });
+    let movedRecords = 0;
+    for (const [record, desiredSec] of desiredByRecord) {
+        const appliedSec = record.gpsDateSlipAppliedSec ?? 0;
+        if (appliedSec === desiredSec) continue;
+        record.unixSeconds += appliedSec - desiredSec;
+        if (desiredSec === 0) delete record.gpsDateSlipAppliedSec;
+        else record.gpsDateSlipAppliedSec = desiredSec;
+        movedRecords++;
+    }
+    if (movedRecords > 0) log.info("gps date slip correction", { records: movedRecords });
 }
 
 /**
