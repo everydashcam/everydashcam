@@ -105,6 +105,11 @@ export interface GpsRecord extends SpeedSample {
     // per-record marker keeps the shift idempotent no matter how many owners
     // revisit it. Absent = 0 (never shifted). Parsers never set this.
     localClockOffsetAppliedSec?: number;
+    // Bookkeeping for the GPS date-slip correction (see
+    // applyGpsDateSlipCorrections in trips.ts): seconds SUBTRACTED from the
+    // original `unixSeconds`, a whole number of days. Same sharing and
+    // idempotency reasoning as localClockOffsetAppliedSec. Parsers never set this.
+    gpsDateSlipAppliedSec?: number;
 }
 
 /**

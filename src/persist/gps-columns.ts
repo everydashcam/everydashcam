@@ -82,12 +82,12 @@ export function packGpsRecordColumns(records: readonly GpsRecord[]): CachedGpsRe
     for (let i = 0; i < count; i++) {
         const record = records[i]!;
         // Persist the parser's raw axis even if a call site captures this
-        // record after applyLocalClockCorrections has already shifted it. The
-        // marker is the amount subtracted from unixSeconds, so adding it
-        // reverses the session mutation before the marker itself is discarded.
-        unixSeconds[i] = record.localClockOffsetAppliedSec
-            ? record.unixSeconds + record.localClockOffsetAppliedSec
-            : record.unixSeconds;
+        // record after applyLocalClockCorrections or applyGpsDateSlipCorrections
+        // has already shifted it. Each marker is the amount subtracted from
+        // unixSeconds, so adding them reverses the session mutation before the
+        // markers themselves are discarded.
+        unixSeconds[i] =
+            record.unixSeconds + (record.localClockOffsetAppliedSec ?? 0) + (record.gpsDateSlipAppliedSec ?? 0);
         lat[i] = record.lat;
         lon[i] = record.lon;
         bearingDeg[i] = record.bearingDeg;

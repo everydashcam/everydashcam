@@ -2520,10 +2520,12 @@ describe("estimatePreciseClockOffsetByFingerprint: per-run offsets", () => {
 });
 
 // Shape of a reported Mangoal card (dates synthetic): mvhd names the clip's end
-// in local time, the filename its start, and the camera sits in UTC-5.
+// in local time, the filename its start, and the camera sits in UTC-5. The
+// firmware writes GPS as UTC+8 time of day on the UTC date.
 describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd", () => {
     const ZONE_SEC = -5 * 3600;
-    type GpsClock = "none" | "utc";
+    const DAY_SEC = 86_400;
+    type GpsClock = "none" | "utc" | "utc8-on-utc-date";
 
     function nameNaive(candidate: VideoCandidate): number {
         return classifyFilenameTime(candidate)!.getTime() / 1000;
@@ -2535,6 +2537,8 @@ describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd
         const vendorFile = { file: new File([], name), relativePath };
         const startNaive = classifyFilenameTime(vendorFile)!.getTime() / 1000;
         const trueStart = startNaive - ZONE_SEC;
+        const gpsTime = (utc: number): number =>
+            gps === "utc" ? utc : Math.floor(utc / DAY_SEC) * DAY_SEC + ((utc + 8 * 3600) % DAY_SEC);
         const candidate = makeCandidate({
             name,
             relativePath,
@@ -2544,7 +2548,9 @@ describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd
             fingerprint: cameraFingerprint(vendorFile),
             recordingMode: "normal",
             records:
-                gps === "none" ? [] : Array.from({ length: durationSec - 1 }, (_, i) => makeRecord(trueStart + 1 + i)),
+                gps === "none"
+                    ? []
+                    : Array.from({ length: durationSec - 1 }, (_, i) => makeRecord(gpsTime(trueStart + 1 + i))),
         });
         candidate.createdUtc = new Date((startNaive + durationSec) * 1000);
         return candidate;
@@ -2561,6 +2567,37 @@ describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd
         expect(clips.map((c) => c.startUtc - nameNaive(c))).toEqual([18_000, 18_000, 18_000, 18_000]);
         expect(clips.map((c) => c.startSource)).toEqual(["mp4", "mp4", "mp4", "mp4"]);
         expect(groupTrips(clips.slice(0, 3)), "the cold-start clip stays in its drive").toHaveLength(1);
+    });
+
+    it("moves a clip's GPS date back a day when the firmware zone passes midnight without it", () => {
+        // Clips before 11:00 local stay on the GPS date; later ones wrap past
+        // midnight in UTC+8 and read a day low, which is the majority here.
+        const morning = clip("20260115104741", "utc8-on-utc-date");
+        const clips = [
+            morning,
+            clip("20260115110237", "utc8-on-utc-date"),
+            clip("20260115110537", "utc8-on-utc-date"),
+            clip("20260115160808", "utc8-on-utc-date"),
+        ];
+        rederiveStartUtcForCandidates(clips, classifyFilenameTime);
+        const offsets = clips.map((c) => c.startUtc - nameNaive(c));
+        expect(new Set(offsets).size, "one camera clock across the midnight jump").toBe(1);
+        expect(morning.records.every((record) => record.gpsDateSlipAppliedSec === DAY_SEC)).toBe(true);
+        expect(displayClockDate(morning.startUtc, morning.cameraTzSec).toISOString()).toBe("2026-01-15T10:47:41.000Z");
+
+        rederiveStartUtcForCandidates(clips, classifyFilenameTime);
+        expect(
+            clips.map((c) => c.startUtc - nameNaive(c)),
+            "a repeated sweep moves nothing",
+        ).toEqual(offsets);
+        expect(morning.records[0]!.gpsDateSlipAppliedSec).toBe(DAY_SEC);
+    });
+
+    it("keeps a GPS clock that is off by other than a whole day", () => {
+        const clips = [clip("20260115110237", "utc"), clip("20260115110537", "utc"), clip("20260115110837", "utc")];
+        for (const record of clips[0]!.records) record.unixSeconds += DAY_SEC - 2 * 3600;
+        rederiveStartUtcForCandidates(clips, classifyFilenameTime);
+        expect(clips[0]!.records.some((record) => record.gpsDateSlipAppliedSec !== undefined)).toBe(false);
     });
 });
 

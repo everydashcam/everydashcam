@@ -2952,6 +2952,67 @@ function applyLocalClockCorrections(candidates: readonly VideoCandidate[]): void
     }
 }
 
+const DAY_SEC = 86_400;
+
+/**
+ * Moves a clip's GPS records by one day when their date disagrees with the
+ * camera clock by exactly that much. A camera's zone cannot change by a day
+ * between clips minutes apart, but firmware that converts the receiver's UTC
+ * into a fixed zone without carrying the date (a Mangoal card: UTC+8 time of
+ * day on the UTC date) jumps by one where that zone passes midnight. Left
+ * alone, such clips self-calibrate a zone a day away and their trips list
+ * under the wrong date.
+ *
+ * The majority side wins (lower median, as in snappedMedianTz). Its absolute
+ * UTC is unknowable from these clocks, but every clip then agrees with the
+ * filename and OSD clock. Only a clean one-day remainder within
+ * CLOCK_OFFSET_OUTLIER_BOUND_SEC is a date slip; other gaps are other faults.
+ * Sidecar logs and external tracks keep their own clocks. Idempotent through
+ * GpsRecord.gpsDateSlipAppliedSec, like applyLocalClockCorrections: the
+ * evidence is re-read from the shifted records on every sweep.
+ */
+function applyGpsDateSlipCorrections(
+    candidates: readonly VideoCandidate[],
+    parseFilenameLocalTime: (file: VendorFile) => Date | null,
+): void {
+    const evidenceByFingerprint = new Map<string, { records: GpsRecord[]; offsetSec: number }[]>();
+    for (const candidate of candidates) {
+        const records = usableCandidateRecords(candidate).filter(
+            (record) => !record.externalTrack && !record.timeAssociation,
+        );
+        const firstSynced = firstSyncedRecord(records);
+        const nameTime = parseFilenameLocalTime(candidate);
+        if (!firstSynced || nameTime === null) continue;
+        pushToBucket(evidenceByFingerprint, candidateGroupingKey(candidate), {
+            records,
+            offsetSec: nameTime.getTime() / 1000 - firstSynced.unixSeconds,
+        });
+    }
+    // Channels may share record objects; each record moves once per sweep.
+    const moved = new Set<GpsRecord>();
+    for (const evidence of evidenceByFingerprint.values()) {
+        const offsets = evidence.map((entry) => entry.offsetSec).sort((a, b) => a - b);
+        const centerSec = offsets[(offsets.length - 1) >> 1]!;
+        for (const { records, offsetSec } of evidence) {
+            const slipDays = Math.round((offsetSec - centerSec) / DAY_SEC);
+            if (Math.abs(slipDays) !== 1) continue;
+            if (Math.abs(offsetSec - centerSec - slipDays * DAY_SEC) > CLOCK_OFFSET_OUTLIER_BOUND_SEC) continue;
+            // The offset is camera clock minus GPS: an offset a day below the
+            // center means a GPS date a day ahead, which loses that day.
+            const subtractSec = -slipDays * DAY_SEC;
+            for (const record of records) {
+                if (moved.has(record)) continue;
+                moved.add(record);
+                record.unixSeconds -= subtractSec;
+                const appliedSec = (record.gpsDateSlipAppliedSec ?? 0) + subtractSec;
+                if (appliedSec === 0) delete record.gpsDateSlipAppliedSec;
+                else record.gpsDateSlipAppliedSec = appliedSec;
+            }
+        }
+    }
+    if (moved.size > 0) log.info("gps date slip correction", { records: moved.size });
+}
+
 /**
  * Re-derives startUtc/startSource for every candidate from its CURRENT
  * createdUtc + records: estimates per-fingerprint TZ and the precise clock
@@ -2992,6 +3053,9 @@ export function rederiveStartUtcForCandidates(
         byPath.set(file.relativePath, parsed);
         return parsed;
     };
+    // Before any clock estimate: a clip whose GPS date slipped would otherwise
+    // calibrate a zone a day away from its siblings.
+    applyGpsDateSlipCorrections(candidates, memoizedNameTime);
     // Every estimate below reads the filename time as the clip's first frame.
     // A trigger-named clip with trustworthy card mtimes gets its measured start
     // instead, so GPS offsets, zone estimates and GPS-less fallbacks agree.

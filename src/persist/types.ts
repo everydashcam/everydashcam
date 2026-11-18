@@ -76,7 +76,8 @@ export type SessionOnlyGpsField =
     | "timeAssociation"
     | "externalTrack"
     | "externalTrackKey"
-    | "localClockOffsetAppliedSec";
+    | "localClockOffsetAppliedSec"
+    | "gpsDateSlipAppliedSec";
 
 /** The parser facts one stored GPS row holds; CachedGpsRecordColumns is their
  *  storage form. */

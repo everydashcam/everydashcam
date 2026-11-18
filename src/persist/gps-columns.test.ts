@@ -125,12 +125,13 @@ describe("packGpsRecordColumns / unpackGpsRecordColumns", () => {
             externalTrack: true,
             externalTrackKey: "manual-gpx",
             localClockOffsetAppliedSec: 18_000,
+            gpsDateSlipAppliedSec: 86_400,
         };
 
         const [restored] = unpackGpsRecordColumns(packGpsRecordColumns([record]), VIDEO_KEY);
 
         expect(restored).toStrictEqual({
-            unixSeconds: 1_753_900_000,
+            unixSeconds: 1_753_986_400,
             active: true,
             lat: 1,
             lon: 2,
