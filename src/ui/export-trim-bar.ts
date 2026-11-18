@@ -13,7 +13,7 @@
 
 import { getSelectedRange, zoomTimelineToRange } from "./chart.js";
 import { dom } from "./dom.js";
-import { estimateExport, formatEstimatedSize, subscribeEncodeCeiling } from "./export-flow.js";
+import { estimateExport, formatEstimatedSize, subscribeExportProbes } from "./export-flow.js";
 import { exportPanelState, setRange, setRangeEdge, subscribeExportState } from "./export-state.js";
 import { formatTime } from "./format.js";
 import { buildLucideIcon } from "./icons.js";
@@ -72,9 +72,9 @@ export function initExportTrimBar(opts: {
     seekThenPlayTripSec = opts.seekThenPlay;
     buildTrimBar();
     subscribeExportState(syncTrimBar);
-    // The device encode ceiling resolves asynchronously (a WebCodecs probe) and
-    // lands outside the state bus - refresh the size readout when it does.
-    subscribeEncodeCeiling(syncTrimLength);
+    // The export probes resolve asynchronously (WebCodecs) and land outside the
+    // state bus - refresh the size readout when one does.
+    subscribeExportProbes(syncTrimLength);
     syncTrimBar();
 }
 
@@ -569,7 +569,7 @@ function syncTrimBar(): void {
  * exists to control exactly that number, so it lives next to the handles. The
  * size half is video-mode only, gated HERE and not just at the caller: the
  * encode-ceiling probe lands async straight into this sync
- * (subscribeEncodeCeiling), and a probe started in video mode can land after
+ * (subscribeExportProbes), and a probe started in video mode can land after
  * the user switched to gpx - without the gate it would stamp a video byte-size
  * onto the track-only readout. Same estimateExport() the panel's estimate
  * block reads, so the two figures cannot disagree.

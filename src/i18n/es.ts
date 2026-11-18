@@ -974,6 +974,7 @@ export const esDict = {
     "export.error.cannotEncodeResolution": "Este dispositivo no puede guardar el vídeo en esta resolución. Elige una resolución más baja e inténtalo de nuevo.",
     "export.error.sourceNotPlayable": "Este navegador no puede reproducir este vídeo, así que aquí no se puede guardar con cambios.",
     "export.error.sourceNotPlayable.asIs": "Para guardarlo sin cambios, desactiva las opciones de edición y elige la calidad «Original».",
+    "export.error.sourceNotEditable": "Este navegador puede reproducir este vídeo, pero no editarlo, así que aquí no se puede guardar con cambios.",
     "export.error.tooLargeForMemory": "Este clip es demasiado grande para guardarlo en este navegador. Acorta el intervalo, baja la resolución o expórtalo en Chrome.",
     "export.error.diskFull": "No hay suficiente espacio en disco para guardar este clip. Libera espacio para el archivo o acorta el intervalo y vuelve a intentarlo.",
     "export.error.destinationLost": "No se pudo terminar de guardar: el archivo ha desaparecido. Puede que se haya desconectado la unidad o que otra aplicación lo haya movido. Vuelve a intentarlo y guarda en una carpeta de tu ordenador.",

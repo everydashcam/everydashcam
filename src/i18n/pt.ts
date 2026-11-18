@@ -974,6 +974,7 @@ export const ptDict = {
     "export.error.cannotEncodeResolution": "Este dispositivo não consegue salvar vídeo nesta resolução. Escolha uma resolução menor e tente novamente.",
     "export.error.sourceNotPlayable": "Este navegador não consegue reproduzir este vídeo, então aqui não dá para salvá-lo com alterações.",
     "export.error.sourceNotPlayable.asIs": "Para salvar sem alterações, desative as opções de edição e escolha a qualidade “Original”.",
+    "export.error.sourceNotEditable": "Este navegador consegue reproduzir este vídeo, mas não editá-lo, então aqui não dá para salvá-lo com alterações.",
     "export.error.tooLargeForMemory": "Este clipe é grande demais para salvar neste navegador. Encurte o intervalo, reduza a resolução ou exporte-o no Chrome.",
     "export.error.diskFull": "Espaço em disco insuficiente para salvar este clipe. Libere espaço suficiente para o arquivo ou encurte o intervalo e tente novamente.",
     "export.error.destinationLost": "Não foi possível terminar de salvar: o arquivo desapareceu. O disco pode ter sido desconectado ou outro aplicativo o moveu. Tente novamente e salve em uma pasta no computador.",

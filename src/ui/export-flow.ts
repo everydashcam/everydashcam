@@ -59,7 +59,7 @@ import type { Channel } from "../parsers/types.js";
 import type { CameraArrangement } from "../transcode/camera-composition.js";
 import type { CropRect } from "../transcode/compose.js";
 import { contentToFrame, contentToWallUtc, displayTzSec, tripCandidatesByChannel } from "../trips.js";
-import type { Trip } from "../trips.js";
+import type { Trip, VideoCandidate } from "../trips.js";
 import { getBrakeThresholdG } from "../events.js";
 import { computeCumulativeDistanceM, sampleSpeedAcross } from "../transcode/frame-pos.js";
 import { getUnits } from "../units-pref.js";
@@ -267,26 +267,129 @@ function canStreamCopy(): boolean {
     return exportPanelState.quality === "original" && streamCopyEligibleConfig();
 }
 
-/**
- * First source file in the export range this browser cannot decode
- * (canPlay=false, typically HEVC without platform decode support), carried as
- * {codec} (the codec itself may be unknown/null), or null when everything
- * decodes. Every re-encode branch decodes exactly these files, so a hit makes
- * any re-encoding config impossible - only stream-copy remains. The panel
- * disables Save with guidance; the save handler backstops.
- */
-function undecodableSource(trip: Trip): { codec: VideoCodec | null } | null {
+/** Source files of the export range for the visible cameras. Every re-encode
+ *  branch decodes exactly these files. */
+function rangeCandidates(trip: Trip): VideoCandidate[] {
     const range = exportPanelState.range;
     const startSec = range ? range.startTripSec : 0;
     const endSec = range ? range.endTripSec : trip.timeline.contentDurationSec;
+    const candidates: VideoCandidate[] = [];
     for (const channel of visibleChannels()) {
         const files = new Set(sliceTripChannelForRange(trip, channel, startSec, endSec).map((segment) => segment.file));
         for (const candidate of tripCandidatesByChannel(trip, channel)) {
-            if (!files.has(candidate.file)) continue;
-            if (!candidate.canPlay) return { codec: candidate.codec };
+            if (files.has(candidate.file)) candidates.push(candidate);
+        }
+    }
+    return candidates;
+}
+
+/** A source in the export range this browser cannot decode for a re-encode.
+ *  `codec` may itself be unknown. `isPlayable` tells a file the native player
+ *  still plays (only WebCodecs lacks it) from one that does not play at all;
+ *  the two need different guidance. */
+export interface UndecodableSource {
+    codec: VideoCodec | null;
+    isPlayable: boolean;
+}
+
+/**
+ * First source file in the export range this browser cannot decode, or null
+ * when everything decodes as far as known. A file is undecodable when ingest found it
+ * unplayable (canPlay=false) or when its WebCodecs probe failed (see
+ * probeWebCodecsDecoding). A hit makes any re-encoding config impossible -
+ * only stream-copy remains. The panel disables Save with guidance; the save
+ * handler backstops.
+ */
+function undecodableSource(trip: Trip): UndecodableSource | null {
+    for (const candidate of rangeCandidates(trip)) {
+        if (!candidate.canPlay) return { codec: candidate.codec, isPlayable: false };
+        if (webCodecsDecodeVerdicts.get(webCodecsDecodeKey(candidate)) === false) {
+            return { codec: candidate.codec, isPlayable: true };
         }
     }
     return null;
+}
+
+/* ---------------------------- capability probes ---------------------------- */
+
+const exportProbeListeners = createSubscribers("export-probes");
+
+/** Subscribes to the export's async capability probes: the device encode
+ *  ceiling and source decode support. Fired when a probe lands outside the
+ *  state bus; returns an unsubscribe function. The panel re-renders the
+ *  estimate + Save availability from this. */
+export function subscribeExportProbes(listener: () => void): () => void {
+    return exportProbeListeners.subscribe(listener);
+}
+
+/** Starts the capability probes for the current export config; see
+ *  refreshEncodeCeiling and probeWebCodecsDecoding. Results arrive through
+ *  subscribeExportProbes. Safe to call on every panel tick. */
+export function refreshExportProbes(): void {
+    refreshEncodeCeiling();
+    const trip = activeTrip();
+    if (trip && !canStreamCopy()) void probeWebCodecsDecoding(trip);
+}
+
+/* ------------------------- WebCodecs decode support ------------------------ */
+// Ingest marks HEVC playable without a probe: the native <video> element can
+// play it where WebCodecs cannot decode it (Chromium on Windows without a
+// hardware HEVC decoder). A re-encode decodes through WebCodecs, so the export
+// probes the range's HEVC codec strings separately. Verdicts are cached per
+// codec string for the page lifetime; the decoder support does not change.
+
+const webCodecsDecodeVerdicts = new Map<string, boolean>();
+const webCodecsDecodeProbes = new Map<string, Promise<boolean>>();
+
+/** Whether a source still needs a WebCodecs probe beyond its ingest verdict. */
+function needsWebCodecsProbe(candidate: VideoCandidate): boolean {
+    return candidate.canPlay && candidate.codec === "hevc";
+}
+
+function webCodecsDecodeKey(candidate: VideoCandidate): string {
+    return `${candidate.codec}:${candidate.videoCodecString ?? ""}`;
+}
+
+/**
+ * Whether WebCodecs can decode `candidate`, probed once per codec string. A
+ * probe that throws counts as decodable: the export then reports the decode
+ * failure at run time, as it did before the probe existed. A negative verdict
+ * wakes the export probe subscribers so the panel blocks Save.
+ */
+function probeWebCodecsDecode(candidate: VideoCandidate): Promise<boolean> {
+    const key = webCodecsDecodeKey(candidate);
+    let probe = webCodecsDecodeProbes.get(key);
+    if (!probe) {
+        const codec = candidate.codec;
+        const codecString = candidate.videoCodecString;
+        probe = import("../transcode/capabilities.js")
+            .then(({ canDecodeVideoStream }) => (codec ? canDecodeVideoStream(codec, codecString) : true))
+            .catch((err: unknown) => {
+                log.warn("webcodecs decode probe failed", { codecString, err: String(err) });
+                return true;
+            })
+            .then((canDecode) => {
+                webCodecsDecodeVerdicts.set(key, canDecode);
+                if (!canDecode) exportProbeListeners.emit();
+                return canDecode;
+            });
+        webCodecsDecodeProbes.set(key, probe);
+    }
+    return probe;
+}
+
+/**
+ * Probes WebCodecs decoding for the range's sources that need it and resolves
+ * to the first one that cannot decode, or null. Reads the range and cameras
+ * synchronously, so a caller can start it before an await and still probe the
+ * configuration the export was started with.
+ */
+function probeWebCodecsDecoding(trip: Trip): Promise<UndecodableSource | null> {
+    const candidates = rangeCandidates(trip).filter(needsWebCodecsProbe);
+    return Promise.all(candidates.map(probeWebCodecsDecode)).then((verdicts) => {
+        const index = verdicts.indexOf(false);
+        return index === -1 ? null : { codec: candidates[index]!.codec, isPlayable: true };
+    });
 }
 
 /** Every widget enable flag, so the stream-copy gate and the args builder agree
@@ -437,14 +540,6 @@ let encodeCeiling: EncodeCeiling | null = null;
 // Key of the config a probe is currently in-flight for (or already cached), so
 // repeated syncExportPanel ticks with unchanged options do not re-probe.
 let encodeCeilingInFlightKey = "";
-const encodeCeilingListeners = createSubscribers("encode-ceiling");
-
-/** Subscribes to device-encode-ceiling updates (fired when an async probe
- *  resolves). Returns an unsubscribe function. The panel re-renders the
- *  estimate + Save availability from this. */
-export function subscribeEncodeCeiling(listener: () => void): () => void {
-    return encodeCeilingListeners.subscribe(listener);
-}
 
 function ceilingKey(dims: OutputDims, desiredBitrate: number, frameRate: number): string {
     return `${dims.width}x${dims.height}@${frameRate}:${desiredBitrate}:${getEncoderPreference()}`;
@@ -457,7 +552,7 @@ function ceilingKey(dims: OutputDims, desiredBitrate: number, frameRate: number)
  * it updates the cache and wakes subscribers so the estimate/Save button update.
  * Safe to call repeatedly from syncExportPanel.
  */
-export function refreshEncodeCeiling(): void {
+function refreshEncodeCeiling(): void {
     const trip = activeTrip();
     if (!trip || canStreamCopy()) {
         // Stream-copy or no trip: no encode ceiling applies. Clear so the
@@ -485,7 +580,7 @@ export function refreshEncodeCeiling(): void {
             encodeCeiling = res
                 ? { key, desiredBitrate, bitrate: res.bitrate, degraded: res.degraded, blocked: false }
                 : { key, desiredBitrate, bitrate: desiredBitrate, degraded: false, blocked: true };
-            encodeCeilingListeners.emit();
+            exportProbeListeners.emit();
         });
 }
 
@@ -541,7 +636,7 @@ export interface ExportEstimate {
      *  all with the current config. null when all sources decode (or on the
      *  stream-copy path, which never decodes). The panel disables Save and
      *  shows the shared codec advice. */
-    sourceUndecodable: { codec: VideoCodec | null } | null;
+    sourceUndecodable: UndecodableSource | null;
     /** Whether the current config (regardless of selected tier) would let the top
      *  tier stream-copy. False = re-encode is unavoidable, so the panel relabels
      *  the top tier "Original" -> "High". */
@@ -922,6 +1017,9 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     const desiredBitrate = resolveReencodeBitrate(trip, dims);
     const frameRate = resolveOutputFps(measureRangeSource(trip).fps);
     const sourceUndecodable = undecodableSource(trip);
+    // Started before the picker so it probes this configuration; awaited after
+    // it, where it cannot spend the click's user activation.
+    const webCodecsUndecodable = canStreamCopy() ? Promise.resolve(null) : probeWebCodecsDecoding(trip);
     const expectedBytes = estimateExport()?.bytes ?? 0;
     const manualBlurRegions = cloneBlurRegions(activeBlurRegions());
     const detectRequest = captureDetectExportRequest();
@@ -1021,12 +1119,15 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     if (!initiallyStreamCopy) {
         // Decode preflight: a source this browser cannot decode makes every
         // re-encode branch impossible. The panel already disables Save with
-        // guidance; this backstops a Save clicked before the panel synced.
-        if (sourceUndecodable) {
+        // guidance; this backstops a Save clicked before the panel synced or
+        // before a WebCodecs probe landed.
+        const undecodable = sourceUndecodable ?? (await webCodecsUndecodable);
+        if (undecodable) {
             log.warn("re-encode export blocked: source not decodable in this browser", {
-                codec: sourceUndecodable.codec,
+                codec: undecodable.codec,
+                isPlayable: undecodable.isPlayable,
             });
-            hooks.onError("export.error.sourceNotPlayable");
+            hooks.onError(undecodable.isPlayable ? "export.error.sourceNotEditable" : "export.error.sourceNotPlayable");
             return;
         }
         const { resolveEncodableH264 } = await import("../transcode/capabilities.js");

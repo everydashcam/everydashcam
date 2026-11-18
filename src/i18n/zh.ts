@@ -972,6 +972,7 @@ export const zhDict = {
     "export.error.cannotEncodeResolution": "此设备无法以该分辨率保存视频。请降低分辨率后重试。",
     "export.error.sourceNotPlayable": "此浏览器无法播放这段视频，因此也无法在这里编辑后保存。",
     "export.error.sourceNotPlayable.asIs": "如需保持原样保存，请关闭编辑选项，并选择“原始”画质。",
+    "export.error.sourceNotEditable": "此浏览器可以播放这段视频，但无法编辑，因此无法在这里编辑后保存。",
     "export.error.tooLargeForMemory": "此片段太大，无法在此浏览器中保存。请缩短范围、降低分辨率，或在 Chrome 中导出。",
     "export.error.diskFull": "磁盘空间不足，无法保存此片段。请为文件释放足够空间，或缩短范围后重试。",
     "export.error.destinationLost": "保存中的文件不见了，没能保存完。可能是磁盘被拔出，或者被其他程序移动了。请重试，并保存到电脑本地的文件夹。",

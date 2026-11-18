@@ -1227,6 +1227,9 @@ export type I18nKey =
     // advice (codecPlaybackAdviceHtml) + .asIs (what works right here).
     | "export.error.sourceNotPlayable"
     | "export.error.sourceNotPlayable.asIs"
+    // The browser plays the source natively but cannot decode it for a
+    // re-encode (HEVC without WebCodecs support); followed by .asIs.
+    | "export.error.sourceNotEditable"
     | "export.error.tooLargeForMemory"
     | "export.error.diskFull"
     | "export.error.destinationLost"

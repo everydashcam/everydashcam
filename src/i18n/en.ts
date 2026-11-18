@@ -975,6 +975,7 @@ export const enDict = {
     "export.error.cannotEncodeResolution": "This device can't save video at this resolution. Pick a lower resolution and try again.",
     "export.error.sourceNotPlayable": "This browser can't play this video, so it can't be saved with changes here.",
     "export.error.sourceNotPlayable.asIs": "To save it unchanged, turn off the editing options and choose Original quality.",
+    "export.error.sourceNotEditable": "This browser can play this video but not edit it, so it can't be saved with changes here.",
     "export.error.tooLargeForMemory": "This clip is too large to save in this browser. Shorten the range, lower the resolution, or export it in Chrome.",
     "export.error.diskFull": "Not enough disk space to save this clip. Free up enough room for the file, or shorten the range, then try again.",
     "export.error.destinationLost": "Couldn't finish saving — the file being written is gone. The drive may have been unplugged, or another app moved it. Try again and save to a folder on your computer.",

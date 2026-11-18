@@ -974,6 +974,7 @@ export const frDict = {
     "export.error.cannotEncodeResolution": "Cet appareil ne peut pas enregistrer la vidéo à cette résolution. Choisis une résolution plus basse et réessaie.",
     "export.error.sourceNotPlayable": "Ce navigateur ne peut pas lire cette vidéo, donc impossible de l'enregistrer ici avec des modifications.",
     "export.error.sourceNotPlayable.asIs": "Pour enregistrer la vidéo sans modification, désactive les options d’édition et choisis la qualité « D’origine ».",
+    "export.error.sourceNotEditable": "Ce navigateur peut lire cette vidéo, mais pas la modifier, donc impossible de l'enregistrer ici avec des modifications.",
     "export.error.tooLargeForMemory": "Ce extrait est trop volumineux pour être enregistré dans ce navigateur. Raccourcis la plage, réduis la résolution ou exporte-le dans Chrome.",
     "export.error.diskFull": "Espace disque insuffisant pour enregistrer ce extrait. Libère assez de place pour le fichier, ou raccourcis la plage, puis réessaie.",
     "export.error.destinationLost": "Impossible de terminer l'enregistrement : le fichier a disparu. Le disque a peut-être été débranché, ou une autre application l'a déplacé. Réessaie en enregistrant dans un dossier de ton ordinateur.",

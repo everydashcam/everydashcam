@@ -974,6 +974,7 @@ export const plDict = {
     "export.error.cannotEncodeResolution": "To urządzenie nie może zapisać wideo w tej rozdzielczości. Wybierz niższą rozdzielczość i spróbuj ponownie.",
     "export.error.sourceNotPlayable": "Ta przeglądarka nie odtworzy tego wideo, więc nie da się go tu zapisać ze zmianami.",
     "export.error.sourceNotPlayable.asIs": "Aby zapisać wideo bez zmian, wyłącz opcje edycji i wybierz jakość „Oryginał”.",
+    "export.error.sourceNotEditable": "Ta przeglądarka odtworzy to wideo, ale nie może go edytować, więc nie da się go tu zapisać ze zmianami.",
     "export.error.tooLargeForMemory": "Ten fragment jest zbyt duży, aby zapisać go w tej przeglądarce. Skróć zakres, zmniejsz rozdzielczość lub wyeksportuj go w Chrome.",
     "export.error.diskFull": "Za mało miejsca na dysku, aby zapisać ten fragment. Zwolnij tyle miejsca, ile potrzebuje plik, albo skróć zakres i spróbuj ponownie.",
     "export.error.destinationLost": "Nie udało się dokończyć zapisu — plik zniknął. Dysk mógł zostać odłączony albo inny program go przeniósł. Spróbuj ponownie i zapisz do folderu na komputerze.",

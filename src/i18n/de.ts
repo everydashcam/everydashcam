@@ -972,6 +972,7 @@ export const deDict = {
     "export.error.cannotEncodeResolution": "Dieses Gerät kann kein Video in dieser Auflösung speichern. Wähle eine niedrigere Auflösung und versuche es erneut.",
     "export.error.sourceNotPlayable": "Dieser Browser kann dieses Video nicht abspielen, deshalb lässt es sich hier nicht mit Änderungen speichern.",
     "export.error.sourceNotPlayable.asIs": "Um das Video unverändert zu speichern, schalte die Bearbeitungsoptionen aus und wähle die Qualität „Original“.",
+    "export.error.sourceNotEditable": "Dieser Browser kann dieses Video abspielen, aber nicht bearbeiten, deshalb lässt es sich hier nicht mit Änderungen speichern.",
     "export.error.tooLargeForMemory": "Dieser Clip ist zu groß, um ihn in diesem Browser zu speichern. Kürze den Bereich, verringere die Auflösung oder exportiere ihn in Chrome.",
     "export.error.diskFull": "Nicht genug Speicherplatz, um diesen Clip zu speichern. Gib genug Platz für die Datei frei oder kürze den Bereich und versuche es dann erneut.",
     "export.error.destinationLost": "Die Datei konnte nicht fertig gespeichert werden — sie ist verschwunden. Vielleicht wurde das Laufwerk getrennt oder ein anderes Programm hat sie verschoben. Versuche es erneut und speichere in einen Ordner auf deinem Computer.",

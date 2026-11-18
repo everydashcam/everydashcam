@@ -986,6 +986,7 @@ export const jaDict = {
     "export.error.cannotEncodeResolution": "この端末ではこの解像度で動画を保存できません。解像度を下げて、もう一度お試しください。",
     "export.error.sourceNotPlayable": "このブラウザではこの動画を再生できないため、ここでは編集を加えて保存できません。",
     "export.error.sourceNotPlayable.asIs": "変更せずに保存するには、編集オプションをオフにして「元の画質」を選んでください。",
+    "export.error.sourceNotEditable": "このブラウザではこの動画を再生できますが編集はできないため、ここでは編集を加えて保存できません。",
     "export.error.tooLargeForMemory": "このクリップはこのブラウザで保存するには大きすぎます。範囲を短くするか、解像度を下げるか、Chrome で書き出してください。",
     "export.error.diskFull": "このクリップを保存するディスクの空き容量が足りません。ファイルに十分な空き容量を確保するか範囲を短くして、もう一度お試しください。",
     "export.error.destinationLost": "保存中のファイルが見つからなくなり、最後まで保存できませんでした。ドライブが取り外されたか、ほかのアプリが移動した可能性があります。パソコン内のフォルダーを選んで、もう一度お試しください。",

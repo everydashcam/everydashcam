@@ -984,6 +984,7 @@ export const koDict = {
     "export.error.cannotEncodeResolution": "이 기기에서는 이 해상도로 영상을 저장할 수 없어요. 더 낮은 해상도를 골라 다시 시도해 주세요.",
     "export.error.sourceNotPlayable": "이 브라우저는 이 영상을 재생할 수 없어서 여기서는 편집한 상태로 저장할 수 없어요.",
     "export.error.sourceNotPlayable.asIs": "변경 없이 저장하려면 편집 옵션을 끄고 화질에서 “원본”을 선택해 주세요.",
+    "export.error.sourceNotEditable": "이 브라우저는 이 영상을 재생할 수는 있지만 편집할 수 없어서 여기서는 편집한 상태로 저장할 수 없어요.",
     "export.error.tooLargeForMemory": "이 클립은 이 브라우저에서 저장하기에 너무 커요. 구간을 줄이거나 해상도를 낮추거나 Chrome에서 내보내세요.",
     "export.error.diskFull": "이 클립을 저장할 디스크 공간이 부족해요. 파일이 들어갈 만큼 공간을 비우거나 범위를 줄인 뒤 다시 시도해 주세요.",
     "export.error.destinationLost": "저장하던 파일이 사라져서 끝까지 저장하지 못했어요. 드라이브가 분리됐거나 다른 앱이 파일을 옮겼을 수 있어요. 다시 시도할 때는 컴퓨터 안의 폴더를 저장 위치로 선택해 주세요.",

@@ -41,9 +41,9 @@ import {
     cancelActiveExport,
     estimateExport,
     formatEstimatedSize,
-    refreshEncodeCeiling,
+    refreshExportProbes,
     runExportFlow,
-    subscribeEncodeCeiling,
+    subscribeExportProbes,
 } from "./export-flow.js";
 import type { ExportDoneSummary } from "./export-flow.js";
 import { nativeFsaAvailable } from "./in-memory-file.js";
@@ -189,11 +189,11 @@ export function initExportPanel(opts: { onCompositionApply: () => void }): void 
         window.addEventListener("online", syncBlurDownloadStrips);
         window.addEventListener("offline", syncBlurDownloadStrips);
     }
-    // The device encode ceiling resolves asynchronously (a WebCodecs probe). When
-    // it lands, re-run the estimate so the size / device-cap note / Save state
-    // reflect what this device can actually encode - without a full panel notify
-    // (which would re-trigger the probe and loop).
-    subscribeEncodeCeiling(syncEstimate);
+    // The device encode ceiling and source decode support resolve asynchronously
+    // (WebCodecs probes). When one lands, re-run the estimate so the size / notes
+    // / Save state reflect what this device can actually do - without a full
+    // panel notify (which would re-trigger the probes and loop).
+    subscribeExportProbes(syncEstimate);
     // Language is fixed for the page lifetime (a switch is a full navigation),
     // so the panel is built once here in the active language and never needs a
     // live relocalization pass.
@@ -260,11 +260,12 @@ function syncExportPanel(): void {
         // Keep the speed UI (active factor, audio state, result length) in sync with
         // the current factor AND range - the range pull-tabs notify through here too.
         syncSpeedDependentUi();
-        // Re-probe what this device can encode for the current re-encode config
-        // (no-op for stream-copy / unchanged config). Resolves async; on landing it
-        // wakes syncEstimate via subscribeEncodeCeiling. Gated to the open configure
-        // view so we do not probe while the panel is closed or mid-export.
-        if (state.exportModeOpen && phase === "options") refreshEncodeCeiling();
+        // Re-probe what this device can encode and decode for the current
+        // re-encode config (no-op for stream-copy / known answers). Resolves async;
+        // on landing it wakes syncEstimate via subscribeExportProbes. Gated to the
+        // open configure view so we do not probe while the panel is closed or
+        // mid-export.
+        if (state.exportModeOpen && phase === "options") refreshExportProbes();
         // Live export estimate (per-quality clip sizes and output summary) tracks
         // every Output / quality / range / speed / audio change routed through here.
         syncEstimate();
@@ -1074,7 +1075,13 @@ function syncEncodeNote(est: ReturnType<typeof estimateExport>): void {
         // surfaces at run time as a clean "use desktop Chrome" message (see
         // export-flow), and the persistent fallbackWarn already flags the
         // in-memory limit before Save.
-        if (undecodable) {
+        if (undecodable?.isPlayable) {
+            // The video plays, so the playback advice does not apply - only why
+            // editing is blocked + what works right here.
+            note.hidden = false;
+            note.classList.add("is-error");
+            note.textContent = `${t("export.error.sourceNotEditable")} ${t("export.error.sourceNotPlayable.asIs")}`;
+        } else if (undecodable) {
             // Why it is blocked + how to get a browser where editing works
             // (shared advice, may carry the Store link) + what works right here.
             note.hidden = false;
