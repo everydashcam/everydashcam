@@ -25,7 +25,7 @@ import {
     RX_GRMN_MODE_PATH,
     RX_HMS_CHANNEL_MODE,
     MAI70_MODE_FOLDERS,
-    REDTIGER_MODE_FOLDERS,
+    CARDV_MODE_FOLDERS,
     matchModeChannelFolder,
     RX_DATETIME_CHANNEL_TS,
     RX_70MAI,
@@ -33,6 +33,7 @@ import {
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_CARDV_DVR,
     RX_DATE_SEQUENCE_CAM,
     RX_DATE_SEQUENCE_CAM_PATH,
     RX_DDPAI_EVENT,
@@ -660,26 +661,37 @@ const nextbaseCameraKey: FilenameCameraKeyTechnique = {
     },
 };
 
-// RedTiger splits channels into sibling `<mode>_<channel letter>` folders
+// CarDV cards split channels into sibling `<mode>_<channel letter>` folders
 // (Movie_F/, Movie_R/, Event_F/, ...). Both the folder and the trailing letter
-// are per-clip attributes, not camera identity: the corpus shows an event pair
-// slotted exactly into the 3-minute loop cadence between its Movie neighbours
-// (the firmware writes the event clip INSTEAD of the normal segment), so an
-// Event clip must chain into the same trip as its Movie siblings - the
-// mai70/hpim rationale.
+// are per-clip attributes, not camera identity: the RedTiger corpus shows an
+// event pair slotted exactly into the 3-minute loop cadence between its Movie
+// neighbours (the firmware writes the event clip INSTEAD of the normal
+// segment), so an Event clip must chain into the same trip as its Movie
+// siblings - the mai70/hpim rationale.
+function cardvCameraKey(family: string, file: VendorFile, channelLetter: string): string {
+    // The channel letter is the last character before the extension.
+    const masked = maskNameWithTrailingLetterStripped(file.file.name, channelLetter);
+    const dir = strippedParentDir(
+        file.relativePath,
+        [],
+        CARDV_MODE_FOLDERS.flatMap((mode) => ["f", "r", channelLetter].map((letter) => `${mode}_${letter}`)),
+    );
+    return `${family}|${dir}|${masked}`;
+}
+
 const redtigerCameraKey: FilenameCameraKeyTechnique = {
     id: "redtiger-camera-key",
     extract(file: VendorFile): string | null {
         const m = file.file.name.match(RX_REDTIGER);
-        if (!m) return null;
-        // Channel letter at group [3], one char before `.MP4`.
-        const masked = maskNameWithTrailingLetterStripped(file.file.name, m[3]!);
-        const dir = strippedParentDir(
-            file.relativePath,
-            [],
-            REDTIGER_MODE_FOLDERS.flatMap((mode) => ["f", "r", m[3]!].map((letter) => `${mode}_${letter}`)),
-        );
-        return `redtiger|${dir}|${masked}`;
+        return m ? cardvCameraKey("redtiger", file, m[3]!) : null;
+    },
+};
+
+const cardvDvrCameraKey: FilenameCameraKeyTechnique = {
+    id: "cardv-dvr-camera-key",
+    extract(file: VendorFile): string | null {
+        const m = file.file.name.match(RX_CARDV_DVR);
+        return m ? cardvCameraKey("cardv-dvr", file, m[3]!) : null;
     },
 };
 
@@ -835,6 +847,7 @@ export const FILENAME_CAMERA_KEY: readonly FilenameCameraKeyTechnique[] = [
     neolineCameraKey,
     nextbaseCameraKey,
     redtigerCameraKey,
+    cardvDvrCameraKey,
     teslaCameraKey,
     thinkwareCameraKey,
     vueroidCameraKey,

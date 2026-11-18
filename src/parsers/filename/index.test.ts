@@ -1579,6 +1579,13 @@ describe("open channel-letter positions", () => {
         ["nextbase", "260101_120000_001_FH.mp4", "card", "260101_120000_001_XH.mp4", "card"],
         ["neoline", "INF20260101-120000-1-F.mp4", "card", "INF20260101-120000-1-X.mp4", "card"],
         ["redtiger", "20260101120000_000001F.mp4", "card/Movie_F", "20260101120000_000001X.mp4", "card/Movie_X"],
+        [
+            "cardv-dvr",
+            "DVR20260101120000_000001_F.MP4",
+            "card/MOVIE_F",
+            "DVR20260101120000_000001_X.MP4",
+            "card/MOVIE_X",
+        ],
         ["wolfbox", "2026_01_01_120000_00_F.mp4", "card", "2026_01_01_120000_00_X.mp4", "card"],
         ["novatek-viofo", "2026_0101_120000_1F.mp4", "card", "2026_0101_120000_1X.mp4", "card"],
         ["novatek-vantrue", "20260101_120000_1_N_A.mp4", "card", "20260101_120000_1_N_X.mp4", "card"],

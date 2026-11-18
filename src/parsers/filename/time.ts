@@ -15,6 +15,7 @@ import {
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_CARDV_DVR,
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
     RX_DDPAI_TIMELAPSE,
@@ -365,6 +366,16 @@ const teslaTime: FilenameTimeTechnique = {
     },
 };
 
+const cardvDvrTime: FilenameTimeTechnique = {
+    id: "cardv-dvr-time",
+    extract(file: VendorFile): Date | null {
+        const m = file.file.name.match(RX_CARDV_DVR);
+        // Named technique (not just the generic-datetime fallback) so the
+        // family reads as one in diagnostics - the ford-time rationale.
+        return m ? ymdHmsFromSplit(m[1]!.slice(0, 8), m[1]!.slice(8)) : null;
+    },
+};
+
 const fordTime: FilenameTimeTechnique = {
     id: "ford-time",
     extract(file: VendorFile): Date | null {
@@ -439,6 +450,7 @@ export const FILENAME_TIME: readonly FilenameTimeTechnique[] = [
     wolfboxTime,
     teslaTime,
     fordTime,
+    cardvDvrTime,
     hmsChannelModeTime,
     genericDatetimeTime,
 ];

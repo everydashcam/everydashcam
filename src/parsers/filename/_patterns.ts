@@ -332,11 +332,19 @@ export const RX_NEOLINE = /^INF(\d{8})-(\d{6})-(\d+)-([A-Z])\.mp4$/i;
 // in .ts), and the mandatory trailing letter keeps it off RX_DDPAI_NORMAL
 // twins. GPS lives in plaintext YOUQINGGPS/freeGPS blocks on the F7NP-4K.
 export const RX_REDTIGER = /^(\d{14})_(\d{6})([A-Z])\.mp4$/i;
-// Recording-mode folder stems on a RedTiger card (the folder name is
-// `<stem>_<channel letter>`). Single source for the path-mode regex and
-// camera-key's parent-dir strip list (the MAI70_MODE_FOLDERS pattern).
-export const REDTIGER_MODE_FOLDERS = ["movie", "event", "parking"] as const;
-export const RX_REDTIGER_PATH_MODE = new RegExp(`(?:^|/)(${REDTIGER_MODE_FOLDERS.join("|")})_[a-z]/`, "i");
+// DVR-prefixed CarDV names (Mangoal, model unidentified, 2-channel corpus):
+// `DVR` + 14-digit datetime + _ + 6-digit counter + _ + channel letter + .MP4,
+// in the RedTiger card layout (only MOVIE_F/ and MOVIE_R/ observed). Unlike
+// RedTiger the counter runs per channel: one moment is 000465_F and 000453_R,
+// so it orders a channel's clips but never pairs channels. Filename-only
+// corpus (232-file diagnostic report); freeGPS decoded on both channels.
+export const RX_CARDV_DVR = /^DVR(\d{14})_(\d{6})_([A-Z])\.mp4$/i;
+// Recording-mode folder stems on a CarDV card (the folder name is
+// `<stem>_<channel letter>`), shared by the RedTiger and DVR-prefixed names.
+// Single source for the path-mode regex and camera-key's parent-dir strip
+// list (the MAI70_MODE_FOLDERS pattern).
+export const CARDV_MODE_FOLDERS = ["movie", "event", "parking"] as const;
+export const RX_CARDV_PATH_MODE = new RegExp(`(?:^|/)(${CARDV_MODE_FOLDERS.join("|")})_[a-z]/`, "i");
 
 // Wolfbox (G900/i07 family, 1-3 channels): YYYY_MM_DD_HHMMSS_EE_C.MP4 where
 // EE is a 2-digit event code (00 = normal, 02 = g-sensor event) and

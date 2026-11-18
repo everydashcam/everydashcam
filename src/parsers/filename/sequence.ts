@@ -7,6 +7,7 @@ import { matchDailyCsvVideoPath } from "../internal/daily-csv-path.js";
 import {
     RX_70MAI,
     RX_CARCAM,
+    RX_CARDV_DVR,
     RX_DATE_SEQUENCE_CAM,
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
@@ -199,6 +200,14 @@ const redtigerSequence: FilenameSequenceTechnique = {
     },
 };
 
+const cardvDvrSequence: FilenameSequenceTechnique = {
+    id: "cardv-dvr-sequence",
+    extract(file: VendorFile): number | null {
+        const m = file.file.name.match(RX_CARDV_DVR);
+        return m ? Number(m[2]) : null;
+    },
+};
+
 const teslaSequence: FilenameSequenceTechnique = {
     id: "tesla-sequence",
     extract(file: VendorFile): number | null {
@@ -241,5 +250,6 @@ export const FILENAME_SEQUENCE: readonly FilenameSequenceTechnique[] = [
     novatekSequence,
     novatekTsSequence,
     redtigerSequence,
+    cardvDvrSequence,
     teslaSequence,
 ];

@@ -22,6 +22,7 @@ import {
     RX_BEFERICH,
     RX_BLACKVUE,
     RX_CARCAM,
+    RX_CARDV_DVR,
     RX_DATE_SEQUENCE_CAM,
     RX_DDPAI_EVENT,
     RX_DDPAI_NORMAL,
@@ -354,6 +355,13 @@ const GPS_SOURCE_HINTS: readonly GpsSourceHint[] = [
     {
         id: "redtiger",
         matches: (f) => RX_REDTIGER.test(f.file.name),
+        source: "embedded",
+    },
+    // DVR-prefixed CarDV names (Mangoal): freeGPS decoded on both channels in
+    // the diagnostic report; the variant is unknown without a recording.
+    {
+        id: "cardv-dvr",
+        matches: (f) => RX_CARDV_DVR.test(f.file.name),
         source: "embedded",
     },
     // Tesla SEI-based telemetry (firmware 2025.44.25+) is not yet parsed.

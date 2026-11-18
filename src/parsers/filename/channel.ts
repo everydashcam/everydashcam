@@ -25,6 +25,7 @@ import {
     RX_CARCAM_PATH_INTERIOR,
     RX_CARCAM_PATH_REAR,
     RX_CARCAM_PATH_SIDE,
+    RX_CARDV_DVR,
     RX_DATE_SEQUENCE_CAM,
     RX_DATE_SEQUENCE_CAM_PATH,
     RX_DDPAI_EVENT,
@@ -482,6 +483,14 @@ const redtigerChannel: FilenameChannelTechnique = {
     },
 };
 
+const cardvDvrChannel: FilenameChannelTechnique = {
+    id: "cardv-dvr-channel",
+    extract(file: VendorFile): ChannelMatch | null {
+        const m = file.file.name.match(RX_CARDV_DVR);
+        return m ? mnemonicChannel(m[3]!) : null;
+    },
+};
+
 const movSeqFriChannel: FilenameChannelTechnique = {
     id: "mov-seq-fri-channel",
     extract(file: VendorFile): ChannelMatch | null {
@@ -702,6 +711,7 @@ export const FILENAME_CHANNEL: readonly FilenameChannelTechnique[] = [
     navitelChannel,
     nextbaseChannel,
     redtigerChannel,
+    cardvDvrChannel,
     teslaChannel,
     thinkwareChannel,
     wolfboxChannel,

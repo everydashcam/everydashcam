@@ -242,6 +242,49 @@ describe("collected recording filenames", () => {
         expect(Object.keys(trips[0]!.frames[0]!.channels).sort()).toEqual(["front", "rear"]);
     });
 
+    it("pairs DVR-prefixed CarDV MOVIE_F and MOVIE_R clips whose counters run per channel", () => {
+        // Shape of a reported Mangoal card: the rear counter lags the front one
+        // and the rear clip may start a second later. Dates are synthetic.
+        const front = vf("CARDV/MOVIE_F/DVR20260101092833_000486_F.MP4");
+        const rear = vf("CARDV/MOVIE_R/DVR20260101092834_000474_R.MP4");
+        const nextFront = vf("CARDV/MOVIE_F/DVR20260101093133_000487_F.MP4");
+        const nextRear = vf("CARDV/MOVIE_R/DVR20260101093134_000475_R.MP4");
+        const files = [front, rear, nextFront, nextRear];
+        expect(files.map((file) => classifyFilenameChannel(file))).toEqual([
+            { channel: "front", confident: true },
+            { channel: "rear", confident: true },
+            { channel: "front", confident: true },
+            { channel: "rear", confident: true },
+        ]);
+        expect(files.map(classifyFilenameMode)).toEqual(["normal", "normal", "normal", "normal"]);
+        expect(files.map(classifyFilenameSequence)).toEqual([486, 474, 487, 475]);
+        expect(classifyFilenameTime(rear)?.toISOString()).toBe("2026-01-01T09:28:34.000Z");
+        expect(files.every((file) => shouldTryEmbeddedGps(file, false))).toBe(true);
+        expect(new Set(files.map(cameraFingerprint)).size).toBe(1);
+        expect(cameraFingerprint(front)).not.toBe(
+            cameraFingerprint(vf("other/CARDV/MOVIE_F/DVR20260101092833_000486_F.MP4")),
+        );
+
+        const candidates = files.map((file) =>
+            buildProvisionalCandidate({
+                file,
+                fingerprint: cameraFingerprint(file),
+                startUtc: classifyFilenameTime(file)!.getTime() / 1000,
+                startSource: "name",
+                cameraTzSec: null,
+                durationSec: 180,
+                records: [],
+                appliedExtractors: [],
+            }),
+        );
+        const trips = groupTrips(candidates);
+        expect(trips).toHaveLength(1);
+        expect(trips[0]!.frames.map((frame) => Object.keys(frame.channels).sort())).toEqual([
+            ["front", "rear"],
+            ["front", "rear"],
+        ]);
+    });
+
     it("splits a GKU parking time-lapse from the drives right before and after it", () => {
         // Seconds-apart clips, the shape of the reported card around a stop.
         const clips = [

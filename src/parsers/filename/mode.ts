@@ -14,6 +14,8 @@ import {
     RX_CARCAM,
     RX_CARCAM_PATH_EVENT,
     RX_CARCAM_PATH_PARKING,
+    RX_CARDV_DVR,
+    RX_CARDV_PATH_MODE,
     RX_DATE_SEQUENCE_CAM,
     RX_DATE_SEQUENCE_CAM_PATH,
     RX_DATETIME_CHANNEL_TS,
@@ -47,7 +49,6 @@ import {
     RX_REC_SINGLE,
     RX_REC_SINGLE_PATH_CHANNEL,
     RX_REDTIGER,
-    RX_REDTIGER_PATH_MODE,
     RX_TESLA_PATH,
     RX_TESLA_PATH_RECENT,
     RX_TESLA_PATH_SAVED,
@@ -401,27 +402,34 @@ const novatekMode: FilenameModeTechnique = {
     },
 };
 
+// Callers gate on their own filename first: a `<mode>_f/` folder alone must
+// not claim foreign files (the mivue-mode rationale).
+function cardvFolderMode(relativePath: string): RecordingMode {
+    switch (relativePath.match(RX_CARDV_PATH_MODE)?.[1]?.toLowerCase()) {
+        case "event":
+            return "event";
+        case "parking":
+            // Movie/Event are corpus-confirmed on RedTiger; Parking is the
+            // conventional CarDV third (the hpim precedent).
+            return "parking";
+        default:
+            // Movie/ and a flat drop: loop recordings are the bulk (the mivue
+            // rationale).
+            return "normal";
+    }
+}
+
 const redtigerMode: FilenameModeTechnique = {
     id: "redtiger-mode",
     extract(file: VendorFile): RecordingMode | null {
-        // Name gate first - a `<mode>_f/` folder alone must not claim foreign
-        // files (the mivue-mode rationale).
-        if (!RX_REDTIGER.test(file.file.name)) return null;
-        const m = file.relativePath.match(RX_REDTIGER_PATH_MODE);
-        if (m) {
-            switch (m[1]!.toLowerCase()) {
-                case "movie":
-                    return "normal";
-                case "event":
-                    return "event";
-                case "parking":
-                    // Movie/Event are corpus-confirmed; Parking is the
-                    // conventional CarDV third (the hpim precedent).
-                    return "parking";
-            }
-        }
-        // Flat drop: loop recordings are the bulk (the mivue rationale).
-        return "normal";
+        return RX_REDTIGER.test(file.file.name) ? cardvFolderMode(file.relativePath) : null;
+    },
+};
+
+const cardvDvrMode: FilenameModeTechnique = {
+    id: "cardv-dvr-mode",
+    extract(file: VendorFile): RecordingMode | null {
+        return RX_CARDV_DVR.test(file.file.name) ? cardvFolderMode(file.relativePath) : null;
     },
 };
 
@@ -564,6 +572,7 @@ export const FILENAME_MODE: readonly FilenameModeTechnique[] = [
     iboxMode,
     juscarMode,
     redtigerMode,
+    cardvDvrMode,
     teslaMode,
     thinkwareMode,
     wolfboxMode,
