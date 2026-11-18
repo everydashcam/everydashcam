@@ -7,10 +7,13 @@
 // anonymize-ts-generic.mjs), keeping the container that mediabunny and the
 // clamp actually care about. Enciphered twin slots are erased; preallocated
 // zeros are shortened. The plaintext table is preserved except
-// the coordinate fractions:
+// the coordinate fractions and altitude:
 //   - every "N:dd.dddddd" / "E:d.dddddd" (any hemisphere or no-fix marker, optional
 //     minus) gets its fraction digits zeroed - same byte length, so every
 //     embedded length field stays valid;
+//   - every "H:" altitude digit is zeroed the same way: no reader consumes it,
+//     and an elevation profile next to speed and course narrows the route
+//     down inside a whole-degree cell;
 //   - timestamps, speed, course and slot structure are the original camera
 //     bytes (without coordinates they are not sensitive, and a preserved
 //     cadence gives a meaningful snapshot).
@@ -50,6 +53,11 @@ const TRAILER_DIALECTS = [
     { magic: "SKIPLIGOGPSINFO", terminator: 0x23232323 },
     { magic: "SKIPLIGOGPSINFO", terminator: 0x26262626 },
 ];
+
+/** Zeroes every digit of the "H:" altitude field without changing the slot length. */
+function zeroAltitude(text) {
+    return text.replace(/(H:)(-?[\d.]+)/g, (_, tag, value) => tag + value.replace(/\d/g, "0"));
+}
 
 // --- Step 1: extract the trailer from the real file (known marker + u32 BE len).
 const size = statSync(inputPath).size;
@@ -97,7 +105,7 @@ function scrubPairedTrailer(full) {
                 coordinates++;
                 return `${head}.${"0".repeat(fraction.length)}`;
             });
-            trailer.write(scrubbed, off, "latin1");
+            trailer.write(zeroAltitude(scrubbed), off, "latin1");
         }
         if (!coordinates) throw new Error("paired trailer has no coordinates to anonymize");
         console.error(`paired trailer: ${coordinates} coordinate fields scrubbed; enciphered slots erased`);
@@ -168,7 +176,7 @@ function scrubStandardTrailer() {
             console.error(`scrub changed slot length at offset ${off} - aborting`);
             process.exit(1);
         }
-        trailer.write(scrubbed, textStart, "latin1");
+        trailer.write(zeroAltitude(scrubbed), textStart, "latin1");
         slots++;
     }
     if ((slotCount > 0 && coordinates === 0) || unchangedCoordinates > 0) {
