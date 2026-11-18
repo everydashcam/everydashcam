@@ -404,6 +404,9 @@ export function matchNovatekSingleFilename(name: string): RegExpMatchArray | nul
 // Channel letter: A = front, B = cabin, C = rear (N4 and N4 Pro manuals).
 const RX_VANTRUE_COUNTER = /^(\d{8})_(\d{6})_(\d+)_([NEP])_([A-Z])\.mp4$/i;
 const RX_VANTRUE_SPLIT_DATE = /^(\d{4})_(\d{2})_(\d{2})_(\d{6})_([NEP])_([A-Z])\.mp4$/i;
+// The `_<mode>_<channel>.mp4` tail both spellings share; must stay in lockstep
+// with their mode and channel groups.
+const RX_VANTRUE_MODE_SLOT = /_[NEP]_([A-Z])(?=\.mp4$)/i;
 // The documented card folders. Loop, parking, time-lapse and privacy clips
 // share Normal; locked clips move to Event.
 export const VANTRUE_MODE_FOLDERS = ["normal", "event"] as const;
@@ -448,6 +451,16 @@ export function matchVantrueFilename(name: string): VantrueFilename | null {
         };
     }
     return null;
+}
+
+/**
+ * Rewrites the mode letter of a name matchVantrueFilename accepted to the
+ * loop letter N, keeping its channel letter. Camera fingerprinting needs this
+ * because the mode describes the clip, not the camera. Returns any other name
+ * unchanged.
+ */
+export function foldVantrueModeLetter(name: string): string {
+    return name.replace(RX_VANTRUE_MODE_SLOT, "_N_$1");
 }
 // Novatek MPEG-TS OEMs: 14-digit timestamp _ 6-digit counter + .ts - the
 // RX_DDPAI_NORMAL name scheme in a TS container (GPS rides a private PES

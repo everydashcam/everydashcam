@@ -54,6 +54,7 @@ import {
     RX_NEXTBASE,
     RX_NOVATEK_TS,
     matchVantrueFilename,
+    foldVantrueModeLetter,
     RX_NOVATEK_VIOFO,
     RX_REC_SINGLE,
     RX_REC_SINGLE_PATH_CHANNEL,
@@ -578,10 +579,9 @@ const novatekVantrueCameraKey: FilenameCameraKeyTechnique = {
         // The mode letter and its card folder describe the clip, not the
         // camera: the N4 writes a manual-event E clip in place of the next
         // loop segment, so it must chain with its N neighbours. Fold both,
-        // like the 70mai mode prefixes. The `_N_` spelling keeps loop-clip
-        // keys unchanged; the channel letter goes as in other A/B/C families.
-        const folded = file.file.name.replace(/_[NEP]_([A-Z])(?=\.mp4$)/i, "_N_$1");
-        const masked = maskNameWithTrailingLetterStripped(folded, vantrue.channelLetter);
+        // like the 70mai mode prefixes. The channel letter goes as in other
+        // A/B/C families.
+        const masked = maskNameWithTrailingLetterStripped(foldVantrueModeLetter(file.file.name), vantrue.channelLetter);
         const dir = strippedParentDir(file.relativePath, VANTRUE_MODE_FOLDERS, [vantrue.channelLetter]);
         return `novatek-vantrue|${dir}|${masked}`;
     },
