@@ -141,6 +141,27 @@ export async function injectClipGpmf(args: {
  */
 const GPMD_TIMESCALE = 1000;
 
+/**
+ * Sample durations in timescale ticks, rounded where the samples end rather
+ * than one by one. A sped-up export cuts samples the timescale cannot hold (62.5
+ * ms at 16x): rounding each one alone repeats the same error every sample, and
+ * the telemetry drifts off the video by seconds per hour of footage. Rounded
+ * ends keep every sample start within half a tick of its content time, and the
+ * deltas still sum to the track duration. Each delta stays at least one tick.
+ */
+function sampleDurationsTicks(durationsSec: readonly number[], timescale: number): number[] {
+    const deltas: number[] = [];
+    let endSec = 0;
+    let endTick = 0;
+    for (const durationSec of durationsSec) {
+        endSec += durationSec;
+        const nextEndTick = Math.max(endTick + 1, Math.round(endSec * timescale));
+        deltas.push(nextEndTick - endTick);
+        endTick = nextEndTick;
+    }
+    return deltas;
+}
+
 /** The replacement tail for an output: truncate at `moovStartAbs` and write
  *  `tail` (new mdat + augmented moov) there. `originalMoov` is what stood at
  *  that offset, kept so a failed write can put the file back together. */
@@ -373,7 +394,10 @@ async function buildGpmdTail(
         gpmdTimescale: GPMD_TIMESCALE,
         clipDurationSec,
         sampleSizes,
-        sampleDurationsTicks: samples.map((s) => Math.max(1, Math.round(s.durationSec * GPMD_TIMESCALE))),
+        sampleDurationsTicks: sampleDurationsTicks(
+            samples.map((s) => s.durationSec),
+            GPMD_TIMESCALE,
+        ),
         firstSampleAbsOffset,
         useCo64: firstSampleAbsOffset > 0xffffffff,
     });
@@ -608,8 +632,9 @@ function buildStsdGpmd(): Uint8Array {
 
 function buildStts(args: BuildGpmdTrakArgs): Uint8Array {
     // Group consecutive equal delta durations into one entry (sample_count,
-    // sample_delta) for efficiency. Nearly all deltas equal the timescale;
-    // the last one may be shorter.
+    // sample_delta) for efficiency. A speed whose sample fits the timescale
+    // repeats one delta, the last one may be shorter; 16x and 32x alternate
+    // rounded deltas and take an entry per sample.
     interface SttsEntry {
         count: number;
         delta: number;

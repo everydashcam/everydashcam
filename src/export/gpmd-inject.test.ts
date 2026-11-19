@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { injectClipGpmf, injectGpmdTrack, injectGpmdTrackIntoOpen, OutputDamagedError } from "./gpmd-inject.js";
-import { findMoovInFile } from "../parsers/internal/mp4-walker.js";
+import { findMoovInFile, readMediaTimescale, readSampleDurationsInTicks } from "../parsers/internal/mp4-walker.js";
 import { createInMemoryFileHandle } from "../ui/in-memory-file.js";
 import { type GpmfClipTimeline, packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
 import { buildMp4Index } from "../parsers/internal/mp4-index.js";
@@ -306,6 +306,43 @@ describe("injectGpmdTrack - end-to-end round-trip on real mp4 fixture", () => {
         expect(newIndex.tracks.filter((t) => t.handlerType === "vide").length).toBe(origVideoCount);
         expect(newIndex.tracks.filter((t) => t.handlerType === "soun").length).toBe(origAudioCount);
         expect(newIndex.tracks.filter((t) => t.handlerType === "meta").length).toBeGreaterThanOrEqual(1);
+    });
+
+    // 16x and 32x cut samples of 62.5 and 31.25 ms, which a millisecond
+    // timescale cannot hold: rounded one by one, they would run an hour of
+    // footage 1.8 s long at 16x and 0.9 s short at 32x.
+    it.each([8, 16, 32])("keeps a %ix telemetry track as long as its footage", async (speedFactor) => {
+        const footageSec = 3600;
+        const frame: TripFrame = {
+            startUtc: baseUtc,
+            durationSec: footageSec,
+            wallDurationSec: footageSec,
+            channels: {},
+        };
+        const samples = packGpmfSamples(
+            records,
+            buildTripTimeline([frame]),
+            { spans: [{ startSec: 0, endSec: footageSec }], speedFactor },
+            { includeAccel: false },
+        );
+        const handle = makeFakeHandle(new Uint8Array(readFileSync(FIXTURE_MP4)));
+        await injectGpmdTrack(handle, samples);
+
+        const index = await buildMp4Index(await handle.getFile());
+        const gpmdTrack = findGpmdTrack(index);
+        expect(gpmdTrack, "the export carries a gpmd track").not.toBeNull();
+        const timescale = readMediaTimescale(index.moovView!, gpmdTrack!.trakBox);
+        const deltas = readSampleDurationsInTicks(index.moovView!, gpmdTrack!.trakBox);
+        if (timescale === null || deltas === null) throw new Error("the gpmd track has no sample table");
+        let elapsedTicks = 0;
+        let worstStartErrorTicks = 0;
+        for (const [second, delta] of deltas.entries()) {
+            const footageTick = (second * timescale) / speedFactor;
+            worstStartErrorTicks = Math.max(worstStartErrorTicks, Math.abs(elapsedTicks - footageTick));
+            elapsedTicks += delta;
+        }
+        expect(elapsedTicks / timescale, "track length").toBe(footageSec / speedFactor);
+        expect(worstStartErrorTicks, "every sample starts at its footage second").toBeLessThanOrEqual(0.5);
     });
 
     it("round-trips a dense GPS and accel sample through an MP4", async () => {
