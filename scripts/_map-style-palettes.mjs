@@ -75,7 +75,6 @@ export const MAP_STYLE_VARIANTS = Object.keys(VARIANTS);
 
 function lineColor(layer, palette, geometry) {
     const kind = layer.metadata?.["everydashcam:road-kind"];
-    if (geometry.outlinedRoads && layer.metadata?.["everydashcam:road-crossing"] === "all") return palette.roadCasing;
     if (kind) return roadColorExpression(palette, kind, geometry.outlinedRoads);
     const id = layer.id;
     if (layer["source-layer"] === "waterway" || id === "road_ferry") return palette.waterLine;
@@ -122,12 +121,13 @@ export function createMapStyleVariant(light, theme) {
         if (layer.type === "background") p["background-color"] = palette.background;
         if (layer.type === "line") {
             p["line-color"] = lineColor(layer, palette, geometry);
-            if (geometry.outlinedRoads && layer.metadata?.["everydashcam:road-kind"] === "fill") {
-                p["line-width"] = roadWidth("fill", 0.78);
+            const roadKind = layer.metadata?.["everydashcam:road-kind"];
+            if (geometry.outlinedRoads && (roadKind === "fill" || roadKind === "dashed")) {
+                p["line-width"] = roadWidth(roadKind, 0.78);
             }
             if (
                 theme === "neon" &&
-                layer.metadata?.["everydashcam:road-kind"] === "casing" &&
+                roadKind === "casing" &&
                 layer.metadata?.["everydashcam:road-level"] === 0 &&
                 layer.metadata?.["everydashcam:road-crossing"] === "surface"
             ) {

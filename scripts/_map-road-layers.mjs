@@ -1,5 +1,8 @@
 // Each elevation paints a complete casing/fill pair before the next one.
 // A sort key cannot order casings and fills across separate style layers.
+// Dashed classes (path, rail, transit) live in dedicated layers so drivable
+// roads omit line-dasharray and stay on MapLibre's plain line shader instead
+// of lineSDF.
 
 const LIGHT = {
     roadCasing: "#d1c9ba",
@@ -19,7 +22,8 @@ const IS_TUNNEL = ["==", BRUNNEL, "tunnel"];
 const IS_RAMP = ["==", ["get", "ramp"], 1];
 const DEFAULT_LEVEL = ["case", IS_TUNNEL, -1, IS_BRIDGE, 1, 0];
 const LEVEL = ["to-number", ["coalesce", ["get", "layer"], DEFAULT_LEVEL], DEFAULT_LEVEL];
-const CLASSES = [
+const ROUNDED_LEVEL = ["round", LEVEL];
+const SOLID_CLASSES = [
     "motorway",
     "trunk",
     "primary",
@@ -31,10 +35,9 @@ const CLASSES = [
     "bus_guideway",
     "service",
     "track",
-    "path",
-    "rail",
-    "transit",
 ];
+const DASHED_CLASSES = ["path", "rail", "transit"];
+const ALL_CLASSES = [...SOLID_CLASSES, ...DASHED_CLASSES];
 const CLASS_RANK = [
     "match",
     CLASS,
@@ -53,15 +56,20 @@ const CLASS_RANK = [
     0,
 ];
 const SORT_KEY = ["+", ["*", LEVEL, 100], ["case", IS_TUNNEL, 0, IS_BRIDGE, 20, 10], CLASS_RANK];
-const MIN_LEVEL = -5;
-const MAX_LEVEL = 5;
+// Explicit casing/fill pairs cover the common OSM levels (-2..2). OSM allows
+// -5..5, and multi-level interchanges do use 3+; those share the below/above
+// casing and fill passes, so the style avoids dozens of mostly empty layers
+// that MapLibre would check on every frame.
+const MIN_LEVEL = -2;
+const MAX_LEVEL = 2;
 
 // Outlined roads swap the roles: the casing carries the class colour and every
 // drivable road shares one dark interior.
 export function roadColorExpression(palette, kind, outlined = false) {
-    if (kind === "fill" && outlined) {
-        return ["match", CLASS, "path", palette.path, ["rail", "transit"], palette.rail, palette.roadInterior];
+    if (kind === "dashed") {
+        return ["match", CLASS, "path", palette.path, palette.rail];
     }
+    if (kind === "fill" && outlined) return palette.roadInterior;
     if (kind === "casing" && !outlined) return ["case", IS_BRIDGE, palette.bridgeCasing, palette.roadCasing];
     return [
         "match",
@@ -91,7 +99,20 @@ const WIDTHS = [
     [16, 8.3, 6.8, 5.7, 5.9, 2, 3, 1.1],
     [20, 18, 17, 13, 18, 7.5, 10, 2],
 ];
-const WIDTH_INDEX = [
+const SOLID_WIDTH_INDEX = [
+    "match",
+    CLASS,
+    "motorway",
+    0,
+    ["trunk", "primary"],
+    1,
+    ["secondary", "tertiary"],
+    2,
+    ["service", "track"],
+    4,
+    3,
+];
+const ALL_WIDTH_INDEX = [
     "match",
     CLASS,
     "motorway",
@@ -108,7 +129,13 @@ const WIDTH_INDEX = [
     6,
     3,
 ];
-const MIN_ZOOM = [
+const SOLID_MIN_ZOOM = [
+    "case",
+    IS_RAMP,
+    ["case", ["==", CLASS, "motorway"], 12, 13],
+    ["match", CLASS, ["motorway", "trunk", "primary"], 5, ["secondary", "tertiary"], 7, ["service", "track"], 15, 12],
+];
+const ALL_MIN_ZOOM = [
     "case",
     IS_RAMP,
     ["case", ["==", CLASS, "motorway"], 12, 13],
@@ -128,29 +155,40 @@ const MIN_ZOOM = [
         12,
     ],
 ];
+const DASHED_MIN_ZOOM = ["match", CLASS, "rail", 13, 14];
 
-export function roadWidth(kind, scale = 1) {
+export function roadWidth(kind, scale = 1, includeDashed = false) {
+    if (kind === "dashed") {
+        const stops = WIDTHS.filter((row) => row[0] >= 12).flatMap((row) => {
+            const pathW = row[6] * scale;
+            const railW = row[7] * scale;
+            return [row[0], ["case", ["==", CLASS, "path"], pathW, railW]];
+        });
+        return ["interpolate", ["exponential", 1.2], ["zoom"], ...stops];
+    }
+    const widthCount = includeDashed ? 7 : 5;
     const stops = WIDTHS.flatMap((row) => {
         const width = [
             "*",
             ["case", IS_RAMP, 0.65, 1],
-            ["at", ["var", "width_index"], ["literal", row.slice(1).map((value) => value * scale)]],
+            ["at", ["var", "width_index"], ["literal", row.slice(1, 1 + widthCount).map((value) => value * scale)]],
         ];
-        const value =
-            kind === "fill"
-                ? width
-                : [
-                      "case",
-                      ["all", ["in", CLASS, ["literal", ["path", "rail", "transit"]]], ["!", IS_BRIDGE]],
-                      0,
-                      ["+", width, ["case", IS_BRIDGE, 2.2, 1.2]],
-                  ];
+        const value = kind === "fill" ? width : ["+", width, ["case", IS_BRIDGE, 2.2, 1.2]];
         return [row[0], value];
     });
-    return ["let", "width_index", WIDTH_INDEX, ["interpolate", ["exponential", 1.2], ["zoom"], ...stops]];
+    return [
+        "let",
+        "width_index",
+        includeDashed ? ALL_WIDTH_INDEX : SOLID_WIDTH_INDEX,
+        ["interpolate", ["exponential", 1.2], ["zoom"], ...stops],
+    ];
 }
 
 function roadLayer(level, crossing, kind, filter) {
+    // Only explicit bridge casings outline path/rail/transit; other casings
+    // omit those classes instead of drawing zero-width lines.
+    const includeDashed = kind === "casing" && crossing === "bridge";
+    const classes = includeDashed ? ALL_CLASSES : SOLID_CLASSES;
     return {
         id: `road-level-${level}-${crossing}-${kind}`,
         type: "line",
@@ -166,38 +204,73 @@ function roadLayer(level, crossing, kind, filter) {
         filter: [
             "all",
             ["==", ["geometry-type"], "LineString"],
-            ["in", CLASS, ["literal", CLASSES]],
-            [">=", ["zoom"], MIN_ZOOM],
+            ["in", CLASS, ["literal", classes]],
+            [">=", ["zoom"], includeDashed ? ALL_MIN_ZOOM : SOLID_MIN_ZOOM],
             filter,
         ],
         layout: { "line-cap": "round", "line-join": "round", "line-sort-key": SORT_KEY },
         paint: {
             "line-color": roadColorExpression(LIGHT, kind),
-            "line-width": roadWidth(kind),
+            "line-width": roadWidth(kind, 1, includeDashed),
             "line-opacity": ["case", IS_TUNNEL, 0.65, 1],
-            ...(kind === "fill"
-                ? {
-                      "line-dasharray": [
-                          "match",
-                          CLASS,
-                          "path",
-                          ["literal", [1, 0.7]],
-                          ["rail", "transit"],
-                          ["literal", [3, 2]],
-                          ["literal", [1, 0]],
-                      ],
-                  }
-                : {}),
+        },
+    };
+}
+
+// Each dashed group paints between the casing and the fill of its anchor pair,
+// so trails and rail stay above road casings and below road fills, as they did
+// when they shared the road layers. Every bridge group paints after the casing
+// pass of its highest bridge level, otherwise a dashed bridge would lose its
+// fill under its own casing. The groups cover every level exactly once.
+const DASHED_GROUPS = [
+    { name: "tunnel", level: -1, crossing: "tunnel", filter: ["all", ["!", IS_BRIDGE], ["<", ROUNDED_LEVEL, 0]] },
+    { name: "surface", level: 0, crossing: "surface", filter: ["all", ["!", IS_BRIDGE], ["==", ROUNDED_LEVEL, 0]] },
+    // Rare bridges below level 0 paint here too, above level 0 roads: their
+    // casing precedes this pass, which matters more than the crossing order.
+    {
+        name: "bridge",
+        level: 1,
+        crossing: "bridge",
+        filter: ["all", ["<=", ROUNDED_LEVEL, 1], ["any", IS_BRIDGE, ["==", ROUNDED_LEVEL, 1]]],
+    },
+    { name: "upper", level: MAX_LEVEL, crossing: "bridge", filter: [">=", ROUNDED_LEVEL, MAX_LEVEL] },
+];
+
+function dashedRoadLayer(name, levelFilter) {
+    return {
+        id: `road-dashed-${name}-fill`,
+        type: "line",
+        source: "openmaptiles",
+        "source-layer": "transportation",
+        minzoom: 13,
+        metadata: {
+            "everydashcam:role": "transport",
+            "everydashcam:road-kind": "dashed",
+            "everydashcam:road-crossing": name,
+        },
+        filter: [
+            "all",
+            ["==", ["geometry-type"], "LineString"],
+            ["in", CLASS, ["literal", DASHED_CLASSES]],
+            [">=", ["zoom"], DASHED_MIN_ZOOM],
+            levelFilter,
+        ],
+        layout: { "line-cap": "round", "line-join": "round", "line-sort-key": SORT_KEY },
+        paint: {
+            "line-color": roadColorExpression(LIGHT, "dashed"),
+            "line-width": roadWidth("dashed"),
+            "line-opacity": ["case", IS_TUNNEL, 0.65, 1],
+            "line-dasharray": ["match", CLASS, "path", ["literal", [1, 0.7]], ["literal", [3, 2]]],
         },
     };
 }
 
 export function createOpenMapTilesRoadLayers() {
-    // Extreme levels use single fill passes sorted by actual level.
-    // Omitting their casing avoids a low road's fill covering a higher casing.
-    const below = roadLayer("below", "all", "fill", ["<", LEVEL, MIN_LEVEL]);
-    const above = roadLayer("above", "all", "fill", [">", LEVEL, MAX_LEVEL]);
-    const layers = [below];
+    // Extreme levels share one casing pass and one fill pass, each sorted by
+    // level. Where two extreme levels cross, the lower fill covers the upper
+    // casing; everywhere else they keep the outline of the explicit levels.
+    const extremeLayers = (level, filter) => ["casing", "fill"].map((kind) => roadLayer(level, "all", kind, filter));
+    const layers = extremeLayers("below", ["<", ROUNDED_LEVEL, MIN_LEVEL]);
     for (let level = MIN_LEVEL; level <= MAX_LEVEL; level++) {
         for (const crossing of ["tunnel", "surface", "bridge"]) {
             const crossingFilter =
@@ -206,17 +279,14 @@ export function createOpenMapTilesRoadLayers() {
                     : crossing === "bridge"
                       ? IS_BRIDGE
                       : ["all", ["!", IS_TUNNEL], ["!", IS_BRIDGE]];
-            const filter = [
-                "all",
-                [">=", LEVEL, MIN_LEVEL],
-                ["<=", LEVEL, MAX_LEVEL],
-                ["==", ["round", LEVEL], level],
-                crossingFilter,
-            ];
-            for (const kind of ["casing", "fill"]) layers.push(roadLayer(level, crossing, kind, filter));
+            const filter = ["all", ["==", ROUNDED_LEVEL, level], crossingFilter];
+            const dashed = DASHED_GROUPS.find((group) => group.level === level && group.crossing === crossing);
+            layers.push(roadLayer(level, crossing, "casing", filter));
+            if (dashed) layers.push(dashedRoadLayer(dashed.name, dashed.filter));
+            layers.push(roadLayer(level, crossing, "fill", filter));
         }
     }
-    layers.push(above);
+    layers.push(...extremeLayers("above", [">", ROUNDED_LEVEL, MAX_LEVEL]));
     return layers;
 }
 

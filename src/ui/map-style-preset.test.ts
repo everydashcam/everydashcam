@@ -259,9 +259,11 @@ describe("shared OpenMapTiles cartography", () => {
             "road-level-1-bridge-casing",
             "road-level-1-bridge-fill",
         ]);
-        for (const layer of [-9, -5.1, 5.1, 9]) {
-            expect(matchingRoads(style, { class: "minor", brunnel: "bridge", layer })).toEqual([
-                `road-level-${layer < 0 ? "below" : "above"}-all-fill`,
+        for (const layer of [-9, -5.1, -3, 2.6, 3, 5.1, 9]) {
+            const group = layer < 0 ? "below" : "above";
+            expect(matchingRoads(style, { class: "minor", brunnel: "bridge", layer }), String(layer)).toEqual([
+                `road-level-${group}-all-casing`,
+                `road-level-${group}-all-fill`,
             ]);
         }
         expect(matchingRoads(style, { class: "primary", layer: 2.3 })).toEqual([
@@ -288,18 +290,61 @@ describe("shared OpenMapTiles cartography", () => {
 
     it("enables local roads, paths and rail only at their deliberate zoom thresholds", () => {
         const style = loadStyle("light");
-        for (const [roadClass, zoom] of [
-            ["motorway", 5],
-            ["secondary", 7],
-            ["minor", 12],
-            ["rail", 13],
-            ["path", 14],
-            ["transit", 14],
-            ["service", 15],
-            ["track", 15],
+        for (const [roadClass, zoom, expectedLayers] of [
+            ["motorway", 5, 2],
+            ["secondary", 7, 2],
+            ["minor", 12, 2],
+            ["rail", 13, 1],
+            ["path", 14, 1],
+            ["transit", 14, 1],
+            ["service", 15, 2],
+            ["track", 15, 2],
         ] as const) {
             expect(matchingRoads(style, { class: roadClass }, zoom - 1), roadClass).toHaveLength(0);
-            expect(matchingRoads(style, { class: roadClass }, zoom), roadClass).toHaveLength(2);
+            expect(matchingRoads(style, { class: roadClass }, zoom), roadClass).toHaveLength(expectedLayers);
+        }
+    });
+
+    it.each(ALL_STYLES)("keeps drivable roads off line-dasharray so they use the plain line shader in %s", (theme) => {
+        const style = loadStyle(theme);
+        const solidRoads = style.layers.filter((layer) => layer.type === "line" && layer.id.startsWith("road-level-"));
+        expect(solidRoads.length).toBeGreaterThan(0);
+        for (const layer of solidRoads) {
+            expect(layer.type === "line" && layer.paint?.["line-dasharray"], layer.id).toBeUndefined();
+        }
+        expect(matchingRoads(style, { class: "path", brunnel: "tunnel", layer: -1 }, 15)).toEqual([
+            "road-dashed-tunnel-fill",
+        ]);
+        expect(matchingRoads(style, { class: "rail", layer: 0 }, 15)).toEqual(["road-dashed-surface-fill"]);
+        expect(matchingRoads(style, { class: "rail", brunnel: "bridge", layer: 1 }, 15)).toEqual([
+            "road-level-1-bridge-casing",
+            "road-dashed-bridge-fill",
+        ]);
+    });
+
+    it.each(ALL_STYLES)("paints trails and rail between road casings and fills in %s", (theme) => {
+        const style = loadStyle(theme);
+        const index = (id: string) => style.layers.findIndex((layer) => layer.id === id);
+        const dashed = (properties: Record<string, string | number>) =>
+            matchingRoads(style, { class: "rail", ...properties }, 15).filter((id) => id.startsWith("road-dashed-"));
+        // A footway crossing a street stays under the street fill but above its casing.
+        expect(index("road-level-0-surface-casing")).toBeLessThan(index("road-dashed-surface-fill"));
+        expect(index("road-dashed-surface-fill")).toBeLessThan(index("road-level-0-surface-fill"));
+        expect(index("road-level--1-tunnel-casing")).toBeLessThan(index("road-dashed-tunnel-fill"));
+        expect(index("road-dashed-tunnel-fill")).toBeLessThan(index("road-level--1-tunnel-fill"));
+        // A rail bridge stays under a flyover one level above it.
+        expect(index("road-dashed-bridge-fill")).toBeLessThan(index("road-level-2-bridge-casing"));
+        // Every dashed bridge paints after its own casing.
+        for (const layer of [-1, 0, 1, 2]) {
+            const ids = matchingRoads(style, { class: "rail", brunnel: "bridge", layer }, 15);
+            expect(ids, String(layer)).toHaveLength(2);
+            expect(ids[0], String(layer)).toBe(`road-level-${layer}-bridge-casing`);
+        }
+        // Each dashed feature belongs to exactly one dashed group at any level.
+        for (const layer of [-6, -3, -2, -1, 0, 1, 2, 3, 6]) {
+            for (const brunnel of ["tunnel", "bridge", "none"]) {
+                expect(dashed({ brunnel, layer }), `${brunnel} ${layer}`).toHaveLength(1);
+            }
         }
     });
 

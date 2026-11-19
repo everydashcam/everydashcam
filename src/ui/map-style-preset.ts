@@ -152,6 +152,9 @@ export function radarBaseStyle(style: StyleSpecification, radar: RadarTheme): St
         } else if (layer.type === "line" && role === "transport") {
             const sourceLayer = layer["source-layer"];
             if (sourceLayer !== "transportation" && sourceLayer !== "streets") continue;
+            // Dashed layers only carry trails and railways, which driving radar omits.
+            const metadata = layer.metadata as Record<string, unknown> | undefined;
+            if (metadata?.["everydashcam:road-kind"] === "dashed") continue;
             // Both local vector styles use expression filters for roads. Keep their crossing and zoom
             // rules while omitting trails and railways from the driving radar.
             layers.push({
