@@ -79,6 +79,7 @@ import {
 import { getMapProvider, subscribeMapProvider } from "./map-provider.js";
 import { MAP_PROVIDER_REGISTRY, MAX_MAP_PITCH_DEG } from "./map-provider-registry.js";
 import { MapAttributionControl } from "./map-attribution-control.js";
+import { MapNavigationControl, MapScaleControl } from "./map-controls.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { OSM_SHORTBREAD_BUILDING_SOURCE_LAYER, OSM_SHORTBREAD_SOURCE_ID } from "./osm-fallback-style.js";
 import { buildMercatorCumulativeDistances, buildSpeedGradient } from "./speed-gradient.js";
@@ -105,6 +106,7 @@ let mapGpsStatus: HTMLDivElement | null = null;
 let miniMapGpsStatus: HTMLDivElement | null = null;
 let miniStartMarker: maplibregl.Marker | null = null;
 let miniEndMarker: maplibregl.Marker | null = null;
+let mapNavControl: MapNavigationControl | null = null;
 
 function buildGpsStatusBadge(container: HTMLElement): HTMLDivElement {
     const badge = document.createElement("div");
@@ -445,18 +447,23 @@ export function ensureMap(): maplibregl.Map | null {
     map.on("resize", updateFollowViewportSize);
     map.on("resize", syncBigMapPixelRatio);
 
-    // Standard NavigationControl: +/- zoom, compass. Pitch not shown - 3D tilt
-    // without real elevation data looks cheap.
-    map.addControl(
-        new (loadedMaplibre().NavigationControl)({ showCompass: true, showZoom: true, visualizePitch: false }),
-        "top-right",
-    );
-    guardMapCompass(map);
+    // Dirty-checked controls keep MapLibre's CSS classes while avoiding per-frame
+    // width layouts (ScaleControl) and per-move button attribute writes.
+    mapNavControl = new MapNavigationControl({
+        canResetBearing: () => canResetMapBearing(map),
+        // Rotating by hand only makes sense where the provider can show a rotated map.
+        canDragRotate: () =>
+            canResetMapBearing(map) && MAP_PROVIDER_REGISTRY[getMapProvider()].camera.supportsHeadingUp,
+    });
+    map.addControl(mapNavControl, "top-right");
 
-    const scaleControl = new (loadedMaplibre().ScaleControl)({ maxWidth: 120, unit: getUnits() });
+    const scaleControl = new MapScaleControl({ maxWidth: 120, unit: getUnits() });
     map.addControl(scaleControl, "bottom-left");
     const unsubscribeScaleUnits = subscribeUnitsChange((unit) => scaleControl.setUnit(unit));
-    map.once("remove", unsubscribeScaleUnits);
+    map.once("remove", () => {
+        unsubscribeScaleUnits();
+        mapNavControl = null;
+    });
 
     // Track and event-dot hover (see processMapHover). A units change makes the
     // open popup's speed stale, so the next move rewrites it.
@@ -470,9 +477,6 @@ export function ensureMap(): maplibregl.Map | null {
     // Custom attribution stays visible in the bottom-right. Replaces the
     // default AttributionControl (see attributionControl:false above).
     map.addControl(mapAttributionControl, "bottom-right");
-
-    // NavigationControl labels use MapLibre's locale instead of the page's.
-    localizeMapNavControls();
 
     // Track user map gestures so the rAF loop does not fight them. A live
     // gesture suspends the per-frame follow camera (activeMapGestures); the gesture also
@@ -3088,58 +3092,8 @@ function canResetMapBearing(map: maplibregl.Map): boolean {
     return state.followMode !== "chase" && map.getPitch() <= 1;
 }
 
-function guardMapCompass(map: maplibregl.Map): void {
-    const compass = map.getContainer().querySelector<HTMLButtonElement>(".maplibregl-ctrl-compass");
-    if (!compass) return;
-    const preventUnavailableInteraction = (event: Event): void => {
-        const canRotate = MAP_PROVIDER_REGISTRY[getMapProvider()].camera.supportsHeadingUp;
-        if (canResetMapBearing(map) && (event.type === "click" || canRotate)) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-    };
-    // The compass rotates independently of dragRotate, even on disabled buttons.
-    for (const event of ["click", "mousedown", "touchstart"]) {
-        compass.addEventListener(event, preventUnavailableInteraction, { capture: true, passive: false });
-    }
-}
-
 function syncMapCompassAvailability(shouldRefreshLabel = false): void {
-    const map = state.map;
-    if (!map) return;
-    const compass = map.getContainer().querySelector<HTMLButtonElement>(".maplibregl-ctrl-compass");
-    if (!compass) return;
-    const isDisabled = !canResetMapBearing(map);
-    const ariaDisabled = String(isDisabled);
-    if (
-        !shouldRefreshLabel &&
-        compass.disabled === isDisabled &&
-        compass.getAttribute("aria-disabled") === ariaDisabled
-    )
-        return;
-    compass.disabled = isDisabled;
-    compass.setAttribute("aria-disabled", ariaDisabled);
-    const label = t(isDisabled ? "map.ctrl.resetBearingFlatOnly" : "map.ctrl.resetBearing");
-    compass.setAttribute("title", label);
-    compass.setAttribute("aria-label", label);
-}
-
-/**
- * MapLibre has no public setLocale API, so navigation labels are patched on
- * their public control elements without accessing the private locale state.
- */
-function localizeMapNavControls(): void {
-    if (!state.map) return;
-    const container = state.map.getContainer();
-    const setBtn = (selector: string, key: "map.ctrl.zoomIn" | "map.ctrl.zoomOut") => {
-        const btn = container.querySelector<HTMLElement>(selector);
-        if (!btn) return;
-        const label = t(key);
-        btn.setAttribute("title", label);
-        btn.setAttribute("aria-label", label);
-    };
-    setBtn(".maplibregl-ctrl-zoom-in", "map.ctrl.zoomIn");
-    setBtn(".maplibregl-ctrl-zoom-out", "map.ctrl.zoomOut");
-    syncMapCompassAvailability(true);
+    mapNavControl?.syncCompass(shouldRefreshLabel);
 }
 
 /**
@@ -3180,7 +3134,7 @@ function syncCooperativeGestures(): void {
 /**
  * Patches the cooperative-gestures overlay text to the current language. The text
  * is baked into the DOM at enable() time, so a mid-session language switch needs
- * an explicit patch (same approach as localizeMapNavControls). No-op when the
+ * an explicit patch. No-op when the
  * overlay is absent (cooperative disabled, or the map not built yet).
  */
 function localizeCooperativeOverlay(): void {

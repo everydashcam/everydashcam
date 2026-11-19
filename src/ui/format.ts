@@ -354,8 +354,8 @@ export function formatMarkerMoment(
     };
 }
 
-const FEET_PER_METER = 3.28084;
-const FEET_PER_MILE = 5280;
+export const FEET_PER_METER = 3.28084;
+export const FEET_PER_MILE = 5280;
 
 /**
  * A short distance such as a search radius: metres below about a kilometre,

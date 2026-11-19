@@ -751,6 +751,11 @@ body.map-unavailable #player-map {
 .maplibregl-ctrl-group button:not(:disabled):hover {
     background: var(--bg-hover);
 }
+/* Dragging the compass rotates the map (map-controls.ts); a touch drag must
+   not scroll the page instead. */
+.maplibregl-ctrl-compass {
+    touch-action: none;
+}
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
     /* MapLibre ships these icons as a black SVG embedded as background-image.
        Light theme leaves them black (visible on near-white --bg-elev). Dark

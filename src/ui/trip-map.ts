@@ -42,6 +42,7 @@ import { dom } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { formatMarkerMoment, formatShortDistance } from "./format.js";
 import { MapAttributionControl } from "./map-attribution-control.js";
+import { MapScaleControl } from "./map-controls.js";
 import { getMapProvider } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
 import { TRACK_HALO_WIDTH_PX, TRACK_OUTLINE_WIDTH_PX } from "./map-track.js";
@@ -464,7 +465,7 @@ async function createView(): Promise<void> {
     map.keyboard.disableRotation();
     const attribution = new MapAttributionControl(getMapProvider());
     map.addControl(attribution, "bottom-right");
-    const scale = new maplibre.ScaleControl({ maxWidth: 120, unit: getUnits() });
+    const scale = new MapScaleControl({ maxWidth: 120, unit: getUnits() });
     map.addControl(scale, "bottom-left");
     const unsubscribeUnits = subscribeUnitsChange((unit) => scale.setUnit(unit));
     map.once("remove", unsubscribeUnits);
