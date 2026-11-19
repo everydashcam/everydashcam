@@ -47,6 +47,9 @@ let getTripCurrentTimeFn: () => number = () => {
 let seekTripTimeFn: (sec: number, precision?: SeekPrecision) => void = () => {
     throw new Error("player-scrubber: initPlayerScrubber not called before use");
 };
+let setScrubbingFn: (active: boolean) => void = () => {
+    throw new Error("player-scrubber: initPlayerScrubber not called before use");
+};
 
 /** "exact" decodes up to the requested frame. "keyframe" lets the browser
  *  land on the nearest key frame instead (HTMLMediaElement.fastSeek: Safari
@@ -134,9 +137,13 @@ const DRAG_THRESHOLD_PX = 3;
 export function initPlayerScrubber(deps: {
     getTripCurrentTime: () => number;
     seekTripTime: (sec: number, precision?: SeekPrecision) => void;
+    /** Brackets a playhead drag: on from the first move past the drag
+     *  threshold, off right before the release's exact seek. */
+    setScrubbing: (active: boolean) => void;
 }): void {
     getTripCurrentTimeFn = deps.getTripCurrentTime;
     seekTripTimeFn = deps.seekTripTime;
+    setScrubbingFn = deps.setScrubbing;
 
     const bar = dom.miniProgress;
     if (!bar) return;
@@ -356,6 +363,7 @@ export function initPlayerScrubber(deps: {
                 panTimelineWindowTo(sec - panGrabOffsetSec);
                 return;
             }
+            setScrubbingFn(true);
             showTooltipAt(e.clientX, sec);
             lastDragSec = sec;
             seekFromRow(sec, "nearest", "keyframe");
@@ -364,6 +372,7 @@ export function initPlayerScrubber(deps: {
             const wasPan = gesture === "pan";
             gesture = null;
             row.classList.remove("is-dragging", "is-panning");
+            setScrubbingFn(false);
             if (wasPan) {
                 // A click inside the frame is a seek, not a pan.
                 const sec = overviewSecAtClientX(e.clientX);
@@ -459,6 +468,7 @@ export function initPlayerScrubber(deps: {
             const sec = windowSecAtClientX(e.clientX);
             const view = getTimelineView();
             if (sec === null || !view) return;
+            setScrubbingFn(true);
             gripLastSec = sec;
             grip.style.left = `${timelineSecToFracInView(sec, view) * 100}%`;
             showTooltipAt(e.clientX, sec);
@@ -466,6 +476,7 @@ export function initPlayerScrubber(deps: {
         },
         onEnd: (e, reason) => {
             grip.classList.remove("is-dragging");
+            setScrubbingFn(false);
             hideTooltip();
             if (gripMoved && gripLastSec !== null) {
                 seekTripTimeFn(gripLastSec);

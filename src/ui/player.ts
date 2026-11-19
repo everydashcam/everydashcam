@@ -268,6 +268,28 @@ let pendingSeekClearTimer: ReturnType<typeof setTimeout> | null = null;
 let resumeAfterSeekTarget: number | null = null;
 let resumeAfterSeekTimer: ReturnType<typeof setTimeout> | null = null;
 
+// === Scrubbing across files ===
+//
+// A playhead drag seeks on every pointer move. Inside one file the media
+// pipeline keeps only the latest seek, but a move into another file reloads
+// every camera's element and spawns a worker per MSE channel. A fast drag over
+// short clips would start a reload on each move and abandon it on the next,
+// queueing reads the removable card serves one at a time.
+//
+// So while the master's switch started by a drag move has not shown its frame,
+// later moves only park their target; the landing applies the latest one.
+// Files load one at a time, the picture follows the drag at the storage's
+// pace, and the thumb and playhead follow the pointer meanwhile
+// (getTripCurrentTime reports the parked target).
+let isScrubbing = false;
+let isScrubSwitchPending = false;
+let parkedScrubTripSec: number | null = null;
+let scrubSwitchTimer: ReturnType<typeof setTimeout> | null = null;
+// Upper bound on waiting for a switch to land. A landing event that never comes
+// (an MSE backend failing before its element errors) must not freeze the
+// picture for the rest of the drag; a later move then starts the next switch.
+const SCRUB_SWITCH_MAX_WAIT_MS = 2000;
+
 // === Preload slot for seamless MP4 transitions within a trip ===
 //
 // At file boundaries the native <video src=blob> path causes a 100-300 ms micro-
@@ -449,7 +471,8 @@ function canPreloadSlaveChannels(channelCount: number): boolean {
  *    loadedmetadata, so ex-active (now preload) advances to frame+2.
  */
 function schedulePreloadNext(): void {
-    if (!state.active || state.exportModeOpen) return;
+    // A drag's next move would discard the warm file; the drag's end warms it.
+    if (!state.active || state.exportModeOpen || isScrubbing) return;
     const trip = state.trips[state.active.trip];
     if (!trip) return;
 
@@ -670,6 +693,9 @@ export function playFrame(
     // continuations (attach waiters, ended-handler chains) that capture
     // playFrameSeq at their start and bail if a newer playFrame ran since.
     ++playFrameSeq;
+    // Whatever started this load supersedes a drag's parked target; a drag
+    // move re-arms the switch after this call returns (seekTripTime).
+    resetScrubSwitch();
     const trip = state.trips[tripIdx];
     if (!trip) return;
     const frame = trip.frames[frameIdx];
@@ -2061,6 +2087,8 @@ export function getTripCurrentTime(): number {
     // target so the playhead lands on the click immediately instead of bouncing
     // through the loading file's start (currentTime=0). Cleared once the seek
     // actually lands (see seekTripTime / the loadedmetadata+seeked handlers).
+    // A drag move parked behind a loading switch is newer than that seek.
+    if (parkedScrubTripSec != null) return parkedScrubTripSec;
     if (pendingSeekTripSec != null) return pendingSeekTripSec;
     return naturalTripCurrentTime();
 }
@@ -2114,6 +2142,61 @@ function clearPendingSeek(): void {
 function clearPendingSeekIfLanded(): void {
     if (pendingSeekTripSec == null) return;
     if (Math.abs(naturalTripCurrentTime() - pendingSeekTripSec) < 0.4) clearPendingSeek();
+}
+
+/**
+ * Starts or ends a playhead drag, as reported by the scrubber. The drag holds
+ * back warming the next file, which a later move would discard; its end drops a
+ * parked target, since the release's exact seek supersedes it, and warms the
+ * next file for wherever that seek leaves playback.
+ */
+function setScrubbing(active: boolean): void {
+    if (isScrubbing === active) return;
+    isScrubbing = active;
+    if (active) return;
+    resetScrubSwitch();
+    // The release seek runs right after this call. A switch it starts warms
+    // from its own loadedmetadata; a seek inside the file needs the kick here.
+    queueMicrotask(() => {
+        if (!isScrubbing && activePlayer().readyState >= HTMLMediaElement.HAVE_METADATA) schedulePreloadNext();
+    });
+}
+
+/** Marks the file switch a drag move just started as loading, so the moves
+ *  behind it park (see seekTripTime). */
+function armScrubSwitch(): void {
+    isScrubSwitchPending = true;
+    if (scrubSwitchTimer !== null) clearTimeout(scrubSwitchTimer);
+    scrubSwitchTimer = setTimeout(landScrubSwitch, SCRUB_SWITCH_MAX_WAIT_MS);
+}
+
+/** Forgets the loading switch and any parked target. Every playFrame and the
+ *  drag's end start over from here. */
+function resetScrubSwitch(): void {
+    isScrubSwitchPending = false;
+    parkedScrubTripSec = null;
+    if (scrubSwitchTimer !== null) {
+        clearTimeout(scrubSwitchTimer);
+        scrubSwitchTimer = null;
+    }
+}
+
+/** The drag's loading switch is done: seeks to the latest parked target, if any. */
+function landScrubSwitch(): void {
+    if (!isScrubSwitchPending) return;
+    const parked = parkedScrubTripSec;
+    resetScrubSwitch();
+    if (parked !== null && isScrubbing) seekTripTime(parked, "keyframe");
+}
+
+/** Lands the drag's switch once the master shows a frame at rest: 'seeked'
+ *  after an offset seek, 'loadeddata' for a target at the file start. The next
+ *  seek runs as its own task, after every listener of this media event has
+ *  seen the landed state. */
+function landScrubSwitchIfShown(): void {
+    if (!isScrubSwitchPending || activePlayer().seeking) return;
+    if (scrubSwitchTimer !== null) clearTimeout(scrubSwitchTimer);
+    scrubSwitchTimer = setTimeout(landScrubSwitch, 0);
 }
 
 /** Arms the seekThenPlay latch: resume playback once a seek lands near `target`. */
@@ -2190,7 +2273,9 @@ export function openTripAtContentSec(tripIdx: number, contentSec: number): void 
  * Seeks to a position in the trip timeline. Switches src when landing in a different file
  * and applies the offset via pendingFileOffset. In MSE mode each channel seeks in its own
  * SourceBuffer within the unified trip timeline - frame transitions are transparent.
- * "keyframe" precision only changes a same-file native seek (see SeekPrecision).
+ * "keyframe" precision only changes a same-file native seek (see SeekPrecision);
+ * during a drag (setScrubbing) it also marks the seek as a drag move, which
+ * waits behind a file switch that is still loading.
  * `intent` reaches playFrame on a cross-file seek: the default "jump" is the
  * user's move; playback moving itself (the preview-range loop) passes
  * "reload" so it leaves the drawer and the opening spinner alone.
@@ -2214,6 +2299,15 @@ export function seekTripTime(
     const sel = getSelectedRange();
     if (sel && sel.trip === trip && state.isPreviewZoom) {
         target = Math.max(sel.startTripSec, Math.min(sel.endTripSec, target));
+    }
+
+    // A drag move behind a file switch that is still loading waits for it to
+    // land; only the latest such target survives (see "Scrubbing across files").
+    const isScrubMove = isScrubbing && precision === "keyframe";
+    if (isScrubMove && isScrubSwitchPending) {
+        parkedScrubTripSec = target;
+        updatePlayerProgressUi();
+        return;
     }
 
     // No-op short-circuit: if the requested position matches the current one, do nothing.
@@ -2244,6 +2338,9 @@ export function seekTripTime(
         // instead of bouncing to the new file's start (currentTime=0) first.
         setPendingSeek(target);
         playFrame(state.active.trip, frameIdx, offsetInFrame, shouldPlay, intent);
+        // A pin still held means the master is loading: a warm file that was
+        // already at the target landed inside playFrame and released it.
+        if (isScrubMove && pendingSeekTripSec !== null) armScrubSwitch();
         return;
     }
     // Same frame. If an active MSE backend exists and the target is outside its buffered range,
@@ -2503,6 +2600,8 @@ export function initPlayer(): void {
     // early 'seeked' while the file is still at its start.
     onActivePlayerEvent("seeked", clearPendingSeekIfLanded);
     onActivePlayerEvent("seeked", resumePlaybackIfSeekLanded);
+    onActivePlayerEvent("seeked", landScrubSwitchIfShown);
+    onActivePlayerEvent("loadeddata", landScrubSwitchIfShown);
     forEachVideoSlot((v, ch) =>
         v.addEventListener("error", () => {
             if (!isActiveSlot(v)) return;
@@ -2517,6 +2616,8 @@ export function initPlayer(): void {
                 clearPendingSeek();
                 // Same for the seekThenPlay latch: the target will never land.
                 disarmResumeAfterSeek();
+                // And for a drag's switch: the next move starts afresh.
+                resetScrubSwitch();
             }
             // Log MediaError for diagnosing runtime-decode failures. This does not overlap with MSE backend errors
             // (those go through onError callbacks, a separate path). This catches: native-decode failures,
@@ -2748,7 +2849,7 @@ function initPlayerControls(): void {
         focusSpeedButton,
     });
 
-    initPlayerScrubber({ getTripCurrentTime, seekTripTime });
+    initPlayerScrubber({ getTripCurrentTime, seekTripTime, setScrubbing });
     initPlayerSpeed();
 
     onActivePlayerEvent("ratechange", syncSpeedButton);

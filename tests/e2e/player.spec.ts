@@ -2442,6 +2442,66 @@ test.describe("player scrub seeks", () => {
             })
             .toBe(true);
     });
+
+    test("drag moves behind a loading file switch wait and the latest one wins", async ({ page }) => {
+        await pausePlayback(page);
+        // The fixture trip is two 2 s clips: the boundary sits mid-row. The
+        // moves are dispatched in one task, so no media event can land the
+        // first switch between them - exactly the fast drag over short clips
+        // on slow storage.
+        const burst = await page.evaluate(() => {
+            const row = document.getElementById("player-chart-overview")!;
+            const box = row.getBoundingClientRect();
+            const y = box.top + box.height / 2;
+            const at = (ratio: number) => ({
+                clientX: box.left + box.width * ratio,
+                clientY: y,
+                pointerId: 1,
+                pointerType: "mouse",
+                isPrimary: true,
+                bubbles: true,
+            });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const st = (window as any).__everydashcam.state;
+            row.dispatchEvent(new PointerEvent("pointerdown", { ...at(0.2), button: 0, buttons: 1 }));
+            const frames: number[] = [];
+            for (const ratio of [0.8, 0.3, 0.85, 0.15]) {
+                row.dispatchEvent(new PointerEvent("pointermove", { ...at(ratio), buttons: 1 }));
+                frames.push(st.active.frame);
+            }
+            const thumb = document.getElementById("player-mini-progress-thumb")!;
+            return { frames, thumbLeft: Number.parseFloat(thumb.style.left) };
+        });
+        expect(burst.frames, "only the first crossing switches files; later moves wait for it").toEqual([1, 1, 1, 1]);
+        expect(burst.thumbLeft, "the thumb follows the pointer while the moves wait").toBeCloseTo(15, 0);
+
+        const activeFrame = () =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            page.evaluate(() => (window as any).__everydashcam.state.active.frame as number);
+        await expect.poll(activeFrame, { message: "the landed switch hands over to the latest move's file" }).toBe(0);
+
+        await page.evaluate(() => {
+            const row = document.getElementById("player-chart-overview")!;
+            const box = row.getBoundingClientRect();
+            row.dispatchEvent(
+                new PointerEvent("pointerup", {
+                    clientX: box.left + box.width * 0.15,
+                    clientY: box.top + box.height / 2,
+                    pointerId: 1,
+                    pointerType: "mouse",
+                    isPrimary: true,
+                    button: 0,
+                    bubbles: true,
+                }),
+            );
+        });
+        const master = page.locator(".video-tile.active video:not(.preload-slot)");
+        await expect
+            .poll(() => master.evaluate((video: HTMLVideoElement) => (video.seeking ? -1 : video.currentTime)), {
+                message: "the release lands exactly on the last pointer position",
+            })
+            .toBeCloseTo(0.6, 1);
+    });
 });
 
 test.describe("chart hover preview", () => {
