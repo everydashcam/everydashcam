@@ -28,6 +28,12 @@
         top: calc(var(--dc-topbar-h-mobile) + var(--dc-space-2));
     }
 }
+@media (min-width: 768px) and (min-height: 501px) {
+    body.export-mode:not(.has-expanded-player) > .toast-container {
+        /* Keep the drawer's controls reachable while a toast is held open. */
+        right: calc(var(--dc-export-panel-w) + max(var(--dc-space-4), env(safe-area-inset-right)));
+    }
+}
 .dc-toast {
     pointer-events: auto;
     display: flex;
