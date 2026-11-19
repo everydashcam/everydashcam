@@ -46,6 +46,10 @@ const PUT_CHUNK = 200;
 // in the same transaction as every put/delete - the prune trigger without a
 // full-store walk.
 const TOTAL_BYTES_META_KEY = "indexCacheBytes";
+// Whether this session's prune already looked for orphan previews. The search
+// reads every stored preview, and a cache at its limit prunes on every write,
+// so it runs once per session and on a prune the settings ask for.
+let hasSweptOrphanPreviews = false;
 
 /**
  * Fetches cache entries for the given identity keys. Entries written in a
@@ -380,10 +384,20 @@ export async function pruneIndexCacheToLimit(): Promise<void> {
     const tx = db.transaction("meta");
     const total = await readTotalBytes(tx.store);
     await tx.done;
-    await pruneIndexCache(db, total);
+    await pruneIndexCache(db, total, { sweepOrphanPreviews: true });
 }
 
-async function pruneIndexCache(db: PersistDb, totalHint: number): Promise<void> {
+/**
+ * Evicts the oldest entries until the store fits its size and count bounds.
+ * `totalHint` is the caller's view of the byte total and only decides whether
+ * to open the write transaction. Orphan previews are looked for on this
+ * session's first prune that has to evict, or always with `sweepOrphanPreviews`.
+ */
+async function pruneIndexCache(
+    db: PersistDb,
+    totalHint: number,
+    options: { sweepOrphanPreviews?: boolean } = {},
+): Promise<void> {
     const limitBytes = getIndexCacheLimitBytes();
     const countTx = db.transaction("indexCache");
     const count = await countTx.store.count();
@@ -398,15 +412,24 @@ async function pruneIndexCache(db: PersistDb, totalHint: number): Promise<void> 
     const meta = tx.objectStore("meta");
     let total = await readTotalBytes(meta);
     let entriesLeft = await store.count();
+    // Concurrent writes each schedule a prune with the total they saw; the
+    // first one to run evicts for all of them.
+    if (total <= limitBytes && entriesLeft <= MAX_ENTRIES) {
+        await tx.done;
+        return;
+    }
     let deleted = 0;
     // A preview whose recording has no index entry outlived it or never got
     // one (a blocked or failed index write). Nothing evicts it otherwise, and
     // it serves nothing until that entry exists, so it goes first.
     let orphanPreviews = 0;
-    for (const key of await previews.getAllKeys()) {
-        if ((await store.getKey(key)) !== undefined) continue;
-        total -= await deleteTripPreview(previews, key);
-        orphanPreviews++;
+    if (options.sweepOrphanPreviews || !hasSweptOrphanPreviews) {
+        hasSweptOrphanPreviews = true;
+        for (const key of await previews.getAllKeys()) {
+            if ((await store.getKey(key)) !== undefined) continue;
+            total -= await deleteTripPreview(previews, key);
+            orphanPreviews++;
+        }
     }
     let cursor = await store.index("bySavedAt").openCursor();
     while (cursor && (total > limitBytes || entriesLeft > MAX_ENTRIES)) {
