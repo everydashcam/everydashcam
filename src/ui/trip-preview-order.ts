@@ -7,11 +7,14 @@
 // preview host (card, parking-run stack) for visibility. A collapsed group, a
 // closed mobile drawer or a card scrolled away is not intersecting the
 // viewport, so its trips wait behind the visible ones without any special case.
+// One trip can have several hosts - a collapsed parking run shows its first
+// trip on the stack while that trip's own card stays hidden inside - so a trip
+// is visible while any of its hosts is.
 
 import type { Trip } from "../trips.js";
 
 let displayOrder: readonly Trip[] = [];
-const visibleTrips = new Set<Trip>();
+const visibleHostsByTrip = new Map<Trip, Set<Element>>();
 const tripByTarget = new WeakMap<Element, Trip>();
 let observer: IntersectionObserver | null = null;
 
@@ -26,17 +29,29 @@ function visibilityObserver(): IntersectionObserver | null {
         for (const entry of entries) {
             const trip = tripByTarget.get(entry.target);
             if (!trip) continue;
-            if (entry.isIntersecting) visibleTrips.add(trip);
-            else visibleTrips.delete(trip);
+            if (entry.isIntersecting) addVisibleHost(trip, entry.target);
+            else removeVisibleHost(trip, entry.target);
         }
     });
     return observer;
 }
 
+function addVisibleHost(trip: Trip, host: Element): void {
+    const hosts = visibleHostsByTrip.get(trip);
+    if (hosts) hosts.add(host);
+    else visibleHostsByTrip.set(trip, new Set([host]));
+}
+
+function removeVisibleHost(trip: Trip, host: Element): void {
+    const hosts = visibleHostsByTrip.get(trip);
+    if (!hosts?.delete(host) || hosts.size > 0) return;
+    visibleHostsByTrip.delete(trip);
+}
+
 /** Forgets the preview hosts of the previous render. Call when the list is
  *  cleared, before the new render registers its hosts. */
 export function resetTripPreviewHosts(): void {
-    visibleTrips.clear();
+    visibleHostsByTrip.clear();
     observer?.disconnect();
 }
 
@@ -60,12 +75,12 @@ export function unobserveTripPreviewHost(element: Element): void {
     observer?.unobserve(element);
     tripByTarget.delete(element);
     // The replacement host reports its own visibility right after it is observed.
-    if (trip) visibleTrips.delete(trip);
+    if (trip) removeVisibleHost(trip, element);
 }
 
 /** The trip whose preview to build next among those `isWanted` accepts, or null. */
 export function nextTripForPreview(isWanted: (trip: Trip) => boolean, fallback: readonly Trip[]): Trip | null {
-    return pickNextPreview(displayOrder, visibleTrips, isWanted, fallback);
+    return pickNextPreview(displayOrder, visibleHostsByTrip, isWanted, fallback);
 }
 
 /**
@@ -76,7 +91,7 @@ export function nextTripForPreview(isWanted: (trip: Trip) => boolean, fallback: 
  */
 export function pickNextPreview<T>(
     order: readonly T[],
-    visible: ReadonlySet<T>,
+    visible: Pick<ReadonlySet<T>, "has">,
     isWanted: (item: T) => boolean,
     fallback: readonly T[],
 ): T | null {
