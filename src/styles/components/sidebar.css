@@ -825,10 +825,6 @@
 }
 
 .trip {
-    /* Shared by the hero's min-height and the off-screen height estimate below.
-       The corner controls take a fixed 32px; the title and meta lines under
-       them grow with the text size. */
-    --trip-hero-min-height: calc(32px + 4.5rem);
     background: var(--bg-elev-2);
     border: 1px solid var(--border);
     border-radius: var(--dc-radius-md);
@@ -838,16 +834,14 @@
         box-shadow var(--dc-dur-base) var(--dc-ease);
 }
 /* Off-screen collapsed cards skip layout and paint, which keeps full list
-   rebuilds and scrolling cheap on long libraries. Until a card has rendered,
-   its height is the bare 3:1 hero: 100cqi is the sidebar's content width, less
-   the card's two 1px borders. After that the browser remembers the real height
-   (the "auto" keyword), and sidebar.ts carries it onto rebuilt cards so a
-   restored scroll position still lands on the same card. Expanded cards opt
-   out: their clip list is open and usually in view. Engines without support
-   ignore both declarations and render every card. */
+   rebuilds and scrolling cheap on long libraries. Estimate a 3:1 hero or a
+   title and two metadata lines, whichever is taller. After the card renders,
+   the browser remembers its real height (the "auto" keyword). sidebar.ts
+   carries it onto rebuilt cards to restore scroll position. Expanded cards
+   opt out because their clip list is open. */
 .trip:not(.expanded, .unindexed-note) {
     content-visibility: auto;
-    contain-intrinsic-block-size: auto max(var(--trip-hero-min-height), (100cqi - 2px) / 3);
+    contain-intrinsic-block-size: auto max(48px + 3.5rem, (100cqi - 2px) / 3);
 }
 /* Active trip: an orange ring via box-shadow (not border, so as not to
    shift content). On the hero card an inset-shadow on the left wouldn't
@@ -870,21 +864,23 @@
    ::before renders the gradient, ::after carries hover/press feedback. */
 .trip-header {
     position: relative;
-    /* width:100% is required: without it the header takes its intrinsic
-       size from absolutely-positioned children with nowrap content
-       (title), and the card balloons to the widest element's natural
-       width. With width 100% it's bounded by the parent .trip, and
-       absolute children correctly compute their size from left/right. */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 3px;
     width: 100%;
-    box-sizing: border-box;
     aspect-ratio: 3 / 1;
-    min-height: 84px;
+    /* Clear the corner touch targets. The event chip adds 28px of inset,
+       border, padding and hit area to its single line of text. */
+    padding: max(48px, 28px + var(--dc-text-2xs)) var(--dc-space-3) var(--dc-space-2);
     cursor: pointer;
     background-color: var(--bg-elev-2);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    overflow: hidden;
+    /* Clip the corner targets without becoming a scroll container, so the
+       aspect ratio's automatic minimum height still fits wrapped text. */
+    overflow: clip;
     /* The card is a tappable nav target, not selectable text - block the iOS
        long-press selection loupe from hijacking a press/scroll. */
     user-select: none;
@@ -944,15 +940,8 @@
 /* Trip title - white over the gradient/placeholder, text-shadow for
    contrast on light previews. */
 .trip-title {
-    position: absolute;
-    left: 12px;
-    /* The actions zone (chevron + event-chip) sits at top:6, title at
-       bottom:26 - vertically separated, so the title can safely take the
-       header's full width up to the right edge. On a 200px sidebar this
-       gives ~150px for the title text instead of ~85, and a standard
-       localized date range like "Apr 29, 17:00 - 18:30" fits precisely. */
-    right: 12px;
-    bottom: 26px;
+    position: relative;
+    flex: none;
     color: var(--dc-white);
     font-family: var(--dc-font-heavy);
     font-weight: 700;
@@ -1033,27 +1022,22 @@
 }
 
 .trip-meta {
-    position: absolute;
-    left: 12px;
-    right: 12px;
-    bottom: 8px;
+    position: relative;
+    flex: none;
+    /* Keep the title steady while metadata is loading and shows only one line. */
+    min-height: 2.8em;
     z-index: 1;
     font-size: var(--dc-text-xs);
+    line-height: var(--dc-leading-normal);
     color: rgba(255, 255, 255, 0.85);
     font-variant-numeric: tabular-nums;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
     display: flex;
-    align-items: center;
-    gap: var(--dc-space-1);
-    /* No overflow:hidden here - the text child clips itself, and the header
-       already clips at the card edge. */
-    white-space: nowrap;
+    align-items: flex-end;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
 }
 .trip-meta .trip-meta-text {
-    /* Single-line text with ellipsis on overflow - on a min-width sidebar
-       (200px) a long meta like "1h 32m - 14 files - 187 km" gets truncated
-       instead of wrapping/overflowing. min-width:0 lets the flex item shrink
-       below its content-size. */
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1758,23 +1742,10 @@ body.export-mode .sidebar-toggle,
     }
 }
 
-.trip-header {
-    min-height: var(--trip-hero-min-height);
-}
-/* Just above the two meta lines (line-height 1.4 below), at any text size. */
-.trip-title {
-    bottom: calc(11px + 2.8 * var(--dc-text-xs));
-}
-.trip-meta .trip-meta-text {
-    white-space: pre-line;
-    line-height: 1.4;
-}
-
 /* =========================================================================
    COMPACT ROWS (state.tripListDensity "rows") and PARKING RUNS
-   Rows reuse the card's DOM and controls; these rules undo the hero card's
-   absolute layout. A row is a flat list item: a small preview with its
-   duration, the title over a muted meta line, quiet flags and a chevron.
+   Rows reuse the card's DOM and controls. A row is a flat list item: a small
+   preview with its duration, the title over a muted meta line, flags and a chevron.
    No frame or fill - a hover background, and the active row marked by a tint
    and an accent edge. The star and pencil sit over the preview and show on
    hover, keyboard focus or an expanded row (touch); a favorite is marked by a
@@ -1815,12 +1786,13 @@ body.export-mode .sidebar-toggle,
     grid-template-areas:
         "thumb title flags chevron"
         "thumb meta flags chevron";
-    column-gap: 10px;
+    gap: 0 10px;
     align-items: center;
     aspect-ratio: auto;
     min-height: 0;
     padding: 6px var(--dc-space-1);
     background-color: transparent;
+    overflow: hidden;
 }
 .trip-list.is-rows .trip-header::after {
     display: none;
@@ -1870,6 +1842,7 @@ body.export-mode .sidebar-toggle,
 .trip-list.is-rows .trip-meta {
     grid-area: meta;
     align-self: start;
+    min-height: 0;
     color: var(--fg-mute);
 }
 .trip-list.is-rows .trip-meta .trip-meta-text {
