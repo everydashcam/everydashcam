@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
-import radarPalettes from "../src/ui/map-radar-palettes.json";
+
+// The Vite config and Playwright's Node loader both use this module.
+const radarPalettes: typeof import("../src/ui/map-radar-palettes.json") = createRequire(import.meta.url)(
+    "../src/ui/map-radar-palettes.json",
+);
 
 // Generated radar styles are named after their palettes, so a new palette needs no edit here.
 type StyleId = "light" | "dark" | "neon" | keyof typeof radarPalettes;
