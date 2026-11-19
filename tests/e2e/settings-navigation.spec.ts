@@ -36,15 +36,16 @@ for (const [name, width, height] of [
             await expect(jump).toHaveValue("settings-map-section");
             const content = modal.locator(".settings-content");
             expect(await content.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-            const preview = modal.locator(".settings-themes__preview").first();
-            expect(
-                await preview.evaluate(async (el) => {
-                    const image = new Image();
-                    image.src = getComputedStyle(el).backgroundImage.slice(5, -2);
-                    await image.decode();
-                    return image.naturalWidth;
-                }),
-            ).toBe(1152);
+            const previews = modal.locator(".settings-themes__preview");
+            const sheet = await previews.first().evaluate(async (el) => {
+                const image = new Image();
+                image.src = getComputedStyle(el).backgroundImage.slice(5, -2);
+                await image.decode();
+                return { width: image.naturalWidth, height: image.naturalHeight };
+            });
+            expect(sheet.width * 5, "the sprite sheet has one 8:5 cell per map theme").toBe(
+                sheet.height * 8 * (await previews.count()),
+            );
             await modal.locator(".modal-card").screenshot({ path: info.outputPath(`settings-map-${name}.png`) });
             await page.keyboard.press("Escape");
             await openSettings();
