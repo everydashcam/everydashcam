@@ -25,6 +25,7 @@ import {
     type DenseFrame,
     type DensePacketScan,
     denseRangeFrames,
+    placeSegmentFrame,
     planSparseSplitSlot,
     planSparseTimelapseSegment,
     scanDensePackets,
@@ -80,6 +81,36 @@ describe("denseRangeFrames", () => {
         const [frame] = denseRangeFrames([1.00004], 1, 2, 1000);
         expect(frame?.packetTimestamp).toBe(1.00004);
         expect(frame?.sampleTimestamp).toBe(1);
+    });
+});
+
+describe("placeSegmentFrame", () => {
+    const segment = { startInFile: 1, endInFile: 2, baseOutSec: 0 };
+
+    it("opens a real-time segment with the frame on screen at its start", () => {
+        // Parking mode: frames at 0 s and 3 s, the clip is 1-2 s.
+        expect(placeSegmentFrame({ timestampInFile: 0, durationSec: 3 }, segment, 1)).toEqual({
+            srcRelTs: 0,
+            durationSec: 1,
+        });
+        expect(
+            placeSegmentFrame({ timestampInFile: 0.98, durationSec: 1 / 30 }, segment, 1),
+            "a regular frame keeps only its visible part",
+        ).toEqual({ srcRelTs: 0, durationSec: expect.closeTo(1 / 30 - 0.02, 9) });
+    });
+
+    it("places frames inside the range at their offset", () => {
+        expect(
+            placeSegmentFrame({ timestampInFile: 1.5, durationSec: 0.04 }, { ...segment, baseOutSec: 10 }, 1),
+        ).toEqual({ srcRelTs: 10.5, durationSec: 0.04 });
+    });
+
+    it("drops a pre-start frame from a time-lapse", () => {
+        expect(placeSegmentFrame({ timestampInFile: 0, durationSec: 3 }, segment, 4)).toBeNull();
+        expect(
+            placeSegmentFrame({ timestampInFile: 1 - 1e-4, durationSec: 0.04 }, segment, 4),
+            "rounding drift still counts as in range",
+        ).not.toBeNull();
     });
 });
 

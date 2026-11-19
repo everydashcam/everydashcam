@@ -83,7 +83,7 @@ import {
 import { drawMapPlaceholder } from "./map-overlay.js";
 import { createReusingMapSnapshotter } from "./map-snapshot-camera.js";
 import { drawTelemetryOverlays } from "./telemetry-overlays.js";
-import { decodeSelectedFrames, planSparseTimelapseSegment, PRE_ROLL_TOLERANCE_SEC } from "./timelapse-decode.js";
+import { decodeSelectedFrames, placeSegmentFrame, planSparseTimelapseSegment } from "./timelapse-decode.js";
 
 const log = createLogger("transcode");
 
@@ -577,21 +577,31 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                                 // `pending` and its in-flight bitmap is never orphaned here.
                                 let keep = false;
                                 let outTs = 0;
+                                let frameDuration = 0;
                                 let frameContentSec = 0;
                                 let framePos: FramePos | null = null;
                                 let snapPromise: Promise<ImageBitmap> | null = null;
                                 try {
                                     throwIfCancelled(signal);
 
-                                    // Source-relative timestamp. Guard: drop samples whose
-                                    // timestamp is before startInFile (mediabunny snapped to
-                                    // the keyframe BEFORE startInFile); without this a negative
-                                    // ts would reach the muxer. Computed before any compositing
-                                    // so dropped/skipped frames are never drawn (wasted work).
-                                    const srcRelTs = segBaseOutSec + (sample.timestamp - timeOrigin - seg.startInFile);
-                                    if (srcRelTs < -PRE_ROLL_TOLERANCE_SEC) {
-                                        continue;
-                                    }
+                                    // Output-axis placement (see placeSegmentFrame). Computed
+                                    // before any compositing so dropped/skipped frames are never
+                                    // drawn (wasted work).
+                                    const placement = placeSegmentFrame(
+                                        {
+                                            timestampInFile: sample.timestamp - timeOrigin,
+                                            durationSec: sample.duration,
+                                        },
+                                        {
+                                            startInFile: seg.startInFile,
+                                            endInFile: seg.endInFile,
+                                            baseOutSec: segBaseOutSec,
+                                        },
+                                        speedFactor,
+                                    );
+                                    if (!placement) continue;
+                                    const srcRelTs = placement.srcRelTs;
+                                    frameDuration = placement.durationSec;
 
                                     // Timelapse frame-drop: keep one frame every speedFactor.
                                     // At 1x this keeps every frame. Skipped frames still decode
@@ -655,7 +665,7 @@ export async function transcode(args: TranscodeArgs): Promise<TranscodeResult> {
                                 decodeAhead.frame = {
                                     sample,
                                     outTs,
-                                    duration: sample.duration,
+                                    duration: frameDuration,
                                     contentSec: frameContentSec,
                                     framePos,
                                     snapPromise,

@@ -27,8 +27,8 @@ import { throwIfCancelled } from "../abort-signals.js";
  *  a frame starting within this much after the tick time is already shown. */
 export const SPLIT_FRAME_LOOKAHEAD_SEC = 1e-6;
 
-/** Pre-start frames more than this before the range start are dropped by the
- *  single-channel loop (pipeline.ts); closer ones count as in range
+/** Pre-start frames more than this before the range start are dropped by a
+ *  time-lapse (see placeSegmentFrame); closer ones count as in range
  *  (rounding drift). */
 export const PRE_ROLL_TOLERANCE_SEC = 1e-3;
 
@@ -122,6 +122,39 @@ export interface TimelapseFrameSelection {
     lastFrameIndex: number;
 }
 
+/** A decoded frame's place on a single-camera segment's output axis. */
+export interface SegmentFramePlacement {
+    /** Output-axis time before the speed-up: the segment base plus the frame's
+     *  offset into the range. */
+    srcRelTs: number;
+    /** How long the frame shows, in source seconds. */
+    durationSec: number;
+}
+
+/**
+ * Where the single-channel loop (pipeline.ts) puts a decoded frame, or null
+ * when it drops it. A range decode yields at most one frame before the range
+ * start: the one on screen at the start. At real time that frame opens the
+ * segment, retimed to the start and shortened to its visible part - a sparse
+ * recording (parking mode) may have no other frame in a short range. A
+ * time-lapse drops frames more than the pre-roll tolerance before the start,
+ * the numbering selectTimelapseFrames shares. A negative timestamp never
+ * reaches the muxer.
+ */
+export function placeSegmentFrame(
+    frame: { timestampInFile: number; durationSec: number },
+    segment: { startInFile: number; endInFile: number; baseOutSec: number },
+    speedFactor: number,
+): SegmentFramePlacement | null {
+    const offset = frame.timestampInFile - segment.startInFile;
+    const srcRelTs = segment.baseOutSec + offset;
+    if (speedFactor > 1)
+        return srcRelTs < -PRE_ROLL_TOLERANCE_SEC ? null : { srcRelTs, durationSec: frame.durationSec };
+    if (offset >= -PRE_ROLL_TOLERANCE_SEC) return { srcRelTs, durationSec: frame.durationSec };
+    const visibleEnd = Math.min(frame.timestampInFile + frame.durationSec, segment.endInFile);
+    return { srcRelTs: segment.baseOutSec, durationSec: Math.max(0, visibleEnd - segment.startInFile) };
+}
+
 /**
  * The frames the single-channel loop keeps from one segment: frames more
  * than the pre-roll tolerance before the range start are not counted, every
@@ -138,8 +171,12 @@ export function selectTimelapseFrames(
         lastFrameIndex: context.previousFrameIndex,
     };
     for (const frame of frames) {
-        const srcRelTs = context.segBaseOutSec + (frame.sampleTimestamp - context.timeOrigin - context.startInFile);
-        if (srcRelTs < -PRE_ROLL_TOLERANCE_SEC) continue;
+        const placement = placeSegmentFrame(
+            { timestampInFile: frame.sampleTimestamp - context.timeOrigin, durationSec: 0 },
+            { startInFile: context.startInFile, endInFile: Infinity, baseOutSec: context.segBaseOutSec },
+            context.speedFactor,
+        );
+        if (!placement) continue;
         selection.lastFrameIndex++;
         if (selection.lastFrameIndex % context.speedFactor !== 0) continue;
         selection.frames.push(frame);
