@@ -918,6 +918,9 @@ fieldset.export-panel__group {
 
 .export-panel__ov-name {
     flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--dc-space-2);
     text-align: left;
     padding: var(--dc-space-1) var(--dc-space-2);
     border: 1px solid transparent;
@@ -926,6 +929,20 @@ fieldset.export-panel__group {
     color: var(--fg);
     font-size: var(--dc-text-md);
     cursor: pointer;
+}
+
+.export-panel__ov-name-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.export-panel__ov-chevron {
+    flex-shrink: 0;
+    color: var(--fg-dim);
+}
+
+.export-panel__ov-name[aria-expanded="true"] .export-panel__ov-chevron {
+    transform: rotate(90deg);
 }
 
 .export-panel__ov-name:hover {
@@ -1060,8 +1077,6 @@ fieldset.export-panel__group {
     }
     .export-panel__ov-name {
         min-height: 44px;
-        display: flex;
-        align-items: center;
     }
     .export-panel__ov-reset {
         min-height: 44px;
@@ -1236,7 +1251,8 @@ fieldset.export-panel__group {
     margin-top: 0;
 }
 @media (prefers-reduced-motion: no-preference) {
-    .export-panel__disclosure-chevron {
+    .export-panel__disclosure-chevron,
+    .export-panel__ov-chevron {
         transition: transform var(--dc-dur-base) var(--dc-ease);
     }
 }

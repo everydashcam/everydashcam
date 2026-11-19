@@ -2644,7 +2644,15 @@ function renderWidgetList(): HTMLElement {
         const name = document.createElement("button");
         name.type = "button";
         name.className = "export-panel__ov-name";
-        name.textContent = t(def.labelKey);
+        const nameLabel = document.createElement("span");
+        nameLabel.className = "export-panel__ov-name-label";
+        nameLabel.textContent = t(def.labelKey);
+        // Without it the name reads as a plain label for the checkbox, and the
+        // only discoverable way to reach the settings is to re-tick the widget.
+        const chevron = buildLucideIcon(["m9 5 7 7-7 7"], 14);
+        chevron.classList.add("export-panel__ov-chevron");
+        chevron.setAttribute("aria-hidden", "true");
+        name.append(nameLabel, chevron);
         name.setAttribute("aria-expanded", "false");
         name.setAttribute("aria-controls", "export-panel-overlay-inspector");
         name.addEventListener("click", () => {
