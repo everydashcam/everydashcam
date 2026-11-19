@@ -94,3 +94,10 @@
     border-radius: 50%;
     background: var(--accent);
 }
+
+/* Forced colors drop backgrounds, which are all the bullets are drawn with. */
+@media (forced-colors: active) {
+    .drop-overlay-bullets li::before {
+        background: CanvasText;
+    }
+}

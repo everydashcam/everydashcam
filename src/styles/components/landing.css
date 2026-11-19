@@ -135,6 +135,10 @@ body.no-trips .viewer {
     border-bottom-color: var(--accent-ink);
     outline: none;
 }
+/* Invisible here; forced colors paint it, where the color change is lost. */
+.landing-brand-link:focus-visible {
+    outline: 2px solid transparent;
+}
 
 /* Pointer/touch copy pairs. Drag-centric strings ("drop the folder here")
    are meaningless when the primary pointer can't drag a folder onto the page;
@@ -407,6 +411,13 @@ body.no-trips .viewer {
 .landing-hero-shot-phone-btn:hover .landing-hero-shot-phone,
 .landing-hero-shot-phone-btn:focus-visible .landing-hero-shot-phone {
     border-color: var(--accent);
+}
+/* Forced colors paint the border of every shot alike; this outline, invisible
+   otherwise, then marks the focused one. */
+.landing-hero-shot-main:focus-visible,
+.landing-hero-shot-phone-btn:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
 }
 
 /* Full-size viewer for the hero shot. The whole surface closes it (zoom-out
@@ -946,6 +957,11 @@ body.no-trips .viewer {
     color: var(--accent);
     outline: none;
 }
+/* Invisible here; forced colors paint it, after dropping the tint. */
+.sidebar-cta:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
 
 .landing-faq-item summary:focus-visible {
     outline: 2px solid var(--accent);
@@ -999,4 +1015,12 @@ body.no-trips .viewer {
 /* Keep the open-ended catalog link readable when the examples wrap. */
 .landing-camera-more {
     white-space: nowrap;
+}
+
+/* Forced colors drop backgrounds, which are all these dots are drawn with. */
+@media (forced-colors: active) {
+    .landing-safety-dot,
+    .landing-faq-eyebrow::before {
+        background: CanvasText;
+    }
 }

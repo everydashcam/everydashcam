@@ -1649,3 +1649,37 @@ body.export-mode .video-grid::after {
 .player-map-overlay[data-radar][data-shape].is-no-fix::after {
     mask-image: none;
 }
+
+/* Forced colors drop backgrounds, gradients and box shadows. The trim grips
+   are text-free shapes whose two colors tell start from end, so they keep
+   them; the other grips, bars and the current choice get system colors. */
+@media (forced-colors: active) {
+    .timeline-range__tab::before,
+    .timeline-range__tab::after {
+        forced-color-adjust: none;
+    }
+    .timeline-range__tab:focus-visible {
+        outline: 2px solid transparent;
+    }
+    .player-map-overlay__resize,
+    .video-tile.tile-overlay .pip-resize,
+    .export-panel__blur-tracker-bar-fill,
+    .export-panel__detect-threshold-marker::after {
+        background: Highlight;
+    }
+    .export-panel__blur-tracker-bar {
+        outline: 1px solid CanvasText;
+    }
+    .crop-aspect-btn.is-active {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    /* One rule per engine: an unknown pseudo-element drops a whole list. */
+    .export-panel__detect-threshold-range input::-webkit-slider-runnable-track {
+        background: GrayText;
+    }
+    .export-panel__detect-threshold-range input::-moz-range-track {
+        background: GrayText;
+    }
+}

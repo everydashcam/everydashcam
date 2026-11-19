@@ -81,7 +81,11 @@
 .overflow-menu-btn:hover,
 .overflow-menu-btn:focus-visible {
     background: var(--bg-hover);
-    outline: none;
+}
+/* Invisible here; forced colors paint it, after dropping the background. */
+.overflow-menu-btn:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: -2px;
 }
 /* Pressed feedback - the only press signal on touch, where :hover never fires. */
 .overflow-menu-btn:active {
@@ -275,5 +279,15 @@
 @media (prefers-reduced-motion: reduce) {
     #player-overflow-menu.overflow-menu {
         animation: none;
+    }
+}
+
+/* Forced colors drop the accent fill that marks the current theme. */
+@media (forced-colors: active) {
+    .overflow-menu-theme-btn[aria-pressed="true"],
+    .overflow-menu-theme-btn[aria-pressed="true"]:hover {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
     }
 }

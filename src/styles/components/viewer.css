@@ -1445,3 +1445,37 @@ body.export-mode .player-wrap.player-expanded.player-panels-below .video-frame {
         display: none;
     }
 }
+
+/* Forced colors drop backgrounds and box shadows: the resize spines, the
+   picture-in-picture frame and the hover ring of a tile get system colors. A
+   transparent border is painted, so the mobile tabs reset theirs to the
+   canvas and only the current tab keeps an underline. */
+@media (forced-colors: active) {
+    .player-col-resize:hover,
+    .player-col-resize.dragging,
+    .player-col-resize:focus-visible,
+    .camera-divider::after {
+        background: Highlight;
+    }
+    .video-tile.tile-overlay {
+        outline: 2px solid CanvasText;
+    }
+    .video-tile.tile-overlay.pip-dragging,
+    .video-grid[data-mode="main"] .video-tile[data-role="thumb"]:hover,
+    .video-grid[data-mode="equal"] .video-tile[data-role="equal"]:hover {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+    .player-controls-pin[aria-pressed="true"] {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    .mobile-view-nav button {
+        border-bottom-color: Canvas;
+    }
+    .mobile-view-nav button[aria-pressed="true"],
+    .mobile-view-nav button[aria-expanded="true"] {
+        border-bottom-color: Highlight;
+    }
+}

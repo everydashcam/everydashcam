@@ -613,3 +613,24 @@
 .trip-map-sheet__list .trip-group__header {
     position: static;
 }
+
+/* Forced colors drop the accent fills of the pressed toggle, the selected view
+   tab and the loading bar, and the grip drawn as a background. */
+@media (forced-colors: active) {
+    .trip-map-state .map-control-btn[aria-pressed="true"],
+    .trip-map-state .map-control-btn[aria-pressed="true"]:hover,
+    .trip-view-tabs__tab[aria-selected="true"] {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    .trip-map-counter__bar {
+        outline: 1px solid CanvasText;
+    }
+    .trip-map-counter__fill {
+        background: Highlight;
+    }
+    .trip-map-sheet__grip::before {
+        background: CanvasText;
+    }
+}

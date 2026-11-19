@@ -392,3 +392,14 @@ body.no-trips .topbar-burger {
         display: block;
     }
 }
+
+/* Forced colors drop the accent fill and tint that mark the current choice. */
+@media (forced-colors: active) {
+    .theme-toggle-btn[aria-pressed="true"],
+    .theme-toggle-btn[aria-pressed="true"]:hover,
+    .lang-menu button[aria-checked="true"] {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+}

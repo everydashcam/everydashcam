@@ -181,3 +181,10 @@
         min-height: 190px;
     }
 }
+
+/* Forced colors paint every row border alike; the active row keeps Highlight. */
+@media (forced-colors: active) {
+    .gpx-assignment-row.is-active {
+        border-color: Highlight;
+    }
+}

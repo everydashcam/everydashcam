@@ -798,3 +798,25 @@
     text-align: center;
     pointer-events: none;
 }
+
+/* Forced colors drop backgrounds, so the playhead, the cursors, the seek track
+   and its grips get system colors. The note markers are border triangles whose
+   transparent sides would be painted into a box, so they keep their colors. */
+@media (forced-colors: active) {
+    .player-chart-playhead,
+    .player-mini-progress__thumb,
+    .range-overview-handle::before {
+        background: Highlight;
+    }
+    .player-chart.is-playhead-outside-view .player-chart-playhead,
+    .range-overview::before {
+        background: GrayText;
+    }
+    .player-chart-hover-cursor,
+    .range-ruler-label::before {
+        background: CanvasText;
+    }
+    .range-overview-marker {
+        forced-color-adjust: none;
+    }
+}

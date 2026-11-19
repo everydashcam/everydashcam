@@ -297,3 +297,12 @@
     margin-top: var(--dc-space-4);
     margin-right: var(--dc-space-3);
 }
+
+/* Forced colors drop the gradient fill and the finalizing sweep of the
+   preparation bar; its bordered track survives. */
+@media (forced-colors: active) {
+    .trip-preparation-progress-fill,
+    .trip-preparation-progress-track.is-finalizing::after {
+        background: Highlight;
+    }
+}

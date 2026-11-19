@@ -2124,3 +2124,44 @@ body.export-mode .sidebar-toggle,
     padding: 0 0 0 var(--dc-space-1);
     border-left: 2px solid var(--border);
 }
+
+/* Forced colors drop backgrounds and box shadows. Progress, selection and the
+   resize handle get system colors; the event dots keep their red, which is
+   their meaning, and carry no text that could clash with the forced palette. */
+@media (forced-colors: active) {
+    .trip-analysis-status__bar {
+        outline: 1px solid CanvasText;
+    }
+    .trip-analysis-status__fill {
+        background: Highlight;
+    }
+    .trip-filter[aria-pressed="true"],
+    .trip-filter-kinds .trip-filter[aria-pressed="true"],
+    .density-toggle__option[aria-pressed="true"] {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    .trip.active,
+    .trip-list.is-rows .trip.active {
+        outline: 2px solid Highlight;
+        outline-offset: -1px;
+    }
+    .trip-files li.active {
+        border-left-color: Highlight;
+    }
+    .trip-jump__event,
+    .trip-jump__legend-event::before,
+    .trip-day__event-dot {
+        forced-color-adjust: none;
+    }
+    .trip-jump__parking,
+    .trip-jump__legend-parking::before {
+        background: CanvasText;
+    }
+    .sidebar-resize:hover,
+    .sidebar-resize.dragging,
+    .sidebar-resize:focus-visible {
+        background: Highlight;
+    }
+}

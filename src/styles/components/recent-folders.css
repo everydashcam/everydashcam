@@ -169,3 +169,10 @@
         min-width: var(--dc-iconbtn-touch);
     }
 }
+
+/* The status dot's color is its meaning and it carries no text. */
+@media (forced-colors: active) {
+    .recent-folder-chip__status {
+        forced-color-adjust: none;
+    }
+}

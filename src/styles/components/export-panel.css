@@ -1276,3 +1276,20 @@ fieldset.export-panel__group {
 #export-panel-overlay-inspector[data-radar] .export-panel__ov-buildings {
     display: none;
 }
+
+/* Forced colors drop the accent fills of the chosen option and of the progress
+   fill. Color swatches are the color they offer, so they keep their own. */
+@media (forced-colors: active) {
+    .export-panel__seg-btn.active,
+    .export-panel__segment button.is-active {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    .export-panel__progress-fill {
+        background: Highlight;
+    }
+    .export-panel__ov-swatch {
+        forced-color-adjust: none;
+    }
+}

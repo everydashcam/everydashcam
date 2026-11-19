@@ -518,7 +518,11 @@
 .view-menu-row:hover,
 .view-menu-row:focus-visible {
     background: var(--bg-elev-2);
-    outline: none;
+}
+/* Invisible here; forced colors paint it, after dropping the background. */
+.view-menu-row:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: -2px;
 }
 .view-menu-row[hidden] {
     display: none;
@@ -620,10 +624,13 @@
 .view-menu-map__modes button:focus-visible {
     color: var(--fg);
     background: var(--bg-hover);
-    outline: none;
 }
+/* The transparent outline stands in for the ring where forced colors drop
+   box shadows. */
 .view-menu-map__modes button:focus-visible {
     box-shadow: inset 0 0 0 2px var(--accent);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
 }
 .view-menu-map__modes button[aria-checked="true"] {
     color: var(--dc-black);
@@ -726,10 +733,11 @@
 .cameras-menu__handle:hover,
 .cameras-menu__handle:focus-visible {
     color: var(--fg);
-    outline: none;
 }
 .cameras-menu__handle:focus-visible {
     box-shadow: inset 0 0 0 2px var(--accent);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
 }
 .cameras-menu__camera.is-dragging .cameras-menu__handle {
     cursor: grabbing;
@@ -780,7 +788,9 @@
 .cameras-menu__main:focus-visible {
     color: var(--fg);
     border-color: var(--accent);
-    outline: none;
+}
+.cameras-menu__main:focus-visible {
+    outline: 2px solid transparent;
 }
 .cameras-menu__main[aria-pressed="true"] {
     color: var(--dc-black);
@@ -854,10 +864,11 @@
 .cameras-menu__flip-axis:focus-visible {
     color: var(--fg);
     background: var(--bg-elev-2);
-    outline: none;
 }
 .cameras-menu__flip-axis:focus-visible {
     box-shadow: inset 0 0 0 2px var(--accent);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
 }
 .cameras-menu__flip-axis[aria-pressed="true"] {
     color: var(--accent-ink);
@@ -1201,4 +1212,26 @@
 .player-expanded .view-menu-popover,
 .player-expanded .overflow-menu {
     max-height: calc(100dvh - var(--fullscreen-bottom) - var(--fullscreen-bar-h) - var(--fullscreen-inset));
+}
+
+/* Forced colors drop the accent fills and tints that mark selected options,
+   and turn the transparent tick of an unchecked row visible. */
+@media (forced-colors: active) {
+    .player-btn[aria-pressed="true"],
+    #player-map[aria-pressed="true"],
+    .player-speed-menu li.active,
+    .view-menu-map__modes button[aria-checked="true"],
+    .view-menu-row[aria-checked="true"] .view-menu-row__check,
+    .cameras-menu__main[aria-pressed="true"],
+    .cameras-menu__flip-axis[aria-pressed="true"] {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    .view-menu-row:not([aria-checked="true"]) .view-menu-row__check > svg {
+        visibility: hidden;
+    }
+    .player-bar-divider {
+        background: CanvasText;
+    }
 }

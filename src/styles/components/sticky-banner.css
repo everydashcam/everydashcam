@@ -262,3 +262,20 @@ body:has(.modal-overlay:not([hidden])) #migration-banner {
 .settings-policy-link:hover {
     color: var(--accent-ink);
 }
+
+/* Forced colors drop backgrounds, which are all a switch is drawn with: give
+   the track an edge and the knob a fill, and fill the track when it is on. */
+@media (forced-colors: active) {
+    .settings-toggle-slider {
+        outline: 1px solid CanvasText;
+    }
+    .settings-toggle-slider::after {
+        background: CanvasText;
+    }
+    .settings-toggle input:checked + .settings-toggle-slider {
+        background: Highlight;
+    }
+    .settings-toggle input:checked + .settings-toggle-slider::after {
+        background: HighlightText;
+    }
+}

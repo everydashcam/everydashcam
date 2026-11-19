@@ -341,3 +341,12 @@
         min-height: 44px;
     }
 }
+
+/* Forced colors drop the tint and the inset bar that mark the current section. */
+@media (forced-colors: active) {
+    .settings-nav__links a[aria-current] {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+}

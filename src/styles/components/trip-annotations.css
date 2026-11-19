@@ -356,3 +356,12 @@
         inset: 0 -3px -4px;
     }
 }
+
+/* Forced colors drop backgrounds, which are all a note's line and flag on the
+   timeline are drawn with. */
+@media (forced-colors: active) {
+    .timeline-marker::before,
+    .timeline-marker-hit::after {
+        background: Highlight;
+    }
+}

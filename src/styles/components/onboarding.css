@@ -298,3 +298,13 @@
         animation: none !important;
     }
 }
+
+/* Forced colors drop backgrounds, which are all the step dots are drawn with. */
+@media (forced-colors: active) {
+    .dc-onb__dot {
+        background: GrayText;
+    }
+    .dc-onb__dot.is-active {
+        background: Highlight;
+    }
+}

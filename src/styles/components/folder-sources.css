@@ -344,3 +344,10 @@
     outline: 2px solid var(--accent);
     outline-offset: -2px;
 }
+
+/* The status dot's color is its meaning and it carries no text. */
+@media (forced-colors: active) {
+    .folder-source__status {
+        forced-color-adjust: none;
+    }
+}

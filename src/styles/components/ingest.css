@@ -178,3 +178,10 @@
 .ingest-overlay-actions .dc-btn {
     padding: var(--dc-space-2) var(--dc-space-5);
 }
+
+/* Forced colors drop the accent fill of the reading strip. */
+@media (forced-colors: active) {
+    .ingest-progress-bar-fill {
+        background: Highlight;
+    }
+}

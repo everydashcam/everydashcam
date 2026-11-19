@@ -1142,3 +1142,29 @@ body.map-unavailable #player-map {
     stroke-linejoin: round;
     paint-order: stroke fill;
 }
+
+/* Forced colors drop the accent fills of pressed map toggles and the fill of
+   the tilt slider, whose thumb border also takes the canvas color. */
+@media (forced-colors: active) {
+    .map-control-btn.active,
+    .map-control-btn.active:hover,
+    .map-follow-segments .map-follow-seg[aria-pressed="true"],
+    .map-follow-segments .map-follow-seg[aria-pressed="true"]:hover,
+    .map-settings-seg-btn[aria-pressed="true"],
+    .map-settings-seg-btn[aria-pressed="true"]:hover:not(:disabled) {
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+    .map-chase-tilt-range {
+        background: GrayText;
+    }
+    .map-chase-tilt-range::-webkit-slider-thumb {
+        background: Highlight;
+        border-color: CanvasText;
+    }
+    .map-chase-tilt-range::-moz-range-thumb {
+        background: Highlight;
+        border-color: CanvasText;
+    }
+}

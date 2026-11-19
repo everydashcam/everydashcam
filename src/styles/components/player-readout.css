@@ -297,3 +297,10 @@
         display: none;
     }
 }
+
+/* The GPS fix dot is drawn only with a background, which forced colors drop. */
+@media (forced-colors: active) {
+    .readout-fix__dot {
+        forced-color-adjust: none;
+    }
+}
