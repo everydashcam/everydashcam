@@ -24,12 +24,14 @@ function defaults(): OverlayPreferences {
             zoomKm: 1,
             shape: "circle",
             theme: "neon",
+            preset: "classic",
             labelScalePct: 100,
             labelDensity: "standard",
             radarMarkers: {},
             marker: { shape: "arrow", color: "#ff9000", size: "medium" },
             mode: "chase",
             pitchDeg: 58,
+            buildings3d: true,
             adaptiveZoom: true,
         },
         overlayClock: { enabled: false, xPct: 0.8, yPct: 0.045, scalePct: 100 },
@@ -70,12 +72,14 @@ describe("export overlay preferences", () => {
                     zoomKm: 3.5,
                     shape: "triangle",
                     theme: "dark",
+                    preset: "minimal",
                     labelScalePct: 150,
                     labelDensity: "more",
                     radarMarkers: {},
                     marker: { shape: "truck", color: "#E5484D", size: "large" },
                     mode: "north",
                     pitchDeg: 30,
+                    buildings3d: false,
                     adaptiveZoom: false,
                 },
             },
@@ -96,14 +100,26 @@ describe("export overlay preferences", () => {
             zoomKm: 3.5,
             shape: "circle",
             theme: "dark",
+            preset: "minimal",
             labelScalePct: 150,
             labelDensity: "more",
             radarMarkers: {},
             marker: { shape: "truck", color: "#e5484d", size: "large" },
             mode: "north",
             pitchDeg: 30,
+            buildings3d: false,
             adaptiveZoom: false,
         });
+    });
+
+    it("keeps the earlier map look for layouts saved before style and building choices", () => {
+        const restored = normalizeOverlayPreferences(
+            { overlayMap: { enabled: true, theme: "dark", mode: "chase", preset: "busy", buildings3d: "yes" } },
+            defaults(),
+        );
+        expect(restored.overlayMap.theme).toBe("dark");
+        expect(restored.overlayMap.preset).toBe("classic");
+        expect(restored.overlayMap.buildings3d).toBe(true);
     });
 
     it("round-trips a customized layout and removes storage for defaults", () => {

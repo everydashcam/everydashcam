@@ -31,17 +31,19 @@ import { createExportMapSnapshotter, type ExportMapSnapshotter } from "./export-
 import {
     exportPanelState,
     notifyExportStateChanged,
+    overlayMapAppearance,
+    overlayMapView,
     setExportMapPreviewProvider,
     subscribeExportState,
     type OverlayTextState,
 } from "./export-state.js";
+import { mapAppearanceKey } from "./map-appearance.js";
 import { buildOverlayPipelineArgs, resolveOutputDims } from "./export-flow.js";
 import { registerGpsSyncRefreshListener } from "./gps-sync-refresh.js";
 import { isCoarsePointer } from "./media-queries.js";
 import { syncPlayerBackdrop } from "./player-backdrop.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeFrame, activeTripHasGps, state } from "./state.js";
-import type { MapStyleId } from "./theme.js";
 import { markerForMapTheme, mapMarkerAppearanceKey } from "./map-marker-pref.js";
 
 // The element the overlays are positioned/sized within - the OUTPUT-FRAME
@@ -680,15 +682,11 @@ let mapSnapshotterPromise: Promise<ExportMapSnapshotter | null> | null = null;
 let mapSnapshotterTripUtc: number | null = null;
 let mapSnapshotterRecords: GpsRecord[] | null = null;
 let mapSnapshotterRecordCount = 0;
-// Base-layer theme the cached snapshotter was built for. A theme switch must
-// rebuild the hidden MapLibre instance (the style is fixed at construction), so
-// it invalidates the cache the same way a trip change does.
-let mapSnapshotterTheme: MapStyleId | null = null;
+// Appearance (palette, preset, labels) the cached snapshotter was built for. A
+// change must rebuild the hidden MapLibre instance (the style is fixed at
+// construction), so it invalidates the cache the same way a trip change does.
+let mapSnapshotterAppearanceKey: string | null = null;
 let mapSnapshotterProvider: typeof exportPanelState.overlayMap.provider | null = null;
-// Label scale / street-name density the cached snapshotter was built for -
-// fixed at construction like the theme, so a change invalidates the same way.
-let mapSnapshotterLabelScalePct: number | null = null;
-let mapSnapshotterLabelDensity: string | null = null;
 let mapLastRequestKey = "";
 // True while the preview map canvas holds a snapshot of the current snapshotter
 // (trip, style, provider). A still image of the export frame draws that canvas.
@@ -716,23 +714,22 @@ async function refreshMapSnapshot(
     if (!canvasEl || records.length === 0) return;
     const om = exportPanelState.overlayMap;
     const zoomKm = om.zoomKm;
-    const theme = om.theme;
+    const appearance = overlayMapAppearance(om);
+    const appearanceKey = mapAppearanceKey(appearance);
+    const view = overlayMapView(om);
     const marker = markerForMapTheme(om);
-    const headingUp = om.mode === "chase";
     // Every render-affecting setting joins the dedup key so changing it (at the
     // same playhead position) is not skipped by the early-return below. Speed is
     // included only when adaptive zoom is on (it changes the zoom then).
-    const speedBucket = headingUp && om.adaptiveZoom ? Math.round(pos.speedMs) : 0;
-    const key = `${pos.lat.toFixed(4)}|${pos.lon.toFixed(4)}|${zoomKm}|${Math.round(pos.bearingDeg)}|${om.provider}|${theme}|${om.labelScalePct}|${om.labelDensity}|${om.mode}|${om.pitchDeg}|${om.adaptiveZoom ? 1 : 0}|${speedBucket}|${mapMarkerAppearanceKey(marker)}|${marker.size}`;
+    const speedBucket = view.headingUp && view.adaptiveZoom ? Math.round(pos.speedMs) : 0;
+    const key = `${pos.lat.toFixed(4)}|${pos.lon.toFixed(4)}|${zoomKm}|${Math.round(pos.bearingDeg)}|${om.provider}|${appearanceKey}|${JSON.stringify(view)}|${speedBucket}|${mapMarkerAppearanceKey(marker)}|${marker.size}`;
     const shouldRebuild =
         !mapSnapshotterPromise ||
         mapSnapshotterTripUtc !== tripStartUtc ||
         mapSnapshotterRecords !== records ||
         mapSnapshotterRecordCount !== records.length ||
-        mapSnapshotterTheme !== theme ||
-        mapSnapshotterProvider !== om.provider ||
-        mapSnapshotterLabelScalePct !== om.labelScalePct ||
-        mapSnapshotterLabelDensity !== om.labelDensity;
+        mapSnapshotterAppearanceKey !== appearanceKey ||
+        mapSnapshotterProvider !== om.provider;
     if (!shouldRebuild && key === mapLastRequestKey) return;
     mapLastRequestKey = key;
     const seqAtStart = ++mapSnapshotSeq;
@@ -743,20 +740,16 @@ async function refreshMapSnapshot(
         mapSnapshotterTripUtc = tripStartUtc;
         mapSnapshotterRecords = records;
         mapSnapshotterRecordCount = records.length;
-        mapSnapshotterTheme = theme;
+        mapSnapshotterAppearanceKey = appearanceKey;
         mapSnapshotterProvider = om.provider;
-        mapSnapshotterLabelScalePct = om.labelScalePct;
-        mapSnapshotterLabelDensity = om.labelDensity;
         const providerPreference = om.provider;
         const myPromise: Promise<ExportMapSnapshotter | null> = createExportMapSnapshotter(
             records,
             "preview",
-            theme,
+            appearance,
             undefined,
             {
                 provider: providerPreference,
-                labelScalePct: om.labelScalePct,
-                labelDensity: om.labelDensity,
                 markerAppearance: marker,
                 onProviderChange: (provider) => {
                     if (myPromise !== mapSnapshotterPromise) return;
@@ -816,9 +809,7 @@ async function refreshMapSnapshot(
                     bearingDeg: pos.bearingDeg,
                     zoomKm,
                     speedMs: pos.speedMs,
-                    headingUp,
-                    pitchDeg: om.pitchDeg,
-                    adaptiveZoom: om.adaptiveZoom,
+                    ...view,
                 },
                 { waitForIdle: true },
             );
@@ -858,10 +849,8 @@ function disposeMapSnapshotter(): void {
     mapSnapshotterTripUtc = null;
     mapSnapshotterRecords = null;
     mapSnapshotterRecordCount = 0;
-    mapSnapshotterTheme = null;
+    mapSnapshotterAppearanceKey = null;
     mapSnapshotterProvider = null;
-    mapSnapshotterLabelScalePct = null;
-    mapSnapshotterLabelDensity = null;
     mapLastRequestKey = "";
     hasMapCanvasSnapshot = false;
     if (snap) {

@@ -287,6 +287,32 @@ test("map preferences persist and use the page language", async ({ page }) => {
     await expect(russianBuildings).toHaveAccessibleDescription("Только в наклонном виде.");
 });
 
+test("neon shows the video through the mini-map and gives the large map an opaque ground", async ({ page }) => {
+    await loadTrip(page);
+    await pausePlayback(page);
+    const miniMap = page.locator("#mini-map");
+    await expect(miniMap).not.toHaveAttribute("data-translucent");
+    await page.locator("#settings-btn").click();
+    await page.locator("#settings-map-theme-neon").check();
+    await page.locator("#settings-modal-header-close").click();
+    await expect(miniMap).toHaveAttribute("data-translucent");
+    await expect(miniMap).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    const miniBackground = (): Promise<string> =>
+        page.evaluate(() => {
+            const layer = window.__everydashcam.state.miniMap
+                ?.getStyle()
+                ?.layers.find((layer) => layer.type === "background");
+            return JSON.stringify(layer?.paint?.["background-color"]);
+        });
+    await expect.poll(miniBackground).toContain("0.5");
+    await expect.poll(() => mapBackground(page)).toBe(JSON.stringify("#100c08"));
+
+    await page.locator("#settings-btn").click();
+    await page.locator("#settings-map-theme-light").check();
+    await page.locator("#settings-modal-header-close").click();
+    await expect(miniMap).not.toHaveAttribute("data-translucent");
+});
+
 test("map gear and general settings share style, theme and buildings choices", async ({ page }) => {
     await loadTrip(page);
     await pausePlayback(page);

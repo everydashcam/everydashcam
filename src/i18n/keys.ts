@@ -1072,9 +1072,6 @@ export type I18nKey =
     | "export.overlays.shape.rect"
     | "export.overlays.shape.circle"
     | "export.overlays.mapTheme"
-    | "export.overlays.mapTheme.light"
-    | "export.overlays.mapTheme.dark"
-    | "export.overlays.mapTheme.neon"
     | "export.overlays.mapMarker"
     | "export.overlays.mapMarker.description"
     // Label size of the burned-in map's street/place names, per export -
@@ -1302,6 +1299,7 @@ export type I18nKey =
     | "settings.map.theme.miami-86"
     | "settings.map.theme.tuner-04"
     | "settings.map.theme.la-92"
+    | "settings.map.theme.neon"
     | "settings.map.buildings3d.label"
     | "settings.map.buildings3d.description"
     | "settings.map.marker.label"

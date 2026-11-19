@@ -16,11 +16,14 @@ import { createLogger } from "../log.js";
 import type { MapShape, OverlayStyleId, WatermarkAnchor } from "../transcode/types.js";
 import type { Trip } from "../trips.js";
 
+import type { ExportMapView } from "./export-map-snapshot.js";
+import type { MapAppearance } from "./map-appearance.js";
 import type { StreetLabelDensity } from "./map-label-scale.js";
 import { getSharedMapMarkerAppearance, type MapMarkerAppearance } from "./map-marker-pref.js";
 import type { OverlayMapProvider, OverlayMapProviderPreference } from "./map-provider.js";
 import { activeTrip, state } from "./state.js";
-import type { MapStyleId } from "./theme.js";
+import type { MapTheme } from "./theme.js";
+import type { MapStylePreset } from "./map-view-pref.js";
 import {
     cloneOverlayPreferences,
     overlayPreferencesKey,
@@ -101,7 +104,9 @@ export interface OverlayMapState {
     /** Clip shape of the mini-map slot. */
     shape: MapShape;
     /** Base-layer style of the mini-map, independent of the app UI theme. */
-    theme: MapStyleId;
+    theme: MapTheme;
+    /** How much context surrounds the roads; the same presets as the viewer's map style. */
+    preset: MapStylePreset;
     /** Label size of the burned-in map's street/place names, percent of the
      *  style's own sizes (one of the MAP_LABEL_SIZE_PCT_VALUES presets). A
      *  render-only concern like `theme`: the snapshotter scales the style on
@@ -121,6 +126,9 @@ export interface OverlayMapState {
     mode: MapViewMode;
     /** Chase camera tilt in degrees (0..70). Ignored when mode === "north". */
     pitchDeg: number;
+    /** Chase: raise buildings, like the viewer's 3D buildings setting. Radar
+     *  palettes stay flat. Ignored when mode === "north". */
+    buildings3d: boolean;
     /** Chase: zoom out as speed rises so more of the road ahead stays visible.
      *  The whole zoom range stays above the tile source maxzoom, so it never
      *  refetches tiles. Ignored when mode === "north". */
@@ -218,6 +226,26 @@ export interface ExportPanelState extends OverlayPreferences {
     blurStyle: BlurStyle;
 }
 
+/** The burned-in map's appearance; the snapshotter composes it by the viewer's rules. */
+export function overlayMapAppearance(map: OverlayMapState): MapAppearance {
+    return {
+        theme: map.theme,
+        preset: map.preset,
+        labelScale: map.labelScalePct / 100,
+        labelDensity: map.labelDensity,
+    };
+}
+
+/** Camera and scene choices every snapshot of the burned-in map applies. */
+export function overlayMapView(map: OverlayMapState): ExportMapView {
+    return {
+        headingUp: map.mode === "chase",
+        pitchDeg: map.pitchDeg,
+        adaptiveZoom: map.adaptiveZoom,
+        buildings3d: map.buildings3d,
+    };
+}
+
 /** Presets for OverlayMapState.labelScalePct (percent of the style's own
  *  label sizes). Mirrors the viewer's MAP_LABEL_SCALE_VALUES ratios. */
 export const MAP_LABEL_SIZE_PCT_VALUES = [100, 125, 150, 200] as const;
@@ -249,12 +277,14 @@ function freshOverlayPreferences(): OverlayPreferences {
             zoomKm: 1,
             shape: "circle",
             theme: "neon",
+            preset: "classic",
             labelScalePct: 100,
             labelDensity: "standard",
             marker: getSharedMapMarkerAppearance(),
             radarMarkers: {},
             mode: "chase",
             pitchDeg: 58,
+            buildings3d: true,
             adaptiveZoom: true,
         },
         overlayClock: { enabled: false, xPct: 0.8, yPct: 0.045, scalePct: 100 },

@@ -1,5 +1,5 @@
 import type { StyleSpecification } from "maplibre-gl";
-import type { MapStyleId } from "../ui/theme.js";
+import type { MapTheme } from "../ui/theme.js";
 
 const MAP_STYLE_LOADERS = {
     light: () => import("../../public/styles/light.json"),
@@ -10,7 +10,7 @@ const MAP_STYLE_LOADERS = {
     neon: () => import("../../public/styles/neon.json"),
 };
 
-export async function loadMapStyleSource(theme: MapStyleId, signal: AbortSignal): Promise<StyleSpecification> {
+export async function loadMapStyleSource(theme: MapTheme, signal: AbortSignal): Promise<StyleSpecification> {
     signal.throwIfAborted();
     const source = await MAP_STYLE_LOADERS[theme]();
     signal.throwIfAborted();

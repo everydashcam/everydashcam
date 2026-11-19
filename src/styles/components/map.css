@@ -1031,6 +1031,11 @@ body.map-unavailable #player-map {
     border-radius: 50%;
 }
 
+/* A translucent palette shows the video through the inset, as in the export. */
+.mini-map.maplibregl-map[data-translucent] {
+    background: transparent;
+}
+
 .mini-map.maplibregl-map[data-radar] {
     container-type: size;
     overflow: hidden;

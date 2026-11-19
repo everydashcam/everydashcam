@@ -8,7 +8,7 @@ import { applyMapStylePreset, isStreetNameLayer, radarBaseStyle, readableRadarTh
 import { MAP_THEMES, type MapStylePreset } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
 
-const ALL_STYLES = [...MAP_THEMES, "neon"] as const;
+const ALL_STYLES = MAP_THEMES;
 
 function loadStyle(theme: string): StyleSpecification {
     return JSON.parse(

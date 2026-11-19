@@ -32,14 +32,14 @@ import {
 import { createTypedWorkerClient } from "../workers/_protocol/worker-client.js";
 
 import { state } from "./state.js";
-import type { OverlayMapState } from "./export-state.js";
+import { overlayMapAppearance, overlayMapView, type OverlayMapState } from "./export-state.js";
 import { createWorkerWritableProxy } from "./writable-bridge.js";
 import type { OverlayPipelineArgs } from "../transcode/types.js";
 import { computeOutputSize } from "../transcode/compose.js";
 import { createExportHeartbeat } from "../transcode/export-heartbeat.js";
 import { MAP_BASE_WIDTH_PCT } from "../transcode/map-overlay.js";
 import { recordsInWallWindow } from "../transcode/overlay-pipeline-helpers.js";
-import { type ChasePrewarmOpts, createExportMapSnapshotter } from "./export-map-snapshot.js";
+import { createExportMapSnapshotter } from "./export-map-snapshot.js";
 import { MapSnapshotSession } from "./map-snapshot-session.js";
 
 const log = createLogger("transcode-shim");
@@ -152,12 +152,7 @@ function runInWorker(
         // live panel here made a delayed export susceptible to later UI state.
         const overlayMap = mapConfig;
         if (!overlayMap) throw new Error("map overlay config missing from export snapshot");
-        const mapTheme = overlayMap.theme;
-        const chase: ChasePrewarmOpts = {
-            headingUp: overlayMap.mode === "chase",
-            pitchDeg: overlayMap.pitchDeg,
-            adaptiveZoom: overlayMap.adaptiveZoom,
-        };
+        const view = overlayMapView(overlayMap);
         // Size the snapshot buffer to the overlay slot it lands in - frameWidth *
         // MAP_BASE_WIDTH_PCT * userScale (the same geometry map-overlay.ts draws
         // into) - so the hidden map is not rendered at devicePixelRatio and then
@@ -166,10 +161,8 @@ function runInWorker(
         // mirrors the worker's own output-width derivation (same aspect + height).
         const outputWidthPx = computeOutputSize(transferArgs.output.height, transferArgs.output.aspect).width;
         const targetSlotWidthPx = outputWidthPx * MAP_BASE_WIDTH_PCT * (overlayMap.scalePct / 100);
-        return createExportMapSnapshotter(records, "export", mapTheme, targetSlotWidthPx, {
+        return createExportMapSnapshotter(records, "export", overlayMapAppearance(overlayMap), targetSlotWidthPx, {
             provider: overlayMap.provider,
-            labelScalePct: overlayMap.labelScalePct,
-            labelDensity: overlayMap.labelDensity,
             markerAppearance: overlayMap.marker,
         }).then(async (snap) => {
             // Pre-warm tiles immediately so the very first per-frame snapshot
@@ -188,7 +181,7 @@ function runInWorker(
                     PREWARM_RANGE_MARGIN_SEC,
                 );
                 try {
-                    await snap.prewarm(prewarmRecords, overlays.map.zoomKm, signal, chase);
+                    await snap.prewarm(prewarmRecords, overlays.map.zoomKm, signal, view);
                 } catch (err) {
                     log.warn("map snapshot prewarm threw", { err: String(err) });
                 }
@@ -231,12 +224,7 @@ function runInWorker(
     async function renderOneSnapshot(request: MapSnapshotRequest): Promise<ImageBitmap> {
         if (client.disposed || signal.aborted) throw new DOMException("transcode cancelled", "AbortError");
         if (!mapConfig) throw new Error("map overlay config missing from export snapshot");
-        const bitmap = await snapshotSession.snapshot({
-            ...request,
-            headingUp: mapConfig.mode === "chase",
-            pitchDeg: mapConfig.pitchDeg,
-            adaptiveZoom: mapConfig.adaptiveZoom,
-        });
+        const bitmap = await snapshotSession.snapshot({ ...request, ...overlayMapView(mapConfig) });
         if (client.disposed || signal.aborted) {
             bitmap.close();
             throw new DOMException("transcode cancelled", "AbortError");

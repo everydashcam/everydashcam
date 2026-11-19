@@ -25,7 +25,6 @@
 
 // Type-only: the runtime namespace is loaded lazily via loadMaplibre (shared
 // with the viewer map module), so maplibre-gl stays out of the eager graph.
-import { radarBaseStyle } from "./map-style-preset.js";
 import { radarSpec, radarTheme, type RadarSpec } from "../map-radar.js";
 import { throwIfCancelled } from "../abort-signals.js";
 import type * as maplibregl from "maplibre-gl";
@@ -34,11 +33,10 @@ import { probeWebGL } from "../capabilities.js";
 import { createLogger } from "../log.js";
 import { isValidGpsFix } from "../parser.js";
 import type { GpsRecord } from "../parsers/types.js";
-import type { MapStyleId } from "./theme.js";
 import { buildMercatorCumulativeDistances, buildSpeedGradient } from "./speed-gradient.js";
 import { addBuildings3dLayer, removeBuildings3dLayer } from "./map.js";
 import { EMPTY_MAP_STYLE, loadMaplibre, loadMapStyle, type MapLoadSource } from "./viewer-map-registry.js";
-import { applyStreetLabelDensity, scaleStyleTextSizes, type StreetLabelDensity } from "./map-label-scale.js";
+import { composeMapStyle, type MapAppearance } from "./map-appearance.js";
 import { DEFAULT_MAP_MARKER_APPEARANCE, type MapMarkerAppearance, mapMarkerSizeScale } from "./map-marker-pref.js";
 import { drawMapMarker } from "./map-marker-renderer.js";
 import {
@@ -98,36 +96,35 @@ function clampExportPitch(deg: number | undefined): number {
     return Math.max(0, Math.min(EXPORT_CHASE_MAX_PITCH, deg));
 }
 
-export interface SnapshotRequest {
+/** Camera and scene choices of one export map, applied to every snapshot and
+ *  replayed by prewarm so the cached tiles cover the tilted frustum rather
+ *  than just a top-down square. */
+export interface ExportMapView {
+    /** Chase camera: heading-up + tilted. When false the snapshot is north-up. */
+    headingUp: boolean;
+    /** Chase tilt in degrees (0..70). Applied only when headingUp. */
+    pitchDeg: number;
+    /** Chase: zoom out as speed rises (the range stays above the source
+     *  maxzoom, so it never refetches tiles). Applied only when headingUp. */
+    adaptiveZoom: boolean;
+    /** Chase: raised buildings. Applied only when headingUp, never on a radar. */
+    buildings3d: boolean;
+}
+
+export interface SnapshotRequest extends ExportMapView {
     lat: number;
     lon: number;
     bearingDeg: number;
     zoomKm: number;
     /** Car speed (m/s); drives the chase camera's speed-adaptive zoom. */
     speedMs?: number;
-    /** Chase camera: heading-up + tilted. When false/absent the snapshot is
-     *  north-up (the legacy look). */
-    headingUp?: boolean;
-    /** Chase tilt in degrees (0..70). Applied only when headingUp. */
-    pitchDeg?: number;
-    /** Chase: zoom out as speed rises (the range stays above the source
-     *  maxzoom, so it never refetches tiles). Applied only when headingUp. */
-    adaptiveZoom?: boolean;
-}
-
-/** Chase-camera knobs for prewarm, so the cached tiles cover the tilted frustum
- *  rather than just a top-down square. */
-export interface ChasePrewarmOpts {
-    headingUp?: boolean;
-    pitchDeg?: number;
-    adaptiveZoom?: boolean;
 }
 
 export interface ExportMapSnapshotter {
     /** Pre-warm tiles along the trip path at the target zoom. For chase mode the
      *  camera (tilt + per-waypoint heading + the widest adaptive zoom) is
      *  replayed at each waypoint so the cache covers the tilted frustum. */
-    prewarm(records: GpsRecord[], zoomKm: number, signal: AbortSignal, opts?: ChasePrewarmOpts): Promise<void>;
+    prewarm(records: GpsRecord[], zoomKm: number, signal: AbortSignal, view: ExportMapView): Promise<void>;
     /** Single snapshot; resolves with an ImageBitmap (transferable). `waitForIdle`
      *  waits for full tile load instead of the hot-loop's brief render wait - used
      *  by the preview, which (unlike the export) does not prewarm, so its first
@@ -144,26 +141,20 @@ export interface ExportMapSnapshotter {
  * the snapshotter interface. Initialization waits for style parsing so the
  * local track never depends on remote tiles reaching idle.
  * `source` labels the caller in analytics (export modal preview vs the actual
- * transcode) so map_load_failed events can be sliced per surface. `theme`
- * selects the base-layer style (default "light"); the user picks it per export
- * via the overlay constructor.
+ * transcode) so map_load_failed events can be sliced per surface.
+ * `appearance` is the user's per-export palette, preset and label choices,
+ * composed by the same rules as the viewer's mini-map (composeMapStyle on a
+ * clone, so the shared style cache stays pristine). The instance renders one
+ * style for its lifetime - a changed appearance needs a rebuild.
  *
  * `targetSlotWidthPx` is the device-pixel width the snapshot will be drawn into
  * (the overlay slot). When given (export hot loop), the instance's pixelRatio is
  * derived from it - clamped - so a 640-logical-px render fills the slot without
  * over-rendering at the inherited devicePixelRatio. Omit it (preview, a one-shot
  * render) to keep devicePixelRatio for on-screen crispness.
- *
- * `labelScalePct` scales the style's street/place-name sizes and
- * `labelDensity` makes road names repeat denser / turn on earlier (the user's
- * per-export picks), both applied to a clone so the shared style cache stays
- * pristine. The instance renders one style for its lifetime - a changed value
- * needs a rebuild, same as `theme`.
  */
 export interface ExportMapRenderOptions {
     provider?: OverlayMapProviderPreference;
-    labelScalePct?: number;
-    labelDensity?: StreetLabelDensity;
     markerAppearance?: MapMarkerAppearance;
     /** The last bitmap became stale after a provider swap or delayed tile load. */
     onInvalidate?: () => void;
@@ -173,14 +164,13 @@ export interface ExportMapRenderOptions {
 
 export async function createExportMapSnapshotter(
     records: GpsRecord[],
-    source: MapLoadSource = "export",
-    theme: MapStyleId = "light",
+    source: MapLoadSource,
+    appearance: MapAppearance,
     targetSlotWidthPx?: number,
     renderOptions: ExportMapRenderOptions = {},
 ): Promise<ExportMapSnapshotter> {
+    const { theme } = appearance;
     const {
-        labelScalePct = 100,
-        labelDensity = "standard",
         markerAppearance = DEFAULT_MAP_MARKER_APPEARANCE,
         provider,
         onInvalidate,
@@ -224,10 +214,7 @@ export async function createExportMapSnapshotter(
     let activeProvider = providerSession.getProvider();
     const styleFromCache = await loadMapStyle(theme, false, source, activeProvider);
     const radar = radarTheme(theme);
-    const snapshotStyle = (base: maplibregl.StyleSpecification) =>
-        radar
-            ? radarBaseStyle(base, radar)
-            : applyStreetLabelDensity(scaleStyleTextSizes(base, labelScalePct / 100), labelDensity);
+    const snapshotStyle = (base: maplibregl.StyleSpecification) => composeMapStyle(base, appearance, "export");
     const style = snapshotStyle(styleFromCache ?? EMPTY_MAP_STYLE);
 
     // Seed the camera from a finite ACTIVE record, not records[0]: a leading
@@ -371,8 +358,14 @@ export async function createExportMapSnapshotter(
         throw new Error("canvas 2d ctx unavailable");
     }
 
+    // Radar palettes stay flat, as their pitch does. Idempotent either way.
+    const syncBuildings = (isShown: boolean): void => {
+        if (isShown && !radar) addBuildings3dLayer(map, theme);
+        else removeBuildings3dLayer(map);
+    };
+
     const snapshotter: ExportMapSnapshotter = {
-        async prewarm(recs, zoomKm, signal, chase): Promise<void> {
+        async prewarm(recs, zoomKm, signal, view): Promise<void> {
             await providerStyleChange;
             // Filter first: an inactive/NaN seed or waypoint would make
             // haversineMeters return NaN (NaN < step is false -> not skipped) and feed
@@ -401,13 +394,12 @@ export async function createExportMapSnapshotter(
             const visit = async (record: GpsRecord, timeoutMs: number): Promise<void> => {
                 await providerStyleChange;
                 const camera = MAP_PROVIDER_REGISTRY[activeProvider].camera;
-                const headingUp = camera.supportsHeadingUp && chase?.headingUp === true;
-                if (headingUp && !radar) addBuildings3dLayer(map, theme);
-                else removeBuildings3dLayer(map);
+                const headingUp = camera.supportsHeadingUp && view.headingUp;
+                syncBuildings(headingUp && view.buildings3d);
                 // Infinity = the full-speed end of the adaptive ramp, i.e. the
                 // widest zoom the run can reach.
                 const targetZoom =
-                    headingUp && chase?.adaptiveZoom
+                    headingUp && view.adaptiveZoom
                         ? baseZoom + exportAdaptiveZoomDelta(Number.POSITIVE_INFINITY)
                         : baseZoom;
                 await waitForMapEvent(map, "idle", timeoutMs, {
@@ -418,7 +410,7 @@ export async function createExportMapSnapshotter(
                             zoom: targetZoom,
                             ...camera.orient(
                                 headingUp ? record.bearingDeg : 0,
-                                headingUp && !radar ? clampExportPitch(chase?.pitchDeg) : 0,
+                                headingUp && !radar ? clampExportPitch(view.pitchDeg) : 0,
                             ),
                         }),
                 });
@@ -441,7 +433,7 @@ export async function createExportMapSnapshotter(
             }
             log.info("map snapshot prewarm done", {
                 points: usable.length,
-                chase: MAP_PROVIDER_REGISTRY[activeProvider].camera.supportsHeadingUp && chase?.headingUp === true,
+                chase: MAP_PROVIDER_REGISTRY[activeProvider].camera.supportsHeadingUp && view.headingUp,
                 elapsedMs: Date.now() - startedAtMs,
                 budgetExhausted,
             });
@@ -458,14 +450,13 @@ export async function createExportMapSnapshotter(
                 throw new Error("snapshot request has non-finite lat/lon/zoom");
             }
             const camera = MAP_PROVIDER_REGISTRY[activeProvider].camera;
-            const headingUp = camera.supportsHeadingUp && req.headingUp === true;
+            const headingUp = camera.supportsHeadingUp && req.headingUp;
             // 3D buildings ride along with chase (heading-up + tilt), matching
             // the live chase map. Drop them on a north-up frame so a top-down
             // preview after a chase preview does not keep the flat footprints.
-            // Idempotent; the building geometry lives in the already-cached z14
-            // tiles, so this adds render cost but no tile fetches.
-            if (headingUp && !radar) addBuildings3dLayer(map, theme);
-            else removeBuildings3dLayer(map);
+            // The building geometry lives in the already-cached z14 tiles, so
+            // this adds render cost but no tile fetches.
+            syncBuildings(headingUp && req.buildings3d);
             let zoom = zoomForDiameterKm(req.lat, req.zoomKm, SNAPSHOT_WIDTH);
             // Speed-adaptive zoom-out. At wider zoomKm (or the default 1 km at
             // highway speed) the display zoom dips below the OpenMapTiles maxzoom

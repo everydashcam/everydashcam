@@ -1,4 +1,4 @@
-import { RADAR_THEMES, radarTheme, shapeForMapTheme } from "../map-radar.js";
+import { radarTheme, shapeForMapTheme } from "../map-radar.js";
 import { maybeShowPostExportToast } from "./pwa-install.js";
 // Export panel: side-drawer (desktop) / bottom-sheet (mobile) housing the
 // inline save UI - output frame size/aspect, quality, audio/gpmf/gpx, letterbox
@@ -36,7 +36,7 @@ import {
     subscribeExportState,
 } from "./export-state.js";
 import type { MapShape, OverlayStyleId } from "../transcode/types.js";
-import type { MapStyleId } from "./theme.js";
+import type { MapTheme } from "./theme.js";
 import {
     cancelActiveExport,
     estimateExport,
@@ -124,6 +124,13 @@ import {
 import { isMapAvailable } from "./map.js";
 import { STREET_LABEL_DENSITY_LABEL_KEYS, STREET_LABEL_DENSITY_VALUES } from "./map-label-scale.js";
 import { markerForMapTheme } from "./map-marker-pref.js";
+import {
+    MAP_STYLE_PRESET_LABEL_KEYS,
+    MAP_STYLE_PRESETS,
+    MAP_THEME_LABEL_KEYS,
+    MAP_THEMES,
+    type MapStylePreset,
+} from "./map-view-pref.js";
 import { renderMapMarkerControl } from "./map-marker-control.js";
 import { createMapProviderSelect } from "./map-provider-control.js";
 import { MAP_PROVIDER_REGISTRY, MAX_MAP_PITCH_DEG } from "./map-provider-registry.js";
@@ -2749,6 +2756,7 @@ function refreshOverlayInspector(): void {
         root.appendChild(renderMapMarkerField());
         root.appendChild(renderMapShapeSegment());
         root.appendChild(renderMapThemeSegment());
+        root.appendChild(renderMapPresetSegment());
         root.appendChild(renderMapLabelSizeSegment());
         root.appendChild(renderMapStreetNamesSegment());
         root.appendChild(
@@ -2861,17 +2869,13 @@ function renderMapShapeSegment(): HTMLElement {
     });
 }
 
-/** The export map's appearance stays independent of the viewer's preferences. */
+/** The export map stores its own appearance, but offers the viewer's choices
+ *  under the viewer's names; map-appearance.ts composes both the same way. */
 function renderMapThemeSegment(): HTMLElement {
-    return renderOverlaySegmentField<MapStyleId>({
+    return renderOverlaySegmentField<MapTheme>({
         label: t("export.overlays.mapTheme"),
         dataKey: "maptheme",
-        choices: [
-            ["light", t("export.overlays.mapTheme.light")],
-            ["dark", t("export.overlays.mapTheme.dark")],
-            ...RADAR_THEMES.map((radar) => [radar, t(`settings.map.theme.${radar}`)] as const),
-            ["neon", t("export.overlays.mapTheme.neon")],
-        ],
+        choices: MAP_THEMES.map((theme) => [theme, t(MAP_THEME_LABEL_KEYS[theme])]),
         current: exportPanelState.overlayMap.theme,
         onChange: (theme) => {
             const map = exportPanelState.overlayMap;
@@ -2880,6 +2884,18 @@ function renderMapThemeSegment(): HTMLElement {
             map.theme = theme;
             const host = document.getElementById("export-map-marker-control");
             if (host) syncExportMarkerControl(host);
+        },
+    });
+}
+
+function renderMapPresetSegment(): HTMLElement {
+    return renderOverlaySegmentField<MapStylePreset>({
+        label: t("settings.map.style.label"),
+        dataKey: "mappreset",
+        choices: MAP_STYLE_PRESETS.map((preset) => [preset, t(MAP_STYLE_PRESET_LABEL_KEYS[preset])]),
+        current: exportPanelState.overlayMap.preset,
+        onChange: (preset) => {
+            exportPanelState.overlayMap.preset = preset;
         },
     });
 }
@@ -2950,6 +2966,18 @@ function renderMapModeControls(): HTMLElement {
             },
         ),
     );
+    const buildings = renderCheckbox(
+        "export-panel-ov-buildings",
+        t("settings.map.buildings3d.label"),
+        om.buildings3d,
+        (v) => {
+            om.buildings3d = v;
+            notifyExportStateChanged();
+        },
+    );
+    // Radar palettes stay flat; CSS hides the toggle with the tilt slider.
+    buildings.classList.add("export-panel__ov-buildings");
+    extras.appendChild(buildings);
     // Speed-adaptive-zoom toggle.
     extras.appendChild(
         renderCheckbox("export-panel-ov-adaptive", t("export.overlays.mapAdaptive"), om.adaptiveZoom, (v) => {
@@ -2977,12 +3005,12 @@ function syncExportMapControls(): void {
     if (extras) extras.hidden = mode !== "chase";
     const hint = overlayInspectorEl.querySelector<HTMLElement>("#export-map-appearance-unavailable");
     if (hint) hint.hidden = supportsAppearanceSettings;
-    for (const button of overlayInspectorEl.querySelectorAll<HTMLButtonElement>(
-        "button[data-maptheme], button[data-maplabelsize], button[data-mapstreetnames]",
+    for (const control of overlayInspectorEl.querySelectorAll<HTMLButtonElement | HTMLInputElement>(
+        "button[data-maptheme], button[data-mappreset], button[data-maplabelsize], button[data-mapstreetnames], #export-panel-ov-buildings",
     )) {
-        button.disabled = !supportsAppearanceSettings;
-        if (button.disabled) button.setAttribute("aria-describedby", "export-map-appearance-unavailable");
-        else button.removeAttribute("aria-describedby");
+        control.disabled = !supportsAppearanceSettings;
+        if (control.disabled) control.setAttribute("aria-describedby", "export-map-appearance-unavailable");
+        else control.removeAttribute("aria-describedby");
     }
 }
 

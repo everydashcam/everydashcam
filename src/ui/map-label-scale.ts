@@ -2,10 +2,10 @@
 //
 // MapLibre has no global text-scale knob - label sizes are baked into each
 // style layer's layout["text-size"]. We fetch the style JSON ourselves
-// (loadMapStyle in viewer-map-registry.ts), so the viewer scales a CLONE of the
-// cached style right before setStyle; the cache itself stays pristine, because
-// the export snapshotter reads the same cache and applies its own independent
-// factor (exportPanelState.overlayMap.labelScalePct).
+// (loadMapStyle in viewer-map-registry.ts), and composeMapStyle in
+// map-appearance.ts scales a CLONE of the cached style right before setStyle;
+// the cache itself stays pristine, because the export snapshotter reads the
+// same cache with its own independent factor.
 
 import { readLocalStorage, writeLocalStorage } from "../local-storage.js";
 import type { StyleSpecification } from "maplibre-gl";
@@ -196,13 +196,4 @@ export function applyStreetLabelDensity(style: StyleSpecification, density: Stre
         }
     }
     return clone;
-}
-
-/**
- * Applies every stored viewer label preference (text scale, then street-name
- * density) to the style. Both at their defaults return the input untouched -
- * the call sites pass the shared style cache, which must stay pristine.
- */
-export function applyViewerLabelPrefs(style: StyleSpecification): StyleSpecification {
-    return applyStreetLabelDensity(scaleStyleTextSizes(style, getMapLabelScale()), getStreetLabelDensity());
 }

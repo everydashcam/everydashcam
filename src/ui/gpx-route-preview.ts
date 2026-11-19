@@ -9,7 +9,8 @@ import { projectTrackToViewport, unwrapTrackCoordinates } from "../coordinates.j
 import { createLogger } from "../log.js";
 import { isValidGpsFix } from "../parser.js";
 import type { GpsRecord } from "../parsers/types.js";
-import { applyViewerMapStyle, loadMaplibre, loadMapStyle } from "./viewer-map-registry.js";
+import { loadMaplibre, loadMapStyle } from "./viewer-map-registry.js";
+import { composeMapStyle, viewerMapAppearance } from "./map-appearance.js";
 import { MapAttributionControl } from "./map-attribution-control.js";
 import { getMapProvider, mapProviderErrorKey } from "./map-provider.js";
 import { transformMapTileRequest } from "./map-tile-cache.js";
@@ -163,7 +164,7 @@ export class GpxRoutePreview {
             this.host.appendChild(mapHost);
             const map = new maplibre.Map({
                 container: mapHost,
-                style: applyViewerMapStyle(loadedStyle),
+                style: composeMapStyle(loadedStyle, viewerMapAppearance(provider), "preview"),
                 center: this.coords[0] ?? [0, 0],
                 zoom: 12,
                 interactive: false,

@@ -16,9 +16,6 @@ import { getMapViewPreferences, type MapThemeChoice } from "./map-view-pref.js";
 
 export type MapTheme = Exclude<MapThemeChoice, "auto">;
 
-/** Neon is a translucent, export-only palette. */
-export type MapStyleId = MapTheme | "neon";
-
 /** UX-24: user theme choice. "auto" follows OS (default), "light"/"dark" is an explicit override. */
 export type ThemeChoice = "auto" | "light" | "dark";
 
@@ -86,6 +83,9 @@ function mapColors(background: string, markerStroke: string): MapThemeColors {
 const MAP_COLORS: Record<MapTheme, MapThemeColors> = {
     light: mapColors("#f5f4ef", "#0e0e0e"),
     dark: mapColors("#14171c", "#fff"),
+    // Neon's own background is translucent; full-size maps show it over this
+    // warm near-black, the tone its amber roads have over a night video.
+    neon: mapColors("#100c08", "#fff"),
     ...(Object.fromEntries(
         RADAR_THEMES.map((theme) => [
             theme,
@@ -97,6 +97,12 @@ const MAP_COLORS: Record<MapTheme, MapThemeColors> = {
 /** Map overlays use the basemap palette even when the interface has a different theme. */
 export function mapThemeColors(theme: MapTheme): MapThemeColors {
     return MAP_COLORS[theme];
+}
+
+/** A translucent palette lets the video show through a map inset over it. A
+ *  map that fills its own pane has nothing beneath and needs an opaque ground. */
+export function isTranslucentMapTheme(theme: MapTheme): boolean {
+    return theme === "neon";
 }
 
 /** Reads a CSS variable value (--fg-dim, --border, etc.) from :root computed style. CSS variable values may include leading spaces. */

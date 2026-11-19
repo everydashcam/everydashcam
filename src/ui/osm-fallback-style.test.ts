@@ -9,12 +9,12 @@ import {
     OSM_SHORTBREAD_BUILDING_SOURCE_LAYER,
     OSM_SHORTBREAD_SOURCE_ID,
 } from "./osm-fallback-style.js";
-import type { MapStyleId } from "./theme.js";
+import type { MapTheme } from "./theme.js";
 
-const ALL_STYLES = [...MAP_THEMES, "neon"] as const;
+const ALL_STYLES = MAP_THEMES;
 
 describe("OSM fallback styles", () => {
-    it.each<MapStyleId>(ALL_STYLES)("builds a valid %s Shortbread style", (theme) => {
+    it.each<MapTheme>(ALL_STYLES)("builds a valid %s Shortbread style", (theme) => {
         const style = createFallbackMapStyle("osm-vector", theme);
         expect(validateStyleMin(style)).toEqual([]);
         expect(style.glyphs).toBeUndefined();
@@ -45,7 +45,7 @@ describe("OSM fallback styles", () => {
         expect(style.layers).toEqual([{ id: "osm-raster", type: "raster", source: "osm-raster" }]);
     });
 
-    it.each<MapStyleId>(ALL_STYLES)("keeps Shortbread park context in the %s road preset", (theme) => {
+    it.each<MapTheme>(ALL_STYLES)("keeps Shortbread park context in the %s road preset", (theme) => {
         // Shortbread 1.0 puts parks and cemeteries in land, campuses and parking in sites.
         // https://shortbread-tiles.org/schema/1.0/#land-use-land-cover-buildings
         const matchingFills = (style: StyleSpecification, sourceLayer: string, kind: string) =>

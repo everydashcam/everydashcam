@@ -13,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     _resetForTests,
     applyStreetLabelDensity,
-    applyViewerLabelPrefs,
     getMapLabelScale,
     getStreetLabelDensity,
     scaleStyleTextSizes,
@@ -47,8 +46,6 @@ describe("map label preferences", () => {
 
         expect(getMapLabelScale()).toBe(2);
         expect(getStreetLabelDensity()).toBe("max");
-        const style = loadStyle("light");
-        expect(applyViewerLabelPrefs(style)).toEqual(applyStreetLabelDensity(scaleStyleTextSizes(style, 2), "max"));
     });
 
     it("restores stored preferences before a session choice", () => {

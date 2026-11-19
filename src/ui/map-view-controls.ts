@@ -11,9 +11,10 @@ import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { isYandexMapAvailable } from "./yandex-map.js";
 import {
     getMapViewPreferences,
+    MAP_STYLE_PRESET_LABEL_KEYS,
     MAP_STYLE_PRESETS,
     MAP_THEME_CHOICES,
-    type MapStylePreset,
+    MAP_THEME_LABEL_KEYS,
     type MapThemeChoice,
     type MapViewPreferences,
     setMapViewPreferences,
@@ -22,21 +23,6 @@ import {
     viewerRadarTheme,
     subscribeMapViewPreferences,
 } from "./map-view-pref.js";
-
-const STYLE_LABEL_KEYS = {
-    classic: "settings.map.style.classic",
-    road: "settings.map.style.road",
-    minimal: "settings.map.style.minimal",
-} as const satisfies Record<MapStylePreset, I18nKey>;
-
-const THEME_LABEL_KEYS = {
-    auto: "settings.map.theme.auto",
-    light: "settings.map.theme.light",
-    "la-92": "settings.map.theme.la-92",
-    "miami-86": "settings.map.theme.miami-86",
-    "tuner-04": "settings.map.theme.tuner-04",
-    dark: "settings.map.theme.dark",
-} as const satisfies Record<MapThemeChoice, I18nKey>;
 
 function createSelect<Value extends string>(
     host: HTMLElement,
@@ -91,7 +77,7 @@ function createThemeGallery(host: HTMLElement, onChange: (value: MapThemeChoice)
         preview.className = "settings-themes__preview";
         preview.dataset.theme = value;
         const caption = document.createElement("span");
-        caption.textContent = t(THEME_LABEL_KEYS[value]);
+        caption.textContent = t(MAP_THEME_LABEL_KEYS[value]);
         card.append(preview, input, caption);
         grid.append(card);
     }
@@ -145,7 +131,7 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppea
         `${idPrefix}-style-select`,
         "settings.map.style.label",
         MAP_STYLE_PRESETS,
-        STYLE_LABEL_KEYS,
+        MAP_STYLE_PRESET_LABEL_KEYS,
         (value) => setMapViewPreferences({ ...getMapViewPreferences(), style: value }),
     );
     const theme =
@@ -155,7 +141,7 @@ export function initMapViewControls(host: HTMLElement, idPrefix: string, onAppea
             `${idPrefix}-theme-select`,
             "settings.map.theme.label",
             MAP_THEME_CHOICES,
-            THEME_LABEL_KEYS,
+            MAP_THEME_LABEL_KEYS,
             changeTheme,
         );
     const shape = createSelect(

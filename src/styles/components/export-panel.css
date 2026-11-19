@@ -1272,6 +1272,7 @@ fieldset.export-panel__group {
 }
 
 #export-panel-overlay-inspector[data-radar] .export-panel__ov-field:has([data-maplabelsize], [data-mapstreetnames]),
-#export-panel-overlay-inspector[data-radar] #export-map-chase-controls .export-panel__slider {
+#export-panel-overlay-inspector[data-radar] #export-map-chase-controls .export-panel__slider,
+#export-panel-overlay-inspector[data-radar] .export-panel__ov-buildings {
     display: none;
 }

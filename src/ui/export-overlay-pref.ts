@@ -5,7 +5,7 @@
 import { readLocalStorageJson, removeLocalStorage, writeLocalStorageJson } from "../local-storage.js";
 import { RADAR_THEMES } from "../map-radar.js";
 import { radarMarkerAppearance, normalizeMapMarkerAppearance } from "./map-marker-pref.js";
-import { MAP_THEMES } from "./map-view-pref.js";
+import { MAP_STYLE_PRESETS, MAP_THEMES } from "./map-view-pref.js";
 import type { OverlayMapProviderPreference } from "./map-provider.js";
 import type { OverlayMapState, OverlayPreferences, OverlayTextState } from "./export-state.js";
 
@@ -17,7 +17,6 @@ const MAP_SHAPES = ["rect", "circle"] as const;
 const MAP_PROVIDERS: readonly OverlayMapProviderPreference[] = __PORTABLE__
     ? ["route-only", "openfreemap", "osm-vector"]
     : ["openfreemap", "osm-vector"];
-const EXPORT_MAP_THEMES = [...MAP_THEMES, "neon"] as const;
 const MAP_LABEL_SIZES = [100, 125, 150, 200] as const;
 const MAP_LABEL_DENSITIES = ["standard", "more", "max"] as const;
 const MAP_MODES = ["north", "chase"] as const;
@@ -79,13 +78,15 @@ function normalizeMap(value: unknown, fallback: OverlayMapState): OverlayMapStat
         scalePct: finiteInRange(candidate.scalePct, fallback.scalePct, 50, 200),
         zoomKm: finiteInRange(candidate.zoomKm, fallback.zoomKm, 0.1, 10),
         shape: oneOf(candidate.shape, MAP_SHAPES, fallback.shape),
-        theme: oneOf(candidate.theme, EXPORT_MAP_THEMES, fallback.theme),
+        theme: oneOf(candidate.theme, MAP_THEMES, fallback.theme),
+        preset: oneOf(candidate.preset, MAP_STYLE_PRESETS, fallback.preset),
         labelScalePct: oneOf(candidate.labelScalePct, MAP_LABEL_SIZES, fallback.labelScalePct),
         labelDensity: oneOf(candidate.labelDensity, MAP_LABEL_DENSITIES, fallback.labelDensity),
         marker: normalizeMapMarkerAppearance(candidate.marker, fallback.marker),
         radarMarkers: normalizeRadarMarkers(candidate.radarMarkers),
         mode: oneOf(candidate.mode, MAP_MODES, fallback.mode),
         pitchDeg: finiteInRange(candidate.pitchDeg, fallback.pitchDeg, 0, 70),
+        buildings3d: bool(candidate.buildings3d, fallback.buildings3d),
         adaptiveZoom: bool(candidate.adaptiveZoom, fallback.adaptiveZoom),
     };
 }

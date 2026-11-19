@@ -4,12 +4,31 @@ import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { RADAR_THEMES, radarTheme, shapeForMapTheme } from "../map-radar.js";
 import { createSubscribers } from "../subscribers.js";
 import { readLocalStorageJson, writeLocalStorageJson } from "../local-storage.js";
+import type { I18nKey } from "../i18n/keys.js";
 export const MAP_STYLE_PRESETS = ["classic", "road", "minimal"] as const;
 export type MapStylePreset = (typeof MAP_STYLE_PRESETS)[number];
 
-export const MAP_THEMES = ["light", "dark", ...RADAR_THEMES] as const;
+/** Palettes in the order every picker lists them. */
+export const MAP_THEMES = ["light", "dark", ...RADAR_THEMES, "neon"] as const;
 export const MAP_THEME_CHOICES = ["auto", ...MAP_THEMES] as const;
 export type MapThemeChoice = (typeof MAP_THEME_CHOICES)[number];
+
+/** Viewer settings and the export panel name the same choices the same way. */
+export const MAP_STYLE_PRESET_LABEL_KEYS = {
+    classic: "settings.map.style.classic",
+    road: "settings.map.style.road",
+    minimal: "settings.map.style.minimal",
+} as const satisfies Record<MapStylePreset, I18nKey>;
+
+export const MAP_THEME_LABEL_KEYS = {
+    auto: "settings.map.theme.auto",
+    light: "settings.map.theme.light",
+    dark: "settings.map.theme.dark",
+    "la-92": "settings.map.theme.la-92",
+    "miami-86": "settings.map.theme.miami-86",
+    "tuner-04": "settings.map.theme.tuner-04",
+    neon: "settings.map.theme.neon",
+} as const satisfies Record<MapThemeChoice, I18nKey>;
 
 export interface MapViewPreferences {
     style: MapStylePreset;

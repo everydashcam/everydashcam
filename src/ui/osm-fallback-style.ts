@@ -7,7 +7,7 @@ import type { ExpressionSpecification, LayerSpecification, StyleSpecification } 
 
 import radarPalettes from "./map-radar-palettes.json";
 import { RADAR_THEMES, type RadarTheme } from "../map-radar.js";
-import type { MapStyleId } from "./theme.js";
+import type { MapTheme } from "./theme.js";
 import type { MapProvider } from "./map-provider.js";
 
 const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
@@ -55,7 +55,7 @@ function radarPalette(theme: RadarTheme): Palette {
     };
 }
 
-const PALETTES: Record<MapStyleId, Palette> = {
+const PALETTES: Record<MapTheme, Palette> = {
     ...(Object.fromEntries(RADAR_THEMES.map((theme) => [theme, radarPalette(theme)])) as Record<RadarTheme, Palette>),
     light: {
         background: "#f5f4ef",
@@ -177,7 +177,7 @@ function roadCasingWidth(): ExpressionSpecification {
     ];
 }
 
-function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
+function shortbreadLayers(theme: MapTheme): LayerSpecification[] {
     const p = PALETTES[theme];
     const source = OSM_SHORTBREAD_SOURCE_ID;
     const groundSand = p.geometry?.fillsGround ? p.sand : undefined;
@@ -627,7 +627,7 @@ function shortbreadLayers(theme: MapStyleId): LayerSpecification[] {
 
 export function createFallbackMapStyle(
     provider: Extract<MapProvider, "osm-vector" | "osm-raster">,
-    theme: MapStyleId,
+    theme: MapTheme,
 ): StyleSpecification {
     if (provider === "osm-raster") {
         return {

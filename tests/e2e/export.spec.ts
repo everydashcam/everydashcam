@@ -1223,7 +1223,7 @@ test.describe("export", () => {
         const light = inspector.locator('button[data-maptheme="light"]');
         const dark = inspector.locator('button[data-maptheme="dark"]');
         const neon = inspector.locator('button[data-maptheme="neon"]');
-        // Neon is the export-only default (snapshotter loads neon.json on enable).
+        // Neon is the export default (snapshotter loads neon.json on enable).
         await expect(neon).toHaveClass(/is-active/); // default
         await dark.click();
         await expect(dark).toHaveClass(/is-active/);
@@ -1260,6 +1260,29 @@ test.describe("export", () => {
         await inspector.getByRole("button", { name: "LA 92", exact: true }).click();
         await expect(inspector.locator('[data-marker-shape="sedan"]')).toHaveAttribute("aria-pressed", "true");
         await expect(inspector.locator('[data-marker-size="large"]')).toHaveAttribute("aria-pressed", "true");
+    });
+
+    test("map overlay offers the viewer's map styles and its own 3D buildings choice", async ({ page }) => {
+        await page.locator("#export-panel-ov-map").check();
+        const inspector = page.locator("#export-panel-overlay-inspector");
+        const minimal = inspector.locator('button[data-mappreset="minimal"]');
+        await expect(inspector.locator('button[data-mappreset="classic"]')).toHaveAttribute("aria-pressed", "true");
+        await minimal.click();
+        await expect(minimal).toHaveAttribute("aria-pressed", "true");
+        const buildings = inspector.locator("#export-panel-ov-buildings");
+        await expect(buildings).toBeChecked();
+        await buildings.uncheck();
+        await expect
+            .poll(() =>
+                page.evaluate(
+                    () => JSON.parse(localStorage.getItem("everydashcam:export:overlays") ?? "null")?.overlayMap,
+                ),
+            )
+            .toMatchObject({ preset: "minimal", buildings3d: false });
+        // Radar palettes stay flat, so the buildings choice leaves with the tilt.
+        await inspector.getByRole("button", { name: "LA 92", exact: true }).click();
+        await expect(buildings).toBeHidden();
+        await expect(minimal).toBeVisible();
     });
 
     test("map marker starts from settings, stays separate, and persists with overlays", async ({ page }) => {

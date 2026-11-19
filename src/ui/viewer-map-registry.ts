@@ -6,7 +6,7 @@
 // Type-only import: erased at build, so it does NOT pull the ~1MB maplibre-gl
 // lib into the bundle. The runtime namespace is loaded lazily via loadMaplibre().
 // Namespace form: v6 is ESM-only and has no default export.
-import { setRadarFrame } from "../map-radar.js";
+import { radarTheme, setRadarFrame } from "../map-radar.js";
 import type * as maplibregl from "maplibre-gl";
 // Worker entry URL, resolved at build time to a string - the lib itself stays
 // out of the eager graph. Keep `?worker&url` so Vite builds the worker and the
@@ -19,7 +19,7 @@ import { captureSentryMessage } from "../sentry.js";
 import { createSubscribers } from "../subscribers.js";
 import { isOffline, subscribeConnectivity } from "./connectivity.js";
 import type { MapAttributionControl } from "./map-attribution-control.js";
-import { applyViewerLabelPrefs } from "./map-label-scale.js";
+import { composeMapStyle, viewerMapAppearance } from "./map-appearance.js";
 import {
     getMapProvider,
     getMapProviderPreference,
@@ -29,16 +29,14 @@ import {
     subscribeMapProvider,
     type MapProvider,
 } from "./map-provider.js";
-import { MAP_PROVIDER_REGISTRY } from "./map-provider-registry.js";
 import { localizeMapLabels } from "./map-label-language.js";
 import { loadMapStyleSource } from "./map-style-source.js";
-import { readableRadarThemeMap, radarBaseStyle, applyMapStylePreset } from "./map-style-preset.js";
 import { registerSharedMapTileCache } from "./map-tile-cache.js";
-import { getMapViewPreferences, subscribeMapViewPreferences, viewerRadarTheme } from "./map-view-pref.js";
+import { getMapViewPreferences, subscribeMapViewPreferences } from "./map-view-pref.js";
 import { createFallbackMapStyle } from "./osm-fallback-style.js";
 import { createPortableMapAssetLoader } from "./portable-map-assets.js";
-import { currentMapTheme, mapThemeColors } from "./theme.js";
-import type { MapStyleId } from "./theme.js";
+import { currentMapTheme, isTranslucentMapTheme, mapThemeColors } from "./theme.js";
+import type { MapTheme } from "./theme.js";
 import { createYandexMapStyle } from "./yandex-map.js";
 
 // Shares the trip map's logger name: browser tests recognize the
@@ -98,7 +96,7 @@ export const EMPTY_MAP_STYLE: maplibregl.StyleSpecification = {
 };
 
 // Viewer and export share one style load per provider and palette. Failures remain retryable.
-type MapStyleCacheKey = `${MapProvider}:${MapStyleId}`;
+type MapStyleCacheKey = `${MapProvider}:${MapTheme}`;
 const cachedMapStyles = new Map<MapStyleCacheKey, maplibregl.StyleSpecification>();
 interface PendingMapStyle {
     promise: Promise<maplibregl.StyleSpecification | null>;
@@ -112,11 +110,11 @@ const mapStyleLoadPromises = new Map<MapStyleCacheKey, PendingMapStyle>();
 // map_load_failed.
 const mapStyleLoadControllers = new Map<MapStyleCacheKey, AbortController>();
 
-function styleCacheKey(provider: MapProvider, theme: MapStyleId): MapStyleCacheKey {
+function styleCacheKey(provider: MapProvider, theme: MapTheme): MapStyleCacheKey {
     return `${provider}:${theme}`;
 }
 interface FailedMapStyle {
-    theme: MapStyleId;
+    theme: MapTheme;
     provider: MapProvider;
     source: MapLoadSource;
 }
@@ -140,7 +138,7 @@ function isSilentMapLoadSource(source: MapLoadSource): boolean {
     return source === "prefetch" || source === "preview";
 }
 
-function isRelevantMapLoad(source: MapLoadSource, theme: MapStyleId, provider: MapProvider): boolean {
+function isRelevantMapLoad(source: MapLoadSource, theme: MapTheme, provider: MapProvider): boolean {
     return (
         !isSilentMapLoadSource(source) &&
         provider === getMapProvider() &&
@@ -148,7 +146,7 @@ function isRelevantMapLoad(source: MapLoadSource, theme: MapStyleId, provider: M
     );
 }
 
-function clearMapStyleFailure(source: MapLoadSource, theme: MapStyleId, provider: MapProvider): void {
+function clearMapStyleFailure(source: MapLoadSource, theme: MapTheme, provider: MapProvider): void {
     if (!isRelevantMapLoad(source, theme, provider)) return;
     const failure = lastFailedStyle;
     if (
@@ -171,7 +169,7 @@ function clearMapStyleFailure(source: MapLoadSource, theme: MapStyleId, provider
  * stay silent.
  */
 export function loadMapStyle(
-    theme: MapStyleId,
+    theme: MapTheme,
     force = false,
     source: MapLoadSource = "main",
     provider: MapProvider = getMapProvider(),
@@ -336,7 +334,7 @@ export function registerViewerMap(viewerMap: ViewerMap): () => void {
     if (waiting) {
         waiting.add(viewerMap);
     } else if (cached) {
-        applyStyleTo(viewerMap, applyViewerMapStyle(cached), provider, false);
+        applyStyleTo(viewerMap, cached, provider, false);
     } else {
         const newcomers = new Set([viewerMap]);
         registrationLoads.set(key, newcomers);
@@ -363,29 +361,30 @@ function setViewerMapStyle(map: maplibregl.Map, style: maplibregl.StyleSpecifica
     else map.setStyle(style, { diff: false });
 }
 
+/** `base` is the pristine cached style; each surface composes its own view of it. */
 function applyStyleTo(
     viewerMap: ViewerMap,
-    styled: maplibregl.StyleSpecification,
+    base: maplibregl.StyleSpecification,
     provider: MapProvider,
     shouldPreserveCamera: boolean,
 ): void {
     viewerMap.beforeStyleSwap?.(shouldPreserveCamera);
+    const appearance = viewerMapAppearance(provider);
     if (viewerMap.surface === "mini") {
-        const radar = viewerRadarTheme(provider);
-        setRadarFrame(viewerMap.map.getContainer(), radar);
+        const container = viewerMap.map.getContainer();
+        setRadarFrame(container, radarTheme(appearance.theme));
+        // The inset's own background would hide the video beneath a translucent palette.
+        container.toggleAttribute("data-translucent", isTranslucentMapTheme(appearance.theme));
         viewerMap.map.resize();
-        if (radar) styled = radarBaseStyle(styled, radar);
-    } else if (viewerMap.surface === "main" && viewerRadarTheme(provider)) {
-        styled = readableRadarThemeMap(styled);
     }
-    setViewerMapStyle(viewerMap.map, styled);
+    setViewerMapStyle(viewerMap.map, composeMapStyle(base, appearance, viewerMap.surface));
     viewerMap.attribution.setProvider(provider);
 }
 
 /** Applies only the current theme/provider; style.load restores local overlays. */
 function applyLoadedStyle(
     style: maplibregl.StyleSpecification,
-    theme: MapStyleId,
+    theme: MapTheme,
     provider = getMapProvider(),
     shouldPreserveCamera = false,
     /** Maps getting their first style: they have no camera to keep yet. */
@@ -399,13 +398,11 @@ function applyLoadedStyle(
     // line redraws via style.load; diff:true could place our layer at a wrong
     // z-order in the new style.
     //
-    // Label prefs (text scale + street-name density) are applied to a clone
-    // HERE, not in loadMapStyle: the cache must stay pristine because the
-    // export snapshotter reads the same cache with its own independent
-    // per-export factor.
-    const styled = applyViewerMapStyle(style);
+    // Appearance settings are applied per map to a clone, not in loadMapStyle:
+    // the cache must stay pristine because the export snapshotter reads the same
+    // cache with its own independent appearance.
     for (const viewerMap of viewerMaps)
-        applyStyleTo(viewerMap, styled, provider, shouldPreserveCamera && !newcomers.has(viewerMap));
+        applyStyleTo(viewerMap, style, provider, shouldPreserveCamera && !newcomers.has(viewerMap));
 }
 
 /**
@@ -422,14 +419,9 @@ export function reapplyMapLabelPrefs(): void {
     if (cached) applyLoadedStyle(cached, theme, provider, true);
 }
 
-export function applyViewerMapStyle(style: maplibregl.StyleSpecification): maplibregl.StyleSpecification {
-    return applyViewerLabelPrefs(applyMapStylePreset(style, getMapViewPreferences().style));
-}
-
 /** Overlay colors that read on the base map the viewer currently shows. */
 export function viewerMapColors(): ReturnType<typeof mapThemeColors> {
-    const provider = getMapProvider();
-    return mapThemeColors(MAP_PROVIDER_REGISTRY[provider].usesSelectedTheme ? currentMapTheme() : "light");
+    return mapThemeColors(viewerMapAppearance().theme);
 }
 
 /**

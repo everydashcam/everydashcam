@@ -60,7 +60,7 @@ import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref
 import radarPalettes from "./map-radar-palettes.json";
 import { isRadarTheme, radarSpec, radarTheme, type RadarTheme } from "../map-radar.js";
 import { currentMapTheme, themeColors } from "./theme.js";
-import type { MapStyleId } from "./theme.js";
+import type { MapTheme } from "./theme.js";
 import {
     getMapViewPreferences,
     subscribeMapViewPreferences,
@@ -2733,7 +2733,7 @@ function firstSymbolLayerId(map: maplibregl.Map): string | undefined {
 
 // Neon: lit amber walls so buildings glow with the rest of the slot. Dark:
 // near-black. Light: bone.
-const BUILDING_WALLS: Record<Exclude<MapStyleId, RadarTheme>, string> = {
+const BUILDING_WALLS: Record<Exclude<MapTheme, RadarTheme>, string> = {
     neon: "#7a4a16",
     dark: "#2b2b30",
     light: "#e4ddcd",
@@ -2749,7 +2749,7 @@ const BUILDING_WALLS: Record<Exclude<MapStyleId, RadarTheme>, string> = {
  * Exported so the export-overlay snapshotter renders the exact same buildings as
  * the live chase map (one source of truth for the layer definition).
  */
-export function addBuildings3dLayer(map: maplibregl.Map, theme: MapStyleId): void {
+export function addBuildings3dLayer(map: maplibregl.Map, theme: MapTheme): void {
     if (map.getLayer(BUILDINGS_3D_LAYER_ID)) return;
     // Style may still be EMPTY_MAP_STYLE (tiles unavailable) or mid-swap - bail
     // silently; the live style.load handler re-adds it once chase is active.

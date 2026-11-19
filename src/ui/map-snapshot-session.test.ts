@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { ExportMapSnapshotter, SnapshotRequest } from "./export-map-snapshot.js";
 import { MapSnapshotSession } from "./map-snapshot-session.js";
 
-const request: SnapshotRequest = { lat: 45, lon: 65, bearingDeg: 0, zoomKm: 1 };
+const request: SnapshotRequest = {
+    lat: 45,
+    lon: 65,
+    bearingDeg: 0,
+    zoomKm: 1,
+    headingUp: false,
+    pitchDeg: 0,
+    adaptiveZoom: false,
+    buildings3d: false,
+};
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     let resolve!: (value: T) => void;
