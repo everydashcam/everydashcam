@@ -668,7 +668,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
     "add-data-overlay-to-dashcam-video": {
         "de": {
             "title": "Daten-Overlay aufs Dashcam-Video legen — Tempo, GPS & Karte | everydashcam",
-            "metaDescription": "Tempo, GPS-Koordinaten und eine mitlaufende Karte aufs Dashcam-Video brennen — kostenlos, im Browser, nichts wird hochgeladen. Klappt, wenn deine Aufnahme GPS hat. 70mai, BlackVue, Viofo und mehr.",
+            "metaDescription": "Tempo, GPS-Koordinaten und eine mitlaufende Karte aufs Dashcam-Video brennen — kostenlos, im Browser, nichts wird hochgeladen. Nutzt das GPS deiner Dashcam oder einen GPX-Track, den du hinzufügst. 70mai, BlackVue, Viofo und mehr.",
             "ogTitle": "Tempo-, GPS- & Karten-Overlay aufs Dashcam-Video",
             "ogDescription": "Tempo, Koordinaten und eine mitlaufende Karte aufs exportierte Video brennen — kostenlos, im Browser, nichts wird hochgeladen.",
             "h1": "Leg ein Tempo-, GPS- und Karten-Overlay auf dein Dashcam-Video",
@@ -706,7 +706,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "Kostenlos, im Browser, für Dashcam-Aufnahmen",
             "brandsBody": "Tempo und eine Karte aufs Video zu brennen, ist sonst der Job teurer Desktop-Tools für Action-Kameras. everydashcam macht die Dashcam-Variante kostenlos, in einem Browser-Tab: es liest das GPS von 70mai, BlackVue, Viofo, Garmin, Vantrue und mehr und zeichnet Tempo, Koordinaten und eine mitlaufende Karte auf den Export — keine Installation, kein Konto, nichts wird hochgeladen.",
             "noteHeading": "Gut zu wissen",
-            "noteBody": "Das Overlay braucht GPS in deiner Aufnahme — hat eine Aufnahme keinen GPS-Track, gibt es nichts zu zeichnen. Neben Tempo, Koordinaten und der mitlaufenden Karte kann es auch die Uhrzeit, deine Fahrtrichtung, die zurückgelegte Strecke und eine G-Kraft-Anzeige zeigen — alles aus demselben GPS errechnet, nicht von einem separaten Sensor. Beim Rendern wird das Video neu kodiert, ein langer Bereich braucht also etwas Zeit; Chrome, Edge oder ein anderer Chromium-Browser am Computer läuft am flüssigsten.",
+            "noteBody": "Das Overlay entsteht aus GPS: aus dem Track, den deine Dashcam gespeichert hat, oder aus einer GPX-Datei, die du hinzufügst, wenn die Kamera kein GPS hat. Neben Tempo, Koordinaten und der mitlaufenden Karte kann es auch die Uhrzeit, deine Fahrtrichtung, die zurückgelegte Strecke und eine G-Kraft-Anzeige zeigen — alles aus demselben GPS errechnet, nicht von einem separaten Sensor. Beim Rendern wird das Video neu kodiert, ein langer Bereich braucht also etwas Zeit; Chrome, Edge oder ein anderer Chromium-Browser am Computer läuft am flüssigsten.",
             "faqHeading": "Häufige Fragen",
             "faq": [
                 {
@@ -718,8 +718,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "Ja. Neben dem Tempo kannst du deine Breite und Länge sowie eine kleine mitlaufende Karte einblenden, die der Strecke folgt. Zieh jedes dorthin, wo du es haben willst, und stell ein, wie weit die Karte zoomt."
                 },
                 {
-                    "q": "Braucht es GPS in der Aufnahme?",
-                    "a": "Ja. Das Overlay entsteht aus dem GPS, das deine Dashcam gespeichert hat. Hat ein Clip keinen GPS-Track, gibt es nichts einzublenden — das Video wird trotzdem exportiert, nur ohne Tempo, Koordinaten oder Karte."
+                    "q": "Was, wenn meine Dashcam kein GPS hat?",
+                    "a": "Füg einen GPX-Track derselben Fahrt hinzu, zum Beispiel aus einer Handy-App. Die .gpx-Datei kannst du mit deinen Aufnahmen oder später hinzufügen und dann die passende Fahrt wählen. Passen die Zeiten nicht zusammen, verschieb den Track unter GPS synchronisieren. Ganz ohne GPS-Track wird das Video trotzdem exportiert, nur ohne Tempo, Koordinaten oder Karte."
                 },
                 {
                     "q": "Wird mein Video hochgeladen?",
@@ -727,14 +727,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Kann es auch Uhrzeit, Fahrtrichtung oder G-Kraft zeigen?",
-                    "a": "Ja. Neben Tempo, Koordinaten und der Karte kannst du die Uhrzeit, eine Kompass-Fahrtrichtung, die zurückgelegte Strecke und eine G-Kraft-Anzeige hinzufügen. Die G-Kraft wird aus deinem GPS errechnet — daraus, wie sich Tempo und Richtung ändern — und nicht von einem separaten Sensor, sie braucht also wie alles andere GPS in der Aufnahme."
+                    "a": "Ja. Neben Tempo, Koordinaten und der Karte kannst du die Uhrzeit, eine Kompass-Fahrtrichtung, die zurückgelegte Strecke und eine G-Kraft-Anzeige hinzufügen. Die G-Kraft wird aus deinem GPS errechnet — daraus, wie sich Tempo und Richtung ändern — und nicht von einem separaten Sensor, sie braucht also wie alles andere einen GPS-Track."
                 }
             ],
             "ctaPrimary": "Aufnahmen öffnen"
         },
         "es": {
             "title": "Añade una capa de datos al vídeo de tu dashcam — velocidad, GPS y mapa | everydashcam",
-            "metaDescription": "Graba velocidad, coordenadas GPS y un mapa en movimiento sobre tu vídeo de dashcam — gratis, en tu navegador, sin subir nada. Funciona si tu grabación tiene GPS. 70mai, BlackVue, Viofo y más.",
+            "metaDescription": "Graba velocidad, coordenadas GPS y un mapa en movimiento sobre tu vídeo de dashcam — gratis, en tu navegador, sin subir nada. Usa el GPS de tu dashcam o una traza GPX que añadas. 70mai, BlackVue, Viofo y más.",
             "ogTitle": "Añade velocidad, GPS y mapa al vídeo de tu dashcam",
             "ogDescription": "Graba velocidad, coordenadas y un mapa en movimiento sobre el vídeo exportado — gratis, en tu navegador, sin subir nada.",
             "h1": "Añade una capa de velocidad, GPS y mapa a tu vídeo de dashcam",
@@ -772,7 +772,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "Gratis, en el navegador, para grabaciones de dashcam",
             "brandsBody": "Grabar la velocidad y un mapa sobre el vídeo suele ser cosa de herramientas de escritorio de pago pensadas para cámaras de acción. everydashcam hace la versión para dashcam gratis, en una pestaña del navegador: lee el GPS de 70mai, BlackVue, Viofo, Garmin, Vantrue y más, y dibuja velocidad, coordenadas y un mapa en movimiento sobre la exportación — sin instalar nada, sin cuenta, sin subir nada.",
             "noteHeading": "Conviene saberlo",
-            "noteBody": "La capa necesita GPS en tu grabación — si una grabación no tiene traza GPS, no hay nada que dibujar. Además de la velocidad, las coordenadas y el mapa en movimiento, también puede mostrar la hora, tu rumbo, la distancia recorrida y una lectura de fuerza G — todo calculado a partir del mismo GPS, no de un sensor aparte. Renderizar recodifica el vídeo, así que un tramo largo lleva su tiempo; Chrome, Edge u otro navegador Chromium en un ordenador es lo más fluido.",
+            "noteBody": "La capa se dibuja a partir del GPS: la traza que guardó tu dashcam o un archivo GPX que añadas si la cámara no tiene GPS. Además de la velocidad, las coordenadas y el mapa en movimiento, también puede mostrar la hora, tu rumbo, la distancia recorrida y una lectura de fuerza G — todo calculado a partir del mismo GPS, no de un sensor aparte. Renderizar recodifica el vídeo, así que un tramo largo lleva su tiempo; Chrome, Edge u otro navegador Chromium en un ordenador es lo más fluido.",
             "faqHeading": "Preguntas frecuentes",
             "faq": [
                 {
@@ -784,8 +784,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "Sí. Junto a la velocidad puedes superponer tu latitud y longitud y un pequeño mapa en movimiento que sigue la ruta. Arrastra cada uno donde quieras y ajusta cuánto se acerca el mapa."
                 },
                 {
-                    "q": "¿Necesita que la grabación tenga GPS?",
-                    "a": "Sí. La capa se dibuja a partir del GPS que guardó tu dashcam. Si un clip no tiene traza GPS, no hay nada que superponer — el vídeo se exporta igual, solo que sin velocidad, coordenadas ni mapa."
+                    "q": "¿Y si mi dashcam no tiene GPS?",
+                    "a": "Añade una traza GPX del mismo recorrido, por ejemplo grabada con una app del móvil. Puedes añadir el archivo .gpx junto con tus grabaciones o más tarde y elegir a qué viaje pertenece. Si las horas no coinciden, desplaza la traza en Sincronizar GPS. Sin ninguna traza GPS el vídeo se exporta igual, solo que sin velocidad, coordenadas ni mapa."
                 },
                 {
                     "q": "¿Se sube mi vídeo?",
@@ -793,14 +793,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "¿También puede mostrar la hora, el rumbo o la fuerza G?",
-                    "a": "Sí. Junto a la velocidad, las coordenadas y el mapa puedes añadir la hora, un rumbo de brújula, la distancia recorrida y una lectura de fuerza G. La fuerza G se calcula a partir de tu GPS — de cómo cambian tu velocidad y tu dirección — y no de un sensor aparte, así que necesita GPS en la grabación, igual que el resto."
+                    "a": "Sí. Junto a la velocidad, las coordenadas y el mapa puedes añadir la hora, un rumbo de brújula, la distancia recorrida y una lectura de fuerza G. La fuerza G se calcula a partir de tu GPS — de cómo cambian tu velocidad y tu dirección — y no de un sensor aparte, así que necesita una traza GPS, igual que el resto."
                 }
             ],
             "ctaPrimary": "Abre tus grabaciones"
         },
         "fr": {
             "title": "Ajouter une incrustation de données sur ta vidéo de dashcam — vitesse, GPS et carte | everydashcam",
-            "metaDescription": "Incruste la vitesse, les coordonnées GPS et une carte animée sur ta vidéo de dashcam — gratuit, dans ton navigateur, rien n'est envoyé. Marche si ta vidéo contient du GPS. 70mai, BlackVue, Viofo et plus.",
+            "metaDescription": "Incruste la vitesse, les coordonnées GPS et une carte animée sur ta vidéo de dashcam — gratuit, dans ton navigateur, rien n'est envoyé. Utilise le GPS de ta dashcam ou une trace GPX que tu ajoutes. 70mai, BlackVue, Viofo et plus.",
             "ogTitle": "Ajouter la vitesse, le GPS et une carte sur ta vidéo de dashcam",
             "ogDescription": "Incruste la vitesse, les coordonnées et une carte animée sur la vidéo exportée — gratuit, dans ton navigateur, rien n'est envoyé.",
             "h1": "Ajoute la vitesse, le GPS et une carte sur ta vidéo de dashcam",
@@ -838,7 +838,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "Gratuit, dans le navigateur, pour les vidéos de dashcam",
             "brandsBody": "Incruster la vitesse et une carte sur une vidéo, c'est d'habitude le boulot d'outils de bureau payants conçus pour les caméras d'action. everydashcam fait la version dashcam gratuitement, dans un onglet : il lit le GPS des 70mai, BlackVue, Viofo, Garmin, Vantrue et plus, et dessine la vitesse, les coordonnées et une carte animée sur l'export — aucune installation, aucun compte, rien n'est envoyé.",
             "noteHeading": "Bon à savoir",
-            "noteBody": "L'incrustation a besoin de GPS dans ta vidéo — si un enregistrement n'a pas de tracé GPS, il n'y a rien à dessiner. Au-delà de la vitesse, des coordonnées et de la carte animée, elle peut aussi afficher l'heure, ton cap, la distance parcourue et une lecture de force G — le tout calculé à partir du même GPS, pas d'un capteur séparé. Le rendu réencode la vidéo, donc une longue plage prend un peu de temps ; Chrome, Edge ou un autre navigateur Chromium sur un ordinateur est le plus fluide.",
+            "noteBody": "L'incrustation est dessinée à partir du GPS, celui que ta dashcam a enregistré ou un fichier GPX que tu ajoutes si la caméra n'en a pas. Au-delà de la vitesse, des coordonnées et de la carte animée, elle peut aussi afficher l'heure, ton cap, la distance parcourue et une lecture de force G — le tout calculé à partir du même GPS, pas d'un capteur séparé. Le rendu réencode la vidéo, donc une longue plage prend un peu de temps ; Chrome, Edge ou un autre navigateur Chromium sur un ordinateur est le plus fluide.",
             "faqHeading": "FAQ",
             "faq": [
                 {
@@ -850,8 +850,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "Oui. À côté de la vitesse, tu peux incruster ta latitude et ta longitude ainsi qu'une petite carte animée qui suit le trajet. Fais glisser chacune où tu veux et règle le niveau de zoom de la carte."
                 },
                 {
-                    "q": "Faut-il du GPS dans l'enregistrement ?",
-                    "a": "Oui. L'incrustation est dessinée à partir du GPS que ta dashcam a enregistré. Si un clip n'a pas de tracé GPS, il n'y a rien à incruster — la vidéo s'exporte quand même, simplement sans vitesse, coordonnées ni carte."
+                    "q": "Et si ma dashcam n'a pas de GPS ?",
+                    "a": "Ajoute une trace GPX du même trajet, par exemple enregistrée avec une appli sur ton téléphone. Tu peux ajouter le fichier .gpx avec tes enregistrements ou plus tard, puis choisir le trajet auquel il correspond. Si les heures ne concordent pas, décale la trace dans Synchroniser le GPS. Sans aucune trace GPS, la vidéo s'exporte quand même, simplement sans vitesse, coordonnées ni carte."
                 },
                 {
                     "q": "Ma vidéo est-elle envoyée ?",
@@ -859,14 +859,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Peut-elle aussi afficher l'heure, le cap ou la force G ?",
-                    "a": "Oui. À côté de la vitesse, des coordonnées et de la carte, tu peux ajouter l'heure, un cap de boussole, la distance parcourue et une lecture de force G. La force G est calculée à partir de ton GPS — d'après l'évolution de ta vitesse et de ta direction — et non d'un capteur séparé, elle a donc besoin de GPS dans la vidéo, comme le reste."
+                    "a": "Oui. À côté de la vitesse, des coordonnées et de la carte, tu peux ajouter l'heure, un cap de boussole, la distance parcourue et une lecture de force G. La force G est calculée à partir de ton GPS — d'après l'évolution de ta vitesse et de ta direction — et non d'un capteur séparé, elle a donc besoin d'une trace GPS, comme le reste."
                 }
             ],
             "ctaPrimary": "Ouvrir tes enregistrements"
         },
         "ja": {
             "title": "ドラレコ映像にデータを重ねる — 速度・GPS・地図 | everydashcam",
-            "metaDescription": "ドラレコ映像に速度・GPS座標・動く地図を焼き込みます。無料、ブラウザだけで、どこにもアップロードしません。映像にGPSが記録されていれば使えます。70mai、BlackVue、Viofoなどに対応。",
+            "metaDescription": "ドラレコ映像に速度・GPS座標・動く地図を焼き込みます。無料、ブラウザだけで、どこにもアップロードしません。ドラレコのGPSか、追加したGPXトラックを使います。70mai、BlackVue、Viofoなどに対応。",
             "ogTitle": "ドラレコ映像に速度・GPS・地図を重ねる",
             "ogDescription": "書き出す動画に速度・座標・動く地図を焼き込みます。無料、ブラウザだけで、どこにもアップロードしません。",
             "h1": "ドラレコ映像に速度・GPS・地図のデータを重ねる",
@@ -904,7 +904,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "無料で、ブラウザの中で、ドラレコ映像のために",
             "brandsBody": "速度や地図を映像に焼き込むのは、ふつうアクションカメラ向けの有料デスクトップツールの仕事です。everydashcamは、そのドラレコ版を無料で、ブラウザのタブの中で行います。70mai、BlackVue、Viofo、Garmin、VantrueなどからGPSを読み取り、速度・座標・動く地図を書き出す動画に描き込みます。インストールもアカウントも不要で、どこにもアップロードしません。",
             "noteHeading": "知っておきたいこと",
-            "noteBody": "オーバーレイには映像にGPSが必要です。録画にGPSトラックがなければ、描くものがありません。速度・座標・動く地図のほかに、時刻、進行方位、走行距離、Gフォースの表示も重ねられます。これらはすべて同じGPSから計算され、別のセンサーは使いません。描画では動画を再エンコードするので、長い範囲には少し時間がかかります。パソコンでChrome、Edge、その他のChromium系ブラウザを使うのがいちばんスムーズです。",
+            "noteBody": "オーバーレイはGPSから描かれます。ドラレコが保存したトラックのほか、カメラにGPSがない場合は追加したGPXファイルも使えます。速度・座標・動く地図のほかに、時刻、進行方位、走行距離、Gフォースの表示も重ねられます。これらはすべて同じGPSから計算され、別のセンサーは使いません。描画では動画を再エンコードするので、長い範囲には少し時間がかかります。パソコンでChrome、Edge、その他のChromium系ブラウザを使うのがいちばんスムーズです。",
             "faqHeading": "よくある質問",
             "faq": [
                 {
@@ -916,8 +916,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "はい。速度に加えて、緯度・経度と、ルートを追う小さな動く地図を重ねられます。それぞれを好きな位置にドラッグし、地図のズームの度合いも設定できます。"
                 },
                 {
-                    "q": "録画にGPSが必要ですか？",
-                    "a": "はい。オーバーレイは、ドラレコが保存したGPSをもとに描かれます。クリップにGPSトラックがなければ、重ねるものはありません。その場合でも動画は書き出せますが、速度・座標・地図はつきません。"
+                    "q": "ドラレコにGPSがない場合は？",
+                    "a": "同じドライブのGPXトラック（スマホのアプリで記録したものなど）を追加してください。.gpxファイルは録画と一緒にでも後からでも追加でき、どのドライブのものかを選べます。時刻が合わない場合は「GPS を同期」でトラックをずらせます。GPSトラックがまったくなくても動画は書き出せますが、速度・座標・地図はつきません。"
                 },
                 {
                     "q": "映像はアップロードされますか？",
@@ -925,14 +925,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "時刻や進行方位、Gフォースも表示できますか？",
-                    "a": "はい。速度・座標・地図に加えて、時刻、コンパスの進行方位、走行距離、Gフォースの表示も足せます。GフォースはGPSから — 速度と方向の変化から — 計算され、別のセンサーは使いません。そのため、ほかの表示と同じく映像にGPSが必要です。"
+                    "a": "はい。速度・座標・地図に加えて、時刻、コンパスの進行方位、走行距離、Gフォースの表示も足せます。GフォースはGPSから — 速度と方向の変化から — 計算され、別のセンサーは使いません。そのため、ほかの表示と同じくGPSトラックが必要です。"
                 }
             ],
             "ctaPrimary": "映像を開く"
         },
         "ko": {
             "title": "블랙박스 영상에 데이터 오버레이 넣기 — 속도, GPS, 지도 | everydashcam",
-            "metaDescription": "블랙박스 영상에 속도, GPS 좌표, 움직이는 지도를 새겨 넣어요 — 브라우저에서 무료, 업로드 없음. 영상에 GPS가 있을 때 작동해요. 70mai, BlackVue, Viofo 등 지원.",
+            "metaDescription": "블랙박스 영상에 속도, GPS 좌표, 움직이는 지도를 새겨 넣어요 — 브라우저에서 무료, 업로드 없음. 블랙박스 GPS나 직접 추가한 GPX 트랙을 사용해요. 70mai, BlackVue, Viofo 등 지원.",
             "ogTitle": "블랙박스 영상에 속도, GPS, 지도 오버레이 넣기",
             "ogDescription": "내보내는 영상에 속도, 좌표, 움직이는 지도를 새겨 넣어요 — 브라우저에서 무료, 업로드 없음.",
             "h1": "블랙박스 영상에 속도, GPS, 지도 오버레이를 넣어요",
@@ -970,7 +970,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "무료로, 브라우저에서, 블랙박스 영상에 맞게",
             "brandsBody": "속도와 지도를 영상에 새겨 넣는 건 보통 액션캠용 유료 데스크톱 도구가 하는 일이에요. everydashcam는 그 블랙박스 버전을 브라우저 탭에서 무료로 해요: 70mai, BlackVue, Viofo, Garmin, Vantrue 등에서 GPS를 읽어 속도, 좌표, 움직이는 지도를 내보내기 영상에 그려요 — 설치도, 계정도, 업로드도 없어요.",
             "noteHeading": "알아두면 좋아요",
-            "noteBody": "오버레이는 영상에 GPS가 있어야 해요 — GPS 트랙이 없는 녹화는 그릴 게 없어요. 속도, 좌표, 움직이는 지도 말고도 시간, 진행 방위, 이동 거리, G-포스 표시까지 넣을 수 있어요 — 모두 같은 GPS에서 계산되고, 별도 센서는 쓰지 않아요. 렌더링은 영상을 다시 인코딩하기 때문에 긴 구간은 시간이 조금 걸려요. 컴퓨터에서 Chrome, Edge나 다른 Chromium 브라우저가 가장 매끄러워요.",
+            "noteBody": "오버레이는 GPS로 그려져요. 블랙박스가 저장한 트랙을 쓰고, 카메라에 GPS가 없으면 직접 추가한 GPX 파일을 써요. 속도, 좌표, 움직이는 지도 말고도 시간, 진행 방위, 이동 거리, G-포스 표시까지 넣을 수 있어요 — 모두 같은 GPS에서 계산되고, 별도 센서는 쓰지 않아요. 렌더링은 영상을 다시 인코딩하기 때문에 긴 구간은 시간이 조금 걸려요. 컴퓨터에서 Chrome, Edge나 다른 Chromium 브라우저가 가장 매끄러워요.",
             "faqHeading": "자주 묻는 질문",
             "faq": [
                 {
@@ -982,8 +982,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "네. 속도와 함께 위도와 경도, 그리고 경로를 따라가는 작은 움직이는 지도를 오버레이할 수 있어요. 각각을 원하는 곳으로 끌어다 놓고 지도 확대 정도를 정하세요."
                 },
                 {
-                    "q": "녹화에 GPS가 있어야 하나요?",
-                    "a": "네. 오버레이는 블랙박스가 저장한 GPS로 그려져요. 클립에 GPS 트랙이 없으면 오버레이할 게 없어요 — 영상은 그래도 내보내지지만 속도, 좌표, 지도 없이 나와요."
+                    "q": "블랙박스에 GPS가 없으면요?",
+                    "a": "같은 주행의 GPX 트랙을 추가하세요. 휴대폰 앱으로 기록한 트랙도 돼요. .gpx 파일은 녹화와 함께 넣어도 되고 나중에 넣어도 되며, 어느 주행의 트랙인지 고르면 돼요. 시간이 맞지 않으면 GPS 동기화에서 트랙을 옮기세요. GPS 트랙이 전혀 없어도 영상은 내보내지지만 속도, 좌표, 지도 없이 나와요."
                 },
                 {
                     "q": "제 영상이 업로드되나요?",
@@ -991,14 +991,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "시간이나 진행 방위, G-포스도 보여줄 수 있나요?",
-                    "a": "네. 속도, 좌표, 지도와 함께 시간, 나침반 방위, 이동 거리, G-포스 표시를 더할 수 있어요. G-포스는 별도 센서가 아니라 GPS에서 — 속도와 방향이 어떻게 바뀌는지로 — 계산되기 때문에, 나머지와 마찬가지로 영상에 GPS가 있어야 해요."
+                    "a": "네. 속도, 좌표, 지도와 함께 시간, 나침반 방위, 이동 거리, G-포스 표시를 더할 수 있어요. G-포스는 별도 센서가 아니라 GPS에서 — 속도와 방향이 어떻게 바뀌는지로 — 계산되기 때문에, 나머지와 마찬가지로 GPS 트랙이 있어야 해요."
                 }
             ],
             "ctaPrimary": "내 영상 열기"
         },
         "pl": {
             "title": "Dodaj nakładkę z danymi do wideo z rejestratora — prędkość, GPS i mapa | everydashcam",
-            "metaDescription": "Wypal prędkość, współrzędne GPS i ruchomą mapę na wideo z rejestratora — za darmo, w przeglądarce, nic nie wysyłasz. Działa, gdy nagranie ma GPS. 70mai, BlackVue, Viofo i więcej.",
+            "metaDescription": "Wypal prędkość, współrzędne GPS i ruchomą mapę na wideo z rejestratora — za darmo, w przeglądarce, nic nie wysyłasz. Korzysta z GPS-u rejestratora albo dodanego śladu GPX. 70mai, BlackVue, Viofo i więcej.",
             "ogTitle": "Dodaj nakładkę z prędkością, GPS i mapą do wideo",
             "ogDescription": "Wypal prędkość, współrzędne i ruchomą mapę na wyeksportowanym wideo — za darmo, w przeglądarce, nic nie wysyłasz.",
             "h1": "Dodaj nakładkę z prędkością, GPS i mapą do wideo z rejestratora",
@@ -1036,7 +1036,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "Za darmo, w przeglądarce, dla nagrań z rejestratora",
             "brandsBody": "Wypalanie prędkości i mapy na wideo to zwykle robota płatnych programów na komputer, stworzonych dla kamer sportowych. everydashcam robi wersję dla rejestratorów za darmo, w karcie przeglądarki: odczytuje GPS z 70mai, BlackVue, Viofo, Garmin, Vantrue i więcej, i nanosi prędkość, współrzędne oraz ruchomą mapę na eksport — bez instalacji, bez konta, nic nie wysyłasz.",
             "noteHeading": "Warto wiedzieć",
-            "noteBody": "Nakładka potrzebuje GPS-u w nagraniu — jeśli nagranie nie ma trasy GPS, nie ma czego nanieść. Poza prędkością, współrzędnymi i ruchomą mapą może też pokazać godzinę, twój kurs, przejechany dystans i odczyt przeciążeń (G) — wszystko wyliczane z tego samego GPS-u, a nie z osobnego czujnika. Renderowanie ponownie koduje wideo, więc dłuższy zakres zajmie chwilę; najpłynniej jest w Chrome, Edge lub innej przeglądarce Chromium na komputerze.",
+            "noteBody": "Nakładka powstaje z GPS-u: z trasy zapisanej przez rejestrator albo z pliku GPX, który dodasz, jeśli kamera nie ma GPS-u. Poza prędkością, współrzędnymi i ruchomą mapą może też pokazać godzinę, twój kurs, przejechany dystans i odczyt przeciążeń (G) — wszystko wyliczane z tego samego GPS-u, a nie z osobnego czujnika. Renderowanie ponownie koduje wideo, więc dłuższy zakres zajmie chwilę; najpłynniej jest w Chrome, Edge lub innej przeglądarce Chromium na komputerze.",
             "faqHeading": "Najczęstsze pytania",
             "faq": [
                 {
@@ -1048,8 +1048,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "Tak. Obok prędkości możesz nałożyć swoją szerokość i długość geograficzną oraz małą ruchomą mapę, która podąża za trasą. Przeciągnij każdą tam, gdzie chcesz, i ustaw stopień przybliżenia mapy."
                 },
                 {
-                    "q": "Czy potrzebuje GPS-u w nagraniu?",
-                    "a": "Tak. Nakładka powstaje z GPS-u zapisanego przez twój rejestrator. Jeśli nagranie nie ma trasy GPS, nie ma czego nałożyć — wideo i tak się wyeksportuje, tylko bez prędkości, współrzędnych i mapy."
+                    "q": "A jeśli mój rejestrator nie ma GPS-u?",
+                    "a": "Dodaj ślad GPX z tego samego przejazdu, na przykład nagrany aplikacją w telefonie. Plik .gpx możesz dodać razem z nagraniami albo później i wybrać, do którego przejazdu należy. Jeśli czasy się nie zgadzają, przesuń ślad w oknie Synchronizuj GPS. Bez żadnej trasy GPS wideo i tak się wyeksportuje, tylko bez prędkości, współrzędnych i mapy."
                 },
                 {
                     "q": "Czy moje wideo jest wysyłane?",
@@ -1057,14 +1057,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Czy może też pokazać godzinę, kurs albo przeciążenia?",
-                    "a": "Tak. Obok prędkości, współrzędnych i mapy możesz dodać godzinę, kurs z kompasu, przejechany dystans i odczyt przeciążeń (G). Przeciążenia są wyliczane z twojego GPS-u — z tego, jak zmienia się prędkość i kierunek — a nie z osobnego czujnika, więc tak jak reszta potrzebują GPS-u w nagraniu."
+                    "a": "Tak. Obok prędkości, współrzędnych i mapy możesz dodać godzinę, kurs z kompasu, przejechany dystans i odczyt przeciążeń (G). Przeciążenia są wyliczane z twojego GPS-u — z tego, jak zmienia się prędkość i kierunek — a nie z osobnego czujnika, więc tak jak reszta potrzebują trasy GPS."
                 }
             ],
             "ctaPrimary": "Otwórz swoje nagrania"
         },
         "pt": {
             "title": "Adicione uma sobreposição de dados ao vídeo da dashcam — velocidade, GPS e mapa | everydashcam",
-            "metaDescription": "Grave velocidade, coordenadas GPS e um mapa em movimento no vídeo da dashcam — grátis, no navegador, nada vai pra nuvem. Funciona quando sua gravação tem GPS. 70mai, BlackVue, Viofo e mais.",
+            "metaDescription": "Grave velocidade, coordenadas GPS e um mapa em movimento no vídeo da dashcam — grátis, no navegador, nada vai pra nuvem. Usa o GPS da sua dashcam ou um trajeto GPX que você adicionar. 70mai, BlackVue, Viofo e mais.",
             "ogTitle": "Adicione velocidade, GPS e mapa ao vídeo da dashcam",
             "ogDescription": "Grave velocidade, coordenadas e um mapa em movimento no vídeo exportado — grátis, no navegador, nada vai pra nuvem.",
             "h1": "Adicione uma sobreposição de velocidade, GPS e mapa ao vídeo da sua dashcam",
@@ -1102,7 +1102,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "Grátis, no navegador, pra gravações de dashcam",
             "brandsBody": "Gravar velocidade e um mapa no vídeo costuma ser tarefa de programas pagos de desktop feitos pra câmeras de ação. O everydashcam faz a versão pra dashcam de graça, numa aba do navegador: lê o GPS de 70mai, BlackVue, Viofo, Garmin, Vantrue e outras, e desenha velocidade, coordenadas e um mapa em movimento na exportação — sem instalar, sem conta, nada vai pra nuvem.",
             "noteHeading": "Bom saber",
-            "noteBody": "A sobreposição precisa de GPS na sua gravação — se um registro não tem trajeto GPS, não há o que desenhar. Além de velocidade, coordenadas e o mapa em movimento, ela também pode mostrar a hora, sua direção, a distância percorrida e uma leitura de força G — tudo calculado a partir do mesmo GPS, não de um sensor separado. A renderização recodifica o vídeo, então um trecho longo leva um tempinho; Chrome, Edge ou outro navegador Chromium num computador é o mais tranquilo.",
+            "noteBody": "A sobreposição é desenhada a partir do GPS: o trajeto que sua dashcam salvou ou um arquivo GPX que você adicionar, se a câmera não tiver GPS. Além de velocidade, coordenadas e o mapa em movimento, ela também pode mostrar a hora, sua direção, a distância percorrida e uma leitura de força G — tudo calculado a partir do mesmo GPS, não de um sensor separado. A renderização recodifica o vídeo, então um trecho longo leva um tempinho; Chrome, Edge ou outro navegador Chromium num computador é o mais tranquilo.",
             "faqHeading": "Perguntas frequentes",
             "faq": [
                 {
@@ -1114,8 +1114,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "Dá. Junto da velocidade você pode sobrepor sua latitude e longitude e um mapinha em movimento que segue o trajeto. Arraste cada um pra onde quiser e defina o nível de zoom do mapa."
                 },
                 {
-                    "q": "Precisa de GPS na gravação?",
-                    "a": "Precisa. A sobreposição é desenhada a partir do GPS que sua dashcam salvou. Se um clipe não tem trajeto GPS, não há o que sobrepor — o vídeo continua sendo exportado, só que sem velocidade, coordenadas ou o mapa."
+                    "q": "E se minha dashcam não tiver GPS?",
+                    "a": "Adicione um trajeto GPX da mesma viagem, por exemplo gravado por um app no celular. Dá pra adicionar o arquivo .gpx junto com as gravações ou depois e escolher a viagem a que ele pertence. Se os horários não baterem, desloque o trajeto em Sincronizar GPS. Sem nenhum trajeto GPS o vídeo continua sendo exportado, só que sem velocidade, coordenadas ou o mapa."
                 },
                 {
                     "q": "Meu vídeo vai pra nuvem?",
@@ -1123,14 +1123,14 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "Dá pra mostrar a hora, a direção ou a força G também?",
-                    "a": "Dá. Junto da velocidade, das coordenadas e do mapa você pode adicionar a hora, uma direção de bússola, a distância percorrida e uma leitura de força G. A força G é calculada a partir do seu GPS — de como sua velocidade e direção mudam — e não de um sensor separado, então ela precisa de GPS na gravação, como o resto."
+                    "a": "Dá. Junto da velocidade, das coordenadas e do mapa você pode adicionar a hora, uma direção de bússola, a distância percorrida e uma leitura de força G. A força G é calculada a partir do seu GPS — de como sua velocidade e direção mudam — e não de um sensor separado, então ela precisa de um trajeto GPS, como o resto."
                 }
             ],
             "ctaPrimary": "Abrir suas gravações"
         },
         "zh": {
             "title": "给行车记录仪视频叠加数据 — 速度、GPS 和地图 | everydashcam",
-            "metaDescription": "把速度、GPS 坐标和移动地图烧进行车记录仪视频 — 免费，在浏览器里完成，不上传。录像里有 GPS 就能用。支持 70mai、BlackVue、Viofo 等。",
+            "metaDescription": "把速度、GPS 坐标和移动地图烧进行车记录仪视频 — 免费，在浏览器里完成，不上传。可用记录仪的 GPS，也可用你添加的 GPX 轨迹。支持 70mai、BlackVue、Viofo 等。",
             "ogTitle": "给行车记录仪视频叠加速度、GPS 和地图",
             "ogDescription": "把速度、坐标和移动地图烧进导出的视频里 — 免费，在浏览器里完成，不上传。",
             "h1": "给行车记录仪视频叠加速度、GPS 和地图",
@@ -1168,7 +1168,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
             "brandsHeading": "免费，在浏览器里，专为行车记录仪录像",
             "brandsBody": "把速度和地图烧进视频，通常是那些为运动相机做的付费桌面工具的活儿。everydashcam 把行车记录仪这一版做成免费的，就在一个浏览器标签页里：它从 70mai、BlackVue、Viofo、Garmin、Vantrue 等设备里读出 GPS，把速度、坐标和移动地图画到导出的视频上 — 不用安装，不用账号，什么都不上传。",
             "noteHeading": "提前说明",
-            "noteBody": "叠加层需要你录像里有 GPS — 如果某段录像没有 GPS 轨迹，就没什么可画的。除了速度、坐标和移动地图，它还能显示时间、你的方向、行驶里程和 G 值读数 — 这些都从同一份 GPS 算出来，不靠单独的传感器。渲染会重新编码视频，所以区间长一点就得花点时间；在电脑上用 Chrome、Edge 或别的 Chromium 浏览器最顺畅。",
+            "noteBody": "叠加层根据 GPS 绘制：可以是记录仪存下的轨迹，记录仪没有 GPS 时也可以用你添加的 GPX 文件。除了速度、坐标和移动地图，它还能显示时间、你的方向、行驶里程和 G 值读数 — 这些都从同一份 GPS 算出来，不靠单独的传感器。渲染会重新编码视频，所以区间长一点就得花点时间；在电脑上用 Chrome、Edge 或别的 Chromium 浏览器最顺畅。",
             "faqHeading": "常见问题",
             "faq": [
                 {
@@ -1180,8 +1180,8 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                     "a": "能。除了速度，你还能叠加经纬度，以及一张跟着路线走的移动小地图。把每个都拖到你想要的位置，再设地图放大多少。"
                 },
                 {
-                    "q": "录像里一定要有 GPS 吗？",
-                    "a": "是的。叠加层是根据你行车记录仪存下的 GPS 画出来的。如果某段片段没有 GPS 轨迹，就没什么可叠加的 — 视频照样能导出，只是没有速度、坐标和地图。"
+                    "q": "行车记录仪没有 GPS 怎么办？",
+                    "a": "添加同一次行程的 GPX 轨迹，比如用手机应用记录的轨迹。.gpx 文件可以和录像一起添加，也可以之后再加，然后选它属于哪个行程。如果时间对不上，在同步 GPS 里平移轨迹。完全没有 GPS 轨迹时，视频照样能导出，只是没有速度、坐标和地图。"
                 },
                 {
                     "q": "我的视频会被上传吗？",
@@ -1189,7 +1189,7 @@ export const COMMUNITY_FEATURE_CONTENT: Record<FeatureSlug, Partial<Record<Lang,
                 },
                 {
                     "q": "也能显示时间、方向或 G 值吗？",
-                    "a": "能。除了速度、坐标和地图，你还能加上时间、罗盘方向、行驶里程和 G 值读数。G 值是从你的 GPS 算出来的 — 看你的速度和方向怎么变 — 而不是靠单独的传感器，所以和其他读数一样，它也需要录像里有 GPS。"
+                    "a": "能。除了速度、坐标和地图，你还能加上时间、罗盘方向、行驶里程和 G 值读数。G 值是从你的 GPS 算出来的 — 看你的速度和方向怎么变 — 而不是靠单独的传感器，所以和其他读数一样，它也需要 GPS 轨迹。"
                 }
             ],
             "ctaPrimary": "打开你的录像"

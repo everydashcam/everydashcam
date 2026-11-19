@@ -256,7 +256,7 @@ const FEATURE_PAGES: FeaturePage[] = [
             en: {
                 title: "Add a Data Overlay to Dashcam Video — Speed, GPS & Map | everydashcam",
                 metaDescription:
-                    "Burn speed, GPS coordinates and a moving map onto your dashcam video — free, in your browser, nothing uploaded. Works when your footage has GPS. 70mai, BlackVue, Viofo and more.",
+                    "Burn speed, GPS coordinates and a moving map onto your dashcam video — free, in your browser, nothing uploaded. Uses your dashcam's GPS or a GPX track you add. 70mai, BlackVue, Viofo and more.",
                 ogTitle: "Add speed, GPS & map overlay to dashcam video",
                 ogDescription:
                     "Burn speed, coordinates and a moving map onto the exported video — free, in your browser, nothing uploaded.",
@@ -290,7 +290,7 @@ const FEATURE_PAGES: FeaturePage[] = [
                     "Burning speed and a map onto video is usually the job of paid desktop tools built for action cameras. everydashcam does the dashcam version for free, in a browser tab: it reads the GPS from 70mai, BlackVue, Viofo, Garmin, Vantrue and more, and draws speed, coordinates and a moving map onto the export — no install, no account, nothing uploaded.",
                 noteHeading: "Good to know",
                 noteBody:
-                    "The overlay needs GPS in your footage — if a recording has no GPS track, there's nothing to draw. Beyond speed, coordinates and the moving map, it can also show the time, your heading, distance travelled and a G-force read — all worked out from the same GPS, not a separate sensor. Rendering re-encodes the video, so a long range takes a little time; Chrome, Edge or another Chromium browser on a computer is smoothest.",
+                    "The overlay is drawn from GPS: the track your dashcam saved, or a GPX file you add when the camera has none. Beyond speed, coordinates and the moving map, it can also show the time, your heading, distance travelled and a G-force read — all worked out from the same GPS, not a separate sensor. Rendering re-encodes the video, so a long range takes a little time; Chrome, Edge or another Chromium browser on a computer is smoothest.",
                 faqHeading: "FAQ",
                 faq: [
                     {
@@ -302,8 +302,8 @@ const FEATURE_PAGES: FeaturePage[] = [
                         a: "Yes. Alongside speed you can overlay your latitude and longitude and a small moving map that follows the route. Drag each one where you want it and set how much the map zooms.",
                     },
                     {
-                        q: "Does it need GPS in the recording?",
-                        a: "Yes. The overlay is drawn from the GPS your dashcam saved. If a clip has no GPS track, there's nothing to overlay — the video still exports, just without speed, coordinates or the map.",
+                        q: "What if my dashcam has no GPS?",
+                        a: "Add a GPX track from the same drive, such as one recorded by a phone app. You can add the .gpx file with your recordings or later, then choose the trip it belongs to. If the times don't line up, shift the track with Sync GPS. Without any GPS track the video still exports, just without speed, coordinates or the map.",
                     },
                     {
                         q: "Is my video uploaded?",
@@ -311,7 +311,7 @@ const FEATURE_PAGES: FeaturePage[] = [
                     },
                     {
                         q: "Can it also show time, heading or G-force?",
-                        a: "Yes. Alongside speed, coordinates and the map you can add the time, a compass heading, distance travelled and a G-force readout. The G-force is worked out from your GPS — how your speed and direction change — not from a separate sensor, so it needs GPS in the footage like the rest.",
+                        a: "Yes. Alongside speed, coordinates and the map you can add the time, a compass heading, distance travelled and a G-force readout. The G-force is worked out from your GPS — how your speed and direction change — not from a separate sensor, so it needs a GPS track like the rest.",
                     },
                 ],
                 ctaPrimary: "Open your recordings",
@@ -319,7 +319,7 @@ const FEATURE_PAGES: FeaturePage[] = [
             ru: {
                 title: "Наложить данные на видео регистратора — скорость, GPS и карта | everydashcam",
                 metaDescription:
-                    "Наложи скорость, GPS-координаты и движущуюся карту на видео с регистратора — бесплатно, в браузере, ничего не загружается. Работает, если в записи есть GPS. 70mai, BlackVue, Viofo и другие.",
+                    "Наложи скорость, GPS-координаты и движущуюся карту на видео с регистратора — бесплатно, в браузере, ничего не загружается. Берёт GPS из записи регистратора или из добавленного GPX-трека. 70mai, BlackVue, Viofo и другие.",
                 ogTitle: "Наложить скорость, GPS и карту на видео регистратора",
                 ogDescription:
                     "Впиши скорость, координаты и движущуюся карту прямо в экспортируемое видео — бесплатно, в браузере, ничего не загружается.",
@@ -353,7 +353,7 @@ const FEATURE_PAGES: FeaturePage[] = [
                     "Вписать скорость и карту в видео обычно умеют платные десктопные программы для экшен-камер. everydashcam делает версию для регистратора бесплатно, прямо во вкладке браузера: читает GPS из 70mai, BlackVue, Viofo, Garmin, Vantrue и других и рисует скорость, координаты и движущуюся карту на экспорте — без установки, без аккаунта, ничего не загружается.",
                 noteHeading: "Полезно знать",
                 noteBody:
-                    "Оверлею нужен GPS в записи — если у ролика нет GPS-трека, рисовать нечего. Кроме скорости, координат и движущейся карты он умеет показывать время, направление, пройденную дистанцию и перегрузку (G) — всё это считается из того же GPS, а не с отдельного датчика. Рендер перекодирует видео, так что длинный диапазон займёт время; для экспорта удобнее всего использовать Chrome, Edge или другой браузер на Chromium на компьютере.",
+                    "Оверлей рисуется по GPS: из трека, который сохранил регистратор, или из GPX-файла, если у камеры GPS нет. Кроме скорости, координат и движущейся карты он умеет показывать время, направление, пройденную дистанцию и перегрузку (G) — всё это считается из того же GPS, а не с отдельного датчика. Рендер перекодирует видео, так что длинный диапазон займёт время; для экспорта удобнее всего использовать Chrome, Edge или другой браузер на Chromium на компьютере.",
                 faqHeading: "Частые вопросы",
                 faq: [
                     {
@@ -365,8 +365,8 @@ const FEATURE_PAGES: FeaturePage[] = [
                         a: "Да. Кроме скорости можно наложить широту и долготу и маленькую движущуюся карту по маршруту. Перетащи каждый элемент куда нужно и задай масштаб карты.",
                     },
                     {
-                        q: "Нужен ли GPS в записи?",
-                        a: "Да. Оверлей рисуется из GPS, который сохранил регистратор. Если у ролика нет GPS-трека, накладывать нечего — видео всё равно экспортируется, просто без скорости, координат и карты.",
+                        q: "А если у регистратора нет GPS?",
+                        a: "Добавь GPX-трек той же поездки, например записанный приложением на телефоне. Файл .gpx можно добавить вместе с записями или позже, а потом выбрать, к какой поездке он относится. Если время не совпадает, сдвинь трек в синхронизации GPS. Без GPS-трека видео всё равно экспортируется, просто без скорости, координат и карты.",
                     },
                     {
                         q: "Моё видео загружается?",
@@ -374,7 +374,7 @@ const FEATURE_PAGES: FeaturePage[] = [
                     },
                     {
                         q: "А время, направление или перегрузку показать можно?",
-                        a: "Да. Кроме скорости, координат и карты можно добавить время, направление по компасу, пройденную дистанцию и перегрузку (G). Перегрузка считается из GPS — по тому, как меняются скорость и направление, — а не с отдельного датчика, так что ей, как и остальному, нужен GPS в записи.",
+                        a: "Да. Кроме скорости, координат и карты можно добавить время, направление по компасу, пройденную дистанцию и перегрузку (G). Перегрузка считается из GPS — по тому, как меняются скорость и направление, — а не с отдельного датчика, так что ей, как и остальному, нужен GPS-трек.",
                     },
                 ],
                 ctaPrimary: "Открыть свои записи",
