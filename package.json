@@ -69,7 +69,8 @@
     "generate:parser-cache-revisions": "node scripts/parser-cache-revisions.mjs",
     "validate:parser-cache-revisions": "node scripts/parser-cache-revisions.mjs --check",
     "validate:styles": "node scripts/validate-map-styles.mjs",
-    "screenshots:readme": "node scripts/generate-readme-screenshots.mjs"
+    "screenshots:readme": "node scripts/generate-readme-screenshots.mjs",
+    "build:map-theme-previews": "node scripts/build-map-theme-previews.mjs"
   },
   "dependencies": {
     "@sentry/browser": "^11.8.0",

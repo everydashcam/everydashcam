@@ -63,7 +63,8 @@ function createThemeGallery(host: HTMLElement, onChange: (value: MapThemeChoice)
     legend.textContent = t("settings.map.theme.label");
     const grid = document.createElement("div");
     grid.className = "settings-themes__grid";
-    for (const value of MAP_THEME_CHOICES) {
+    grid.style.setProperty("--theme-preview-count", String(MAP_THEME_CHOICES.length));
+    for (const [index, value] of MAP_THEME_CHOICES.entries()) {
         const card = document.createElement("label");
         const input = document.createElement("input");
         input.type = "radio";
@@ -76,6 +77,8 @@ function createThemeGallery(host: HTMLElement, onChange: (value: MapThemeChoice)
         const preview = document.createElement("span");
         preview.className = "settings-themes__preview";
         preview.dataset.theme = value;
+        // The cell order of scripts/build-map-theme-previews.mjs.
+        preview.style.setProperty("--theme-preview-index", String(index));
         const caption = document.createElement("span");
         caption.textContent = t(MAP_THEME_LABEL_KEYS[value]);
         card.append(preview, input, caption);

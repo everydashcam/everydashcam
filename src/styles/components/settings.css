@@ -268,25 +268,15 @@
 .settings-themes:disabled label {
     cursor: default;
 }
+/* One sheet holds a cell per theme choice; map-view-controls.ts sets the cell
+   count on the grid and each preview's index, in MAP_THEME_CHOICES order. */
 .settings-themes__preview {
     grid-column: 1 / -1;
     aspect-ratio: 8 / 5;
-    background: var(--bg) url("../../assets/map-theme-previews.webp") 0% center / 600% 100% no-repeat;
-}
-.settings-themes__preview[data-theme="light"] {
-    background-position-x: 20%;
-}
-.settings-themes__preview[data-theme="dark"] {
-    background-position-x: 40%;
-}
-.settings-themes__preview[data-theme="la-92"] {
-    background-position-x: 60%;
-}
-.settings-themes__preview[data-theme="miami-86"] {
-    background-position-x: 80%;
-}
-.settings-themes__preview[data-theme="tuner-04"] {
-    background-position-x: 100%;
+    background:
+        var(--bg) url("../../assets/map-theme-previews.webp") 0% center / calc(var(--theme-preview-count, 1) * 100%)
+        100% no-repeat;
+    background-position-x: calc(var(--theme-preview-index, 0) * 100% / max(1, var(--theme-preview-count, 1) - 1));
 }
 
 .settings-themes__credits {
