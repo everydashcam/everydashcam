@@ -240,7 +240,13 @@ function syncExportPanel(): void {
         dom.exportPanelActions.inert = exportPanelState.configurationLocked;
     }
     if (dom.exportPanelProgress) dom.exportPanelProgress.hidden = phase !== "progress";
-    if (dom.exportPanelDone) dom.exportPanelDone.hidden = phase !== "done";
+    if (dom.exportPanelDone) {
+        dom.exportPanelDone.hidden = phase !== "done";
+        // Leaving the result drops its summary: the Download button's closure
+        // holds the whole in-memory clip, which would otherwise stay alive
+        // through the next export until that one succeeds.
+        if (phase !== "done") dom.exportPanelDone.querySelector("#export-panel-done-summary")?.replaceChildren();
+    }
     if (dom.exportPanelError) dom.exportPanelError.hidden = phase !== "error";
     // Show/hide the video-vs-gpx switch for the active trip (no GPS -> no switch,
     // forced back to video). Built once, toggled here - same pattern as
