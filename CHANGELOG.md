@@ -7,6 +7,17 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-11-19
+
+- **Improved:** Text follows the browser’s font size setting.
+- **Fixed:** Fixed GPS sync in sped-up exports.
+- **New:** Added new map themes.
+- **New camera support:** Added support for dual-channel Mangoal dashcams.
+
+## 2026-11-18
+
+- **New camera support:** Added support for Vantrue N4.
+
 ## 2026-11-17
 
 - **New camera support:** Added support for Thinkware U3000 PRO.
