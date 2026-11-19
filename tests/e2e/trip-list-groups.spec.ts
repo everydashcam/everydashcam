@@ -155,6 +155,52 @@ test("keeps keyboard focus when a starred trip moves into a folded favorites sec
     await expect(toggle(favorites)).toHaveAttribute("aria-expanded", "true");
 });
 
+test("keeps a control reached with Shift+Tab clear of the stuck headings", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.setViewportSize({ width: DESKTOP.width, height: 600 });
+    await gotoApp(page);
+    // Two months of three days with three drives each: long enough that a
+    // focused card reaches the top of the list under both stuck headings.
+    const names: string[] = [];
+    for (const day of ["20260905", "20260912", "20260919", "20261003", "20261010", "20261017"]) {
+        for (const hour of ["07", "12", "17"]) {
+            names.push(`Normal/Front/NO${day}-${hour}0000-${String(names.length + 1).padStart(6, "0")}F.MP4`);
+        }
+    }
+    await addRecordings(page, names);
+    await expect(page.locator(".trip-month")).toHaveCount(2);
+
+    const sidebar = page.locator("#sidebar");
+    await sidebar.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+    });
+    await page.locator("#trip-list li.trip .trip-chevron").last().focus();
+    let checkedAtTop = 0;
+    for (let step = 0; step < 40; step++) {
+        await page.keyboard.press("Shift+Tab");
+        const placement = await page.evaluate(() => {
+            const focused = document.activeElement;
+            if (!(focused instanceof HTMLElement) || !document.getElementById("trip-list")!.contains(focused)) {
+                return null;
+            }
+            const rect = focused.getBoundingClientRect();
+            const sidebarTop = document.getElementById("sidebar")!.getBoundingClientRect().top;
+            // The top edge of the control, not only its middle, must be on top.
+            const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + 1);
+            return {
+                name: `${focused.className} ${focused.textContent?.trim() ?? ""}`,
+                isOnTop: hit !== null && (hit === focused || focused.contains(hit)),
+                isNearTop: rect.top - sidebarTop < 120,
+            };
+        });
+        if (placement === null) break;
+        expect(placement.isOnTop, placement.name).toBe(true);
+        if (placement.isNearTop) checkedAtTop++;
+    }
+    // Shift+Tab scrolls upward, so controls keep arriving at the top edge.
+    expect(checkedAtTop).toBeGreaterThan(3);
+});
+
 test("switches to compact rows and keeps the choice after a reload", async ({ page }) => {
     await presetLocalStorage(page);
     await page.setViewportSize(DESKTOP);

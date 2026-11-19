@@ -646,18 +646,28 @@
     z-index: 3;
     padding-bottom: var(--dc-space-1);
 }
-/* Jumping to a day lands its header just under the stuck month header, which
-   sits at the very top of the scroll box (see --trip-sticky-top). */
-.trip-day {
-    scroll-margin-top: var(--trip-month-header-h);
-}
 /* A list within one month has no month headings (headingLevels in
    trip-list-layout.ts), so its days take the top. */
-.trip-list > .trip-day {
-    scroll-margin-top: 0;
-}
 .trip-list > .trip-day > .trip-day__header {
     top: var(--trip-sticky-top);
+}
+/* Whatever is scrolled into view inside a section stops below the headers
+   stuck above it, which sit at the very top of the scroll box (see
+   --trip-sticky-top). A day jump lands just under the month heading, and a
+   control reached with Shift+Tab is not left under the stuck headings. The
+   map sheet keeps its headers static, so only the sidebar's own list needs
+   this. */
+.sidebar > .trip-list {
+    --trip-day-header-h: calc(var(--trip-day-toggle-h) + var(--dc-space-1));
+}
+.sidebar > .trip-list > .trip-month > .trip-group__list * {
+    scroll-margin-top: var(--trip-month-header-h);
+}
+.sidebar > .trip-list > .trip-day > .trip-group__list * {
+    scroll-margin-top: var(--trip-day-header-h);
+}
+.sidebar > .trip-list > .trip-month .trip-day > .trip-group__list * {
+    scroll-margin-top: calc(var(--trip-month-header-h) + var(--trip-day-header-h));
 }
 .trip-day.is-jump-target > .trip-group__header {
     animation: trip-jump-flash 1.2s var(--dc-ease);
