@@ -710,10 +710,14 @@ test.describe("player", () => {
             expect(await surface.evaluate((element) => element.getAnimations().length)).toBe(0);
         };
 
+        const insetHeight = await miniMap.evaluate((element) => Number.parseFloat(getComputedStyle(element).height));
         const miniMarkerWidth = await miniMap
             .locator(".car-marker__canvas")
             .evaluate((element) => Number.parseFloat(getComputedStyle(element).width));
-        expect(miniMarkerWidth, "the default marker stays proportional to the mini-map").toBeCloseTo(26.4, 1);
+        expect(miniMarkerWidth, "the default marker stays proportional to the mini-map").toBeCloseTo(
+            insetHeight * 0.105,
+            1,
+        );
 
         await page.locator("#player-view-menu").click();
         await expect(mode("mini")).toHaveAttribute("aria-checked", "true");
@@ -826,6 +830,10 @@ test.describe("player", () => {
     });
 
     test("map gear popover changes and persists the label-size preference", async ({ page }) => {
+        const miniMarker = page.locator("#mini-map .car-marker");
+        const miniMarkerSize = () =>
+            miniMarker.evaluate((element) => Number.parseFloat(element.style.getPropertyValue("--map-marker-size")));
+        const mediumMiniMarkerSize = await miniMarkerSize();
         // The gear lives on the expanded map's controls column.
         await page.locator(".mini-map").click();
         const toggle = page.locator("#map-settings-toggle");
@@ -925,11 +933,11 @@ test.describe("player", () => {
             "data-marker-render-key",
             "suv:#2f7ee6",
         );
-        expect(
-            await page
-                .locator("#mini-map .car-marker")
-                .evaluate((element) => element.style.getPropertyValue("--map-marker-size")),
-        ).toBe("52px");
+        await expect(page.locator(".map-wrap .car-marker__canvas")).toHaveCSS("width", "52px");
+        expect(await miniMarkerSize(), "the mini-map applies the same size ratio").toBeCloseTo(
+            mediumMiniMarkerSize * (52 / 44),
+            1,
+        );
 
         // Escape closes; reopening reflects the stored preferences.
         await page.keyboard.press("Escape");
