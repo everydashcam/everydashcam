@@ -39,6 +39,9 @@ function formatAbsoluteClock(unixSec: number, withSeconds: boolean, cameraTzSec:
 // 0/50/100% where middle and edge-r visually clash) - without dropping labels
 // that honestly fit on wide viewports.
 const ESTIMATED_LABEL_WIDTH_PX = 92;
+// The font size those widths assume. The ruler's text follows the browser's
+// text size setting, so the estimates scale with the size actually rendered.
+const ESTIMATE_FONT_SIZE_PX = 10;
 
 export function renderRangeRuler(
     host: HTMLElement,
@@ -62,7 +65,10 @@ export function renderRangeRuler(
     // maximum possible number of labels without overlap. On a mobile chart
     // ~340 px = ~3 labels (instead of the default 7), labels do not merge.
     const hostWidth = host.clientWidth;
-    const intervalSec = pickRulerInterval(visDur, hostWidth * contentFrac);
+    const fontScale = Number.parseFloat(getComputedStyle(host).fontSize) / ESTIMATE_FONT_SIZE_PX || 1;
+    const labelWidthPx = ESTIMATED_LABEL_WIDTH_PX * fontScale;
+    // Larger text fits fewer labels: measure the row in default-size labels.
+    const intervalSec = pickRulerInterval(visDur, (hostWidth * contentFrac) / fontScale);
     const withSeconds = intervalSec < 60;
     // Aligned to the trip's wall-clock START: on the first content segment the
     // absolute labels land on round times (17:30:00, 17:30:05, ...). Relative
@@ -95,12 +101,12 @@ export function renderRangeRuler(
     if (hostWidth > 0 && ticks.length >= 2) {
         const last = ticks[ticks.length - 1];
         if (last?.edgeR) {
-            const edgeAnchorLeftPx = hostWidth * (1 - rightFrac) - ESTIMATED_LABEL_WIDTH_PX;
+            const edgeAnchorLeftPx = hostWidth * (1 - rightFrac) - labelWidthPx;
             for (let i = ticks.length - 2; i >= 0; i--) {
                 const prev = ticks[i];
                 if (prev === undefined) break;
                 const prevLeftPx = (prev.xPct / 100) * hostWidth;
-                const prevRightPx = prevLeftPx + ESTIMATED_LABEL_WIDTH_PX;
+                const prevRightPx = prevLeftPx + labelWidthPx;
                 if (prevRightPx > edgeAnchorLeftPx) ticks.splice(i, 1);
                 else break;
             }

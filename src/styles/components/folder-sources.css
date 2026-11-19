@@ -63,7 +63,7 @@
     z-index: var(--dc-z-popover);
     top: calc(var(--notes-control-size) + var(--dc-space-1));
     left: 0;
-    width: min(19rem, 100%);
+    width: min(16.625rem, 100%);
     padding: var(--dc-space-3);
     border: 1px solid var(--border);
     border-radius: var(--dc-radius-md);
@@ -236,7 +236,7 @@
     top: calc(100% + 2px);
     right: 0;
     min-width: 0;
-    width: min(12rem, 100%);
+    width: min(10.5rem, 100%);
 }
 
 @container sidebar (max-width: 240px) {

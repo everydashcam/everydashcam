@@ -75,15 +75,16 @@
     border-color: var(--accent);
     color: var(--accent-ink);
 }
+/* A 15px pill at the default 9px text, in em so it grows with the text. */
 .trip-filter-toggle__count {
-    min-width: 15px;
+    min-width: calc(15em / 9);
     padding: 0 4px;
     border-radius: var(--dc-radius-pill);
     background: var(--accent);
     color: var(--accent-contrast);
     font-size: var(--dc-text-3xs);
     font-weight: 700;
-    line-height: 15px;
+    line-height: calc(15em / 9);
     font-variant-numeric: tabular-nums;
 }
 .trip-filter-tray {
@@ -794,6 +795,7 @@
     background: var(--fg-dim);
     color: var(--bg-elev);
     font-family: var(--dc-font-ui);
+    /* px like an icon: the glyph must fit its fixed 13px mark at any text size. */
     font-size: 8.5px;
     font-weight: 800;
     vertical-align: -2px;
@@ -823,8 +825,10 @@
 }
 
 .trip {
-    /* Shared by the hero's min-height and the off-screen height estimate below. */
-    --trip-hero-min-height: 104px;
+    /* Shared by the hero's min-height and the off-screen height estimate below.
+       The corner controls take a fixed 32px; the title and meta lines under
+       them grow with the text size. */
+    --trip-hero-min-height: calc(32px + 4.5rem);
     background: var(--bg-elev-2);
     border: 1px solid var(--border);
     border-radius: var(--dc-radius-md);
@@ -1757,8 +1761,9 @@ body.export-mode .sidebar-toggle,
 .trip-header {
     min-height: var(--trip-hero-min-height);
 }
+/* Just above the two meta lines (line-height 1.4 below), at any text size. */
 .trip-title {
-    bottom: 42px;
+    bottom: calc(11px + 2.8 * var(--dc-text-xs));
 }
 .trip-meta .trip-meta-text {
     white-space: pre-line;
@@ -1842,6 +1847,7 @@ body.export-mode .sidebar-toggle,
     background: rgba(0, 0, 0, 0.62);
     color: var(--dc-white);
     font-family: var(--dc-font-mono);
+    /* px: a label on a fixed-size thumbnail, which does not grow with text. */
     font-size: 9.5px;
     font-weight: 600;
     line-height: 13px;
@@ -2047,6 +2053,7 @@ body.export-mode .sidebar-toggle,
     background: rgba(0, 0, 0, 0.62);
     color: var(--dc-white);
     font-family: var(--dc-font-mono);
+    /* px: a label on a fixed-size thumbnail, which does not grow with text. */
     font-size: 9.5px;
     font-weight: 600;
     line-height: 13px;

@@ -448,9 +448,11 @@ fieldset.export-panel__group {
     gap: var(--dc-space-1);
 }
 
+/* Chips share a row equally from a 44px basis. A label that needs more room at
+   a larger text size wraps the chip to the next row rather than its text. */
 .export-panel__seg-btn {
-    flex: 1 1 0;
-    min-width: 44px;
+    flex: 1 1 44px;
+    white-space: nowrap;
     padding: var(--dc-space-1) var(--dc-space-2);
     border: 1px solid var(--border);
     border-radius: var(--dc-radius-sm);

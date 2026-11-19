@@ -193,6 +193,7 @@
     background: var(--dc-track-corridor);
     box-shadow: 0 0 0 1.5px var(--dc-track-halo);
     color: var(--dc-track-outline);
+    /* px: the count must fit the dot, a map mark of fixed size. */
     font: 700 10.5px / 1 var(--dc-font-body);
     font-variant-numeric: tabular-nums;
     cursor: pointer;

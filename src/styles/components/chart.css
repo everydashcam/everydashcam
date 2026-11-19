@@ -161,7 +161,9 @@
 .range-ruler {
     position: relative;
     box-sizing: border-box;
-    height: 14px;
+    /* 14px at the default text size; grows with it (range-ruler.ts spaces the
+       labels by the same font size). */
+    height: 1.4em;
     font-family: var(--dc-font-mono);
     font-size: var(--dc-text-2xs);
     color: var(--fg-mute);
@@ -171,7 +173,7 @@
 .range-ruler-label {
     position: absolute;
     top: 0;
-    line-height: 14px;
+    line-height: 1.4;
     white-space: nowrap;
     padding-left: var(--dc-space-1);
 }
@@ -307,7 +309,7 @@
     font-family: var(--dc-font-mono);
     font-size: var(--dc-text-2xs);
     font-variant-numeric: tabular-nums;
-    line-height: 14px;
+    line-height: 1.4;
     color: var(--fg-mute);
     white-space: nowrap;
     pointer-events: none;

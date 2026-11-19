@@ -91,7 +91,7 @@ body.no-trips .viewer {
 .landing-hero-h1 {
     font-family: var(--dc-font-body);
     font-weight: 700;
-    font-size: clamp(30px, 3.25vw, 46px);
+    font-size: clamp(1.875rem, 3.25vw, 2.875rem);
     line-height: 1.15;
     letter-spacing: var(--dc-tracking-tight);
     overflow-wrap: break-word;
@@ -112,7 +112,7 @@ body.no-trips .viewer {
 .landing-hero-kicker {
     font-family: var(--dc-font-body);
     font-weight: 400;
-    font-size: clamp(16px, 1.5vw, 19px);
+    font-size: clamp(1rem, 1.5vw, 1.1875rem);
     line-height: 1.5;
     letter-spacing: var(--dc-tracking-normal);
     color: var(--fg);
@@ -521,7 +521,7 @@ body.no-trips .viewer {
 .landing-safety h2 {
     font-family: var(--dc-font-body);
     font-weight: 700;
-    font-size: clamp(24px, 2.5vw, 36px);
+    font-size: clamp(1.5rem, 2.5vw, 2.25rem);
     letter-spacing: var(--dc-tracking-tight);
     line-height: 1.18;
     color: var(--dc-white);

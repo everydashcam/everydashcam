@@ -48,7 +48,6 @@ body {
     background: var(--bg);
     color: var(--fg);
     font-family: var(--dc-font-body);
-    font-size: var(--dc-text-base);
     line-height: var(--dc-leading-normal);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -57,8 +56,10 @@ body {
        (they unload the video on an accidental swipe-down in Chrome Android). */
     overscroll-behavior: none;
 }
-
 body {
+    /* Only body: the root keeps the browser's font size, which every rem in
+       the type scale (tokens.css) is measured from. */
+    font-size: var(--dc-text-base);
     display: flex;
     flex-direction: column;
     height: 100vh;

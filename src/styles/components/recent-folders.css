@@ -77,7 +77,7 @@
     font-size: var(--dc-text-sm);
     padding: 4px var(--dc-space-3);
     cursor: pointer;
-    max-width: 16rem;
+    max-width: 14rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
