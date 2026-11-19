@@ -4,17 +4,41 @@ import type { IngestOrigin } from "./state.js";
 
 let nextSourceId = 1;
 let sourceKeyByHandle = new WeakMap<FileSystemDirectoryHandle, string>();
+// Every handle that scopes files in this session, oldest first. Scopes key by
+// handle object, so a repeated pick must resolve to the object that scoped the
+// folder first (scopedDirectoryHandle).
+let scopedHandles: FileSystemDirectoryHandle[] = [];
 
 function sourceKeyFor(origin: IngestOrigin | null): string {
-    if (origin?.folderId) return `folder:${origin.folderId}`;
-    if (origin) {
-        const existing = sourceKeyByHandle.get(origin.handle);
-        if (existing) return existing;
-        const key = `handle:${nextSourceId++}`;
+    if (!origin) return `drop:${nextSourceId++}`;
+    const existing = sourceKeyByHandle.get(origin.handle);
+    const key = origin.folderId ? `folder:${origin.folderId}` : (existing ?? `handle:${nextSourceId++}`);
+    if (existing === undefined) {
         sourceKeyByHandle.set(origin.handle, key);
-        return key;
+        scopedHandles.push(origin.handle);
     }
-    return `drop:${nextSourceId++}`;
+    return key;
+}
+
+/**
+ * Returns the handle that already scopes this session's files from the same
+ * folder as `picked`, or `picked` itself for a folder not opened before. The
+ * directory picker returns a new object for every pick, so without this a
+ * second pick of a folder that has gained recordings would place them under
+ * another camera and split a continuous trip. Call before ingest keys the
+ * batch by its origin. A handle that cannot be compared (unplugged media)
+ * counts as another folder.
+ */
+export async function scopedDirectoryHandle(picked: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle> {
+    if (sourceKeyByHandle.has(picked)) return picked;
+    for (const known of scopedHandles) {
+        try {
+            if (await picked.isSameEntry(known)) return known;
+        } catch {
+            // Without a comparison there is no proof this is the same folder.
+        }
+    }
+    return picked;
 }
 
 /** An ad-hoc drop has no handle, so the browser gives it no physical identity. */
@@ -46,7 +70,8 @@ export function scopeIngestFiles(files: VendorFile[], origin: IngestOrigin | nul
  * second pick of the same card would stay another camera: a front clip
  * picked first and its rear picked later with it would form two trips. A
  * copy proves one card only when every match of the root points to the same
- * loaded drop; remembered folders and picked handles keep their own identity.
+ * loaded drop. Remembered folders and picked handles keep their own identity:
+ * a repeated pick already resolved its folder through scopedDirectoryHandle.
  * Call before anything keys files by source; returns the input unchanged
  * when nothing moves.
  */
@@ -93,4 +118,5 @@ export function adoptDuplicatedDropSources(dedup: DedupResult): DedupResult {
 export function _resetForTests(): void {
     nextSourceId = 1;
     sourceKeyByHandle = new WeakMap();
+    scopedHandles = [];
 }

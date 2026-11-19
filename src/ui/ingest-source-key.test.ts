@@ -6,7 +6,12 @@ import type { VendorFile } from "../parsers/types.js";
 import { groupTrips, tripChannels } from "../trips.js";
 import { buildProvisionalCandidate } from "./ingest-candidate.js";
 import type { IngestOrigin } from "./state.js";
-import { _resetForTests, adoptDuplicatedDropSources, scopeIngestFiles } from "./ingest-source-key.js";
+import {
+    _resetForTests,
+    adoptDuplicatedDropSources,
+    scopeIngestFiles,
+    scopedDirectoryHandle,
+} from "./ingest-source-key.js";
 
 function files(): VendorFile[] {
     return [{ file: new File(["x"], "clip.mp4"), relativePath: "CARD/clip.mp4" }];
@@ -35,6 +40,58 @@ describe("scopeIngestFiles", () => {
     it("does not rescope a queued batch", () => {
         const scoped = scopeIngestFiles(files(), null);
         expect(scopeIngestFiles(scoped, null)).toBe(scoped);
+    });
+});
+
+describe("scopedDirectoryHandle", () => {
+    beforeEach(_resetForTests);
+
+    // The picker returns a new object for every pick of a folder; isSameEntry
+    // compares the folder behind it.
+    function pickedHandle(folder: string, comparable = true): FileSystemDirectoryHandle {
+        const handle = {
+            name: folder,
+            folder,
+            isSameEntry: async (other: { folder?: string }) => {
+                if (!comparable) throw new DOMException("entry is gone", "NotFoundError");
+                return other.folder === folder;
+            },
+        };
+        return handle as unknown as FileSystemDirectoryHandle;
+    }
+
+    function scopeOf(handle: FileSystemDirectoryHandle, folderId = ""): string | undefined {
+        return scopeIngestFiles(files(), { handle, folderId })[0]!.sourceKey;
+    }
+
+    it("resolves a repeated pick of a folder to the scope of its first pick", async () => {
+        const first = pickedHandle("CARD");
+        const firstScope = scopeOf(first);
+
+        const again = await scopedDirectoryHandle(pickedHandle("CARD"));
+
+        expect(again).toBe(first);
+        expect(scopeOf(again)).toBe(firstScope);
+    });
+
+    it("resolves a pick of a folder opened as remembered to the folder scope", async () => {
+        scopeOf(pickedHandle("CARD"), "remembered");
+        const again = await scopedDirectoryHandle(pickedHandle("CARD"));
+        expect(scopeOf(again)).toBe("folder:remembered");
+    });
+
+    it("keeps another folder in its own scope", async () => {
+        const firstScope = scopeOf(pickedHandle("CARD"));
+        const other = pickedHandle("BACKUP");
+
+        expect(await scopedDirectoryHandle(other)).toBe(other);
+        expect(scopeOf(other)).not.toBe(firstScope);
+    });
+
+    it("treats a folder that cannot be compared as another folder", async () => {
+        scopeOf(pickedHandle("CARD"));
+        const unplugged = pickedHandle("CARD", false);
+        expect(await scopedDirectoryHandle(unplugged)).toBe(unplugged);
     });
 });
 

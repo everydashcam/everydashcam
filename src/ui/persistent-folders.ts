@@ -45,6 +45,7 @@ import {
     setRememberedAvailability,
 } from "./folder-sources.js";
 import { beginPreIngestReading, endPreIngestReading } from "./ingest-overlay.js";
+import { scopedDirectoryHandle } from "./ingest-source-key.js";
 import { ingestFiles } from "./ingest.js";
 import { notify } from "./notifications.js";
 import { X_ICON_PATHS, buildLucideIcon } from "./icons.js";
@@ -119,6 +120,9 @@ export async function openViaDirectoryPicker(): Promise<void> {
             dom.folderInput.click();
             return;
         }
+        // A folder picked again in this session keeps the source its earlier
+        // recordings were scoped to.
+        handle = await scopedDirectoryHandle(handle);
         const enumerated = await openFolderHandle(handle, null);
         if (enumerated) await adoptIfAlreadyRemembered(handle);
     } finally {
