@@ -26,6 +26,10 @@ Configuration belongs in GitHub Actions. The workflow `env:` blocks and
   both artifacts before a coordinated cutover; see
   [deployment profiles](seo.md#regional-deployment-profiles). Actual mirror
   configuration stays in private deployment settings.
+- Object Storage ignores `_redirects`. A mirror build also writes the legacy
+  page redirects as complete bucket website settings in
+  `_object-storage-website.json` ([redirects.ts](../vite-plugins/redirects.ts));
+  the mirror operator applies them whenever that file changes.
 
 ## Deployment pipeline
 
