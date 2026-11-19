@@ -75,6 +75,7 @@ import {
 import {
     buildProvisionalCandidate,
     checkCanPlay,
+    discardIndexedMetadata,
     filenameClassifierFields,
     applyIndexedMetadata,
     vendorFileKey,
@@ -1184,7 +1185,7 @@ async function readRecordingData(
         // terminal state that can never be selected again.
         if (signal.aborted || session.metadataReadFailed) {
             for (const candidate of pending) {
-                if (candidate.metadataFailed !== true) candidate.metadataReady = false;
+                if (candidate.metadataFailed !== true) discardIndexedMetadata(candidate);
             }
             publishRecordingAnalysisProgress(session.run, pending);
         }

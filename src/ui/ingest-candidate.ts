@@ -191,19 +191,30 @@ export function buildProvisionalCandidate(params: ProvisionalCandidateParams): V
     };
 }
 
+// A repaired view keeps the source's name, size and mtime, so it shares the
+// source's cache identity. Indexing that view again finds nothing to repair,
+// and the result would be cached for the original bytes without the repair
+// they still need. Keep the source so a discarded read can index it again.
+const sourceFileByCandidate = new WeakMap<VideoCandidate, File>();
+
 /**
  * Fills a provisional candidate's byte-derived fields from a fresh index result,
  * in place (the same object is referenced by the trip's frames, so mutation is
  * what makes the rendered card update). Applies any container repair via
- * applyIndexRepair and marks the metadata ready. Returns which repairs fired so the
- * caller can count them for the post-ingest toast.
+ * applyIndexRepair to the source bytes and marks the metadata ready. Returns
+ * which repairs fired so the caller can count them for the post-ingest toast.
  */
 export function applyIndexedMetadata(
     candidate: VideoCandidate,
     indexed: IndexedMp4,
     repair: IndexerRepair | undefined,
 ): Pick<RepairApplication, "phantomRepaired" | "hvccRepaired" | "hvccProfileRestored"> {
-    const applied = applyIndexRepair(candidate.file, indexed.needsHevcRemux, repair);
+    let sourceFile = sourceFileByCandidate.get(candidate);
+    if (!sourceFile) {
+        sourceFile = candidate.file;
+        sourceFileByCandidate.set(candidate, sourceFile);
+    }
+    const applied = applyIndexRepair(sourceFile, indexed.needsHevcRemux, repair);
     candidate.file = applied.file;
     candidate.durationSec = candidate.logDurationSec ?? indexed.durationSec;
     candidate.createdUtc = containerClockUtc(candidate, indexed.createdUtc);
@@ -232,6 +243,18 @@ export function applyIndexedMetadata(
         hvccRepaired: applied.hvccRepaired,
         hvccProfileRestored: applied.hvccProfileRestored,
     };
+}
+
+/**
+ * Returns a candidate whose read was abandoned to the unread state, with its
+ * source file in place of any repaired view, so the next read indexes and
+ * caches the original bytes. Byte-derived fields stay until that read
+ * replaces them.
+ */
+export function discardIndexedMetadata(candidate: VideoCandidate): void {
+    candidate.metadataReady = false;
+    const sourceFile = sourceFileByCandidate.get(candidate);
+    if (sourceFile) candidate.file = sourceFile;
 }
 
 // Decoder support for a codec string cannot change within a session, and the

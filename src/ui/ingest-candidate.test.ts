@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { IndexedMp4, IndexerRepair } from "../workers/indexer-protocol.js";
-import { applyIndexedMetadata, buildProvisionalCandidate, checkCanPlay } from "./ingest-candidate.js";
+import {
+    applyIndexedMetadata,
+    buildProvisionalCandidate,
+    checkCanPlay,
+    discardIndexedMetadata,
+} from "./ingest-candidate.js";
 
 describe("checkCanPlay", () => {
     it("keeps HEVC playable when the native path can outlive a WebCodecs rejection", async () => {
@@ -92,5 +97,25 @@ describe("applyIndexedMetadata", () => {
             hvccProfileRestored: expected.hvccProfileRestored,
         });
         expect(candidate.file.size, "patched file keeps its size").toBe(16);
+    });
+
+    it("returns a discarded repaired read to its source file", () => {
+        const candidate = rawStreamCandidate();
+        const sourceFile = candidate.file;
+        const repair: IndexerRepair = {
+            patchedMoov: new Uint8Array([1, 2, 3, 4]),
+            moovFileStart: 4,
+            moovFileEnd: 8,
+            phantomNeutralized: ["soun"],
+            hvcc: null,
+        };
+        applyIndexedMetadata(candidate, indexed, repair);
+        applyIndexedMetadata(candidate, indexed, repair);
+        expect(candidate.file, "a repair swaps in a patched view").not.toBe(sourceFile);
+
+        discardIndexedMetadata(candidate);
+
+        expect(candidate.file, "the next read indexes the unrepaired bytes").toBe(sourceFile);
+        expect(candidate.metadataReady).toBe(false);
     });
 });
