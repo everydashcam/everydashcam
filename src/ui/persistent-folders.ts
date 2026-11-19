@@ -44,7 +44,7 @@ import {
     registerRememberedFolderOpener,
     setRememberedAvailability,
 } from "./folder-sources.js";
-import { beginPreIngestReading, endPreIngestReading } from "./ingest-overlay.js";
+import { beginPreIngestReading, endPreIngestReading, preIngestCancelSignal } from "./ingest-overlay.js";
 import { scopedDirectoryHandle } from "./ingest-source-key.js";
 import { ingestFiles } from "./ingest.js";
 import { notify } from "./notifications.js";
@@ -140,15 +140,20 @@ export async function openViaDirectoryPicker(): Promise<void> {
  * The handle travels into ingest as the batch's origin, so the session row
  * can offer to remember the folder (or show that it already is) without this
  * module having to know anything about the sidebar.
+ *
+ * Cancel on the overlay during the walk returns null without ingesting; the
+ * overlay has already released its claims.
  */
 async function openFolderHandle(
     handle: FileSystemDirectoryHandle,
     folder: RememberedFolder | null,
 ): Promise<VendorFile[] | null> {
+    const cancelled = preIngestCancelSignal();
     let files: Awaited<ReturnType<typeof enumerateFolder>>;
     try {
-        files = await enumerateFolder(handle);
+        files = await enumerateFolder(handle, cancelled);
     } catch (err) {
+        if (cancelled.aborted) return null;
         endPreIngestReading();
         if (folder) {
             availabilityById.set(folder.id, "unavailable");
@@ -169,6 +174,7 @@ async function openFolderHandle(
         });
         return null;
     }
+    if (cancelled.aborted) return null;
     if (folder) {
         availabilityById.set(folder.id, "available");
         setRememberedAvailability(folder.id, "available");

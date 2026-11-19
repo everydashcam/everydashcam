@@ -9,7 +9,7 @@ import type { VendorFile } from "../parsers/types.js";
 
 import { dom } from "./dom.js";
 import { collectFilesFromDataTransfer } from "./file-source-entries.js";
-import { beginPreIngestReading, endPreIngestReading } from "./ingest-overlay.js";
+import { beginPreIngestReading, endPreIngestReading, preIngestCancelSignal } from "./ingest-overlay.js";
 import { ingestFiles } from "./ingest.js";
 import { toVendorFiles } from "./ingest-core.js";
 import { showIosFolderWarning } from "./ios-folder-warning-modal.js";
@@ -241,13 +241,17 @@ export function initFileSources(): void {
         // No-op when an ingest is already running (the second drop queues and
         // that overlay stays - see beginPreIngestReading).
         beginPreIngestReading();
+        // Cancel on the overlay already hid it and released every claim, so a
+        // cancelled walk returns without touching the overlay.
+        const cancelled = preIngestCancelSignal();
 
         let files: VendorFile[];
         let readErrors: number;
         let structure: IngestStructureEntry[];
         try {
-            ({ files, readErrors, structure } = await collectFilesFromDataTransfer(e.dataTransfer));
+            ({ files, readErrors, structure } = await collectFilesFromDataTransfer(e.dataTransfer, cancelled));
         } catch (err) {
+            if (cancelled.aborted) return;
             // Defensive net: walkEntry swallows per-entry errors, so this only
             // fires on an unexpected failure of the whole traversal. Without it
             // a rejected promise would silently drop the gesture.
@@ -256,6 +260,7 @@ export function initFileSources(): void {
             notify({ severity: "error", messageKey: "status.dropReadFailed" });
             return;
         }
+        if (cancelled.aborted) return;
 
         if (files.length === 0) {
             // Release the traversal overlay before passing diagnostic names

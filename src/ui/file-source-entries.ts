@@ -7,6 +7,7 @@ import {
     type ExcludedTraversalBudget,
     takeExcludedStructureEntry,
 } from "../excluded-traversal-budget.js";
+import { throwIfCancelled } from "../abort-signals.js";
 import { isIgnoredPath } from "../ingest-filter.js";
 import type { IngestStructureEntry } from "../ingest-structure.js";
 import { createLogger } from "../log.js";
@@ -21,8 +22,12 @@ interface CollectResult {
     readErrors: number;
 }
 
-/** Collects dropped files and observed directory names, marking bounded exclusions. */
-export async function collectFilesFromDataTransfer(dt: DataTransfer | null): Promise<CollectResult> {
+/** Collects dropped files and observed directory names, marking bounded
+ * exclusions. Aborting `signal` stops the walk with an AbortError. */
+export async function collectFilesFromDataTransfer(
+    dt: DataTransfer | null,
+    signal?: AbortSignal,
+): Promise<CollectResult> {
     if (!dt) return { files: [], structure: [], readErrors: 0 };
     const entries: FileSystemEntry[] = [];
     if (dt.items && dt.items.length > 0 && typeof dt.items[0]!.webkitGetAsEntry === "function") {
@@ -36,7 +41,7 @@ export async function collectFilesFromDataTransfer(dt: DataTransfer | null): Pro
     }
     const result: CollectResult = { files: [], structure: [], readErrors: 0 };
     const budget = createExcludedTraversalBudget();
-    for (const entry of entries) await walkEntry(entry, result, budget);
+    for (const entry of entries) await walkEntry(entry, result, budget, signal);
     return result;
 }
 
@@ -46,9 +51,11 @@ async function walkEntry(
     entry: FileSystemEntry,
     result: CollectResult,
     budget: ExcludedTraversalBudget,
+    signal: AbortSignal | undefined,
     parent?: IngestStructureEntry,
     parentExcludedDepth = 0,
 ): Promise<void> {
+    throwIfCancelled(signal);
     const relativePath = (entry.fullPath.startsWith("/") ? entry.fullPath.slice(1) : entry.fullPath) || entry.name;
     const isIgnored = isIgnoredPath(relativePath);
     if (parent && isIgnored && !takeExcludedStructureEntry(budget)) {
@@ -90,13 +97,15 @@ async function walkEntry(
                 );
                 if (batch.length === 0) break;
                 for (const child of batch) {
-                    await walkEntry(child, result, budget, item, excludedDepth);
+                    await walkEntry(child, result, budget, signal, item, excludedDepth);
                     // Outside an excluded subtree the remaining batch can
                     // contain real recordings, so only stop excluded readers.
                     if (isIgnored && item.truncated === "entry limit") return;
                 }
             }
         } catch (err) {
+            // A cancelled walk is not an unreadable directory.
+            if (signal?.aborted) throw err;
             item.unreadable = true;
             if (isIgnored) return;
             result.readErrors++;

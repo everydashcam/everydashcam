@@ -2,6 +2,7 @@
 // permission checks, dedupe via isSameEntry, recursive enumeration into
 // VendorFile[]. UI-free - ui/persistent-folders.ts owns the UX on top.
 
+import { throwIfCancelled } from "../abort-signals.js";
 import {
     createExcludedTraversalBudget,
     excludedDirectoryLimit,
@@ -188,9 +189,13 @@ export interface FolderEnumeration {
  * read (folder moved/unplugged/permission revoked - caller decides the UX);
  * per-child failures remain in the structure and eligible failures are counted.
  * Excluded names have a diagnostic traversal budget; marked partial listings
- * never prevent eligible siblings from loading.
+ * never prevent eligible siblings from loading. Aborting `signal` stops the
+ * walk with an AbortError.
  */
-export async function enumerateFolder(handle: FileSystemDirectoryHandle): Promise<FolderEnumeration> {
+export async function enumerateFolder(
+    handle: FileSystemDirectoryHandle,
+    signal?: AbortSignal,
+): Promise<FolderEnumeration> {
     const out: VendorFile[] = [];
     const root: IngestStructureEntry = { relativePath: handle.name, kind: "directory" };
     const structure: IngestStructureEntry[] = [root];
@@ -203,6 +208,7 @@ export async function enumerateFolder(handle: FileSystemDirectoryHandle): Promis
         errors,
         createExcludedTraversalBudget(),
         isIgnoredPath(handle.name) ? 1 : 0,
+        signal,
     );
     return { files: out, structure, readErrors: errors.count };
 }
@@ -218,6 +224,7 @@ async function walkDirectory(
     errors: { count: number },
     budget: ExcludedTraversalBudget,
     excludedDepth: number,
+    signal: AbortSignal | undefined,
 ): Promise<void> {
     const limit = excludedDirectoryLimit(budget, excludedDepth);
     if (limit) {
@@ -225,6 +232,7 @@ async function walkDirectory(
         return;
     }
     for await (const child of dir.values()) {
+        throwIfCancelled(signal);
         const relativePath = `${parent.relativePath}/${child.name}`;
         const isIgnored = isIgnoredPath(relativePath);
         if (isIgnored && !takeExcludedStructureEntry(budget)) {
@@ -255,8 +263,19 @@ async function walkDirectory(
             }
         } else {
             try {
-                await walkDirectory(child, entry, out, structure, errors, budget, isIgnored ? excludedDepth + 1 : 0);
+                await walkDirectory(
+                    child,
+                    entry,
+                    out,
+                    structure,
+                    errors,
+                    budget,
+                    isIgnored ? excludedDepth + 1 : 0,
+                    signal,
+                );
             } catch (err) {
+                // A cancelled walk is not an unreadable directory.
+                if (signal?.aborted) throw err;
                 entry.unreadable = true;
                 // OS metadata folders often deny enumeration. Preserve that
                 // fact in the report without warning about a healthy card.

@@ -21,6 +21,18 @@ import { state } from "./state.js";
 // (showIngestOverlay).
 let preIngestOwners = 0;
 
+// Cancel in the reading phase aborts this signal. A gesture that walks a
+// folder in JS takes it once the user has chosen the folder, then stops before
+// ingest. The signal is replaced after each cancel: the overlay cannot close a
+// native picker that is still open, so a folder chosen after the cancel is a
+// new decision and starts with a fresh signal.
+let preIngestCancellation = new AbortController();
+
+/** Signal for the reading phase that is current when the folder walk starts. */
+export function preIngestCancelSignal(): AbortSignal {
+    return preIngestCancellation.signal;
+}
+
 function openOverlay(): void {
     dom.ingestOverlay.hidden = false;
     dom.ingestOverlayCancel.disabled = false;
@@ -39,9 +51,15 @@ function openOverlay(): void {
 function cancelIngest(): void {
     if (dom.ingestOverlayCancel.disabled) return;
     if (!state.ingestController) {
-        // Dismissing this wait cannot close a native picker. A later file
-        // selection starts ingest normally and reopens the overlay.
-        endPreIngestReading();
+        // Stop every folder walk behind this overlay. Their gestures return
+        // without touching the overlay, so release all claims here. Dismissing
+        // this wait cannot close a native picker; a later file selection starts
+        // ingest normally and reopens the overlay.
+        preIngestCancellation.abort();
+        preIngestCancellation = new AbortController();
+        preIngestOwners = 0;
+        hideIngestOverlay();
+        hideIngestProgress();
         return;
     }
     state.ingestController.abort();

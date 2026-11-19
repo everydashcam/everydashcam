@@ -52,6 +52,22 @@ function asHandle(dir: unknown): FileSystemDirectoryHandle {
 }
 
 describe("enumerateFolder", () => {
+    it("stops at the next entry once cancelled", async () => {
+        const controller = new AbortController();
+        const first = fakeFile("a.mp4");
+        first.getFile.mockImplementation(async () => {
+            controller.abort();
+            return new File(["x"], "a.mp4");
+        });
+        const later = fakeFile("b.mp4");
+        const root = fakeDir("SD", [fakeDir("Normal", [first, later])]);
+
+        await expect(enumerateFolder(asHandle(root), controller.signal)).rejects.toMatchObject({
+            name: "AbortError",
+        });
+        expect(later.getFile).not.toHaveBeenCalled();
+    });
+
     it.each([".GPS", ".gps", ".Gps"])("reads 70mai logs from %s while reporting nested junk", async (name) => {
         const gpsLog = fakeFile("GPSData000001.txt");
         const spotlight = fakeUnreadableDir(".Spotlight-V100");

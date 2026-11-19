@@ -47,6 +47,22 @@ function transfer(entries: FakeEntry[]): DataTransfer {
 }
 
 describe("collectFilesFromDataTransfer", () => {
+    it("stops at the next entry once cancelled", async () => {
+        const controller = new AbortController();
+        const first = fakeFile("/SD/Normal/a.mp4");
+        first.file.mockImplementation((success: FileCallback) => {
+            controller.abort();
+            success(new File(["x"], "a.mp4"));
+        });
+        const later = fakeFile("/SD/Normal/b.mp4");
+        const root = fakeDir("/SD", [[fakeDir("/SD/Normal", [[first, later]])]]);
+
+        await expect(collectFilesFromDataTransfer(transfer([root]), controller.signal)).rejects.toMatchObject({
+            name: "AbortError",
+        });
+        expect(later.file).not.toHaveBeenCalled();
+    });
+
     it("reports excluded descendants and empty directories while retaining GPS logs", async () => {
         const hiddenLog = fakeFile("/SD/.telemetry/trip/track.gps");
         const proxy = fakeFile("/SD/small/20260817190140_0060_S.mp4");
