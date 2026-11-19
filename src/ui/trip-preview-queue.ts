@@ -12,11 +12,15 @@ interface PreviewJob {
 export function createPreviewQueue(capacity: number): {
     run: (file: File, extract: () => Promise<string | null>, signal?: AbortSignal) => Promise<string | null>;
     setPlaybackActive: (active: boolean) => void;
+    /** Admits nothing new until every hold is released; extractions already
+     *  running finish. Returns the idempotent release. */
+    hold: () => () => void;
 } {
     const jobs = new Map<File, PreviewJob>();
     const pending: PreviewJob[] = [];
     let activeCount = 0;
     let playbackActive = false;
+    let holdCount = 0;
 
     const remove = (job: PreviewJob): void => {
         if (jobs.get(job.file) === job) jobs.delete(job.file);
@@ -25,7 +29,8 @@ export function createPreviewQueue(capacity: number): {
     };
 
     const pump = (): void => {
-        while (activeCount < (playbackActive ? 1 : capacity) && pending.length > 0) {
+        const admissionLimit = holdCount > 0 ? 0 : playbackActive ? 1 : capacity;
+        while (activeCount < admissionLimit && pending.length > 0) {
             const job = pending.shift()!;
             job.isStarted = true;
             activeCount++;
@@ -90,6 +95,16 @@ export function createPreviewQueue(capacity: number): {
             // Existing decodes finish; only admission of the next file changes.
             playbackActive = active;
             pump();
+        },
+        hold() {
+            holdCount++;
+            let isReleased = false;
+            return () => {
+                if (isReleased) return;
+                isReleased = true;
+                holdCount--;
+                pump();
+            };
         },
     };
 }

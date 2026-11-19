@@ -125,7 +125,7 @@ import {
     syncSpeedButton,
 } from "./player-speed.js";
 import { initPlayerVolume, syncMuteButton, toggleMuted } from "./player-volume.js";
-import { setPreviewPlaybackActive } from "./trip-preview.js";
+import { holdTripPreviews, setPreviewPlaybackActive } from "./trip-preview.js";
 import { clearOpeningTrip, renderTrips, syncActiveTripHighlight, updateActiveFrameHighlight } from "./sidebar.js";
 import { exportPanelState, resetExportRangeForTrip, subscribeExportState } from "./export-state.js";
 import {
@@ -673,6 +673,10 @@ let playFrameSeq = 0;
 // lifecycle bucket between activations, so a late event would land in the
 // wrong scenario).
 let firstFrameController: AbortController | null = null;
+// Upper bound on holding background previews for an opened trip's first frame.
+// Past any realistic open of a removable card; a source that errors or never
+// decodes releases the hold here rather than on the next trip activation.
+const FIRST_FRAME_PREVIEW_HOLD_MAX_MS = 10_000;
 
 /**
  * Starts playback of a trip frame on the current preferredChannel (with fallback
@@ -985,19 +989,29 @@ export function playFrame(
         const { signal } = firstFrameController;
         const v = activePlayer();
         const detail = { tripIndex: tripIdx };
+        // Background previews wait for the trip's first frame (see
+        // holdTripPreviews). A load that never shows one - a failed source, a
+        // newer trip - must not keep them waiting.
+        const releasePreviews = holdTripPreviews();
+        const releaseTimer = setTimeout(releasePreviews, FIRST_FRAME_PREVIEW_HOLD_MAX_MS);
+        signal.addEventListener(
+            "abort",
+            () => {
+                clearTimeout(releaseTimer);
+                releasePreviews();
+            },
+            { once: true },
+        );
+        const onFirstFrame = (): void => {
+            clearTimeout(releaseTimer);
+            releasePreviews();
+            if (!signal.aborted) emitLifecycle("player-first-frame", detail);
+        };
         if (typeof v.requestVideoFrameCallback === "function") {
-            const handle = v.requestVideoFrameCallback(() => {
-                if (!signal.aborted) emitLifecycle("player-first-frame", detail);
-            });
+            const handle = v.requestVideoFrameCallback(onFirstFrame);
             signal.addEventListener("abort", () => v.cancelVideoFrameCallback?.(handle), { once: true });
         } else {
-            v.addEventListener(
-                "loadeddata",
-                () => {
-                    if (!signal.aborted) emitLifecycle("player-first-frame", detail);
-                },
-                { once: true, signal },
-            );
+            v.addEventListener("loadeddata", onFirstFrame, { once: true, signal });
         }
     }
 }

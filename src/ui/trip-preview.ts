@@ -56,6 +56,17 @@ export function setPreviewPlaybackActive(active: boolean): void {
     previewQueue.setPlaybackActive(active);
 }
 
+/**
+ * Stops starting background previews until the returned release is called.
+ * Opening a trip holds them from the click to its first frame: the open's
+ * metadata and GPS reads and its first video load own the storage, and a
+ * preview read queued ahead of them delays the picture the user waits for.
+ * Extractions already running finish. Holds nest; the release is idempotent.
+ */
+export function holdTripPreviews(): () => void {
+    return previewQueue.hold();
+}
+
 const pool = createTypedWorkerPool<PreviewWorkerContract>({
     name: "preview",
     capacity: previewPoolSize,

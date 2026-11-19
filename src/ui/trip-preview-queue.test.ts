@@ -193,4 +193,30 @@ describe("preview queue", () => {
         await rejection;
         expect(await next).toBe("frame");
     });
+
+    it("admits nothing while held, lets running work finish and resumes after the last release", async () => {
+        const queue = createPreviewQueue(2);
+        const gates = Array.from({ length: 3 }, () => deferred<string | null>());
+        const started: number[] = [];
+        const requests = gates.map((gate, index) =>
+            queue.run(file(`${index}.mp4`), () => {
+                started.push(index);
+                return gate.promise;
+            }),
+        );
+        expect(started, "two slots fill before the hold").toEqual([0, 1]);
+        const releaseOpen = queue.hold();
+        const releaseFirstFrame = queue.hold();
+        gates[0]!.resolve("first");
+        expect(await requests[0], "a running extraction finishes under the hold").toBe("first");
+        expect(started, "a freed slot stays empty while held").toEqual([0, 1]);
+        releaseOpen();
+        releaseOpen();
+        expect(started, "a repeated release does not end another hold").toEqual([0, 1]);
+        releaseFirstFrame();
+        expect(started, "the last release admits queued work").toEqual([0, 1, 2]);
+        gates[1]!.resolve("second");
+        gates[2]!.resolve("third");
+        expect(await Promise.all(requests)).toEqual(["first", "second", "third"]);
+    });
 });

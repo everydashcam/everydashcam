@@ -127,7 +127,7 @@ import { isMapAvailable } from "./ui/map.js";
 import { loadMaplibre, reloadMapStyleForCurrentTheme } from "./ui/viewer-map-registry.js";
 import { forceMapProvider, type MapProvider } from "./ui/map-provider.js";
 import { getSharedMapTileCacheStats, type SharedTileCacheStats } from "./ui/map-tile-cache.js";
-import { prewarmPreview } from "./ui/trip-preview.js";
+import { holdTripPreviews, prewarmPreview } from "./ui/trip-preview.js";
 import { initThemeToggle } from "./ui/theme-toggle.js";
 import { initMobileDrawer } from "./ui/mobile-drawer.js";
 import { registerRegroupAppliedListener } from "./ui/apply-regroup.js";
@@ -728,6 +728,9 @@ async function openTripFrame(tripIdx: number, requestedFrameIdx?: number): Promi
         reportTripOpenFailure(openToken, tripIdx);
         return;
     }
+    // Background previews wait for the open's reads. playFrame holds them
+    // again for its first video load before this hold is released.
+    const releasePreviews = holdTripPreviews();
     try {
         const prepared = await prepareTripOpen(target, tripIdx, openToken);
         if (!prepared) return;
@@ -747,6 +750,8 @@ async function openTripFrame(tripIdx: number, requestedFrameIdx?: number): Promi
         }
     } catch (err) {
         reportTripOpenFailure(openToken, tripIdx, err);
+    } finally {
+        releasePreviews();
     }
 }
 
@@ -757,6 +762,7 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
         reportTripOpenFailure(openToken, tripIdx);
         return;
     }
+    const releasePreviews = holdTripPreviews();
     try {
         const prepared = await prepareTripOpen(target, tripIdx, openToken);
         if (!prepared) return;
@@ -783,6 +789,8 @@ async function openTripEvent(tripIdx: number, eventIndex: number, saveClip = fal
         clearOpeningTrip();
     } catch (err) {
         reportTripOpenFailure(openToken, tripIdx, err);
+    } finally {
+        releasePreviews();
     }
 }
 
@@ -802,6 +810,7 @@ async function openTripAtMoment(
         reportTripOpenFailure(openToken, tripIdx);
         return;
     }
+    const releasePreviews = holdTripPreviews();
     try {
         const prepared = await prepareTripOpen(target, tripIdx, openToken);
         if (!prepared) return;
@@ -824,6 +833,8 @@ async function openTripAtMoment(
         clearOpeningTrip();
     } catch (err) {
         reportTripOpenFailure(openToken, tripIdx, err);
+    } finally {
+        releasePreviews();
     }
 }
 
