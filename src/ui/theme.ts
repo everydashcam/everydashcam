@@ -138,7 +138,6 @@ interface ThemeColors {
     trackCorridor: string; // --dc-track-corridor (routes on the map of all trips)
     chartSpeed: string; // --dc-blue
     chartAccel: string; // --dc-orange
-    chartCursor: string; // --dc-red
     chartGrid: string; // --border (axis-grid + zoom-overlay border)
     chartTickText: string; // --fg-dim
     chartSurface: string; // --bg-elev (the chart panel's background)
@@ -147,9 +146,7 @@ interface ThemeColors {
     markerEnd: string; // --dc-red
     markerStroke: string; // --dc-marker-stroke (#fff on dark / #0E0E0E on light)
     // Driving-dynamics lanes under the chart (--ev-*): their own warm red for
-    // braking, green for acceleration and yellow for turns, cut per theme;
-    // dim fg for stop.
-    inferredStop: string;
+    // braking, green for acceleration and yellow for turns, cut per theme.
     inferredBrake: string;
     inferredTurn: string;
     inferredAccel: string;
@@ -191,7 +188,6 @@ export function themeColors(): ThemeColors {
         trackCorridor: getCssVar("--dc-track-corridor"),
         chartSpeed: getCssVar("--dc-blue"),
         chartAccel: getCssVar("--dc-orange"),
-        chartCursor: getCssVar("--dc-red"),
         chartGrid: border,
         chartTickText: getCssVar("--fg-dim"),
         chartSurface: getCssVar("--bg-elev"),
@@ -202,7 +198,6 @@ export function themeColors(): ThemeColors {
         // Read through the semantic --ev-* aliases so the per-theme overrides
         // flow through automatically. Direct physical tokens would freeze the
         // lanes on the dark palette.
-        inferredStop: getCssVar("--ev-stop"),
         inferredBrake: getCssVar("--ev-brake"),
         inferredTurn: getCssVar("--ev-turn"),
         inferredAccel: getCssVar("--ev-accel"),

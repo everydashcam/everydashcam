@@ -186,7 +186,6 @@
     --ev-accel: var(--dc-leaf);
     --ev-turn: var(--dc-yellow);
     --ev-stop: var(--dc-ash-5); /* dim grey - stop is a state, not a magnitude */
-    --ev-overlap: var(--dc-orange); /* diamond marker on brake+turn coincident */
 
     /* ----- RECORDED EVENTS -----
        Hard brakes the camera itself flagged: markers on the chart and the map

@@ -23,7 +23,6 @@ function renderPortableDownload(html: string, manifest: PortableManifest | null,
             ? anchor.replace(/(\stitle=")([^"]*)(")/, `$1$2 · ${details}$3`)
             : anchor.replace("<a ", `<a title="${details}" `);
         return withTitle
-            .replace(/\s+data-i18n-attr="title:portable.download.description"/, "")
             .replace(/\s+hidden(?:="[^"]*")?/, "")
             .replace(/\s+download(?:="[^"]*")?/, "")
             .replace(

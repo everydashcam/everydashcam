@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { _resetForTests, circlePath, clamp, measureTextWidth, shapePath } from "./canvas-draw.js";
+import { _resetForTests, circlePath, clamp, measureTextWidth } from "./canvas-draw.js";
 
 /** A 2D context stub that records the path verbs it receives. */
 function makeCtx(): { ctx: CanvasRenderingContext2D; verbs: string[] } {
@@ -35,21 +35,6 @@ describe("circlePath", () => {
         const { ctx, verbs } = makeCtx();
         circlePath(ctx, 50, 50, 20);
         expect(verbs).toEqual(["begin", "arc", "close"]);
-    });
-});
-
-describe("shapePath", () => {
-    it("circle uses an arc", () => {
-        const { ctx, verbs } = makeCtx();
-        shapePath(ctx, "circle", 0, 0, 40, 30, 6);
-        expect(verbs).toContain("arc");
-        expect(verbs).not.toContain("arcTo");
-    });
-    it("rect uses rounded-rect arcs (arcTo), not a circle", () => {
-        const { ctx, verbs } = makeCtx();
-        shapePath(ctx, "rect", 0, 0, 40, 30, 6);
-        expect(verbs).toContain("arcTo");
-        expect(verbs).not.toContain("arc");
     });
 });
 

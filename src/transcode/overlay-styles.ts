@@ -18,9 +18,6 @@ import { type FontSpec, loadFontsIntoScope } from "./worker-fonts.js";
 
 const log = createLogger("transcode:overlay-fonts");
 
-/** Brand orange - the default accent, mirrors --dc-orange. */
-export const ACCENT_DEFAULT = "#FF9000";
-
 // Font family fallback chains. Weights are baked into ctx.font per call.
 // The brand display face is not used here: numeric readouts use the monospace
 // face, so no overlay widget needs it (the watermark still loads it on its own).

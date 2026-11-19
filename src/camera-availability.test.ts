@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-    anyCameraRecords,
     cameraAvailabilitySpans,
     frameCameraAvailability,
     firstRecordingChannel,
@@ -247,11 +246,5 @@ describe("cameraAvailabilitySpans", () => {
         expect(spans).toHaveLength(1);
         expect(spans[0]!.startSec).toBeCloseTo(30, 6);
         expect(spans[0]!.endSec).toBeCloseTo(90, 6);
-    });
-
-    it("reports whether any visible camera records in a range", () => {
-        const trip = groupTrips([clip("front", 1000, 60), clip("rear", 1000, 60)])[0]!;
-        expect(anyCameraRecords(trip, ["rear"], 0, 60)).toBe(true);
-        expect(anyCameraRecords(trip, ["interior"], 0, 60)).toBe(false);
     });
 });

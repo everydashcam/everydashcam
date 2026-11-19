@@ -606,26 +606,8 @@
     }
 }
 
-/* Tooltip popover with inferred-event rows. Reuses .track-popup base styles
-   (background/shadow/radius), adds a compact layout with per-event rows. */
-.inferred-strip-tooltip {
-    position: fixed;
-    z-index: 60;
-    min-width: 180px;
-    padding: var(--dc-space-1) var(--dc-space-2);
-    font-family: var(--dc-font-mono);
-    font-size: var(--dc-text-xs);
-    line-height: 1.35;
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: var(--dc-radius-sm);
-    box-shadow: var(--dc-shadow-popup);
-    color: var(--fg);
-    pointer-events: none;
-}
-.inferred-strip-tooltip[hidden] {
-    display: none;
-}
+/* Event-chip rows inside the shared chart scrub tooltip
+   (renderInferredEventChipsHtml in inferred-event-layer.ts). */
 .inferred-strip-tooltip__row {
     display: flex;
     align-items: center;

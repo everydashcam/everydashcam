@@ -68,36 +68,11 @@ export function roundRectPath(ctx: AnyCanvas2D, x: number, y: number, w: number,
     ctx.closePath();
 }
 
-/** Builds a full-circle path centered at (cx, cy) (does not stroke/fill). The
- *  G-force / compass dials and the circular mini-map clip share it. */
+/** Builds a full-circle path centered at (cx, cy) (does not stroke/fill). */
 export function circlePath(ctx: AnyCanvas2D, cx: number, cy: number, radius: number): void {
     ctx.beginPath();
     ctx.arc(cx, cy, Math.max(0, radius), 0, Math.PI * 2);
     ctx.closePath();
-}
-
-/**
- * Builds a clip/border path for one of the mini-map shapes inside the (x,y,w,h)
- * box. Single source of truth so the clip and the border stroke trace the same
- * outline (a drift between them leaves a hairline gap):
- *  - "rect": rounded rectangle, radius = `rectRadius`;
- *  - "circle": the inscribed circle (largest circle that fits the box).
- */
-export function shapePath(
-    ctx: AnyCanvas2D,
-    shape: "rect" | "circle",
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    rectRadius: number,
-): void {
-    if (shape === "circle") {
-        const r = Math.min(w, h) / 2;
-        circlePath(ctx, x + w / 2, y + h / 2, r);
-        return;
-    }
-    roundRectPath(ctx, x, y, w, h, rectRadius);
 }
 
 /**

@@ -529,9 +529,7 @@ export function buildOverlayPipelineArgs(trip: Trip): OverlayPipelineArgs | null
 interface EncodeCeiling {
     /** Config key this entry reflects (dimensions, FPS and desired bitrate). */
     key: string;
-    /** Desired (requested) bitrate before any device-fit reduction. */
-    desiredBitrate: number;
-    /** Accepted bitrate, <= desired. Meaningless when blocked. */
+    /** Accepted bitrate, <= the desired bitrate in `key`. Meaningless when blocked. */
     bitrate: number;
     /** Device can encode but only below the desired bitrate. */
     degraded: boolean;
@@ -581,8 +579,8 @@ function refreshEncodeCeiling(): void {
             // Drop a result whose config was superseded while the probe ran.
             if (key !== encodeCeilingInFlightKey) return;
             encodeCeiling = res
-                ? { key, desiredBitrate, bitrate: res.bitrate, degraded: res.degraded, blocked: false }
-                : { key, desiredBitrate, bitrate: desiredBitrate, degraded: false, blocked: true };
+                ? { key, bitrate: res.bitrate, degraded: res.degraded, blocked: false }
+                : { key, bitrate: desiredBitrate, degraded: false, blocked: true };
             exportProbeListeners.emit();
         });
 }
@@ -618,8 +616,6 @@ export interface ExportEstimate {
     height: number;
     /** Output (played) duration: source span / speedFactor. */
     durationSec: number;
-    /** Output codec label: "H.264" (re-encode or H.264 source copy) or "HEVC". */
-    codecLabel: string;
     /** Video data-rate (bytes/sec) per quality preset at the current output dims,
      *  for the per-row "~X/s" hint. "original" reflects the source bitrate. */
     rateByQuality: Record<Quality, number>;
@@ -724,7 +720,6 @@ export function estimateExport(): ExportEstimate | null {
         width: dims.width,
         height: dims.height,
         durationSec,
-        codecLabel: stream ? sourceCodecLabel(trip) : "H.264",
         rateByQuality,
         sourceBitrate,
         deviceCapped,
@@ -742,12 +737,6 @@ export function formatEstimatedSize(est: ExportEstimate): string {
     return t(est.exact ? "export.estimate.size" : "export.estimate.sizeFloor", {
         size: formatBytes(est.bytes),
     });
-}
-
-/** Display codec for the stream-copy path: the main channel's source codec. */
-function sourceCodecLabel(trip: Trip): string {
-    const codec = tripCandidatesByChannel(trip, mainChannel())[0]?.codec ?? null;
-    return codec === "hevc" ? "HEVC" : "H.264";
 }
 
 /* ----------------------------- wake lock ------------------------------- */

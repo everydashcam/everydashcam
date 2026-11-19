@@ -361,15 +361,6 @@ export function formatDistanceValue(meters: number, units: "metric" | "imperial"
     return (meters / 1000).toFixed(1);
 }
 
-/** Decimal-degree coordinate line, 5 fractional digits. Matches the on-map
- *  popup so notation is consistent there. The burned overlay uses the two-line
- *  hemisphere form (formatCoordParts) instead - a deliberate divergence for the
- *  widget's N/E look; the popup keeps the signed decimal. */
-export function formatCoordsLabel(lat: number, lon: number): string {
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return "-";
-    return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-}
-
 /** Hemisphere coordinate parts for the burned overlay's two-line widget:
  *  {latKey:"N"|"S", latVal:"55.7521°", lonKey:"E"|"W", lonVal:"37.6173°"}.
  *  Absolute degrees + a hemisphere letter (4 decimals, navigation notation).

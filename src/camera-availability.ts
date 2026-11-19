@@ -123,10 +123,3 @@ export function cameraAvailabilitySpans(
     }
     return spans;
 }
-
-/** Whether any of `visible` has footage somewhere in [startSec, endSec). */
-export function anyCameraRecords(trip: Trip, visible: readonly Channel[], startSec: number, endSec: number): boolean {
-    return cameraAvailabilitySpans(trip, visible, "equal", startSec, endSec).some((span) =>
-        visible.some((channel) => span.availability.presence[channel] === "recording"),
-    );
-}

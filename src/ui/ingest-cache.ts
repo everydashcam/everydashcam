@@ -176,10 +176,9 @@ export interface IndexCachePartition {
     /** Per-run leases that forbid ambiguous/invalid-input cache writes. */
     writeBlockLeaseByFileKey: Map<string, symbol>;
     misses: ClassifiedFile[];
-    cacheAvailable: boolean;
 }
 
-function emptyPartition(misses: ClassifiedFile[], cacheAvailable: boolean): IndexCachePartition {
+function emptyPartition(misses: ClassifiedFile[]): IndexCachePartition {
     return {
         cachedCandidates: [],
         cachedMetadataByFileKey: new Map(),
@@ -187,7 +186,6 @@ function emptyPartition(misses: ClassifiedFile[], cacheAvailable: boolean): Inde
         restoredEmbeddedAccelByFileKey: new Map(),
         writeBlockLeaseByFileKey: new Map(),
         misses,
-        cacheAvailable,
     };
 }
 
@@ -414,7 +412,7 @@ export async function partitionByIndexCache(
     videoAssociation: VideoAssociationIndex,
     external: IndexCacheExternalInputs,
 ): Promise<IndexCachePartition> {
-    if (videos.length === 0) return emptyPartition(videos, true);
+    if (videos.length === 0) return emptyPartition(videos);
     const collisionKeys = new Set<string>();
     for (const video of videos) {
         const key = cacheKeyOf(video);
@@ -427,7 +425,7 @@ export async function partitionByIndexCache(
         log.warn("index cache unavailable, running full pipeline", {
             err: err instanceof Error ? err.message : String(err),
         });
-        const unavailable = emptyPartition(videos, false);
+        const unavailable = emptyPartition(videos);
         for (const video of videos) {
             const identityKey = cacheKeyOf(video);
             if (!external.areValid || collisionKeys.has(identityKey)) {
@@ -513,7 +511,6 @@ export async function partitionByIndexCache(
         restoredEmbeddedAccelByFileKey,
         writeBlockLeaseByFileKey,
         misses,
-        cacheAvailable: true,
     };
 }
 

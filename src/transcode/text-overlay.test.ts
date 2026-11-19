@@ -8,7 +8,6 @@ import {
     drawWidgetBox,
     formatClock,
     formatCoordParts,
-    formatCoordsLabel,
     formatDistanceValue,
     formatSpeedValue,
 } from "./text-overlay.js";
@@ -30,22 +29,6 @@ describe("formatSpeedValue", () => {
         expect(formatSpeedValue(Number.NaN, "metric")).toBe("-");
         expect(formatSpeedValue(-5, "metric")).toBe("-");
         expect(formatSpeedValue(Number.POSITIVE_INFINITY, "imperial")).toBe("-");
-    });
-});
-
-describe("formatCoordsLabel", () => {
-    it("formats lat, lon with 5 decimals", () => {
-        expect(formatCoordsLabel(55.7517, 37.61903)).toBe("55.75170, 37.61903");
-    });
-
-    it("preserves sign for southern / western hemispheres", () => {
-        expect(formatCoordsLabel(-33.86882, 151.20929)).toBe("-33.86882, 151.20929");
-        expect(formatCoordsLabel(40.7128, -74.006)).toBe("40.71280, -74.00600");
-    });
-
-    it("returns dash for invalid inputs", () => {
-        expect(formatCoordsLabel(Number.NaN, 0)).toBe("-");
-        expect(formatCoordsLabel(0, Number.NaN)).toBe("-");
     });
 });
 
