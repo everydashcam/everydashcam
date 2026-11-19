@@ -11,10 +11,11 @@
 //
 // The right side shows the real app: a crop of the desktop screenshot with
 // the phone screenshot overlapping its bottom-right corner - the same
-// composite idiom as the landing hero and the README hero. Both shots come
-// from docs/screenshots/ (produced by scripts/generate-readme-screenshots.mjs)
-// - re-run this script after the screenshots are regenerated. Both covers
-// embed the same EN-locale shots.
+// composite idiom as the landing hero and the README hero. Both shots are the
+// committed landing WebP files (produced by
+// scripts/generate-readme-screenshots.mjs, which keeps its full-size PNG
+// captures out of the repository) - re-run this script after the screenshots
+// are regenerated. Both covers embed the same EN-locale shots.
 //
 // The headline mirrors the landing hero h1 (src/i18n/{en,ru}.ts,
 // landing.hero.h1.*). It is duplicated here on purpose: the cover is a baked
@@ -55,13 +56,18 @@ const BRAND_CSS = readFileSync(resolve(ROOT, "public/brand-mark.css"), "utf8").r
 );
 const BRAND_MARK_HTML = `<span class="edc-mark" role="img" aria-label="everydashcam"><span class="edc-mark__drums" aria-hidden="true"><span class="edc-mark__drum"><span class="edc-mark__column"><span class="edc-mark__letter">E</span></span></span><span class="edc-mark__drum"><span class="edc-mark__column"><span class="edc-mark__letter">V</span></span></span><span class="edc-mark__drum"><span class="edc-mark__column"><span class="edc-mark__letter">E</span></span></span><span class="edc-mark__drum"><span class="edc-mark__column"><span class="edc-mark__letter">R</span></span></span><span class="edc-mark__drum"><span class="edc-mark__column"><span class="edc-mark__letter">Y</span></span></span></span><span class="edc-mark__word" aria-hidden="true">DASHCAM</span></span>`;
 
-const SHOT = assetB64("docs/screenshots/app-desktop.png");
-const PHONE = assetB64("docs/screenshots/app-mobile-player.png");
+// The cover draws the desktop shot about 0.2x of its capture size and the phone
+// about 0.09x, so the 2x landing files keep several source pixels per cover
+// pixel even after WebP compression.
+const SHOT = assetB64("public/landing/app-desktop-2480.webp");
+const PHONE = assetB64("public/landing/app-phone-600.webp");
 
 // The app window shows a bottom-anchored crop of the screenshot: the trip
 // sidebar and everything above the video area are cut, so the split video,
 // the map and the chart stay legible at OG-thumbnail size instead of the
-// whole UI shrinking into mush.
+// whole UI shrinking into mush. Geometry is in the capture's pixels (1440x800
+// at DSF 2, the phone 390x844 at DSF 3); CSS sizes each image from these
+// numbers, so any landing width with the same aspect ratio fits.
 const SHOT_SRC_WIDTH = 2880;
 const SHOT_CROP_LEFT = 640; // cut the trip sidebar
 const SHOT_CROP_BOTTOM_HEIGHT = 1228; // from the bottom bar up to just above the video
@@ -261,10 +267,10 @@ function coverHtml(loc) {
       <span class="win-dot"></span><span class="win-dot"></span><span class="win-dot"></span>
     </div>
     <div class="shot">
-      <img src="data:image/png;base64,${SHOT}" alt="">
+      <img src="data:image/webp;base64,${SHOT}" alt="">
     </div>
   </div>
-  <img class="phone" src="data:image/png;base64,${PHONE}" alt="">
+  <img class="phone" src="data:image/webp;base64,${PHONE}" alt="">
 
   <div class="app-pill"><span class="tri"></span>everydashcam.app</div>
 </body>

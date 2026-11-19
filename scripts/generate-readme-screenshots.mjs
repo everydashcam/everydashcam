@@ -15,16 +15,20 @@
 //      drives it with headless Chromium (Playwright), pre-seeding localStorage
 //      exactly like tests/e2e/_fixtures.ts so no onboarding overlay is in
 //      frame, EN locale, dark theme.
-//   3. Writes to docs/screenshots/:
-//        app-desktop.png       - >=3 trips, top trip selected, equal front/rear,
-//                                map expanded with the speed-colored route. Dark.
-//        app-mobile-player.png - a trip paused at the deer-braking moment. Light
-//                                theme, so the hero shows both themes at once.
-//        readme-hero.webp      - the two shots above composed on a brand-gradient
-//                                backdrop; the only image README.md embeds.
-//   4. Writes to public/landing/ (shipped with the site, embedded by the
+//   3. Captures two full-size PNG shots into the same temporary directory:
+//        desktop - >=3 trips, top trip selected, equal front/rear, map
+//                  expanded with the speed-colored route. Dark.
+//        mobile  - a trip paused at the deer-braking moment. Light theme, so
+//                  the hero shows both themes at once.
+//      The PNGs are only inputs for the files below and are deleted with the
+//      directory: at about 3 MB per run they would dominate the repository
+//      history.
+//   4. Writes docs/screenshots/readme-hero.webp - the two shots composed on a
+//      brand-gradient backdrop; the only image README.md embeds.
+//   5. Writes to public/landing/ (shipped with the site, embedded by the
 //      .landing-hero-shot composite in index.html - desktop thumb + phone,
-//      desktop also feeds the lightbox):
+//      desktop also feeds the lightbox; scripts/generate-og-cover.mjs reads
+//      the 2x files):
 //        app-desktop-{1240,2480}.webp - the desktop shot at 1x/2x display width
 //        app-phone-{300,600}.webp     - the mobile shot at 1x/2x display width
 //      WebP is encoded by the same headless Chromium (canvas.toDataURL): the
@@ -639,7 +643,7 @@ async function seekToHeroBrake(page) {
 
 // --- per-screenshot flows --------------------------------------------------
 
-async function shotDesktop(browser, fixtureRoot) {
+async function shotDesktop(browser, fixtureRoot, shotsDir) {
     const context = await browser.newContext({
         // 800 instead of a common 900: the split tiles are width-limited (4:3 in a
         // half-column next to the expanded map), so extra height only adds black
@@ -721,13 +725,13 @@ async function shotDesktop(browser, fixtureRoot) {
     await events.locator("summary").click();
     await expect(events.locator(".trip-event-row")).toBeVisible();
 
-    const out = join(OUT_DIR, "app-desktop.png");
+    const out = join(shotsDir, "app-desktop.png");
     await page.screenshot({ path: out, fullPage: false });
     await context.close();
     return out;
 }
 
-async function shotMobilePlayer(browser, fixtureRoot) {
+async function shotMobilePlayer(browser, fixtureRoot, shotsDir) {
     // Light theme on purpose: next to the dark desktop shot in the hero it
     // shows both themes in one image instead of two copies of the same look.
     const context = await browser.newContext({
@@ -765,7 +769,7 @@ async function shotMobilePlayer(browser, fixtureRoot) {
     );
     await waitForMapIdle(page);
 
-    const out = join(OUT_DIR, "app-mobile-player.png");
+    const out = join(shotsDir, "app-mobile-player.png");
     await page.screenshot({ path: out, fullPage: false });
     await context.close();
     return out;
@@ -927,21 +931,19 @@ async function main() {
         tempRoot = mkdtempSync(join(tmpdir(), "everydashcam-readme-"));
         fixtureRoot = join(tempRoot, "DASHCAM_SD");
         mkdirSync(fixtureRoot, { recursive: true });
+        const shotsDir = join(tempRoot, "shots");
+        mkdirSync(shotsDir);
         buildFixture(fixtureRoot, fixtureDayYYYYMMDD());
         server = await startPreview();
         browser = await launchBrowser();
 
-        const desktop = await shotDesktop(browser, fixtureRoot);
-        console.log(`wrote ${desktop}`);
-        const mobilePlayer = await shotMobilePlayer(browser, fixtureRoot);
-        console.log(`wrote ${mobilePlayer}`);
+        const desktop = await shotDesktop(browser, fixtureRoot, shotsDir);
+        const mobilePlayer = await shotMobilePlayer(browser, fixtureRoot, shotsDir);
         const hero = await composeHero(browser, desktop, mobilePlayer);
         console.log(`wrote ${hero}`);
         await writeLandingVariants(browser, { desktop, mobile: mobilePlayer });
         const elapsedSec = ((performance.now() - startedAt) / 1000).toFixed(2);
-        console.log(
-            `done in ${elapsedSec}s: 2 screenshots + hero in docs/screenshots/, landing WebP set in public/landing/`,
-        );
+        console.log(`done in ${elapsedSec}s: hero in docs/screenshots/, landing WebP set in public/landing/`);
     } finally {
         if (browser) await browser.close().catch(() => {});
         if (server) await server.close();
