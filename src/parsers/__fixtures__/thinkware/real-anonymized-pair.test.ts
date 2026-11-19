@@ -5,8 +5,9 @@
 // rear carries NO subtitle track at all (unlike synthetic-rear.mp4, which pins
 // the accel-only-cues variant). Fixtures:
 //   - real-anonymized.mp4       - front cues, coords scrubbed (see README.md)
-//   - real-anonymized-rear.mp4  - rear rebuilt by scripts/anonymize-mp4.mjs
-//     (testsrc2 video + sine audio, same codec shape, no telemetry)
+//   - rear stand-in: tests/testdata/dashcam-viewer-corpus/MOV_0581.mp4, a
+//     scripts/anonymize-mp4.mjs rebuild (testsrc2 H.264 + sine AAC) with no
+//     telemetry track, the shape of the real rear
 //
 // The pair test guards the channel-anchoring symmetry: the GPS-less rear must
 // derive the SAME startUtc as the GPS-bearing front, or the 30 s frame snap in
@@ -47,6 +48,7 @@ const REAR = "REC_2026_06_01_21_16_47_R.MP4";
 // channels; clips are 60 s.
 const REAL_MVHD = "2026-06-01T21:16:47Z";
 const REAL_DURATION_SEC = 60;
+const REAR_STAND_IN = "../../../../tests/testdata/dashcam-viewer-corpus/MOV_0581.mp4";
 
 function loadVendorFile(fixture: string, name: string): VendorFile {
     const buf = readFileSync(resolve(HERE, fixture));
@@ -94,7 +96,7 @@ function makeCandidate(vf: VendorFile, records: GpsRecord[]): VideoCandidate {
 
 describe("real-anonymized Thinkware F200 PRO rear", () => {
     it("carries no telemetry: no extractor claims it, zero records", async () => {
-        const vf = loadVendorFile("real-anonymized-rear.mp4", REAR);
+        const vf = loadVendorFile(REAR_STAND_IN, REAR);
         const classified = await classifyFiles([vf]);
         const result = await dispatchParseVideoEmbeddedGps(classified);
         expect(result.records).toHaveLength(0);
@@ -106,7 +108,7 @@ describe("real-anonymized Thinkware F200 PRO rear", () => {
 describe("real-anonymized Thinkware F200 PRO front+rear pair", () => {
     it("GPS-less rear anchors with the front and both land in one frame", async () => {
         const frontVf = loadVendorFile("real-anonymized.mp4", FRONT);
-        const rearVf = loadVendorFile("real-anonymized-rear.mp4", REAR);
+        const rearVf = loadVendorFile(REAR_STAND_IN, REAR);
 
         const index = await buildMp4Index(frontVf.file);
         const parsed = await nmeaSubtitlePrimitive.parse(frontVf, index);

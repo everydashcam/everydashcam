@@ -154,7 +154,9 @@ describe("terminal embedded GPS failure evidence", () => {
         const { bytes, gps } = await navitelFixture();
         bytes.fill(0, gps.offset + 8, gps.offset + gps.size);
         const rejected = video(new File([bytes], "rejected.mp4"));
-        const absent = video(new File([fixture("__fixtures__/thinkware/real-anonymized-rear.mp4")], "rear.mp4"));
+        const absent = video(
+            new File([fixture("../../tests/testdata/dashcam-viewer-corpus/MOV_0581.mp4")], "rear.mp4"),
+        );
 
         const result = await dispatchParseVideoEmbeddedGps([rejected, absent]);
 
