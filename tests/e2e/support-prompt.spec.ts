@@ -270,7 +270,6 @@ test.describe("project support prompt", () => {
     });
 
     test("fits the Russian actions on a light-theme mobile viewport", async ({ page }) => {
-        await page.setViewportSize(MOBILE);
         await gotoApp(page, "ru");
         await resetSupportState(page, true);
         // The test browser speaks English, so /ru/ correctly surfaces the
@@ -278,6 +277,7 @@ test.describe("project support prompt", () => {
         // before exercising the support banner itself.
         await page.locator(".lang-banner-dismiss").click();
         await page.locator('.theme-toggle-btn[data-theme="light"]').click();
+        await page.setViewportSize(MOBILE);
         await page.evaluate(() => {
             const target = window as typeof window & { __supportCopiedUrl?: string };
             Object.defineProperty(navigator, "clipboard", {
