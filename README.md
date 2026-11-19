@@ -6,43 +6,51 @@
   </a>
 </p>
 
-everydashcam is a browser player and editor for recordings from multiple dashcam
-brands. It shows synchronized camera views, GPS tracks, speed and G-force data,
-and exports clips. Files are processed on your device.
+everydashcam is a browser player and editor for dashcam recordings. It groups
+clips into trips, shows synchronized cameras with GPS routes, speed and G-force
+charts, and exports clips. Files stay on your device.
 
 ## Getting started
 
 - [**everydashcam.app**](https://everydashcam.app) — the latest stable release.
-- [**beta.everydashcam.app**](https://beta.everydashcam.app) — upcoming changes.
+- [**beta.everydashcam.app**](https://beta.everydashcam.app) — upcoming changes
+  ([changelog](CHANGELOG.md)).
 - **Install it** — open any version and install it from your browser. After the
   first visit, it can open without a network connection.
+- **Portable HTML** — a single file you can open directly or keep on the
+  memory card ([instructions](docs/self-hosting.md#open-the-portable-html)).
 
 ## Features
 
-- **Map and charts:** the route is colored by speed. Hover over the route or
-  chart to jump to that moment.
-- **Events:** harsh braking is detected from the G-force data and marked on the
-  chart.
-- **Export:** keep the original video quality, or combine cameras and add speed,
-  map and G-force overlays. Keep GPS data in the MP4 or save it as GPX.
-- **Blur:** mark faces and license plates yourself, or use beta automatic
-  detection and tracking. Processing stays on your device.
+- **Trips and cameras:** groups clips into trips with a shared timeline and
+  synchronized front, rear and cabin views. Supports favorites, notes, markers
+  and search.
+- **Map and charts:** routes are colored by speed, with an all-trips map to
+  filter by location. Hover over the route or chart to jump to that moment.
+- **Events:** detects hard braking and impacts from G-force data alongside
+  dashcam-flagged events, and marks them on the chart and map.
+- **Export:** trim without re-encoding, or combine cameras, make time-lapses
+  and add speed, map and G-force overlays. Keep GPS data in the MP4 or save it
+  as GPX.
+- **Blur:** mark faces and license plates manually, or use on-device
+  detection and tracking.
 
 See [browser support](docs/browser-support.md) for feature limits by browser
 and operating system.
 
 ## Supported cameras
 
-See [GPS format coverage](docs/gps-format-coverage.md) for cameras tested with
-real recordings and formats implemented from open-source references.
+Tested with recordings from VIOFO, 70mai, Vantrue, Thinkware, BlackVue, Garmin,
+GoPro, Nextbase, REDTIGER and others. See
+[GPS format coverage](docs/gps-format-coverage.md) for exact models, caveats
+and formats implemented from open-source references.
 
 Don't see your camera yet? You can help me add it:
 
 - In the app, turn the card's file list into a report you can send me — see
   [everydashcam.app/add-my-camera](https://everydashcam.app/add-my-camera).
-- On GitHub, open a camera-support issue.
-
-For other ways to help, see [Contributing](CONTRIBUTING.md).
+- On GitHub,
+  [open a camera-support issue](https://github.com/everydashcam/everydashcam/issues/new?template=camera_support.md).
 
 ## Self-hosting
 
@@ -56,8 +64,8 @@ Docker and internal web servers.
   export.
 - [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) — the route map.
 - [Chart.js](https://github.com/chartjs/Chart.js) — speed and G-force charts.
-- [ONNX Runtime](https://github.com/microsoft/onnxruntime) — on-device plate and
-  face detection.
+- [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) — on-device
+  plate and face detection.
 - [OpenFreeMap](https://openfreemap.org) — keyless vector map tiles.
 
 ## License
