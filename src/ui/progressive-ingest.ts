@@ -889,7 +889,7 @@ async function readRecordingData(
             })
             .then(() => {
                 if (signal.aborted) return;
-                refreshTripsAfterRecordingRead([tripIdx]);
+                refreshRecordingTrips([tripIdx]);
                 restampProvisionalMarkers();
                 if (sessions.get(tripIdx) === session) state.readingTrips.delete(tripIdx);
                 publishRecordingAnalysisProgress(session.run, candidates);
@@ -1197,7 +1197,12 @@ async function readRecordingData(
     }
 }
 
-/** Rebuilds affected trips from their current metadata without changing list indices. */
+/**
+ * Applies pool-wide recording inputs, then rebuilds the affected trips without
+ * changing list indices. Stored camera zones and directory GPS logs cover every
+ * loaded recording, and binding a directory log rebuilds the whole GpsLog, so a
+ * batch runs this once when it settles rather than once per trip.
+ */
 function refreshTripsAfterRecordingRead(tripIndices: readonly number[]): void {
     const allCandidates = candidatePool ?? state.trips.flatMap(tripAllCandidates);
     if (state.gpsLog && state.gpsLog.pendingByFilename.size > 0) {
@@ -1205,6 +1210,16 @@ function refreshTripsAfterRecordingRead(tripIndices: readonly number[]): void {
     } else {
         applyStoredCameraTimezones(allCandidates, state.gpsLog);
     }
+    refreshRecordingTrips(tripIndices);
+}
+
+/**
+ * Rebuilds trips from their current metadata and the pool-wide inputs as last
+ * applied. A trip whose metadata settles before its batch uses this: ingest
+ * already applied stored camera zones to the pool, and its directory-log
+ * samples arrive when the batch settles.
+ */
+function refreshRecordingTrips(tripIndices: readonly number[]): void {
     const association = recordingAssociation();
     for (const tripIdx of tripIndices) {
         const trip = state.trips[tripIdx];
