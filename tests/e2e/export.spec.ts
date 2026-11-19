@@ -1155,6 +1155,25 @@ test.describe("export", () => {
         await expect.poll(() => page.evaluate(() => localStorage.getItem("everydashcam:export:overlays"))).toBeNull();
     });
 
+    test("a map overlay restored after reload opens with its settings expanded", async ({ page }) => {
+        await page.locator("#export-panel-ov-map").check();
+        await expect
+            .poll(() => page.evaluate(() => localStorage.getItem("everydashcam:export:overlays")))
+            .not.toBeNull();
+
+        await page.reload();
+        await loadTrip(page, SAMPLE_70MAI);
+        await openExport(page);
+
+        const name = page.locator('.export-panel__ov-row[data-widget="map"] .export-panel__ov-name');
+        await expect(page.locator("#export-panel-ov-map")).toBeChecked();
+        await expect(name).toHaveAttribute("aria-expanded", "true");
+        await expect(page.locator('#export-panel-overlay-inspector button[data-shape="circle"]')).toBeVisible();
+        await name.click();
+        await expect(name).toHaveAttribute("aria-expanded", "false");
+        await expect(page.locator("#export-panel-overlay-inspector")).toBeHidden();
+    });
+
     test("map overlay is draggable (pointer-events guard)", async ({ page }) => {
         await page.locator("#export-panel-ov-map").check();
         const map = page.locator("#player-map-overlay");

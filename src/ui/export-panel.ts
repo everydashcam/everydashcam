@@ -346,6 +346,12 @@ function syncMapOverlayAvailability(): void {
         exportPanelState.overlayMap.enabled = false;
         const cb = document.getElementById("export-panel-ov-map") as HTMLInputElement | null;
         if (cb) cb.checked = false;
+        // A map restored from saved preferences starts expanded, and the WebGL
+        // probe lands later - do not leave its settings under a hidden row.
+        if (selectedOverlayKey === "map") {
+            selectedOverlayKey = null;
+            refreshOverlayInspector();
+        }
     }
 }
 
@@ -2507,6 +2513,10 @@ function renderOverlaysGroup(): HTMLElement {
 
     overlayExtrasEl = extras;
     syncOverlayExtras();
+    // Overlay choices survive a reload but the expanded row does not. Ticking
+    // the map expands its settings, so a map restored as ticked opens the
+    // same way instead of reading as on with nothing to configure.
+    if (selectedOverlayKey === null && exportPanelState.overlayMap.enabled) selectedOverlayKey = "map";
     refreshOverlayInspector();
     return wrap;
 }

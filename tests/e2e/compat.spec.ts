@@ -19,6 +19,7 @@ import {
     expect,
     gotoApp,
     loadTrip,
+    openExport,
     presetLocalStorage,
     shot,
     test,
@@ -215,5 +216,24 @@ test.describe("browser compatibility", () => {
         await expect(page.locator("#player-chart-canvas")).toBeVisible();
 
         await shot(page, "compat-03-no-webgl-trip");
+    });
+
+    test("degraded gap (no WebGL): a saved map overlay hides with its settings", async ({ page }) => {
+        await page.setViewportSize(DESKTOP);
+        await killWebGL(page);
+        await presetLocalStorage(page, {
+            preferences: { "everydashcam:export:overlays": JSON.stringify({ overlayMap: { enabled: true } }) },
+        });
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+        const enableModal = page.locator("#webgl-enable-modal");
+        await expect(enableModal).toBeVisible({ timeout: 15_000 });
+        await page.locator("#webgl-enable-close").click();
+        await expect(enableModal).toBeHidden();
+
+        await openExport(page);
+        await expect(page.locator("#export-panel-map-overlay-row")).toBeHidden();
+        await expect(page.locator("#export-panel-ov-map")).not.toBeChecked();
+        await expect(page.locator("#export-panel-overlay-inspector")).toBeHidden();
     });
 });
