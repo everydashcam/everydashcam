@@ -2648,6 +2648,47 @@ describe("rederiveStartUtcForCandidates: CarDV card with a finalize-stamped mvhd
         expect(groupTrips(clips)).toHaveLength(1);
     });
 
+    // The GPS log hands each clip's records over sorted by raw time
+    // (parser.ts), so a clip recorded across the morning wrap lists its end
+    // first; a rebuilt log sorts the corrected times instead.
+    it("lands on one camera clock whichever order the GPS log hands the records over in", () => {
+        const stamps = ["20260115105500", "20260115105800", "20260115110100"];
+        const recordingOrder = stamps.map((stamp) => clip(stamp, "utc8-on-utc-date"));
+        rederiveStartUtcForCandidates(recordingOrder, classifyFilenameTime);
+
+        const logOrder = stamps.map((stamp) => clip(stamp, "utc8-on-utc-date"));
+        for (const candidate of logOrder) candidate.records.sort((a, b) => a.unixSeconds - b.unixSeconds);
+        rederiveStartUtcForCandidates(logOrder, classifyFilenameTime);
+        expect(logOrder.map((c) => c.startUtc)).toEqual(recordingOrder.map((c) => c.startUtc));
+        expect(logOrder.map((c) => c.cameraTzSec)).toEqual(recordingOrder.map((c) => c.cameraTzSec));
+        const crossingTimes = logOrder[1]!.records.map((record) => record.unixSeconds);
+        expect(crossingTimes, "the crossing clip's records in time order").toEqual(
+            [...crossingTimes].sort((a, b) => a - b),
+        );
+        expect(crossingTimes.at(-1)! - crossingTimes[0]!, "the crossing clip's track stays inside its footage").toBe(
+            178,
+        );
+
+        rederiveStartUtcForCandidates(logOrder, classifyFilenameTime);
+        expect(
+            logOrder.map((c) => c.startUtc),
+            "a sweep over records in corrected order",
+        ).toEqual(recordingOrder.map((c) => c.startUtc));
+    });
+
+    it("keeps the GPS of a clip whose container ties its first frame to UTC", () => {
+        // The third clip's name reads a day late; its container and GPS agree.
+        const clips = [clip("20260115110237", "utc"), clip("20260115110537", "utc"), clip("20260116110837", "utc")];
+        for (const record of clips[2]!.records) record.unixSeconds -= DAY_SEC;
+        for (const [index, candidate] of clips.entries()) {
+            candidate.embeddedStartUtcHint = nameNaive(candidate) - ZONE_SEC - (index === 2 ? DAY_SEC : 0);
+        }
+        rederiveStartUtcForCandidates(clips, classifyFilenameTime);
+        const misnamed = clips[2]!;
+        expect(misnamed.records.some((record) => record.gpsDateSlipAppliedSec !== undefined)).toBe(false);
+        expect(misnamed.records[0]!.unixSeconds - misnamed.startUtc, "the track starts with its footage").toBe(1);
+    });
+
     it("lands on the single-pass result when GPS clips arrive in stages", () => {
         const stamps = ["20260115105400", "20260115105700", "20260115110300", "20260115140000", "20260115140300"];
         const oneShot = stamps.map((stamp) => clip(stamp, "utc8-on-utc-date"));
