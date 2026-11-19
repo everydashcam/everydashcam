@@ -54,6 +54,12 @@ import { initTripJump, syncTripJump } from "./trip-jump.js";
 import type { TripListDayStats } from "./trip-jump.js";
 import { foldParkingRuns, groupByMonthDay, headingLevels, nodeEntries, tripDayKey } from "./trip-list-layout.js";
 import type { TripListDay, TripListMonth, TripListNode, TripListParkingNode } from "./trip-list-layout.js";
+import {
+    observeTripPreviewHost,
+    resetTripPreviewHosts,
+    setTripPreviewDisplayOrder,
+    unobserveTripPreviewHost,
+} from "./trip-preview-order.js";
 
 interface SidebarCallbacks {
     /** Opens the first playable frame, tolerating a damaged leading clip. */
@@ -192,6 +198,7 @@ export function renderTrips(): void {
 
     dom.list.innerHTML = "";
     parkingRunThumbs.clear();
+    resetTripPreviewHosts();
     dom.list.classList.toggle("is-rows", state.tripListDensity === "rows");
     // Empty-state must stay in sync with the trip list so the player shows exactly when the first trip appears in the sidebar.
     syncEmptyState();
@@ -332,6 +339,14 @@ export function renderTrips(): void {
         note.innerHTML = `<div class="trip-header"><div class="trip-title">${t("sidebar.unindexed.title")}</div><div class="trip-meta">${t("sidebar.unindexed.note", { n: state.unindexed.size })}</div></div><button type="button" class="recognition-help-link feedback-link" data-feedback-preset="load">${t("recognition.contact")}</button>`;
         dom.list.appendChild(note);
     }
+
+    // Background previews follow the order the list shows (trip-preview-order.ts).
+    setTripPreviewDisplayOrder(
+        [...dom.list.querySelectorAll<HTMLElement>("li.trip[data-trip-index]")].flatMap((card) => {
+            const trip = state.trips[Number(card.dataset.tripIndex)];
+            return trip ? [trip] : [];
+        }),
+    );
 
     revealActiveTrip();
     syncTripJump(renderedDays.length > 0);
@@ -584,6 +599,7 @@ function buildParkingRun(node: TripListParkingNode, appendCards: AppendCards, da
         thumb.appendChild(icon);
     }
     parkingRunThumbs.set(top, thumb);
+    observeTripPreviewHost(thumb, top);
 
     const title = document.createElement("span");
     title.className = "trip-parking-run__title";
@@ -721,6 +737,7 @@ function buildTripCard(trip: Trip, tripIdx: number, dayKey: string | null): HTML
     // data-trip-index is used by updateActiveFrameHighlight to find the frame in the correct trip.
     // data-frame-index alone is not unique across trips (0..N in each); without trip scope querySelector would highlight the wrong trip.
     li.dataset.tripIndex = String(tripIdx);
+    observeTripPreviewHost(li, trip);
     if (state.expandedTrips.has(tripIdx)) li.classList.add("expanded");
     if (state.active && state.active.trip === tripIdx) {
         li.classList.add("active");
@@ -1158,6 +1175,7 @@ export function refreshTripCard(tripIdx: number): void {
     const seededHeight = oldLi.style.getPropertyValue(CARD_HEIGHT_PROPERTY);
     if (seededHeight) card.style.setProperty(CARD_HEIGHT_PROPERTY, seededHeight);
     oldLi.replaceWith(card);
+    unobserveTripPreviewHost(oldLi);
     restoreListFocus(focus, dom.list);
     dom.list.setAttribute("aria-busy", state.trips.some(tripNeedsRecordingMetadata) ? "true" : "false");
 }

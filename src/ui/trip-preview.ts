@@ -28,6 +28,7 @@ import { PREVIEW_REQUEST_EXTRACT, type PreviewExtractRequestData } from "../work
 import { createTypedWorkerClient } from "../workers/_protocol/worker-client.js";
 import { createTypedWorkerPool } from "../workers/_protocol/worker-pool.js";
 import { requiresMseBackend } from "./player-video-src.js";
+import { nextTripForPreview } from "./trip-preview-order.js";
 import { createPreviewQueue } from "./trip-preview-queue.js";
 
 const log = createLogger("preview");
@@ -249,20 +250,30 @@ async function populateTripPreviewsImpl(
     signal: AbortSignal,
 ): Promise<void> {
     // Keep a small pending window; the shared queue owns decoder admission.
-    let cursor = 0;
+    // Each slot picks its next trip when it frees up, so a card scrolled into
+    // view goes ahead of the backlog (trip-preview-order.ts).
+    const firstCandidates = new Map<Trip, VideoCandidate>();
+    for (const trip of trips) {
+        const first = tripAllCandidates(trip)[0];
+        if (first) firstCandidates.set(trip, first);
+    }
+    // A trip is taken once per run, so a failed decode is not picked again.
+    const taken = new Set<Trip>();
+    const isWanted = (trip: Trip): boolean => {
+        const first = firstCandidates.get(trip);
+        // Terminal failure already recorded (e.g. by ensureTripPreview on an
+        // earlier open) - re-decoding the same broken file on every reschedule
+        // wastes a worker slot for a result we already know.
+        return !!first && !taken.has(trip) && !trip.previewDataUrl && !previewFailedFiles.has(first.file);
+    };
+    // Trips the list does not show come last, newest first like the list's default.
+    const unlisted = [...trips].reverse();
     const runOne = async (): Promise<void> => {
         while (!signal.aborted) {
-            const tripIdx = cursor++;
-            if (tripIdx >= trips.length) return;
-            const trip = trips[tripIdx];
-            if (!trip || trip.previewDataUrl) continue;
-            const candidates = tripAllCandidates(trip);
-            if (candidates.length === 0) continue;
-            const first = candidates[0];
-            // Terminal failure already recorded (e.g. by ensureTripPreview on an
-            // earlier open) - re-decoding the same broken file on every reschedule
-            // wastes a worker slot for a result we already know.
-            if (!first || previewFailedFiles.has(first.file)) continue;
+            const trip = nextTripForPreview(isWanted, unlisted);
+            if (!trip) return;
+            taken.add(trip);
+            const first = firstCandidates.get(trip)!;
             try {
                 const url = await extractFirstFrameShared(first, signal);
                 if (signal.aborted) return;
@@ -284,7 +295,6 @@ async function populateTripPreviewsImpl(
                 // Worker-level error for this file - continue to the next trip; the card stays as a placeholder.
                 previewFailedFiles.add(first.file);
                 log.debug("preview extract failed", {
-                    tripIdx,
                     file: first.file.name,
                     err: err instanceof Error ? err.message : String(err),
                 });
