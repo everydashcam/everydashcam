@@ -327,8 +327,8 @@ export async function check70maiCameraTimezone(
     await expectRecordingZone(18000, false);
     await openRecordingTrip(page, OTHER_RECORDING_NAME);
     await openRecordingTrip(page, RECORDING_NAME);
-    await expect(notification, "opening the folder again makes the GPS notice available once more").toBeVisible();
-    await notification.locator(".dc-toast__action").click();
+    await expect(notification, "re-picking the same folder does not repeat its GPS notice").toHaveCount(0);
+    await page.locator("#gps-sync-pill").click();
 
     await select.selectOption("10800");
     await expectRecordingZone(10800, true);
