@@ -1093,7 +1093,7 @@ export const ruDict = {
     "settings.notes.description": "Скачай копию всех названий поездок, заметок, избранного и маркеров или восстанови сохранённую раньше. Самих записей в копии нет.",
     "settings.notes.export": "Скачать копию пометок",
     "settings.notes.import": "Восстановить копию пометок…",
-    "settings.cache.description": "Запоминает уже прочитанные сведения, чтобы в следующий раз папки открывались быстрее. Сами видео не сохраняются.",
+    "settings.cache.description": "Запоминает уже прочитанные сведения и превью поездок, чтобы в следующий раз папки открывались быстрее. Сами видео не сохраняются.",
     "settings.cache.usage.label": "Занято",
     "settings.cache.usage.value": "{used} из {limit} · {n, plural, one {# клип} few {# клипа} other {# клипов}}",
     "settings.cache.limit.label": "Лимит места",

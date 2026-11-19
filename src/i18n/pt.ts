@@ -1088,7 +1088,7 @@ export const ptDict = {
     "settings.notes.description": "Baixe uma cópia de todos os nomes de viagens, anotações, favoritos e marcadores ou restaure uma cópia anterior. As gravações não são incluídas.",
     "settings.notes.export": "Baixar backup das anotações",
     "settings.notes.import": "Restaurar backup das anotações…",
-    "settings.cache.description": "Lembra as informações que o everydashcam já leu para abrir as pastas mais rápido na próxima vez. Os vídeos em si nunca são armazenados.",
+    "settings.cache.description": "Lembra as informações que o everydashcam já leu e as pré-visualizações das viagens para abrir as pastas mais rápido na próxima vez. Os vídeos em si nunca são armazenados.",
     "settings.cache.usage.label": "Espaço usado",
     "settings.cache.usage.value": "{used} de {limit} · {n, plural, one {# clipe} other {# clipes}}",
     "settings.cache.limit.label": "Limite de espaço",

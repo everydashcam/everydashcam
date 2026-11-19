@@ -1088,7 +1088,7 @@ export const plDict = {
     "settings.notes.description": "Pobierz kopię wszystkich nazw przejazdów, notatek, ulubionych i znaczników albo przywróć wcześniejszą. Nagrania nie są dołączone.",
     "settings.notes.export": "Pobierz kopię notatek",
     "settings.notes.import": "Przywróć kopię notatek…",
-    "settings.cache.description": "Zapamiętuje informacje już odczytane przez everydashcam, dzięki czemu foldery otwierają się szybciej następnym razem. Same nagrania nigdy nie są zapisywane.",
+    "settings.cache.description": "Zapamiętuje informacje już odczytane przez everydashcam i podglądy podróży, dzięki czemu foldery otwierają się szybciej następnym razem. Same nagrania nigdy nie są zapisywane.",
     "settings.cache.usage.label": "Zajęte miejsce",
     "settings.cache.usage.value": "{used} z {limit} · {n, plural, one {# klip} few {# klipy} many {# klipów} other {# klipu}}",
     "settings.cache.limit.label": "Limit miejsca",

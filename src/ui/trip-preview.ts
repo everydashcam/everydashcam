@@ -15,12 +15,16 @@
 // the decoder sits idle between them. Several files in flight overlap those
 // waits; on long lists (50+ trips) that is a real wall-clock win.
 //
-// Storage: in-memory only (on the Trip object). Previews regenerate on reload since Files don't survive it.
+// Storage: on the Trip object for the session, and across sessions in the index
+// cache's preview store, keyed by the first recording's identity
+// (restoreCachedTripPreviews). A file that changed reads as a different identity.
 
 import { createSerialQueue } from "../serial-queue.js";
 import type { PreviewWorkerContract } from "../workers/preview-protocol.js";
 
 import { createLogger } from "../log.js";
+import { fileIdentityKey, fileIdentityOf } from "../persist/identity.js";
+import { getCachedTripPreviews, putCachedTripPreview } from "../persist/index-cache.js";
 import { PREVIEW_HEIGHT_PX, PREVIEW_JPEG_QUALITY, PREVIEW_WIDTH_PX } from "../preview-config.js";
 import type { Trip, VideoCandidate } from "../trips.js";
 import { tripAllCandidates } from "../trips.js";
@@ -204,8 +208,59 @@ let activeRun: AbortController | null = null;
 // an internal scheduling detail.
 const previewFailedFiles = new WeakSet<File>();
 
+/** Cross-session key of the recording a preview is cut from: the identity its
+ *  index cache entry uses, so the preview is evicted together with it. */
+function previewCacheKey(candidate: VideoCandidate): string {
+    return fileIdentityKey(fileIdentityOf(candidate.file, candidate.relativePath));
+}
+
 function extractFirstFrameShared(candidate: VideoCandidate, signal?: AbortSignal): Promise<string | null> {
-    return previewQueue.run(candidate.file, () => extractFirstFrameDataUrl(candidate), signal);
+    return previewQueue.run(
+        candidate.file,
+        async () => {
+            const url = await extractFirstFrameDataUrl(candidate);
+            // Kept for the next session's list; a lost write only costs a decode then.
+            if (url) {
+                void putCachedTripPreview(previewCacheKey(candidate), url).catch((err: unknown) => {
+                    log.debug("preview cache write failed", { err: err instanceof Error ? err.message : String(err) });
+                });
+            }
+            return url;
+        },
+        signal,
+    );
+}
+
+/**
+ * Paints the previews an earlier session kept for these trips, in one read.
+ * Trips that already show one are skipped; misses are left for decoding. An
+ * unavailable store only means every preview is decoded.
+ */
+export async function restoreCachedTripPreviews(
+    trips: readonly Trip[],
+    onUpdate: (trip: Trip, dataUrl: string) => void,
+): Promise<void> {
+    const missing: Array<{ trip: Trip; key: string }> = [];
+    for (const trip of trips) {
+        if (trip.previewDataUrl) continue;
+        const first = tripAllCandidates(trip)[0];
+        if (first && !previewFailedFiles.has(first.file)) missing.push({ trip, key: previewCacheKey(first) });
+    }
+    if (missing.length === 0) return;
+    let stored: Map<string, string>;
+    try {
+        stored = await getCachedTripPreviews(missing.map(({ key }) => key));
+    } catch (err) {
+        log.debug("preview cache read failed", { err: err instanceof Error ? err.message : String(err) });
+        return;
+    }
+    for (const { trip, key } of missing) {
+        const url = stored.get(key);
+        // A decode may have landed during the read.
+        if (!url || trip.previewDataUrl) continue;
+        trip.previewDataUrl = url;
+        onUpdate(trip, url);
+    }
 }
 
 /**
@@ -225,6 +280,8 @@ export async function ensureTripPreview(
     if (trip.previewDataUrl) return;
     const first = tripAllCandidates(trip)[0];
     if (!first || previewFailedFiles.has(first.file)) return;
+    await restoreCachedTripPreviews([trip], onUpdate);
+    if (trip.previewDataUrl || signal?.aborted) return;
     try {
         const url = await extractFirstFrameShared(first, signal);
         if (signal?.aborted) return;
@@ -252,6 +309,7 @@ async function populateTripPreviewsImpl(
     // Keep a small pending window; the shared queue owns decoder admission.
     // Each slot picks its next trip when it frees up, so a card scrolled into
     // view goes ahead of the backlog (trip-preview-order.ts).
+    await restoreCachedTripPreviews(trips, onUpdate);
     const firstCandidates = new Map<Trip, VideoCandidate>();
     for (const trip of trips) {
         const first = tripAllCandidates(trip)[0];

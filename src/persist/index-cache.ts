@@ -1,8 +1,10 @@
-// Raw store operations for the cross-session index cache. UI-free; the
-// pipeline glue (partitioning classified files, rebuilding candidates) lives
-// in ui/ingest-cache.ts.
+// Raw store operations for the cross-session index cache and the trip previews
+// kept with it. UI-free; the pipeline glue (partitioning classified files,
+// rebuilding candidates) lives in ui/ingest-cache.ts, the preview side in
+// ui/trip-preview.ts.
 
 import { createLogger } from "../log.js";
+import { PREVIEW_CACHE_FORMAT } from "../preview-config.js";
 import { getIndexCacheLimitBytes } from "./cache-limit.js";
 import { openPersistDb, type PersistDb } from "./db.js";
 import { accelColumnsByteLength, gpsRecordColumnsByteLength } from "./gps-columns.js";
@@ -10,6 +12,7 @@ import {
     type CachedEmbeddedGps,
     type CachedFileIndex,
     type CachedRecordingMetadata,
+    type CachedTripPreview,
     INDEX_CACHE_FORMAT,
 } from "./types.js";
 
@@ -247,8 +250,9 @@ export async function putIndexCacheEntries(entries: CachedFileIndex[]): Promise<
  * accounting-driven prune has no reason to fire.
  */
 async function evictOldestFraction(db: PersistDb, fraction: number): Promise<void> {
-    const tx = db.transaction(["indexCache", "meta"], "readwrite");
+    const tx = db.transaction(["indexCache", "tripPreviews", "meta"], "readwrite");
     const store = tx.objectStore("indexCache");
+    const previews = tx.objectStore("tripPreviews");
     const target = Math.ceil((await store.count()) * fraction);
     if (target <= 0) {
         await tx.done;
@@ -258,7 +262,7 @@ async function evictOldestFraction(db: PersistDb, fraction: number): Promise<voi
     let deleted = 0;
     let cursor = await store.index("bySavedAt").openCursor();
     while (cursor && deleted < target) {
-        freed += cursor.value.bytes ?? 0;
+        freed += (cursor.value.bytes ?? 0) + (await deleteTripPreview(previews, cursor.value.identityKey));
         deleted++;
         await cursor.delete();
         cursor = await cursor.continue();
@@ -274,6 +278,62 @@ async function readTotalBytes(meta: { get(key: string): Promise<string | undefin
     const raw = await meta.get(TOTAL_BYTES_META_KEY);
     const parsed = raw === undefined ? 0 : Number(raw);
     return Number.isFinite(parsed) ? parsed : 0;
+}
+
+interface TripPreviewStore {
+    get(key: string): Promise<CachedTripPreview | undefined>;
+    delete(key: string): Promise<void>;
+}
+
+/** Deletes the preview kept for a recording, if any; returns its counted bytes. */
+async function deleteTripPreview(previews: TripPreviewStore, identityKey: string): Promise<number> {
+    const preview = await previews.get(identityKey);
+    if (!preview) return 0;
+    await previews.delete(identityKey);
+    return preview.bytes;
+}
+
+/**
+ * Stored trip previews for the given recording identity keys, as data URLs.
+ * A preview written in another preview format is absent from the result.
+ * Rejects when IndexedDB is unavailable; the caller decodes instead.
+ */
+export async function getCachedTripPreviews(keys: readonly string[]): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    if (keys.length === 0) return found;
+    const db = await openPersistDb();
+    const tx = db.transaction("tripPreviews");
+    const previews = await Promise.all(keys.map((key) => tx.store.get(key)));
+    await tx.done;
+    for (const [index, preview] of previews.entries()) {
+        if (preview?.previewFormat === PREVIEW_CACHE_FORMAT) found.set(keys[index]!, preview.dataUrl);
+    }
+    return found;
+}
+
+/**
+ * Keeps a trip preview for later sessions, counted in the index cache's byte
+ * total; the size-bound prune then runs as after an index write. An identical
+ * stored preview is left as is. Rejects when IndexedDB is unavailable or the
+ * write fails; the next session then decodes the preview again.
+ */
+export async function putCachedTripPreview(identityKey: string, dataUrl: string): Promise<void> {
+    const db = await openPersistDb();
+    const tx = db.transaction(["tripPreviews", "meta"], "readwrite");
+    const previews = tx.objectStore("tripPreviews");
+    const meta = tx.objectStore("meta");
+    const previous = await previews.get(identityKey);
+    if (previous?.previewFormat === PREVIEW_CACHE_FORMAT && previous.dataUrl === dataUrl) {
+        await tx.done;
+        return;
+    }
+    // A data URL is ASCII: its length is its stored size closely enough.
+    const bytes = dataUrl.length;
+    await previews.put({ identityKey, previewFormat: PREVIEW_CACHE_FORMAT, bytes, dataUrl });
+    const total = (await readTotalBytes(meta)) + bytes - (previous?.bytes ?? 0);
+    await meta.put(String(total), TOTAL_BYTES_META_KEY);
+    await tx.done;
+    await pruneIndexCache(db, total);
 }
 
 /**
@@ -295,15 +355,16 @@ export async function getIndexCacheStats(): Promise<{ totalBytes: number; entryC
 }
 
 /**
- * Wipes the whole index cache and zeroes its byte accounting in one
- * transaction. Folders and annotations are untouched - the only cost is a full
- * re-index on the next open of each folder. Rejects when IndexedDB is
+ * Wipes the whole index cache, its trip previews included, and zeroes its
+ * byte accounting in one transaction. Folders and annotations are untouched -
+ * the only cost is a full re-index on the next open of each folder. Rejects when IndexedDB is
  * unavailable (nothing to clear then anyway).
  */
 export async function clearIndexCache(): Promise<void> {
     const db = await openPersistDb();
-    const tx = db.transaction(["indexCache", "meta"], "readwrite");
+    const tx = db.transaction(["indexCache", "tripPreviews", "meta"], "readwrite");
     await tx.objectStore("indexCache").clear();
+    await tx.objectStore("tripPreviews").clear();
     await tx.objectStore("meta").put("0", TOTAL_BYTES_META_KEY);
     await tx.done;
     log.info("index cache cleared");
@@ -331,27 +392,42 @@ async function pruneIndexCache(db: PersistDb, totalHint: number): Promise<void> 
 
     // Count/total and the deletions share one transaction - a check taken
     // outside it can race a concurrent batch write and over-delete.
-    const tx = db.transaction(["indexCache", "meta"], "readwrite");
+    const tx = db.transaction(["indexCache", "tripPreviews", "meta"], "readwrite");
     const store = tx.objectStore("indexCache");
+    const previews = tx.objectStore("tripPreviews");
     const meta = tx.objectStore("meta");
     let total = await readTotalBytes(meta);
     let entriesLeft = await store.count();
     let deleted = 0;
+    // A preview whose recording has no index entry outlived it or never got
+    // one (a blocked or failed index write). Nothing evicts it otherwise, and
+    // it serves nothing until that entry exists, so it goes first.
+    let orphanPreviews = 0;
+    for (const key of await previews.getAllKeys()) {
+        if ((await store.getKey(key)) !== undefined) continue;
+        total -= await deleteTripPreview(previews, key);
+        orphanPreviews++;
+    }
     let cursor = await store.index("bySavedAt").openCursor();
     while (cursor && (total > limitBytes || entriesLeft > MAX_ENTRIES)) {
         const entry = cursor.value;
         // A pre-`bytes` entry never contributed to the total (subtracts 0);
         // a legacy-format one is unreadable anyway - the walk clears
         // both as it reaches them, reclaiming space the total cannot see.
-        total -= entry.bytes ?? 0;
+        total -= (entry.bytes ?? 0) + (await deleteTripPreview(previews, entry.identityKey));
         entriesLeft--;
         deleted++;
         await cursor.delete();
         cursor = await cursor.continue();
     }
-    if (deleted > 0) await meta.put(String(Math.max(0, total)), TOTAL_BYTES_META_KEY);
+    if (deleted > 0 || orphanPreviews > 0) await meta.put(String(Math.max(0, total)), TOTAL_BYTES_META_KEY);
     await tx.done;
-    if (deleted > 0) {
-        log.info("pruned index cache", { deleted, kept: entriesLeft, totalBytes: Math.max(0, total) });
+    if (deleted > 0 || orphanPreviews > 0) {
+        log.info("pruned index cache", {
+            deleted,
+            orphanPreviews,
+            kept: entriesLeft,
+            totalBytes: Math.max(0, total),
+        });
     }
 }

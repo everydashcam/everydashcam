@@ -1098,7 +1098,7 @@ export const koDict = {
     "settings.notes.description": "모든 주행 이름, 메모, 즐겨찾기, 마커의 사본을 다운로드하거나 이전 백업에서 복원해 보세요. 녹화 파일은 포함되지 않아요.",
     "settings.notes.export": "메모 백업 다운로드",
     "settings.notes.import": "메모 백업 복원…",
-    "settings.cache.description": "이미 읽은 정보를 기억해 두어 다음에 폴더를 더 빠르게 열 수 있어요. 영상 자체는 저장되지 않아요.",
+    "settings.cache.description": "이미 읽은 정보와 주행 미리보기를 기억해 두어 다음에 폴더를 더 빠르게 열 수 있어요. 영상 자체는 저장되지 않아요.",
     "settings.cache.usage.label": "사용 중인 공간",
     "settings.cache.usage.value": "{limit} 중 {used} · {n, plural, other {클립 #개}}",
     "settings.cache.limit.label": "공간 제한",

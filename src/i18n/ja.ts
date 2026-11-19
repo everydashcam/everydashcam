@@ -1100,7 +1100,7 @@ export const jaDict = {
     "settings.notes.description": "すべての走行名、メモ、お気に入り、マーカーをダウンロードしたり、以前のバックアップから復元したりできます。録画は含まれません。",
     "settings.notes.export": "メモのバックアップをダウンロード",
     "settings.notes.import": "メモのバックアップを復元…",
-    "settings.cache.description": "読み取り済みの情報を記憶し、次回はフォルダーをより速く開けます。動画そのものは保存されません。",
+    "settings.cache.description": "読み取り済みの情報と走行のプレビューを記憶し、次回はフォルダーをより速く開けます。動画そのものは保存されません。",
     "settings.cache.usage.label": "使用中の容量",
     "settings.cache.usage.value": "{used} / {limit} · {n, plural, other {#件のクリップ}}",
     "settings.cache.limit.label": "使用容量の上限",

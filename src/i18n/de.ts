@@ -1086,7 +1086,7 @@ export const deDict = {
     "settings.notes.description": "Lade eine Kopie aller Fahrtnamen, Notizen, Favoriten und Marker herunter oder stelle eine frühere wieder her. Aufnahmen sind nicht enthalten.",
     "settings.notes.export": "Notizen-Sicherung herunterladen",
     "settings.notes.import": "Notizen-Sicherung wiederherstellen…",
-    "settings.cache.description": "Merkt sich bereits gelesene Aufnahmeinfos, damit sich Ordner beim nächsten Mal schneller öffnen. Die Videos selbst werden nie gespeichert.",
+    "settings.cache.description": "Merkt sich bereits gelesene Aufnahmeinfos und die Vorschauen der Fahrten, damit sich Ordner beim nächsten Mal schneller öffnen. Die Videos selbst werden nie gespeichert.",
     "settings.cache.usage.label": "Belegter Speicher",
     "settings.cache.usage.value": "{used} von {limit} · {n, plural, one {# Clip} other {# Clips}}",
     "settings.cache.limit.label": "Speicherlimit",

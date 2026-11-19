@@ -1086,7 +1086,7 @@ export const zhDict = {
     "settings.notes.description": "下载所有行程名称、备注、收藏和标记的副本，或恢复之前保存的副本。备份不包含录像。",
     "settings.notes.export": "下载备注备份",
     "settings.notes.import": "恢复备注备份…",
-    "settings.cache.description": "记住 everydashcam 已经读取的信息，让文件夹下次打开得更快。视频本身不会被保存。",
+    "settings.cache.description": "记住 everydashcam 已经读取的信息和行程预览，让文件夹下次打开得更快。视频本身不会被保存。",
     "settings.cache.usage.label": "已用空间",
     "settings.cache.usage.value": "{used} / {limit} · {n, plural, other {# 个片段}}",
     "settings.cache.limit.label": "空间上限",

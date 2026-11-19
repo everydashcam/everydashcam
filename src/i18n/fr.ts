@@ -1088,7 +1088,7 @@ export const frDict = {
     "settings.notes.description": "Télécharge une copie de tous les noms de trajets, notes, favoris et marqueurs, ou restaure une copie précédente. Les enregistrements ne sont pas inclus.",
     "settings.notes.export": "Télécharger la sauvegarde des notes",
     "settings.notes.import": "Restaurer une sauvegarde de notes…",
-    "settings.cache.description": "Mémorise les informations déjà lues par everydashcam pour ouvrir les dossiers plus vite la prochaine fois. Les vidéos elles-mêmes ne sont jamais stockées.",
+    "settings.cache.description": "Mémorise les informations déjà lues par everydashcam et les aperçus des trajets pour ouvrir les dossiers plus vite la prochaine fois. Les vidéos elles-mêmes ne sont jamais stockées.",
     "settings.cache.usage.label": "Espace utilisé",
     "settings.cache.usage.value": "{used} sur {limit} · {n, plural, one {# clip} other {# clips}}",
     "settings.cache.limit.label": "Limite d'espace",

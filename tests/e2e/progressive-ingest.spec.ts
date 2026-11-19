@@ -228,6 +228,17 @@ test.describe("progressive ingest", () => {
                 });
             });
         }
+        if (testInfo.title.includes("keeps trip previews across sessions")) {
+            await installWorkerRpc(page, () => {
+                const target = window as typeof window & { __previewExtracts?: number };
+                window.__workerRpc.intercept(["preview-worker"], () => async (type, _data, forward, kind) => {
+                    if (kind === "request" && type === "extract-preview") {
+                        target.__previewExtracts = (target.__previewExtracts ?? 0) + 1;
+                    }
+                    return forward();
+                });
+            });
+        }
         if (testInfo.title.includes("damaged leading clip")) {
             await page.route("**/assets/maplibre-gl-*.js", async (route) => {
                 await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -1056,6 +1067,43 @@ test.describe("progressive ingest", () => {
             .toBe(4);
     });
 
+    test("keeps trip previews across sessions and paints them without decoding again", async ({ page }) => {
+        const directory = makeTemporaryDirectory("everydashcam-preview-cache-");
+        const source = path.join(SAMPLE_NOGPS, "clip-no-gps.mp4");
+        for (let i = 0; i < 3; i++) {
+            writeFileSync(
+                path.join(directory, `clip-${i}.mp4`),
+                withMvhdCreationTime(source, `2026-01-15T${String(i + 10).padStart(2, "0")}:00:00Z`),
+            );
+        }
+        const trips = page.locator("li.trip:not(.unindexed-note)");
+        const shownPreviews = () =>
+            page.evaluate(() => window.__everydashcam.state.trips.filter((trip) => trip.previewDataUrl).length);
+        const previewExtracts = () =>
+            page.evaluate(() => (window as typeof window & { __previewExtracts?: number }).__previewExtracts ?? 0);
+
+        await page.locator("#folder-input").setInputFiles(directory);
+        await expect(trips).toHaveCount(3);
+        await expect.poll(shownPreviews, { timeout: 20_000 }).toBe(3);
+        expect(await previewExtracts(), "the first session decodes its previews").toBeGreaterThan(0);
+        await expect.poll(() => storedTripPreviews(page), { timeout: 10_000 }).toBe(3);
+
+        await page.reload();
+        await page.evaluate(() => {
+            const target = window as typeof window & { __ingestDone?: boolean };
+            addEventListener("everydashcam:ingest-done", () => {
+                target.__ingestDone = true;
+            });
+        });
+        await page.locator("#folder-input").setInputFiles(directory);
+        await expect(trips).toHaveCount(3);
+        await expect.poll(shownPreviews, { timeout: 20_000 }).toBe(3);
+        await expect
+            .poll(() => page.evaluate(() => (window as typeof window & { __ingestDone?: boolean }).__ingestDone))
+            .toBe(true);
+        expect(await previewExtracts(), "kept previews paint without a decode").toBe(0);
+    });
+
     test("regrouping from settings preserves the active ingest lifecycle", async ({ page }) => {
         const dir = makeTemporaryDirectory("everydashcam-regroup-");
         const source = path.join(SAMPLE_70MAI, "Normal/Front/NO20260101-120000-000001F.MP4");
@@ -1211,6 +1259,25 @@ async function storedParsedGpsCacheEntries(page: Page): Promise<number> {
                                     entry.embeddedGps?.status === "parsed",
                             ).length,
                         );
+                        db.close();
+                    };
+                };
+            }),
+    );
+}
+
+async function storedTripPreviews(page: Page): Promise<number> {
+    return page.evaluate(
+        () =>
+            new Promise<number>((resolve, reject) => {
+                const request = indexedDB.open("dashcamigo");
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const db = request.result;
+                    const count = db.transaction("tripPreviews").objectStore("tripPreviews").count();
+                    count.onerror = () => reject(count.error);
+                    count.onsuccess = () => {
+                        resolve(count.result);
                         db.close();
                     };
                 };

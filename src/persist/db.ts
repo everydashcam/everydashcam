@@ -7,11 +7,17 @@
 // session-only", never as a crash.
 
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import type { AnnotationRecord, CachedFileIndex, NotesFileRecord, RememberedFolder } from "./types.js";
+import type {
+    AnnotationRecord,
+    CachedFileIndex,
+    CachedTripPreview,
+    NotesFileRecord,
+    RememberedFolder,
+} from "./types.js";
 
 // Keep released tabs and recovery readers on the same notes, handles and tombstones.
 export const PERSIST_DB_NAME = "dashcamigo";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 interface PersistDbSchema extends DBSchema {
     folders: { key: string; value: RememberedFolder };
@@ -29,6 +35,8 @@ interface PersistDbSchema extends DBSchema {
         value: CachedFileIndex;
         indexes: { bySavedAt: number };
     };
+    /** Trip list previews, keyed like the index entry they belong to. */
+    tripPreviews: { key: string; value: CachedTripPreview };
 }
 
 export type PersistDb = IDBPDatabase<PersistDbSchema>;
@@ -65,6 +73,7 @@ export function openPersistDb(): Promise<PersistDb> {
                     transaction.objectStore("meta").put("0", "indexCacheBytes");
                 }
                 if (oldVersion < 4) db.createObjectStore("notesFile", { keyPath: "id" });
+                if (oldVersion < 5) db.createObjectStore("tripPreviews", { keyPath: "identityKey" });
             },
             blocking(_currentVersion, _blockedVersion, _event) {
                 // Another context wants a version change (schema bump in a

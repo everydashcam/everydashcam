@@ -88,7 +88,7 @@ import { maybeRunIngestTour, maybeRunSourcesTour } from "./onboarding.js";
 import { maybeShowSupportPrompt, recordSuccessfulLoadForSupportPrompt } from "./support-prompt.js";
 import { refreshTripAnalysisStatus, refreshTripCard, renderTrips, updateTripPreview } from "./sidebar.js";
 import { state } from "./state.js";
-import { ensureTripPreview, schedulePopulateTripPreviews } from "./trip-preview.js";
+import { ensureTripPreview, restoreCachedTripPreviews, schedulePopulateTripPreviews } from "./trip-preview.js";
 
 const log = createLogger("ingest");
 
@@ -540,6 +540,8 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
     });
 
     announceListReady(run);
+    // Kept previews paint now; decoding the rest waits for recording analysis.
+    void restoreCachedTripPreviews(state.trips, updateTripPreview);
     void activateScheduling(run);
 }
 

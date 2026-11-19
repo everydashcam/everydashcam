@@ -169,6 +169,23 @@ export interface CachedFileIndex {
 }
 
 /**
+ * A trip list preview kept across sessions, keyed by the identity of the
+ * recording it is cut from (a trip's first file). Lives and dies with that
+ * recording's index entry: evicted with it, cleared with the index cache, and
+ * counted in the same byte total.
+ */
+export interface CachedTripPreview {
+    /** fileIdentityKey() of the source recording. */
+    identityKey: string;
+    /** PREVIEW_CACHE_FORMAT at write time; a mismatch reads as absent. */
+    previewFormat: number;
+    /** Stored size, part of the index cache's byte total. */
+    bytes: number;
+    /** JPEG data URL as the card shows it. */
+    dataUrl: string;
+}
+
+/**
  * Anchor for trip-level annotations. Trips are derived entities - regrouping
  * (parser version bump, trip-gap setting) rebuilds them - so annotations
  * anchor to the identity of the trip's first video file plus its start time,

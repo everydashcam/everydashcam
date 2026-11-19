@@ -1089,7 +1089,7 @@ export const enDict = {
     "settings.notes.description": "Download a copy of every trip name, note, favorite and marker, or restore one you saved earlier. Recordings aren't included.",
     "settings.notes.export": "Download notes backup",
     "settings.notes.import": "Restore notes backup…",
-    "settings.cache.description": "Remembers details everydashcam has already read, so folders open faster next time. The videos themselves are never stored.",
+    "settings.cache.description": "Remembers the details everydashcam has already read and the trip previews, so folders open faster next time. The videos themselves are never stored.",
     "settings.cache.usage.label": "Space used",
     "settings.cache.usage.value": "{used} of {limit} · {n, plural, one {# clip} other {# clips}}",
     "settings.cache.limit.label": "Space limit",

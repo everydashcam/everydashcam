@@ -1088,7 +1088,7 @@ export const esDict = {
     "settings.notes.description": "Descarga una copia de todos los nombres de trayectos, notas, favoritos y marcadores, o restaura una anterior. Las grabaciones no se incluyen.",
     "settings.notes.export": "Descargar copia de notas",
     "settings.notes.import": "Restaurar copia de notas…",
-    "settings.cache.description": "Recuerda los datos que everydashcam ya ha leído para abrir las carpetas más rápido la próxima vez. Los vídeos en sí nunca se guardan.",
+    "settings.cache.description": "Recuerda los datos que everydashcam ya ha leído y las vistas previas de los trayectos para abrir las carpetas más rápido la próxima vez. Los vídeos en sí nunca se guardan.",
     "settings.cache.usage.label": "Espacio usado",
     "settings.cache.usage.value": "{used} de {limit} · {n, plural, one {# clip} other {# clips}}",
     "settings.cache.limit.label": "Límite de espacio",
