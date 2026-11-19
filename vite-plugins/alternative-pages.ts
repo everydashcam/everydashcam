@@ -831,12 +831,22 @@ export function assertAltLocaleParity(): void {
                 continue;
             }
             const resolved = direct ?? community;
-            const enRowsLen = competitor.locales.en?.compareRows.length ?? 0;
-            if (resolved && resolved.compareRows.length !== enRowsLen) {
+            const enRows = competitor.locales.en?.compareRows ?? [];
+            if (resolved && resolved.compareRows.length !== enRows.length) {
                 problems.push(
-                    `${competitor.slug}/${lang}: ${resolved.compareRows.length} compare rows, en source has ${enRowsLen}`,
+                    `${competitor.slug}/${lang}: ${resolved.compareRows.length} compare rows, en source has ${enRows.length}`,
                 );
             }
+            // A translation changes wording only. The verdict about a
+            // competitor belongs to the English source, so a stale
+            // translation cannot keep a claim that English has corrected.
+            resolved?.compareRows.forEach((row, index) => {
+                const enRow = enRows[index];
+                if (!enRow || (row.us.mark === enRow.us.mark && row.them.mark === enRow.them.mark)) return;
+                problems.push(
+                    `${competitor.slug}/${lang}: row ${index + 1} marks ${row.us.mark}/${row.them.mark}, en source has ${enRow.us.mark}/${enRow.them.mark}`,
+                );
+            });
         }
     }
     if (problems.length > 0) {

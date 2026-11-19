@@ -98,8 +98,8 @@ describe("alternative-pages locale parity", () => {
     it("has labels, index and every competitor's content for every indexable locale", () => {
         // Same guard the build runs in closeBundle: every indexable locale must
         // have chrome labels, hub copy, and per-competitor content (hand-written
-        // en/ru or machine-translated community), with matching comparison-row
-        // counts. Throws with the offending list otherwise.
+        // en/ru or machine-translated community), with comparison rows whose
+        // count and marks match English. Throws with the offending list otherwise.
         expect(() => assertAltLocaleParity()).not.toThrow();
     });
 });

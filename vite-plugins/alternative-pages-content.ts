@@ -7,9 +7,10 @@
 //
 // Generated from the alt-pages-localize translation workflows. LLM translations
 // are final for community locales (project policy: no native-review gate). The
-// comparison-table marks (yes/no/partial) are forced from the English source at
-// generation time, so only the translated text varies per locale - the factual
-// verdicts cannot drift. To re-translate, re-run the workflow and regenerate.
+// comparison-table marks (yes/no/partial) must equal the English source, and
+// assertAltLocaleParity() fails the build when they differ. When an English
+// verdict changes, update the marks and the translated notes together. To
+// re-translate, re-run the workflow and regenerate.
 
 import type { AltIndexLocale, AltLocaleContent, AltSharedLabels, AltSlug } from "./alternative-pages.js";
 import type { Lang } from "../src/i18n/index.js";
@@ -34,8 +35,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Kostenlos"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Kostenpflichtig, einmalige Lizenz (eingeschränkte kostenlose Stufe)"
+                        "mark": "partial",
+                        "note": "Free-Tarif; kostenpflichtige Tarife Plus und Pro"
                     }
                 },
                 {
@@ -45,8 +46,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Im Browser — nichts zu installieren"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Installation + Lizenzcode per E-Mail"
+                        "mark": "partial",
+                        "note": "Native Desktop-App"
                     }
                 },
                 {
@@ -138,8 +139,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Gratis"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "De pago, licencia única (versión gratuita limitada)"
+                        "mark": "partial",
+                        "note": "Plan Free; planes de pago Plus y Pro"
                     }
                 },
                 {
@@ -149,8 +150,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "En el navegador — nada que instalar"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Instalación + código de licencia por correo"
+                        "mark": "partial",
+                        "note": "App de escritorio nativa"
                     }
                 },
                 {
@@ -242,8 +243,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Gratuit"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Payant, licence unique (version gratuite limitée)"
+                        "mark": "partial",
+                        "note": "Formule Free, formules payantes Plus et Pro"
                     }
                 },
                 {
@@ -253,8 +254,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Dans le navigateur — rien à installer"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Installation + code de licence par e-mail"
+                        "mark": "partial",
+                        "note": "Application de bureau native"
                     }
                 },
                 {
@@ -346,8 +347,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "無料"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "有料、買い切りライセンス（無料版は制限あり）"
+                        "mark": "partial",
+                        "note": "Free プランあり、有料の Plus・Pro プラン"
                     }
                 },
                 {
@@ -357,8 +358,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "ブラウザで — インストール不要"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "インストール＋メールで届くライセンスコード"
+                        "mark": "partial",
+                        "note": "ネイティブのデスクトップアプリ"
                     }
                 },
                 {
@@ -450,8 +451,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "무료"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "유료, 일회성 라이선스(제한된 무료 등급)"
+                        "mark": "partial",
+                        "note": "Free 플랜, 유료 Plus·Pro 플랜"
                     }
                 },
                 {
@@ -461,8 +462,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "브라우저에서 — 설치할 것 없음"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "설치 + 이메일로 받은 라이선스 코드"
+                        "mark": "partial",
+                        "note": "네이티브 데스크톱 앱"
                     }
                 },
                 {
@@ -554,8 +555,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Za darmo"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Płatne, jednorazowa licencja (ograniczona darmowa wersja)"
+                        "mark": "partial",
+                        "note": "Plan Free; płatne plany Plus i Pro"
                     }
                 },
                 {
@@ -565,8 +566,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "W przeglądarce — nic do zainstalowania"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Instalacja + kod licencyjny mailem"
+                        "mark": "partial",
+                        "note": "Natywna aplikacja desktopowa"
                     }
                 },
                 {
@@ -658,8 +659,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "Grátis"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Pago, licença única (plano gratuito limitado)"
+                        "mark": "partial",
+                        "note": "Plano Free; planos pagos Plus e Pro"
                     }
                 },
                 {
@@ -669,8 +670,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "No navegador — nada para instalar"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "Instalação + código de licença por e-mail"
+                        "mark": "partial",
+                        "note": "App nativo para desktop"
                     }
                 },
                 {
@@ -762,8 +763,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "免费"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "付费，一次性授权（免费版受限）"
+                        "mark": "partial",
+                        "note": "有 Free 方案；付费 Plus 和 Pro 方案"
                     }
                 },
                 {
@@ -773,8 +774,8 @@ export const COMMUNITY_ALT_CONTENT: Record<AltSlug, Partial<Record<Lang, AltLoca
                         "note": "在浏览器里——无需安装"
                     },
                     "them": {
-                        "mark": "no",
-                        "note": "安装 + 邮件发来的授权码"
+                        "mark": "partial",
+                        "note": "原生桌面应用"
                     }
                 },
                 {
