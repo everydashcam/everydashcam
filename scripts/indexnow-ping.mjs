@@ -23,8 +23,9 @@
 // + privacy; grows with page families). A single POST per engine stays
 // well under IndexNow's per-request limit (10000 URLs). Repeated submission of
 // unchanged URLs may trigger a 429 from individual engines - we surface that
-// as a per-engine warning and keep going, so one throttled engine doesn't
-// block the rest. Exit 0 unless every engine fails (then exit 1).
+// as a per-engine warning that does not count as accepted, and keep going, so
+// one throttled engine doesn't block the rest. Exit 0 unless no engine
+// accepts the batch (then exit 1).
 
 const KEY = (process.env.INDEXNOW_KEY ?? "").trim();
 if (KEY.length === 0) {
@@ -142,14 +143,11 @@ async function submitTo(engine) {
             body: payload,
         });
     } catch (err) {
-        return { id: engine.id, ok: false, status: 0, ms: Date.now() - started, error: err.message };
+        return { id: engine.id, status: 0, ms: Date.now() - started, error: err.message };
     }
     const body = await res.text();
     const ms = Date.now() - started;
-    // 200 = accepted, 202 = accepted (async key validation), 429 = throttled
-    // (treat as soft pass - retry on next deploy clears it naturally).
-    const ok = res.status === 200 || res.status === 202 || res.status === 429;
-    return { id: engine.id, ok, status: res.status, statusText: res.statusText, ms, body };
+    return { id: engine.id, status: res.status, statusText: res.statusText, ms, body };
 }
 
 const results = await Promise.all(ENGINES.map(submitTo));
@@ -162,12 +160,14 @@ for (const r of results) {
         continue;
     }
     const line = `${tag} HTTP ${r.status} ${r.statusText ?? ""}  (${r.ms}ms)`;
+    // 200 = accepted, 202 = accepted while key validation is pending.
     if (r.status === 200 || r.status === 202) {
         console.log(`${line} - ok`);
         okCount++;
     } else if (r.status === 429) {
-        console.warn(`${line} - throttled, retry next deploy`);
-        okCount++;
+        // The engine took nothing; IndexNow asks for a pause, so the next
+        // deploy resubmits instead of retrying here.
+        console.warn(`${line} - throttled, not accepted`);
     } else {
         console.error(`${line} - rejected`);
         const snippet = (r.body ?? "").slice(0, 200).replace(/\s+/g, " ").trim();
@@ -178,9 +178,9 @@ for (const r of results) {
 console.log(`indexnow: ${okCount}/${ENGINES.length} engines accepted`);
 
 // Exit 0 if at least one engine took the batch. Exit 1 only if every engine
-// rejected or networked-out - that signals something is systemically broken
-// (key file missing, payload malformed, no network) and the deploy pipeline
-// should know about it.
+// rejected, throttled or networked-out - that signals something is
+// systemically broken (key file missing, payload malformed, no network,
+// submissions treated as excessive) and the deploy pipeline should know.
 if (okCount === 0) {
     process.exit(1);
 }
