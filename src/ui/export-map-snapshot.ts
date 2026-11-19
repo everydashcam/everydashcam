@@ -37,8 +37,11 @@ import { buildMercatorCumulativeDistances, buildSpeedGradient } from "./speed-gr
 import { addBuildings3dLayer, removeBuildings3dLayer } from "./map.js";
 import { EMPTY_MAP_STYLE, loadMaplibre, loadMapStyle, type MapLoadSource } from "./viewer-map-registry.js";
 import { composeMapStyle, type MapAppearance } from "./map-appearance.js";
-import { DEFAULT_MAP_MARKER_APPEARANCE, type MapMarkerAppearance, mapMarkerSizeScale } from "./map-marker-pref.js";
+import { DEFAULT_MAP_MARKER_APPEARANCE, type MapMarkerAppearance } from "./map-marker-pref.js";
 import { drawMapMarker } from "./map-marker-renderer.js";
+import { drawEndpointFlag, type EndpointKind } from "./map-endpoint-flag.js";
+import { insetFlagHeightPx, insetMarkerSizePx, insetTrackWidthPx } from "./map-inset-scale.js";
+import { mapThemeColors, themeColors } from "./theme.js";
 import {
     createOverlayMapProviderSession,
     mapProviderErrorKey,
@@ -305,6 +308,8 @@ export async function createExportMapSnapshotter(
     }
 
     addTrackLayer(map, records, radar && radarSpec(radar).endpointDots);
+    // Radar palettes mark the route ends on the map itself, or not at all.
+    const flags = radar ? [] : endpointFlags(records, mapThemeColors(theme).markerStroke);
 
     let isDisposed = false;
     let shouldRefreshOnIdle = false;
@@ -531,19 +536,28 @@ export async function createExportMapSnapshotter(
             // the car points straight up (screen bearing 0) and sits wherever the
             // tilted, padded projection puts it - map.project() returns that exact
             // CSS pixel; scale it to drawing-buffer pixels for the composite.
+            const toBufferX = composite.width / SNAPSHOT_WIDTH;
+            const toBufferY = composite.height / SNAPSHOT_HEIGHT;
+            // Flags stand upright under the car, like the viewer's flag markers.
+            const flagHeight = insetFlagHeightPx(composite.height);
+            for (const flag of flags) {
+                const point = map.project(flag.lngLat);
+                const x = point.x * toBufferX;
+                const y = point.y * toBufferY;
+                if (!isInsideBuffer(x, y, composite, flagHeight)) continue;
+                drawEndpointFlag(cctx, flag.kind, flag.colors, x, y, flagHeight);
+            }
             const markerPoint = headingUp
                 ? map.project([req.lon, req.lat])
                 : { x: SNAPSHOT_WIDTH / 2, y: SNAPSHOT_HEIGHT / 2 };
-            const markerX = markerPoint.x * (composite.width / SNAPSHOT_WIDTH);
-            const markerY = markerPoint.y * (composite.height / SNAPSHOT_HEIGHT);
             const markerBearing = headingUp ? 0 : req.bearingDeg;
             await drawMapMarker(
                 cctx,
                 activeMarkerAppearance,
-                markerX,
-                markerY,
+                markerPoint.x * toBufferX,
+                markerPoint.y * toBufferY,
                 markerBearing,
-                composite.height * (radar ? 0.115 : 0.105) * mapMarkerSizeScale(activeMarkerAppearance.size),
+                insetMarkerSizePx(composite.height, activeMarkerAppearance.size, radar !== undefined),
                 pitch,
                 radar,
             );
@@ -611,6 +625,38 @@ function finiteActiveRecords(recs: GpsRecord[]): GpsRecord[] {
     return recs.filter(isValidGpsFix);
 }
 
+interface EndpointFlag {
+    kind: EndpointKind;
+    lngLat: [number, number];
+    colors: { fill: string; stroke: string };
+}
+
+/** The trip's first and last fixes, flagged like the viewer's route ends. */
+function endpointFlags(records: GpsRecord[], stroke: string): EndpointFlag[] {
+    const usable = finiteActiveRecords(records);
+    const first = usable[0];
+    const last = usable[usable.length - 1];
+    if (!first || !last) return [];
+    const colors = themeColors();
+    return [
+        { kind: "start", lngLat: [first.lon, first.lat], colors: { fill: colors.markerStart, stroke } },
+        { kind: "end", lngLat: [last.lon, last.lat], colors: { fill: colors.markerEnd, stroke } },
+    ];
+}
+
+/** A flag whose foot is off the snapshot can still reach into it by its own height. Points
+ *  beyond a tilted camera's horizon project to non-finite or far-away coordinates. */
+function isInsideBuffer(x: number, y: number, buffer: { width: number; height: number }, margin: number): boolean {
+    return (
+        Number.isFinite(x) &&
+        Number.isFinite(y) &&
+        x > -margin &&
+        x < buffer.width + margin &&
+        y > 0 &&
+        y < buffer.height + margin
+    );
+}
+
 function addTrackLayer(
     map: maplibregl.Map,
     records: GpsRecord[],
@@ -627,6 +673,6 @@ function addTrackLayer(
     addSpeedTrack(
         map,
         { coords, gradient },
-        { sourceId: TRACK_SOURCE_ID, layerId: TRACK_LAYER_ID, width: 5, endpointDots },
+        { sourceId: TRACK_SOURCE_ID, layerId: TRACK_LAYER_ID, width: insetTrackWidthPx(SNAPSHOT_HEIGHT), endpointDots },
     );
 }

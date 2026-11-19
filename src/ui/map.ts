@@ -68,6 +68,8 @@ import {
     viewerMiniMapShape,
 } from "./map-view-pref.js";
 import { getMapMarkerAppearance, MAP_MARKER_SIZE_PX, subscribeMapMarkerAppearance } from "./map-marker-pref.js";
+import { endpointFlagAnchor, endpointFlagSvg, type EndpointKind } from "./map-endpoint-flag.js";
+import { insetFlagHeightPx, insetMarkerSizePx, insetTrackWidthPx } from "./map-inset-scale.js";
 import {
     mapMarkerPitchScale,
     mapMarkerRenderKey,
@@ -596,13 +598,26 @@ export function ensureMap(): maplibregl.Map | null {
  */
 const MINI_MAP_TARGET_WIDTH_KM = 5;
 let miniMapWidthPx = 1;
+// The car, route and flags are sized as fractions of the inset's height.
+let miniMapHeightPx = 150;
 
-function refreshMiniMapWidth(): void {
-    const width = Number.parseFloat(getComputedStyle(dom.miniMap).width);
-    if (!Number.isFinite(width) || width <= 0 || width === miniMapWidthPx) return;
-    miniMapWidthPx = width;
-    // A resized thumbnail needs a new zoom even when the playhead is paused.
-    miniAppliedLat = Number.NaN;
+/** Returns whether the inset's height changed, which resizes what it draws. */
+function refreshMiniMapSize(): boolean {
+    const computed = getComputedStyle(dom.miniMap);
+    const width = Number.parseFloat(computed.width);
+    if (Number.isFinite(width) && width > 0 && width !== miniMapWidthPx) {
+        miniMapWidthPx = width;
+        // A resized thumbnail needs a new zoom even when the playhead is paused.
+        miniAppliedLat = Number.NaN;
+    }
+    const height = Number.parseFloat(computed.height);
+    if (!Number.isFinite(height) || height <= 0 || height === miniMapHeightPx) return false;
+    miniMapHeightPx = height;
+    return true;
+}
+
+function miniMapMarkerSizePx(): number {
+    return insetMarkerSizePx(miniMapHeightPx, getMapMarkerAppearance().size, viewerRadarTheme() !== undefined);
 }
 
 function miniMapZoomForLat(lat: number): number {
@@ -621,7 +636,7 @@ export function ensureMiniMap(): maplibregl.Map | null {
     let mini: maplibregl.Map;
     try {
         dom.miniMap.dataset.shape = viewerMiniMapShape();
-        refreshMiniMapWidth();
+        refreshMiniMapSize();
         mini = new (loadedMaplibre().Map)({
             container: "mini-map",
             // Start with empty style; the registry applies the real one after
@@ -668,7 +683,9 @@ export function ensureMiniMap(): maplibregl.Map | null {
     miniMapGpsStatus = buildGpsStatusBadge(dom.miniMap);
     // Reading computed width after marker writes forces style work on every
     // playback frame. Map resizes keep the cached width current off that path.
-    mini.on("resize", refreshMiniMapWidth);
+    mini.on("resize", () => {
+        if (refreshMiniMapSize() && state.miniMapData) refreshMiniMap(state.miniMapData);
+    });
     mini.addControl(miniMapAttributionControl, "bottom-right");
 
     mini.on("styledataloading", () => {
@@ -702,7 +719,7 @@ export function ensureMiniMap(): maplibregl.Map | null {
  * The canvas is filled asynchronously for vehicle assets; the element can be
  * handed to MapLibre immediately and paints in place when its asset is ready.
  */
-function buildCarMarkerElement(pitchDeg = 0): HTMLDivElement {
+function buildCarMarkerElement(sizePx: number, pitchDeg = 0): HTMLDivElement {
     const wrap = document.createElement("div");
     wrap.className = "car-marker-wrap";
     const marker = document.createElement("div");
@@ -710,7 +727,7 @@ function buildCarMarkerElement(pitchDeg = 0): HTMLDivElement {
     marker.style.setProperty("--bearing", "0deg");
     marker.style.setProperty("--marker-pitch-scale", mapMarkerPitchScale(pitchDeg).toFixed(3));
     const appearance = getMapMarkerAppearance();
-    marker.style.setProperty("--map-marker-size", `${MAP_MARKER_SIZE_PX[appearance.size]}px`);
+    marker.style.setProperty("--map-marker-size", `${sizePx}px`);
     const canvas = document.createElement("canvas");
     canvas.className = "car-marker__canvas";
     canvas.width = 192;
@@ -723,14 +740,14 @@ function buildCarMarkerElement(pitchDeg = 0): HTMLDivElement {
 
 function refreshLiveMapMarkerAppearance(): void {
     const appearance = getMapMarkerAppearance();
-    for (const [marker, map] of [
-        [state.marker, state.map],
-        [state.miniMapMarker, state.miniMap],
+    for (const [marker, map, sizePx] of [
+        [state.marker, state.map, MAP_MARKER_SIZE_PX[appearance.size]],
+        [state.miniMapMarker, state.miniMap, miniMapMarkerSizePx()],
     ] as const) {
         const inner = marker?.getElement()?.querySelector<HTMLElement>(".car-marker");
         const canvas = inner?.querySelector<HTMLCanvasElement>(".car-marker__canvas");
         if (!inner || !canvas) continue;
-        inner.style.setProperty("--map-marker-size", `${MAP_MARKER_SIZE_PX[appearance.size]}px`);
+        inner.style.setProperty("--map-marker-size", `${sizePx}px`);
         void renderMapMarkerIntoCanvas(
             canvas,
             appearance,
@@ -740,7 +757,7 @@ function refreshLiveMapMarkerAppearance(): void {
     }
 }
 
-function buildEndpointMarkerElement(kind: "start" | "end"): HTMLDivElement {
+function buildEndpointMarkerElement(kind: EndpointKind, heightPx: number | undefined): HTMLDivElement {
     const wrap = document.createElement("div");
     wrap.className = "endpoint-marker-wrap";
     wrap.dataset.endpoint = kind;
@@ -748,31 +765,24 @@ function buildEndpointMarkerElement(kind: "start" | "end"): HTMLDivElement {
     wrap.setAttribute("role", "img");
     wrap.setAttribute("aria-label", wrap.title);
     const tc = themeColors();
-    const isStart = kind === "start";
-    const fill = isStart ? tc.markerStart : tc.markerEnd;
-    const stroke = viewerMapColors().markerStroke;
-    const poleX = isStart ? 27 : 1;
-    const flag = isStart
-        ? `<path d="M27 3H3L8 11L3 19H27Z" fill="${fill}" stroke="${stroke}"/>`
-        : `<path d="M1 3H25V19H1Z" fill="${stroke}"/>
-           <path d="M1 3h6v4H1zM13 3h6v4h-6zM7 7h6v4H7zM19 7h6v4h-6zM1 11h6v4H1zM13 11h6v4h-6zM7 15h6v4H7zM19 15h6v4h-6z" fill="${fill}"/>
-           <path d="M1 3H25V19H1Z" fill="none" stroke="${stroke}"/>`;
-    wrap.innerHTML = `
-        <svg viewBox="0 0 28 32" width="28" height="32" aria-hidden="true" stroke-linejoin="round">
-            <path d="M${poleX} 2V31" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/>
-            ${flag}
-        </svg>
-    `;
+    const colors = {
+        fill: kind === "start" ? tc.markerStart : tc.markerEnd,
+        stroke: viewerMapColors().markerStroke,
+    };
+    wrap.innerHTML = endpointFlagSvg(kind, colors, heightPx);
     return wrap;
 }
 
-function addEndpointMarker(map: maplibregl.Map, kind: "start" | "end", coords: LngLatTuple): maplibregl.Marker {
-    // Opposite flag directions keep both endpoints legible when the trip returns to its start.
-    const isStart = kind === "start";
+/** `heightPx` scales an inset's flags; full-size maps keep the artwork's own size. */
+function addEndpointMarker(
+    map: maplibregl.Map,
+    kind: EndpointKind,
+    coords: LngLatTuple,
+    heightPx?: number,
+): maplibregl.Marker {
     return new (loadedMaplibre().Marker)({
-        element: buildEndpointMarkerElement(kind),
-        anchor: isStart ? "bottom-right" : "bottom-left",
-        offset: [isStart ? 1 : -1, 1],
+        element: buildEndpointMarkerElement(kind, heightPx),
+        ...endpointFlagAnchor(kind, heightPx),
         rotationAlignment: "viewport",
         pitchAlignment: "viewport",
         subpixelPositioning: true,
@@ -951,7 +961,7 @@ export function refreshMap(trip: Trip | null, preserveCamera = false): void {
     addTrackListeners(map);
 
     state.marker = new (loadedMaplibre().Marker)({
-        element: buildCarMarkerElement(map.getPitch()),
+        element: buildCarMarkerElement(MAP_MARKER_SIZE_PX[getMapMarkerAppearance().size], map.getPitch()),
         // "map" alignment: CSS bearing is in map coordinates (from true north).
         // MapLibre auto-counter-rotates the marker when the map rotates, so the
         // arrow always points the correct geographic direction. With "viewport"
@@ -1192,24 +1202,24 @@ function refreshMiniMap(data: MiniMapData | null): void {
 
     // The registry marks the container before it applies a radar style.
     const radar = radarTheme(dom.miniMap.dataset.radar ?? "");
-    // Thinner line on mini-map: at small scale a 4 px line turns into a blob.
     addSpeedTrack(mini, data, {
         sourceId: TRIP_SOURCE_ID,
-        width: 3,
+        width: insetTrackWidthPx(miniMapHeightPx),
         opacity: 0.95,
         endpointDots: radar && radarSpec(radar).endpointDots,
     });
 
     state.miniMapMarker = new (loadedMaplibre().Marker)({
-        element: buildCarMarkerElement(),
+        element: buildCarMarkerElement(miniMapMarkerSizePx()),
         rotationAlignment: "viewport",
         subpixelPositioning: true,
     })
         .setLngLat(coords[0]!)
         .addTo(mini);
     if (!radar) {
-        miniStartMarker = addEndpointMarker(mini, "start", coords[0]!);
-        miniEndMarker = addEndpointMarker(mini, "end", coords[coords.length - 1]!);
+        const flagHeightPx = insetFlagHeightPx(miniMapHeightPx);
+        miniStartMarker = addEndpointMarker(mini, "start", coords[0]!, flagHeightPx);
+        miniEndMarker = addEndpointMarker(mini, "end", coords[coords.length - 1]!, flagHeightPx);
     }
     syncGpsStatus(currentInterpolatedPosition() !== null);
 

@@ -165,7 +165,11 @@ test("keeps coincident trip flags distinct and labels them in Russian", async ({
     }
     const start = await boxOf(page, '#mini-map [data-endpoint="start"]');
     const end = await boxOf(page, '#mini-map [data-endpoint="end"]');
-    expect(start.x + start.width - end.x, "flags share a pole while facing opposite directions").toBeCloseTo(2, 0);
+    // Each pole stands 1 unit inside the 28-unit flag artwork, scaled to the inset.
+    expect(start.x + start.width - end.x, "flags share a pole while facing opposite directions").toBeCloseTo(
+        (2 * start.width) / 28,
+        1,
+    );
     await expect(page.locator("#mini-map .map-no-gps")).toHaveAttribute(
         "aria-label",
         "Для этого момента нет GPS-координат",

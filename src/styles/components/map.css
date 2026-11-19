@@ -990,10 +990,6 @@ body.map-unavailable #player-map {
     width: var(--map-marker-size, 44px);
     height: var(--map-marker-size, 44px);
 }
-.mini-map .car-marker__canvas {
-    width: calc(var(--map-marker-size, 44px) * 0.6);
-    height: calc(var(--map-marker-size, 44px) * 0.6);
-}
 
 .dc-map-attrib--yandex {
     display: flex;
@@ -1053,11 +1049,6 @@ body.map-unavailable #player-map {
     box-shadow: var(--radar-rim);
     z-index: 2;
     pointer-events: none;
-}
-
-.mini-map[data-radar] .car-marker__canvas {
-    width: calc(var(--map-marker-size, 44px) * 0.48);
-    height: calc(var(--map-marker-size, 44px) * 0.48);
 }
 
 .mini-map:is([data-radar], [data-shape="circle"]) .maplibregl-canvas-container {
