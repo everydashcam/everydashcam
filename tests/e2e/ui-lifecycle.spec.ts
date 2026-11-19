@@ -20,6 +20,39 @@ test("menus share dismissal and focus ownership", { tag: "@webkit-ui" }, async (
     await verifyPopoverOwnership(page);
 });
 
+test("a toast waits while it is hovered or focused", { tag: "@webkit-ui" }, async ({ page }) => {
+    // The fake clock must own the timers the app starts, so it reloads the
+    // page opened by beforeEach after installing.
+    await page.clock.install();
+    await page.reload();
+    const INFO_TOAST_MS = 5000;
+    await page.locator("#settings-btn").click();
+    const exportNotes = page.locator("#settings-notes-export-btn");
+    const toast = page.locator("#toast-container .dc-toast");
+
+    await exportNotes.click();
+    await expect(toast).toHaveCount(1);
+    await toast.hover();
+    await page.clock.runFor(INFO_TOAST_MS * 2);
+    await expect(toast).toHaveCount(1);
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(INFO_TOAST_MS + 100);
+    await expect(toast).toHaveCount(0);
+
+    await exportNotes.click();
+    await expect(toast).toHaveCount(1);
+    const dismiss = toast.getByRole("button");
+    await dismiss.focus();
+    // Pointer leaving does not release a toast that still holds focus.
+    await toast.hover();
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(INFO_TOAST_MS * 2);
+    await expect(toast).toHaveCount(1);
+    await exportNotes.focus();
+    await page.clock.runFor(INFO_TOAST_MS + 100);
+    await expect(toast).toHaveCount(0);
+});
+
 test.describe("settings opened from the narrow touch toolbar", () => {
     // Settings is the last optional action to collapse. Exercise the toolbar's
     // overflow path below that breakpoint rather than assuming phone width

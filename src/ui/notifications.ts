@@ -6,7 +6,8 @@
 // Behavior:
 //   - A toast slides in top-right with the severity icon and message.
 //   - The same notification is appended to the bell drawer (top of list).
-//   - Info/warn auto-dismiss after a timeout; error toasts stay until the
+//   - Info/warn auto-dismiss after a timeout that waits while the toast is
+//     hovered or focused; error toasts stay until the
 //     user clicks the close button. The bell drawer keeps everything until
 //     the user clears it or the page reloads.
 //   - The bell icon stays hidden while there is nothing to list; the red dot
@@ -113,9 +114,18 @@ const toastedPinnedRevisions = new Map<string, number>();
 // The toast speaking for each line's current revision; it may already be gone.
 const pinnedToastIds = new Map<string, string>();
 
+interface ActiveToast {
+    el: HTMLElement;
+    timer: number | null;
+    /** Auto-dismiss window; null keeps the toast until it is dismissed. */
+    timeoutMs: number | null;
+    isHovered: boolean;
+    hasFocus: boolean;
+}
+
 // Each notification's toast lifecycle is tracked here so dismissAll can
 // tear them down cleanly. The DOM element is the key.
-const activeToasts: Map<string, { el: HTMLElement; timer: number | null }> = new Map();
+const activeToasts: Map<string, ActiveToast> = new Map();
 
 let bellBtn: HTMLButtonElement | null = null;
 let bellDot: HTMLSpanElement | null = null;
@@ -356,9 +366,37 @@ function showToast(n: ToastContent): void {
 
     toastContainer.appendChild(el);
 
-    const timeoutMs = toastTimeoutFor(n);
-    const timer = timeoutMs === null ? null : window.setTimeout(() => removeToast(n.id), timeoutMs);
-    activeToasts.set(n.id, { el, timer });
+    const entry: ActiveToast = { el, timer: null, timeoutMs: toastTimeoutFor(n), isHovered: false, hasFocus: false };
+    activeToasts.set(n.id, entry);
+    holdToastWhileInUse(n.id, entry);
+    resetToastTimer(n.id);
+}
+
+/**
+ * Keeps a toast on screen while the pointer rests on it or focus is inside it,
+ * so it cannot vanish under a user who is reading it or about to press its
+ * button (WCAG 2.2.1). Leaving restarts the full window rather than the
+ * remainder: the user has just turned away and may still be reading.
+ */
+function holdToastWhileInUse(id: string, entry: ActiveToast): void {
+    entry.el.addEventListener("pointerenter", () => {
+        entry.isHovered = true;
+        resetToastTimer(id);
+    });
+    entry.el.addEventListener("pointerleave", () => {
+        entry.isHovered = false;
+        resetToastTimer(id);
+    });
+    entry.el.addEventListener("focusin", () => {
+        entry.hasFocus = true;
+        resetToastTimer(id);
+    });
+    entry.el.addEventListener("focusout", (event) => {
+        // Moving between the action and close buttons stays inside the toast.
+        if (event.relatedTarget instanceof Node && entry.el.contains(event.relatedTarget)) return;
+        entry.hasFocus = false;
+        resetToastTimer(id);
+    });
 }
 
 function removeToast(id: string): void {
@@ -373,15 +411,15 @@ function removeToast(id: string): void {
     }
 }
 
-/** Restarts a visible toast's auto-dismiss timer. Used when a duplicate
- *  notification arrives so the collapsed toast stays up for its full window. */
+/** Restarts a visible toast's full auto-dismiss window, or stops it while the
+ *  toast is hovered or focused. Also used when a duplicate notification
+ *  arrives so the collapsed toast stays up for its full window. */
 function resetToastTimer(id: string): void {
     const entry = activeToasts.get(id);
     if (!entry) return;
     if (entry.timer !== null) clearTimeout(entry.timer);
-    const n = notifications.find((x) => x.id === id);
-    const timeoutMs = n ? toastTimeoutFor(n) : null;
-    entry.timer = timeoutMs === null ? null : window.setTimeout(() => removeToast(id), timeoutMs);
+    const isHeld = entry.isHovered || entry.hasFocus;
+    entry.timer = entry.timeoutMs === null || isHeld ? null : window.setTimeout(() => removeToast(id), entry.timeoutMs);
 }
 
 // --- Bell + drawer ---
