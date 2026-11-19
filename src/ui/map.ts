@@ -53,7 +53,7 @@ import { formatDateTime } from "./date-format.js";
 import { formatNumber, formatTime } from "./format.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeTrip, state } from "./state.js";
-import { videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
+import { subscribePlayerFrames, videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
 import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
 import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref.js";
@@ -218,9 +218,14 @@ function computeTrackProgress(targetUnix: number): number {
 // overview zoom.
 let trailLastProgressWritten = -1;
 let trailLastWriteAt = 0;
-const TRAIL_MIN_BOUNDARY_SHIFT_PX = 8;
+// The stale boundary trails the car by max(shift threshold, speed x rate cap).
+// 16 px stays under the smallest car marker (36 px, 18 px radius); the 250 ms
+// cap keeps the speed term near that radius at highway speed on street zoom
+// (80 km/h at z17 moves ~16 px in 250 ms at 55 deg latitude). A longer cap
+// leaves a visibly dimmed stretch behind the marker.
+const TRAIL_MIN_BOUNDARY_SHIFT_PX = 16;
 const TRAIL_MIN_WRITE_INTERVAL_MS = 250;
-const TRAIL_MAX_WRITE_INTERVAL_MS = 1000;
+const TRAIL_MAX_WRITE_INTERVAL_MS = 1500;
 const MAPLIBRE_TILE_SIZE_PX = 512;
 
 // Trailing-edge retry for a rate-capped write. setTrailProgress is only called
@@ -266,7 +271,7 @@ function setTrailProgress(progress: number): void {
     if (boundaryShiftPx < TRAIL_MIN_BOUNDARY_SHIFT_PX && sincePrevMs < TRAIL_MAX_WRITE_INTERVAL_MS) return;
     if (sincePrevMs < TRAIL_MIN_WRITE_INTERVAL_MS) {
         // A LARGE shift hit the rate cap - retry it on the trailing edge (a
-        // sub-threshold shift above just returns: staleness under 8 px is
+        // sub-threshold shift above just returns: staleness under 16 px is
         // invisible, no retry needed).
         scheduleTrailingTrailWrite(progress);
         return;
@@ -295,7 +300,7 @@ function setTrailProgress(progress: number): void {
         1,
         dim,
     ];
-    state.map.setPaintProperty(layerId, "line-gradient", gradient as never);
+    state.map.setPaintProperty(layerId, "line-gradient", gradient as never, { validate: false });
 }
 
 const mapAttributionControl = new MapAttributionControl(getMapProvider(), { avoidPlayerControls: true });
@@ -1238,29 +1243,58 @@ function refreshMiniMap(data: MiniMapData | null): void {
     miniAppliedBearing = Number.NaN;
 }
 
-/** Rotates a car marker by updating the --bearing CSS variable on its inner
- *  .car-marker element. No-op when the marker or element is absent. Shared by
- *  the main map and the mini-map (separate Marker instances). */
-function rotateMarker(marker: maplibregl.Marker | null, bearingDeg: number): void {
-    if (!marker) return;
+interface CarMarkerDom {
+    inner: HTMLElement;
+    canvas: HTMLCanvasElement;
+    lastBearing: string;
+    lastPitchScale: string;
+}
+
+const carMarkerDomCache = new WeakMap<maplibregl.Marker, CarMarkerDom>();
+
+function getCarMarkerDom(marker: maplibregl.Marker | null): CarMarkerDom | null {
+    if (!marker) return null;
+    const cached = carMarkerDomCache.get(marker);
+    if (cached) return cached;
     const inner = marker.getElement()?.querySelector<HTMLElement>(".car-marker");
-    if (!inner) return;
-    inner.style.setProperty("--bearing", `${bearingDeg}deg`);
+    const canvas = inner?.querySelector<HTMLCanvasElement>(".car-marker__canvas");
+    if (!inner || !canvas) return null;
+    const entry: CarMarkerDom = {
+        inner,
+        canvas,
+        lastBearing: inner.style.getPropertyValue("--bearing"),
+        lastPitchScale: inner.style.getPropertyValue("--marker-pitch-scale"),
+    };
+    carMarkerDomCache.set(marker, entry);
+    return entry;
+}
+
+/** Rotates a car marker by updating the --bearing CSS variable on its inner
+ *  .car-marker element. Quantized to 0.1° and dirty-checked so straightaways
+ *  skip redundant CSS custom-property writes and style recalcs. */
+function rotateMarker(marker: maplibregl.Marker | null, bearingDeg: number): void {
+    const domRef = getCarMarkerDom(marker);
+    if (!domRef) return;
+    const bearing = `${bearingDeg.toFixed(1)}deg`;
+    if (bearing === domRef.lastBearing) return;
+    domRef.lastBearing = bearing;
+    domRef.inner.style.setProperty("--bearing", bearing);
 }
 
 function setMarkerPitch(marker: maplibregl.Marker | null, pitchDeg: number): void {
-    if (!marker) return;
-    const inner = marker.getElement()?.querySelector<HTMLElement>(".car-marker");
-    if (!inner) return;
-    inner.style.setProperty("--marker-pitch-scale", mapMarkerPitchScale(pitchDeg).toFixed(3));
-    const canvas = inner.querySelector<HTMLCanvasElement>(".car-marker__canvas");
-    if (!canvas) return;
+    const domRef = getCarMarkerDom(marker);
+    if (!domRef) return;
+    const scale = mapMarkerPitchScale(pitchDeg).toFixed(3);
+    if (scale !== domRef.lastPitchScale) {
+        domRef.lastPitchScale = scale;
+        domRef.inner.style.setProperty("--marker-pitch-scale", scale);
+    }
     const appearance = getMapMarkerAppearance();
     const view = mapMarkerViewForPitch(pitchDeg);
     // Pitch animates every frame; repaint only when the artwork view changes.
     const radar = viewerRadarTheme();
-    if (canvas.dataset.markerRenderKey !== mapMarkerRenderKey(appearance, view, radar)) {
-        void renderMapMarkerIntoCanvas(canvas, appearance, view, radar);
+    if (domRef.canvas.dataset.markerRenderKey !== mapMarkerRenderKey(appearance, view, radar)) {
+        void renderMapMarkerIntoCanvas(domRef.canvas, appearance, view, radar);
     }
 }
 
@@ -2119,15 +2153,35 @@ function initMiniMapHover(): void {
 // Media events wake a sleeping loop immediately for playback and paused seeks.
 let markerRafHandle: number | null = null;
 let markerTimerHandle: ReturnType<typeof setTimeout> | null = null;
+let markerFrame: PlayerFrameObservation | null = null;
+let pendingFrameDtMs = 0;
+// True while the timer in markerTimerHandle waits for the next presented video
+// frame, as opposed to the idle slow lane. Only this wait is woken by frame
+// callbacks; waking the slow lane would run a hidden map at the video rate.
+let isMarkerWaitingForVideoFrame = false;
 
 const SLOW_LANE_INTERVAL_MS = 200;
+// Largest frame delta fed to the filters. Normal ticks cap at 100 ms so a
+// resumed rAF does not hard-snap the glide; a tick that waited for a video
+// frame may legitimately span up to the wait timeout (25 fps at 0.25x presents
+// a frame every 160 ms).
+const MAX_FRAME_DT_MS = 100;
 let slowLaneLastMs = 0;
 // Previous fast-lane timestamp, for the filter's frame dt.
 let lastFrameMs = 0;
 
+// Minimum interval between video-paced follow frames. 28 ms lets 25/30 fps
+// dashcams (33-40 ms) paint every frame even under slight rVFC jitter while
+// halving 50/60 fps footage (16.7-20 ms) to 25-30 fps map renders.
+const FOLLOW_MIN_FRAME_INTERVAL_MS = 28;
+// Fallback watchdog while parked waiting for subscribePlayerFrames(), matching
+// followVideoFrame's 250 ms staleness window if the decoder stalls.
+const FOLLOW_FRAME_WAIT_TIMEOUT_MS = 250;
+
 let followRenderCadence: MapRenderCadence | null = null;
 let followAppliedFrame: PlayerFrameObservation | null = null;
 let followAppliedVideo: HTMLVideoElement | null = null;
+let followLastAppliedAtMs = 0;
 
 function followVideoFrame(now: number): PlayerFrameObservation | null {
     const map = state.map;
@@ -2356,25 +2410,35 @@ function noteUserMapInteraction(): void {
 }
 
 /**
- * Restarts the rAF loop if it was stopped by the early-exit in tick. Safe to
- * call repeatedly - no-op if the loop is already running. Called from sites
- * where state.active or a GPS track may appear: after ingest, on playFrame,
- * on map layout changes (including a late track), on play and seeks.
+ * Restarts the rAF loop if it was stopped or sleeping on a timer. Safe to call
+ * repeatedly - no-op if a rAF tick is already queued. A loop waiting for a
+ * video frame resumes with the same tick, keeping `lastFrameMs` so the follow
+ * filter sees the real wall-clock dt across presented frames; a stopped or
+ * idle loop restarts with a fresh dt.
  */
 export function ensureMarkerLoop(): void {
     if (markerRafHandle !== null) return;
+    const isResumingVideoWait = isMarkerWaitingForVideoFrame && markerTimerHandle !== null;
     if (markerTimerHandle !== null) {
         clearTimeout(markerTimerHandle);
         markerTimerHandle = null;
     }
-    if (!state.active || !state.hasTrack) return;
+    if (!state.active || !state.hasTrack) {
+        isMarkerWaitingForVideoFrame = false;
+        return;
+    }
+    if (isResumingVideoWait && markerTickHandler) {
+        markerRafHandle = requestAnimationFrame(markerTickHandler);
+        return;
+    }
+    isMarkerWaitingForVideoFrame = false;
     startMarkerLoop();
 }
 
+let markerTickHandler: (() => void) | null = null;
+
 export function startMarkerLoop(): void {
     if (markerRafHandle !== null || markerTimerHandle !== null) return;
-    let markerFrame: PlayerFrameObservation | null = null;
-    let pendingFrameDtMs = 0;
 
     // Marker/camera work for one frame. Separate from the rAF tick so its
     // early-returns (no trip / no frame / GPS window ended) skip ONLY the map
@@ -2448,6 +2512,7 @@ export function startMarkerLoop(): void {
                     // value only delays idle by seconds. Snap at once; the zoom
                     // FILTER still glides to the new target, so nothing jumps.
                     chaseSmoothedSpeedMs = pos.speedMs;
+                    chaseZoomGoalSpeedMs = pos.speedMs;
                 } else {
                     // dt-aware EMA: the smoothing window stays ~constant in
                     // wall-clock regardless of rAF jitter.
@@ -2463,8 +2528,21 @@ export function startMarkerLoop(): void {
                     if (Math.abs(chaseSmoothedSpeedMs - pos.speedMs) < CHASE_SPEED_SNAP_MPS) {
                         chaseSmoothedSpeedMs = pos.speedMs;
                     }
+                    // Deadband GPS speed jitter so steady cruising does not pass
+                    // a slightly different zoom every frame (each zoom change
+                    // sets MapLibre's _styleDirty and runs style.update() across
+                    // every layer). Near a range end the goal snaps to the exact
+                    // bound, so a stop or the cruise ceiling reaches its zoom and
+                    // then holds it instead of following the EMA every frame.
+                    if (chaseSmoothedSpeedMs <= CHASE_SPEED_ENDPOINT_MPS) {
+                        chaseZoomGoalSpeedMs = 0;
+                    } else if (chaseSmoothedSpeedMs >= CHASE_SPEED_FULL_MS - CHASE_SPEED_ENDPOINT_MPS) {
+                        chaseZoomGoalSpeedMs = CHASE_SPEED_FULL_MS;
+                    } else if (Math.abs(chaseSmoothedSpeedMs - chaseZoomGoalSpeedMs) >= CHASE_SPEED_DEADBAND_MPS) {
+                        chaseZoomGoalSpeedMs = chaseSmoothedSpeedMs;
+                    }
                 }
-                zoomTarget = chaseZoomForSpeed(chaseSmoothedSpeedMs);
+                zoomTarget = chaseZoomForSpeed(chaseZoomGoalSpeedMs);
             }
 
             // Raw-target change detection: paused playback / a stopped car yield a
@@ -2546,9 +2624,18 @@ export function startMarkerLoop(): void {
         else markerTimerHandle = setTimeout(tick, SLOW_LANE_INTERVAL_MS);
     };
 
+    // Sleeps until subscribePlayerFrames() reports the next presented video
+    // frame. The timeout releases deferred paints if frame callbacks stop.
+    const waitForVideoFrame = (timeoutMs: number): void => {
+        isMarkerWaitingForVideoFrame = true;
+        markerTimerHandle = setTimeout(tick, timeoutMs);
+    };
+
     const tick = (): void => {
         markerRafHandle = null;
         markerTimerHandle = null;
+        const isAfterVideoWait = isMarkerWaitingForVideoFrame;
+        isMarkerWaitingForVideoFrame = false;
         // Nothing to draw: no active trip yet, or a trip without a GPS track.
         // Do not reschedule - ensureMarkerLoop() restarts the loop when a trip
         // or a late track appears (playFrame, applyMapLayout after
@@ -2572,8 +2659,9 @@ export function startMarkerLoop(): void {
         const now = performance.now();
         // Clamp the frame delta: after a background-tab span rAF resumes with a
         // huge gap, and an unclamped dt would make the filter alphas ~1 (hard
-        // snap). 100 ms keeps the glide graceful across dropped frames.
-        const frameDtMs = Math.min(100, Math.max(1, now - lastFrameMs));
+        // snap). See MAX_FRAME_DT_MS for the longer limit after a frame wait.
+        const maxFrameDtMs = isAfterVideoWait ? FOLLOW_FRAME_WAIT_TIMEOUT_MS : MAX_FRAME_DT_MS;
+        const frameDtMs = Math.min(maxFrameDtMs, Math.max(1, now - lastFrameMs));
         lastFrameMs = now;
         pendingFrameDtMs += frameDtMs;
         // Slow lane: grace-window countdown at a fixed cadence.
@@ -2591,19 +2679,32 @@ export function startMarkerLoop(): void {
         }
         const frame = followVideoFrame(now);
         if (frame && frame === markerFrame) {
-            scheduleTick(true);
+            // Sleep instead of polling rAF at 60/120 Hz until the compositor
+            // presents the next video frame.
+            waitForVideoFrame(FOLLOW_FRAME_WAIT_TIMEOUT_MS);
+            return;
+        }
+        if (frame && now - followLastAppliedAtMs < FOLLOW_MIN_FRAME_INTERVAL_MS) {
+            // The new frame is already presented; only the cadence cap delays
+            // it, so further frame callbacks must not wake this timer.
+            const waitMs = Math.max(1, Math.ceil(FOLLOW_MIN_FRAME_INTERVAL_MS - (now - followLastAppliedAtMs)));
+            markerTimerHandle = setTimeout(tick, waitMs);
             return;
         }
         markerFrame = frame;
-        const isAnimating = markerTick(now, pendingFrameDtMs);
-        pendingFrameDtMs = 0;
-        // Publish only after camera and marker writes, so a native render that
-        // precedes this tick cannot consume a not-yet-applied video frame.
+        if (frame) followLastAppliedAtMs = now;
+        // Publish before markerTick so map.jumpTo()'s synchronous triggerRepaint
+        // sees the new frame immediately instead of queuing and immediately
+        // cancelling an extra waiting rAF inside installMapRenderCadence.
         followAppliedFrame = frame;
         followAppliedVideo = dom.player;
+        const isAnimating = markerTick(now, pendingFrameDtMs);
+        pendingFrameDtMs = 0;
         followRenderCadence?.refresh();
-        scheduleTick(isAnimating);
+        if (frame && isAnimating) waitForVideoFrame(FOLLOW_FRAME_WAIT_TIMEOUT_MS);
+        else scheduleTick(isAnimating);
     };
+    markerTickHandler = tick;
     lastFrameMs = performance.now();
     markerRafHandle = requestAnimationFrame(tick);
 }
@@ -2654,6 +2755,13 @@ const CHASE_SPEED_FULL_MS = 33; // ~120 km/h -> most zoomed-out end
 const CHASE_SPEED_TAU_MS = 700;
 // EMA convergence snap, in m/s - see the snap comment in markerTick.
 const CHASE_SPEED_SNAP_MPS = 0.01;
+// Minimum speed change (~4.3 km/h) before adaptive zoom moves its target.
+// Keeps MapLibre's _styleDirty false during steady cruise instead of running
+// style.update() across every layer on sub-km/h GPS speed jitter.
+const CHASE_SPEED_DEADBAND_MPS = 1.2;
+// Distance from either end of the adaptive speed range (m/s) at which the zoom
+// goal snaps to that end.
+const CHASE_SPEED_ENDPOINT_MPS = 0.5;
 const BUILDINGS_3D_LAYER_ID = "dc-buildings-3d";
 // Both styles (light/dark) share this OpenFreeMap vector source id and the
 // "building" source-layer (verified in public/styles/*.json).
@@ -2667,9 +2775,10 @@ const CHASE_ADAPTIVE_STORAGE_KEY = "everydashcam:chase-adaptive-zoom";
 // level so the follow loop and the controls share one source of truth.
 let chasePitchDeg = CHASE_DEFAULT_PITCH_DEG;
 let chaseAdaptiveZoom = true;
-// EMA-smoothed speed (m/s) for adaptive zoom. Reset on chase enter so the first
-// frame does not lurch from a stale value.
+// EMA-smoothed speed (m/s) and deadbanded zoom-goal speed for adaptive zoom.
+// Reset on chase enter so the first frame does not lurch from a stale value.
 let chaseSmoothedSpeedMs = 0;
+let chaseZoomGoalSpeedMs = 0;
 
 function clampPitch(deg: number): number {
     if (!Number.isFinite(deg)) return CHASE_DEFAULT_PITCH_DEG;
@@ -2797,9 +2906,10 @@ export function addBuildings3dLayer(map: maplibregl.Map, theme: MapTheme): void 
                 "fill-extrusion-base": hasOpenMapTiles
                     ? ["coalesce", ["get", "render_min_height"], ["get", "min_height"], 0]
                     : 0,
-                // Fade in across z14->15.5 so buildings do not pop at the minzoom
-                // edge while the user is zooming into chase.
-                "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5, 0.92],
+                // Fade in across z14->15.4 and reach 1 so MapLibre takes its
+                // single-pass opaque extrusion path across the entire Chase
+                // zoom range (15.4-16.8) instead of a double depth+stencil pass.
+                "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.4, 1],
             } as never,
         },
         firstSymbolLayerId(map),
@@ -2833,6 +2943,7 @@ function enterChaseCamera(
 ): void {
     ensure3dBuildings(map);
     chaseSmoothedSpeedMs = pos?.speedMs ?? 0;
+    chaseZoomGoalSpeedMs = chaseSmoothedSpeedMs;
     const duration = 500;
     const opts: maplibregl.EaseToOptions = { pitch: chasePitchDeg, duration };
     if (pos) {
@@ -2926,11 +3037,20 @@ export function initMap(cb: MapCallbacks): void {
         syncBigMapPixelRatio();
         ensureMarkerLoop();
     });
-    onActivePlayerEvent("pause", syncBigMapPixelRatio);
+    onActivePlayerEvent("pause", () => {
+        syncBigMapPixelRatio();
+        ensureMarkerLoop();
+    });
     onActivePlayerEvent("ended", syncBigMapPixelRatio);
     onActivePlayerEvent("emptied", syncBigMapPixelRatio);
     onActivePlayerEvent("seeking", ensureMarkerLoop);
     onActivePlayerEvent("seeked", ensureMarkerLoop);
+    // Wake a video-paced follow loop as soon as the master video presents a new
+    // frame instead of polling rAF at 60/120 Hz. The idle slow lane keeps its
+    // own cadence: a hidden map must not tick at the video frame rate.
+    subscribePlayerFrames(() => {
+        if (isMarkerWaitingForVideoFrame && videoPresentedFrame(dom.player) !== markerFrame) ensureMarkerLoop();
+    });
     state.mapExpanded = getPreferredMapMode() === "large";
     subscribeMapMarkerAppearance(refreshLiveMapMarkerAppearance);
     let mapPreferences = getMapViewPreferences();
@@ -3019,7 +3139,10 @@ export function initMap(cb: MapCallbacks): void {
         // from a stale value. Turning it OFF leaves zoom where it is (user owns it).
         if (chaseAdaptiveZoom && state.followMode === "chase") {
             const pos = currentInterpolatedPosition();
-            if (pos) chaseSmoothedSpeedMs = pos.speedMs;
+            if (pos) {
+                chaseSmoothedSpeedMs = pos.speedMs;
+                chaseZoomGoalSpeedMs = pos.speedMs;
+            }
         }
     });
     // Reflect the hydrated toggle state (aria-pressed/active) on first paint.

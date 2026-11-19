@@ -984,11 +984,12 @@ body.map-unavailable #player-map {
 
 .car-marker {
     /* The canvas marker rotates via the CSS variable --bearing, which
-       map.ts sets on every rAF. Screen-space Y scaling gives tilted chase maps
-       a restrained perspective without MapLibre flattening the marker. */
+       map.ts sets per presented frame. Screen-space Y scaling gives tilted chase maps
+       a restrained perspective without MapLibre flattening the marker. No CSS
+       transition: GPS bearing is already interpolated per frame, and a 60 ms
+       transition would keep the compositor animating at 60/120 Hz between frames. */
     transform: scaleY(var(--marker-pitch-scale, 1)) rotate(var(--bearing, 0deg));
     transform-origin: center;
-    transition: transform 60ms linear;
 }
 .car-marker__canvas {
     display: block;
