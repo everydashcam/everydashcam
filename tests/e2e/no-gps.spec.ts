@@ -2,9 +2,8 @@
 // disables (greys out) every option that needs a track - embedded telemetry,
 // the .gpx sidecar, and the speed/coords/map overlays - the GPS-track-only
 // switch hides, and the produced MP4 carries NO gpmd telemetry track even though
-// "keep GPS" is the default. Uses a synthetic H.264 no-GPS sample (every other
-// public fixture carries a track by design) so the whole gate runs on CI Chrome,
-// not only on a macOS box that decodes HEVC.
+// "keep GPS" is the default. Uses a synthetic H.264 no-GPS sample so the whole
+// gate runs on CI Chrome, not only on a macOS box that decodes HEVC.
 //
 // Two layers, both regression gates a panel-only test could not give:
 //   - the panel DISPLAY (5 checkboxes disabled+unchecked, mode switch hidden)

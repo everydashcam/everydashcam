@@ -23,7 +23,7 @@ Capability-first architecture: there is no "vendor" concept in the code. A new c
 ## Dependencies
 
 - `ffmpeg` in PATH (for anonymizing MP4 video and audio). Check via `ffmpeg -version` right at the start. No ffmpeg - refuse with "brew install ffmpeg" (or the equivalent).
-- Existing infrastructure: `src/parsers/primitives/types.ts` (`Extractor` contract), `src/parsers/primitives/index.ts` (registry), `src/parsers/filename/_patterns.ts` (shared regex), `src/parsers/filename/<field>.ts` (techniques), `src/parsers/gps-source-hints.ts` (source hints), `src/parsers/sidecars/` (basename-paired).
+- Existing infrastructure: `src/parsers/primitives/types.ts` (`Primitive` contract), `src/parsers/primitives/index.ts` (registry), `src/parsers/filename/_patterns.ts` (shared regex), `src/parsers/filename/<field>.ts` (techniques), `src/parsers/gps-source-hints.ts` (source hints), `src/parsers/sidecars/` (basename-paired).
 
 ## Workflow
 
@@ -88,13 +88,10 @@ The most important step. If even one item fails - **stop**.
 - **With quirks** (csv-70mai with the 8h bias and Y-up; freegps with structural+streaming): full parsing inside the primitive.
 - **Log-sidecar** (csv-70mai): marker by filename + signature check, parse reads the whole file.
 
-Contract - `Extractor` from `primitives/types.ts`:
+Contract - the `Primitive` interface in `primitives/types.ts`; its member comments are the reference. The rules that matter most:
 - `id` - stable slug (`"csv-70mai"`, `"gpmf"`, `"freegps"`). Must describe the format, not the brand.
-- `displayName` - human-readable label for diagnostics.
-- `kind` - `"video-embedded"` or `"log-sidecar"`.
-- `marker(file, index?)` - cheap check (Mp4Index marker or a ~256-byte content probe).
-- `parse(file, index?)` - full parse. Throws `WrongFormatError` on a false-positive marker.
-- `cloneAcrossGroup?(file)` - optional: a group key for byte-identical streams (Juscar front/rear).
+- `marker` - a cheap check (Mp4Index marker or a ~256-byte content probe), never a full parse.
+- `parse` - throws `WrongFormatError` on a false-positive marker, returns empty records for a matching file without GPS, and checks `signal` between iterations.
 
 Firmware quirks (timestamp bias, Y-up gravity removal) live INSIDE `parse()`. One format - one spec plus quirks. No global side effects; the primitive is a pure object.
 

@@ -16,7 +16,7 @@ Fragments trimmed to 2 seconds from GoPro/gpmf-parser's official GPMF samples.
 |------|--------|------------------|
 | `hero5-trimmed.mp4` | HERO5 (2017-04-17) | GPS5 18Hz, full fix, real San Diego track |
 | `hero6-trimmed.mp4` | HERO6 (2018-01-24) | GPS5 18Hz, full fix, San Diego |
-| `hero8-trimmed.mp4` | HERO8 (2019-11-18) | GPS5 18Hz, **GPSF=0 on every sample (firmware quirk)** with otherwise valid coordinates. Tests parser robustness against the no-fix flag. |
+| `hero8-trimmed.mp4` | HERO8 (2019-11-18) | GPS5 18Hz, **GPSF=0 on every sample (firmware quirk)** with otherwise valid coordinates. |
 
 `hero7.mp4` from the gpmf-parser samples is NOT included in our corpus - the
 plugin yields 0 records for it (likely the whole file is no-fix). hero5/6/8
@@ -47,7 +47,6 @@ What's in the trim:
 
 ## Use in tests
 
-`gopro.test.ts` loads each file, runs `goproPlugin.parseVideoEmbeddedGps`,
-and compares against a snapshot. The snapshot includes the first/last
-records and the total count - a change to the parsing algorithm makes the
-snapshot diff, and review shows exactly what changed.
+The clips are shared real GPMF inputs for extractor dispatch, container,
+MSE and browser tests; search for `gopro-gpmf` to find them. No test pins
+their parsed records with a snapshot.

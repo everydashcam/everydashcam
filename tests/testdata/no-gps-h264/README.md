@@ -5,8 +5,8 @@ Synthetic H.264 clip for the e2e suite, **not** a real recording.
 - `clip-no-gps.mp4` - 3s, 640x360, `testsrc2` pattern, no audio, **no GPS**.
   Encoded `libx264` High profile, `yuv420p`.
 
-The point is the **absence of GPS**: every other public sample carries a track
-by design, so this is the fixture for the GPS-dependent export gate. With no fix
+The point is the **absence of GPS**: this is the fixture for the GPS-dependent
+export gate. With no fix
 (`recordsHaveGps` false) the export panel disables the telemetry / `.gpx` /
 speed / coords / map options, the GPS-track-only switch hides, and the pipeline
 omits the `gpmd` track. H.264 (not HEVC) so the assertions run unconditionally on
