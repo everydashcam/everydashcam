@@ -157,7 +157,10 @@ for (const [theme, name] of [
         await pausePlayback(page);
         await openExport(page);
         await expect(page.locator("#export-panel-ov-map")).toBeChecked();
-        await page.locator("#export-panel-map-overlay-row").getByRole("button", { name: "Map", exact: true }).click();
+        const mapSettings = page
+            .locator("#export-panel-map-overlay-row")
+            .getByRole("button", { name: "Map", exact: true });
+        await expect(mapSettings).toHaveAttribute("aria-expanded", "true");
         await expect(page.locator("#export-map-provider-select")).toHaveValue("osm-vector");
         await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
         await expect(page.locator('#export-map-marker-control [data-marker-shape="suv"]')).toHaveAttribute(
