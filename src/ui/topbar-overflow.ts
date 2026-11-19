@@ -57,7 +57,7 @@ export function initTopbarOverflow() {
     if (feedbackBtn) {
         items.push({
             el: feedbackBtn,
-            priority: 3,
+            priority: 2,
             label: () => t("feedback.entry.title"),
             isAvailable: () => !feedbackBtn.hidden,
         });
@@ -66,7 +66,7 @@ export function initTopbarOverflow() {
     if (offlineUseBtn) {
         items.push({
             el: offlineUseBtn,
-            priority: 4,
+            priority: 1,
             label: () => t("offlineUse.entry"),
         });
     }
@@ -74,7 +74,7 @@ export function initTopbarOverflow() {
     if (themeToggle) {
         items.push({
             el: themeToggle,
-            priority: 2,
+            priority: 3,
             label: () => t("theme.label"),
             // Custom render: move the whole theme-toggle group as a menu
             // section. Heading + three radio buttons in a row, just like in
@@ -88,7 +88,7 @@ export function initTopbarOverflow() {
     if (settingsBtn) {
         items.push({
             el: settingsBtn,
-            priority: 1,
+            priority: 0,
             label: () => t("settings.entry.title"),
         });
     }

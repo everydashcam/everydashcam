@@ -1,8 +1,4 @@
-// "Files stay on your device" modal. Shown before the system file-picker opens
-// via CTA buttons (#landing-cta / #sidebar-cta) so the user is not startled by
-// the browser prompt "Upload N files to this site?". The browser shows the same
-// scary dialog for a real server upload and for local folder access - we explain
-// upfront that this is the latter.
+// Explains folder read permission and the upload wording used by some browsers.
 //
 // Gate: shown ONCE per WARNING_TTL_MS (30 days) or on first visit. The timestamp
 // of the last show is stored in localStorage. If localStorage is unavailable

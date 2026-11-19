@@ -99,8 +99,14 @@ test("a card warning keeps keyboard ownership above another folder drop", async 
     await openUnreadableCardWarning(page);
     await holdFolderDrop(page);
     await expect(page.locator("#no-recordings-help")).toBeFocused();
+    const cancel = page.locator("#no-recordings-cancel");
+    // Toast actions can follow Help in the foreground dialog's tab order.
+    await cancel.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.locator("#no-recordings-modal :focus")).toBeVisible();
+    await expect(cancel).not.toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(page.locator("#no-recordings-cancel")).toBeFocused();
+    await expect(cancel).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.locator("#no-recordings-modal")).toBeHidden();
     await expect(page.locator("#ingest-overlay")).toBeVisible();
@@ -163,6 +169,38 @@ test.describe("folder drops under the Chromium browser warning", () => {
         await expect(page.locator("#export-panel-chromium-banner")).toBeFocused();
         await releaseFolderDrop(page);
     });
+});
+
+test("the landing card and dock each open one folder picker per activation", async ({ page }) => {
+    await presetLocalStorage(page);
+    await page.addInitScript(() => {
+        Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: undefined });
+    });
+    await gotoApp(page);
+    let openings = 0;
+    page.on("filechooser", () => openings++);
+    for (const [surface, hint] of [
+        ["#landing-drop", ".landing-drop-t2"],
+        ["#landing-dock", ".landing-dock-folder"],
+    ] as const) {
+        if (surface === "#landing-dock") await page.locator(".landing-faq").scrollIntoViewIfNeeded();
+        const button = page.locator(surface).getByRole("button");
+        for (const activate of [
+            () => page.locator(hint).click(),
+            () => button.click(),
+            () => button.press("Enter"),
+            () => button.press("Space"),
+        ]) {
+            const expected = openings + 1;
+            const [chooser] = await Promise.all([page.waitForEvent("filechooser"), activate()]);
+            // Playwright accepts only a directory path here. Deliver the cancellation
+            // event that the browser sends when its directory chooser is dismissed.
+            await chooser.element().dispatchEvent("cancel");
+            await expect(page.locator("#ingest-overlay")).toBeHidden();
+            await expect(button).toBeFocused();
+            expect(openings).toBe(expected);
+        }
+    }
 });
 
 test("folder reading traps focus without accidental cancellation and accepts a late selection after Escape", async ({

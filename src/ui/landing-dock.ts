@@ -1,8 +1,8 @@
 // Docked CTA on the landing: a fixed pill at the bottom edge that appears
 // when the inline drop card (#landing-drop) scrolls out of view, so the
 // primary action - open/drop the SD-card folder - stays one tap away at any
-// scroll depth. The pill is a <label for="folder-input"> like the card itself;
-// no click handlers needed. DOM lives in index.html (#landing-dock) inside
+// scroll depth. The pill and the card share the picker handler in file-sources.ts.
+// The dock lives in index.html (#landing-dock) inside
 // .landing, so it vanishes with the landing after the first ingest.
 
 let observer: IntersectionObserver | null = null;

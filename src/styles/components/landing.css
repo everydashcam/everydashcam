@@ -1,7 +1,7 @@
 /* =========================================================================
    LANDING (body.no-trips - empty state before first ingest)
    --------------------------------------------------------------------------
-   Layout: product hero, three steps, capabilities, privacy, compatibility
+   Layout: product hero, capabilities, privacy, compatibility, folder help
    and FAQ. It overlays
    the final app grid while body.no-trips is set. After the first successful
    ingest landing.ts removes the class and FLIP-animates #landing-cta into
@@ -68,11 +68,7 @@ body.no-trips .viewer {
 @media (max-width: 880px) {
     .landing-hero {
         grid-template-columns: 1fr;
-    }
-}
-@media (max-width: 880px) {
-    .landing-hero {
-        gap: var(--dc-space-4);
+        gap: var(--dc-space-6);
     }
 }
 
@@ -81,11 +77,6 @@ body.no-trips .viewer {
     flex-direction: column;
     gap: var(--dc-space-5);
     min-width: 0;
-}
-@media (max-width: 880px) {
-    .landing-hero-main {
-        gap: var(--dc-space-5);
-    }
 }
 
 .landing-hero-h1 {
@@ -134,10 +125,6 @@ body.no-trips .viewer {
     color: var(--accent-ink);
     border-bottom-color: var(--accent-ink);
     outline: none;
-}
-/* Invisible here; forced colors paint it, where the color change is lost. */
-.landing-brand-link:focus-visible {
-    outline: 2px solid transparent;
 }
 
 /* Pointer/touch copy pairs. Drag-centric strings ("drop the folder here")
@@ -253,9 +240,18 @@ body.no-trips .viewer {
 }
 
 /* ----- Capabilities ----- */
+.landing-features {
+    margin: var(--dc-space-7) 0;
+}
+.landing-section-title {
+    margin: 0;
+    font-size: var(--dc-text-2xl);
+    line-height: 1.2;
+    letter-spacing: var(--dc-tracking-tight);
+}
 .landing-caps {
     list-style: none;
-    margin: var(--dc-space-8) 0;
+    margin: var(--dc-space-4) 0 0;
     padding: 0;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -289,8 +285,8 @@ body.no-trips .viewer {
     width: 18px;
     height: 18px;
 }
-.landing-caps b {
-    display: block;
+.landing-caps h3 {
+    margin: 0;
     font-weight: 600;
     font-size: var(--dc-text-lg);
     color: var(--fg);
@@ -412,13 +408,6 @@ body.no-trips .viewer {
 .landing-hero-shot-phone-btn:focus-visible .landing-hero-shot-phone {
     border-color: var(--accent);
 }
-/* Forced colors paint the border of every shot alike; this outline, invisible
-   otherwise, then marks the focused one. */
-.landing-hero-shot-main:focus-visible,
-.landing-hero-shot-phone-btn:focus-visible {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-}
 
 /* Full-size viewer for the hero shot. The whole surface closes it (zoom-out
    cursor everywhere, no card, no close button - see landing-shot.ts). */
@@ -495,7 +484,13 @@ body.no-trips .viewer {
 .landing-oss-link:hover,
 .landing-oss-link:focus-visible {
     text-decoration: underline;
-    outline: none;
+}
+.landing-brand-link:focus-visible,
+.landing-oss-link:focus-visible,
+.landing-hero-shot-main:focus-visible,
+.landing-hero-shot-phone-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .landing-safety-eyebrow {
@@ -651,161 +646,24 @@ body.no-trips .viewer {
     }
 }
 
-/* ============================================================
-   COMPATIBILITY - operating systems and browsers.
-   ============================================================ */
-.landing-works {
-    margin-top: var(--dc-space-8);
-    padding: var(--dc-space-7) 0;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: var(--dc-space-4);
-}
-.landing-works-head {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--dc-space-2) var(--dc-space-4);
-}
-.landing-works-title {
-    margin: 0;
-    font-size: var(--dc-text-3xl);
-    font-weight: 700;
-    letter-spacing: var(--dc-tracking-tight);
-    color: var(--fg);
-}
-.landing-works-sub,
-.landing-works-note {
-    margin: 0;
-    font-size: var(--dc-text-md);
-    line-height: 1.5;
-    color: var(--fg-dim);
-}
-.landing-works-row {
-    display: grid;
-    grid-template-columns: 160px minmax(0, 1fr);
-    align-items: start;
-    gap: var(--dc-space-4);
-}
-.landing-works-label {
-    margin: 0;
-    padding-top: var(--dc-space-1);
-    font-size: var(--dc-text-sm);
-    font-weight: 600;
-    line-height: 1.5;
-    color: var(--fg-dim);
-}
-.landing-works-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--dc-space-2);
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-.landing-plat {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--dc-space-2);
-    padding: var(--dc-space-1) var(--dc-space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--dc-radius-md);
-    background: var(--bg);
-    color: var(--fg);
-    font-size: var(--dc-text-md);
-    font-weight: 500;
-    white-space: nowrap;
-}
-.landing-plat svg {
-    width: 14px;
-    height: 14px;
-    flex: none;
-}
-@media (max-width: 880px) {
-    .landing-works {
-        padding: var(--dc-space-6) 0;
-    }
-    .landing-works-title {
-        font-size: var(--dc-text-xl);
-    }
-    .landing-works-row {
-        grid-template-columns: 1fr;
-        gap: var(--dc-space-2);
-    }
-}
-
-/* ============================================================
-   HOW - three steps joined by a quiet rule and directional arrows.
-   ============================================================ */
+/* Compatibility and folder instructions above the FAQ. */
+.landing-works,
 .landing-how {
-    margin-top: var(--dc-space-8);
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--dc-space-7);
+    gap: var(--dc-space-2);
+    padding: var(--dc-space-5) 0;
+    border-bottom: 1px solid var(--border);
 }
-@media (max-width: 880px) {
-    .landing-how {
-        grid-template-columns: 1fr;
-    }
+.landing-works {
+    margin-top: var(--dc-space-6);
+    border-top: 1px solid var(--border);
 }
-.landing-step {
-    position: relative;
-    padding: var(--dc-space-5) 0 0;
-    border-top: 2px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: var(--dc-space-3);
-}
-@media (max-width: 880px) {
-    .landing-step {
-        padding: var(--dc-space-4) 0 0;
-    }
-}
-.landing-step-num {
-    font-family: var(--dc-font-ui);
-    font-size: var(--dc-text-sm);
-    font-weight: 600;
-    letter-spacing: var(--dc-tracking-wide);
-    color: var(--accent-ink);
-}
-.landing-step h3 {
+.landing-works p,
+.landing-how p {
     margin: 0;
-    font-size: var(--dc-text-lg);
-    font-weight: 600;
-    letter-spacing: -0.005em;
-    color: var(--fg);
-}
-.landing-step p {
-    margin: 0;
-    color: var(--fg-dim);
     font-size: var(--dc-text-base);
     line-height: 1.5;
-}
-.landing-step-arrow {
-    position: absolute;
-    top: 50%;
-    right: -36px;
-    width: 24px;
-    height: 24px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--fg-mute);
-    transform: translateY(-50%);
-    z-index: 2;
-}
-.landing-step:last-child .landing-step-arrow {
-    display: none;
-}
-@media (max-width: 880px) {
-    .landing-step-arrow {
-        display: none;
-    }
+    color: var(--fg-dim);
 }
 
 /* ============================================================
@@ -981,13 +839,7 @@ body.no-trips .viewer {
     }
 }
 @media (max-width: 880px) {
-    .landing-hero {
-        gap: var(--dc-space-6);
-    }
     .landing-caps {
-        gap: var(--dc-space-5);
-    }
-    .landing-how {
         gap: var(--dc-space-5);
     }
 }

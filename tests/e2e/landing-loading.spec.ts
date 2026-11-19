@@ -35,8 +35,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const { locale, heading } of [
-    { locale: "en", heading: "Dashcam player in your browser" },
-    { locale: "ru", heading: "Плеер видеорегистратора в браузере" },
+    { locale: "en", heading: "Free dashcam player in your browser" },
+    { locale: "ru", heading: "Бесплатный плеер видеорегистратора в браузере" },
 ]) {
     test(`${locale} first visit shows the localized landing while the app downloads`, async ({ page }) => {
         let fileChoosers = 0;
@@ -55,8 +55,7 @@ for (const { locale, heading } of [
             await expect(page.locator("#file-input")).toBeDisabled();
             await expect(page.locator("html")).not.toHaveAttribute("data-e2e-ready", "true");
 
-            // Bypass Playwright's enabled check to exercise native label
-            // activation while the app's click handlers are still absent.
+            // Bypass Playwright's enabled check to check both click targets before the picker handlers attach.
             await page.locator(".landing-drop-text").click({ force: true });
             await page.locator("#landing-cta").click({ force: true });
             expect(fileChoosers, "loading controls cannot lose a selection before handlers attach").toBe(0);

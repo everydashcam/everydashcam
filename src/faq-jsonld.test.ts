@@ -30,10 +30,10 @@ describe("faq-jsonld baseline parity", () => {
     });
 
     it.each([
-        [1, "landing.faq.q4", "landing.faq.a4"],
-        [2, "landing.faq.q3", "landing.faq.a3"],
-        [3, "landing.faq.q9", "landing.faq.a9"],
-        [4, "landing.faq.q6", "landing.faq.a6"],
+        [0, "landing.faq.q3", "landing.faq.a3"],
+        [1, "landing.faq.q14", "landing.faq.a14"],
+        [2, "landing.faq.q15", "landing.faq.a15"],
+        [3, "landing.faq.q16", "landing.faq.a16"],
     ] as const)("entry %i: %s / %s matches dict", (idx, qKey, aKey) => {
         const entry = baseline[idx];
         expect(entry, `missing baseline entry ${idx}`).toBeDefined();
@@ -42,7 +42,7 @@ describe("faq-jsonld baseline parity", () => {
     });
 
     it.each([
-        [0, 2],
+        [4, 2],
         [5, 13],
         [6, 12],
     ] as const)("entry %i (q%i) includes the inline link label", (idx, id) => {

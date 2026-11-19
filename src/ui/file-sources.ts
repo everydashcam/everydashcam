@@ -115,19 +115,6 @@ export function initFileSources(): void {
     });
     dom.fileInput.addEventListener("cancel", () => endPreIngestReading());
 
-    // Drag-and-drop works across the whole window. CTA wrappers (landing-drop
-    // and sidebar-cta) are label[for="folder-input"] elements. The landing
-    // drop card contains an inner <button id="landing-cta"> as the primary
-    // visual CTA - <button> is a labelable element, so HTML spec skips the
-    // label's "synthesize click on the labeled control" default action when
-    // the click target is the button. That means clicking the orange button
-    // would do nothing if we relied on native label semantics. We bypass that
-    // by always preventDefault + always calling folderInput.click() ourselves.
-    //
-    // Before the picker opens, the upload-warning modal (once per 30 days, see
-    // upload-warning-modal.ts) shows so the user is not greeted by the scary
-    // "Upload N files to this site?" prompt without context. uploadWarningInFlight
-    // guards a double-click while the async modal renders.
     // Raises the pre-ingest overlay, THEN opens the OS folder picker. The
     // overlay goes up before .click() on purpose: once the picker is open the
     // page yields control, and after the user picks a folder the browser
@@ -159,10 +146,9 @@ export function initFileSources(): void {
     for (const cta of [dom.landingDrop, dom.landingDock, dom.sidebarCta]) {
         if (!cta) continue;
         cta.addEventListener("click", async (e) => {
-            // Stop both native label-for-activation (when target is a passive
-            // descendant) and any default button activation. We open the picker
-            // explicitly below.
-            e.preventDefault();
+            // The sidebar label would also activate the input after this handler.
+            if (cta === dom.sidebarCta) e.preventDefault();
+            else cta.querySelector("button")?.focus({ preventScroll: true });
             // Claimed before the warning dialogs: a cancelled picker still counts.
             if (!claimImportGesture()) return;
             if (isIos) {
@@ -286,7 +272,7 @@ export function initFileSources(): void {
     // on click. We delegate to cta.click() so the click handler with the
     // upload-warning gate fires once. landingDrop has no tabindex - its inner
     // <button id="landing-cta"> handles Enter/Space natively (browser fires a
-    // click on the button, which bubbles to the label's click listener).
+    // click on the button, which bubbles to the card).
     if (dom.sidebarCta) {
         const cta = dom.sidebarCta;
         cta.addEventListener("keydown", (e) => {

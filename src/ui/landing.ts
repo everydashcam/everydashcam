@@ -10,9 +10,7 @@
 // FLIP source: the orange <button id="landing-cta"> inside the .landing-drop card.
 // We animate just the button, not the whole drop card - the dashed-border card
 // disappears with the rest of the landing, but the orange CTA stays continuous
-// from hero to sidebar header. Outer label remains the click+drop target wired
-// to #folder-input (lives outside the label, in <body>); the inner button has
-// no onclick, label propagation triggers the input once.
+// from hero to sidebar header. The card handles clicks from the button and the surrounding hint.
 //
 // The FLIP mechanics (clone, measure, animate, cleanup) live in ./flip.ts and
 // are shared with the mobile browse->watch collapse. Here we only supply the
@@ -68,7 +66,7 @@ export function exitLanding(): void {
 
     // landingCta is nullable only after removeLandingFromDom below; the
     // no-trips guard above means the landing - and its CTA - is still in the
-    // DOM here. The clone is the <label for=...> CTA; flip.ts sets
+    // DOM here. The clone is the landing button; flip.ts sets
     // pointer-events:none + tabindex=-1 so it is not a clickable overlay.
     const landingCta = dom.landingCta;
     if (!landingCta) return;

@@ -39,10 +39,11 @@ test.describe("landing layout", () => {
             });
             await faq.scrollIntoViewIfNeeded();
             await shot(page, `landing-faq-${locale}`);
-            await items.first().locator("summary").click();
-            await expect(items.first().locator("a")).toBeVisible();
-            await expect(items.first().locator("a")).toHaveAttribute("href", `/${locale}/cameras/`);
-            const help = items.nth(5);
+            const cameras = items.filter({ has: page.locator('[data-i18n="landing.faq.q2"]') });
+            await cameras.locator("summary").click();
+            await expect(cameras.locator("a")).toBeVisible();
+            await expect(cameras.locator("a")).toHaveAttribute("href", `/${locale}/cameras/`);
+            const help = items.filter({ has: page.locator('[data-i18n="landing.faq.q13"]') });
             await help.locator("summary").click();
             await expect(help.locator("a")).toBeVisible();
             await expect(help.locator("a")).toHaveAttribute("href", `/${locale}/add-my-camera/`);

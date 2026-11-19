@@ -338,16 +338,23 @@ test("explains unsupported installation while keeping the offline entry availabl
     await expect(page.locator("#offline-use-btn")).toBeFocused();
 });
 
-test("opens the same chooser from the mobile overflow menu", async ({ page }) => {
-    await page.setViewportSize(MOBILE);
-    await gotoApp(page);
-    await expect(page.locator("#offline-use-btn")).toHaveAttribute("data-overflow-hidden", "true");
-    await page.locator("#topbar-overflow").click();
-    await page.locator("#topbar-overflow-menu").getByRole("menuitem", { name: "Use offline", exact: true }).click();
-    await expect(page.locator("#offline-use-modal")).toBeVisible();
-    await expect(page.locator("#topbar-overflow-menu")).toBeHidden();
-    await expect(page.locator("#offline-use-file")).toBeHidden();
-    await page.locator("#offline-use-close").click();
-    await expect(page.locator("#offline-use-modal")).toBeHidden();
-    await expect(page.locator("#topbar-overflow")).toBeFocused();
+test.describe("touch header", () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    test("keeps offline use ahead of theme and opens the same chooser from overflow", async ({ page }) => {
+        await page.setViewportSize(MOBILE);
+        await gotoApp(page);
+        await expect(page.locator(".theme-toggle")).toBeHidden();
+        await expect(page.locator("#offline-use-btn")).toBeVisible();
+        await page.setViewportSize({ width: 320, height: 568 });
+        await expect(page.locator("#offline-use-btn")).toHaveAttribute("data-overflow-hidden", "true");
+        await page.locator("#topbar-overflow").click();
+        await page.locator("#topbar-overflow-menu").getByRole("menuitem", { name: "Use offline", exact: true }).click();
+        await expect(page.locator("#offline-use-modal")).toBeVisible();
+        await expect(page.locator("#topbar-overflow-menu")).toBeHidden();
+        await expect(page.locator("#offline-use-file")).toBeHidden();
+        await page.locator("#offline-use-close").click();
+        await expect(page.locator("#offline-use-modal")).toBeHidden();
+        await expect(page.locator("#topbar-overflow")).toBeFocused();
+    });
 });

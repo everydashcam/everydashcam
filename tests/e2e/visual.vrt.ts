@@ -32,15 +32,19 @@ test.describe("visual regression", () => {
         });
     });
 
-    test("landing - mobile", async ({ page }) => {
-        await page.setViewportSize(MOBILE);
-        await gotoApp(page, "en");
-        await expect(page.locator("#landing")).toBeVisible();
-        await settle(page);
-        // Same footer build-id mask as the desktop shot.
-        await expect(page).toHaveScreenshot("landing-mobile.png", {
-            fullPage: true,
-            mask: [page.locator("#footer-version")],
+    test.describe("touch landing", () => {
+        test.use({ hasTouch: true, isMobile: true });
+
+        test("landing - mobile", async ({ page }) => {
+            await page.setViewportSize(MOBILE);
+            await gotoApp(page, "en");
+            await expect(page.locator("#landing")).toBeVisible();
+            await settle(page);
+            // Same footer build-id mask as the desktop shot.
+            await expect(page).toHaveScreenshot("landing-mobile.png", {
+                fullPage: true,
+                mask: [page.locator("#footer-version")],
+            });
         });
     });
 

@@ -235,16 +235,9 @@ export const dom = {
      *  landing removal so the detached subtree can be GC'd - consumers must
      *  null-check. */
     landingCta: $id<HTMLElement>("landing-cta") as HTMLElement | null,
-    /** Wrapping <label> of the drop CTA. Click target for upload-warning gate -
-     *  see file-sources.ts. Separate from landingCta because the inner button
-     *  is the FLIP source; clicks elsewhere inside the label (codecs, hint
-     *  text) must still go through the gate. */
-    landingDrop: $id<HTMLLabelElement>("landing-drop") as HTMLLabelElement | null,
-    /** Docked CTA pill (visible when the drop card scrolls out of view). Wired
-     *  through the same picker gate as landingDrop - label-for semantics skip
-     *  clicks on the inner <button>, so the explicit handler is what makes the
-     *  button work (see file-sources.ts). */
-    landingDock: document.getElementById("landing-dock") as HTMLLabelElement | null,
+    /** Whole-card clicks share the picker gate with the native button. */
+    landingDrop: document.getElementById("landing-drop"),
+    landingDock: document.getElementById("landing-dock"),
     sidebarCta: $id<HTMLElement>("sidebar-cta"),
     landingRoot: document.getElementById("landing") as HTMLElement | null,
     tripAnalysisStatus: $id<HTMLElement>("trip-analysis-status"),

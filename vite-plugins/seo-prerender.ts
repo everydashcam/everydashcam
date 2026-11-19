@@ -880,11 +880,11 @@ function buildFaqJsonLd(dict: Record<I18nKey, string>): string {
     const linkedAnswer = (id: 2 | 12 | 13): string =>
         `${dict[`landing.faq.a${id}.before`]}${dict[`landing.faq.a${id}.link`]}${dict[`landing.faq.a${id}.after`]}`;
     const items: Array<{ q: string; a: string }> = [
-        { q: dict["landing.faq.q2"], a: linkedAnswer(2) },
-        { q: dict["landing.faq.q4"], a: dict["landing.faq.a4"] },
         { q: dict["landing.faq.q3"], a: dict["landing.faq.a3"] },
-        { q: dict["landing.faq.q9"], a: dict["landing.faq.a9"] },
-        { q: dict["landing.faq.q6"], a: dict["landing.faq.a6"] },
+        { q: dict["landing.faq.q14"], a: dict["landing.faq.a14"] },
+        { q: dict["landing.faq.q15"], a: dict["landing.faq.a15"] },
+        { q: dict["landing.faq.q16"], a: dict["landing.faq.a16"] },
+        { q: dict["landing.faq.q2"], a: linkedAnswer(2) },
         { q: dict["landing.faq.q13"], a: linkedAnswer(13) },
         { q: dict["landing.faq.q12"], a: linkedAnswer(12) },
     ];
