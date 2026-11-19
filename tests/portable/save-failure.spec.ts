@@ -41,7 +41,8 @@ test("reports initial fallback allocation failure and allows a successful retry"
         window.ArrayBuffer = new Proxy(ArrayBuffer, {
             construct(target, args, newTarget) {
                 if (fault.armed && args[0] === 64 * 1024) {
-                    fault.armed = false;
+                    // The export retries a refused resizable buffer with a fixed one.
+                    if (args.length === 1) fault.armed = false;
                     throw new RangeError("Array buffer allocation failed (portable test)");
                 }
                 return Reflect.construct(target, args, newTarget);
