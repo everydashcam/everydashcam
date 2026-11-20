@@ -48,18 +48,19 @@ async function extractFirstFrameDataUrl(file: File): Promise<string | null> {
             height: PREVIEW_HEIGHT_PX,
             fit: "cover",
         });
-        // First frame via the iterator, NOT `getCanvas(0)`. Some files put the
-        // first sample at timestamp != 0 (Ambarella `tapt`/`edts` edit-lists,
-        // Lavf remuxes with a small pre-roll), where `getCanvas(0)` returns
-        // null. The iterator starts from the first real frame regardless of ts.
-        const iter = sink.canvases();
-        const first = await iter.next();
-        await iter.return?.(undefined);
-        if (first.done || !first.value) return null;
+        // Random access, not the canvases() iterator: the iterator's packet
+        // pump reads about a second of video ahead, several MB per 4K preview
+        // that one frame never uses. Seek to the track's first timestamp, not
+        // 0: some files start past 0 (Ambarella `tapt`/`edts` edit lists, Lavf
+        // remuxes with a small pre-roll), where `getCanvas(0)` returns null.
+        // A pre-roll before 0 stays hidden, as in playback.
+        const firstTimestamp = Math.max(0, await track.getFirstTimestamp());
+        const first = await sink.getCanvas(firstTimestamp);
+        if (!first) return null;
 
         // In a worker the sink yields an OffscreenCanvas; convertToBlob is
         // OffscreenCanvas-only. The guard is a type-narrow, never false here.
-        const { canvas } = first.value;
+        const { canvas } = first;
         if (!(canvas instanceof OffscreenCanvas)) return null;
 
         const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: PREVIEW_JPEG_QUALITY });
