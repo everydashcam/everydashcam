@@ -7,6 +7,10 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-11-20
+
+- **New:** Added camera clock correction in playback settings.
+
 ## 2026-11-19
 
 - **Improved:** Text follows the browser’s font size setting.

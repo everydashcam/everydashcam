@@ -28,6 +28,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-20.1",
+        category: "feature",
+        text: {
+            en: "Added camera clock correction in playback settings.",
+            ru: "В настройках воспроизведения появилась поправка часов регистратора.",
+            de: "Die Wiedergabeeinstellungen bieten eine Uhrzeitkorrektur für die Dashcam.",
+            es: "Añadida la corrección del reloj de la dashcam a los ajustes de reproducción.",
+            fr: "Ajout de la correction de l’heure de la dashcam aux paramètres de lecture.",
+            pl: "Dodano korektę zegara wideorejestratora w ustawieniach odtwarzania.",
+            pt: "Adicionada a correção do relógio da câmera veicular nas configurações de reprodução.",
+            zh: "播放设置中新增行车记录仪时钟校正。",
+            ja: "再生設定にドライブレコーダーの時計の補正を追加しました。",
+            ko: "재생 설정에 블랙박스 시계 보정을 추가했어요.",
+        },
+    },
+    {
         id: "2026-11-19.4",
         category: "improvement",
         text: {
