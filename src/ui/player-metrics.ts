@@ -7,7 +7,7 @@
 import { getDateLocale, t } from "../i18n/index.js";
 import { formatSpeedReading } from "../gps-telemetry.js";
 import { isValidGpsFix } from "../parser.js";
-import { contentToFrame, contentToWallUtc, displayClockDate, type Trip } from "../trips.js";
+import { contentToFrame, contentToWallUtc, displayClockDate, displayTzSec, type Trip } from "../trips.js";
 import type { GpsRecord } from "../parser.js";
 import { formatDistanceFromKm, formatSpeedFromMs, getUnits, subscribeUnitsChange, toggleUnits } from "../units-pref.js";
 import { subscribeClockCorrectionChange } from "../clock-correction-pref.js";
@@ -63,7 +63,9 @@ let shownLat: number | undefined;
 let shownLon: number | undefined;
 let shownSpeedMs: number | undefined;
 let shownSpeedSource: GpsRecord["speedSource"];
-let shownCameraTzSec: number | null = null;
+// Display-clock offset the time was rendered with: the camera zone plus the
+// user's clock correction, or the viewer's zone.
+let shownClockOffsetSec: number | null = null;
 let shownDistanceKm: number | null = null;
 let shownUnits: ReturnType<typeof getUnits> | null = null;
 let shownLocale: string | null = null;
@@ -76,10 +78,12 @@ function refreshMetrics(
 ): void {
     const units = getUnits();
     const locale = getDateLocale();
+    const clockOffsetSec = rec === null ? null : displayTzSec(rec.unixSeconds, cameraTzSec);
     // The readout uses the nearest GPS sample, which often stays unchanged
     // across many timeupdates. Preserve its DOM and formatted strings until
-    // a sample, distance, timezone or formatting preference changes. Metadata
-    // enrichment can correct the same record in place, so retain its scalars.
+    // a sample, distance, clock offset or formatting preference changes.
+    // Metadata enrichment can correct the same record in place, so retain its
+    // scalars.
     if (
         rec === shownRecord &&
         fix === shownFixState &&
@@ -89,7 +93,7 @@ function refreshMetrics(
         Object.is(rec?.lon, shownLon) &&
         Object.is(rec?.speedMs, shownSpeedMs) &&
         rec?.speedSource === shownSpeedSource &&
-        cameraTzSec === shownCameraTzSec &&
+        clockOffsetSec === shownClockOffsetSec &&
         distanceKm === shownDistanceKm &&
         units === shownUnits &&
         locale === shownLocale
@@ -102,7 +106,7 @@ function refreshMetrics(
     shownLon = rec?.lon;
     shownSpeedMs = rec?.speedMs;
     shownSpeedSource = rec?.speedSource;
-    shownCameraTzSec = cameraTzSec;
+    shownClockOffsetSec = clockOffsetSec;
     shownDistanceKm = distanceKm;
     shownUnits = units;
     if (locale !== shownLocale) shownFixState = null;
@@ -170,14 +174,19 @@ export function refreshMetricsFromActiveFrame(tripCurrentSec: number): void {
         // Clear on EVERY bail-out: state.active can go null outside playFrame
         // (a regroup that fails to relocate the active file), and a stale
         // marker would sit on the placeholder clock forever.
-        markTimelapseClock(false);
+        annotateClock(false, false);
         return;
     }
     // tripCurrentSec is footage-axis; map to wall-clock to find the GPS record.
     const targetUnix = contentToWallUtc(af.trip.timeline, tripCurrentSec);
     const metrics = resolvePlayerMetrics(af.trip.records, targetUnix);
     refreshMetrics(metrics.record, af.trip.cameraTzSec, metrics.distanceKm, metrics.fix);
-    markTimelapseClock(metrics.fix === "ok" && currentClipIsTimelapse(af.trip, tripCurrentSec));
+    const showsTime = metrics.fix === "ok";
+    annotateClock(
+        showsTime && currentClipIsTimelapse(af.trip, tripCurrentSec),
+        // displayTzSec applies the user's correction only to a trip with a zone.
+        showsTime && af.trip.cameraTzSec != null,
+    );
 }
 
 // Trips overwhelmingly contain no time-lapse clips; remember that per Trip so
@@ -199,23 +208,34 @@ function currentClipIsTimelapse(trip: Trip, tripCurrentSec: number): boolean {
     return Object.values(frame.channels).some((c) => c?.isTimelapse);
 }
 
-// Last-applied flag: timeupdate calls this several times a second - skip the DOM writes
-// and the t() lookup when nothing changed. No one else touches the class/title.
-let timelapseClockShown: boolean | null = null;
+// Last-applied tooltip state: timeupdate calls this several times a second -
+// skip the DOM writes and the t() lookups when nothing changed. No one else
+// touches the class/title.
+let shownClockNote: string | null = null;
 
-/** Flags the metrics clock as time-lapse: its time runs at playback speed, not
- *  real elapsed time. Tooltip + a dotted-underline style (see player-bar.css). */
-function markTimelapseClock(isTimelapse: boolean): void {
-    if (isTimelapse === timelapseClockShown) return;
-    timelapseClockShown = isTimelapse;
+/**
+ * Annotates the metrics clock. A time-lapse clip gets a dotted-underline style
+ * (see player-bar.css) and a tooltip: its time runs at playback speed, not real
+ * elapsed time. `isCorrectable` adds where to adjust the camera clock; pass it
+ * only for a time the user's clock correction can move.
+ */
+function annotateClock(isTimelapse: boolean, isCorrectable: boolean): void {
+    const note = `${isTimelapse}:${isCorrectable}:${getDateLocale()}`;
+    if (note === shownClockNote) return;
+    shownClockNote = note;
     dom.metrics.time.classList.toggle("is-timelapse", isTimelapse);
-    const path = [
-        t("settings.modal.title"),
-        t("settings.playback.section"),
-        t("settings.playback.clockCorrection.label"),
-    ].join(" → ");
-    const hint = t("readout.clock.hint", { path });
-    dom.metrics.time.title = isTimelapse ? `${t("trip.fileChip.timelapseHint")}\n${hint}` : hint;
+    const lines: string[] = [];
+    if (isTimelapse) lines.push(t("trip.fileChip.timelapseHint"));
+    if (isCorrectable) {
+        const path = [
+            t("settings.modal.title"),
+            t("settings.playback.section"),
+            t("settings.playback.clockCorrection.label"),
+        ].join(" → ");
+        lines.push(t("readout.clock.hint", { path }));
+    }
+    if (lines.length > 0) dom.metrics.time.title = lines.join("\n");
+    else dom.metrics.time.removeAttribute("title");
 }
 
 // Set by initPlayerMetrics. Reading the playhead through a getter keeps the
@@ -297,8 +317,6 @@ export function initPlayerMetrics(getTripCurrentSec: () => number): void {
         if (text) void copyFromElement(dom.metrics.file, text);
     });
     subscribeClockCorrectionChange(() => {
-        // The readout skips unchanged records; the correction is not part of that key.
-        shownRecord = undefined;
         refreshMetricsFromActiveFrame(getTripCurrentSec());
     });
     subscribeUnitsChange(() => {
