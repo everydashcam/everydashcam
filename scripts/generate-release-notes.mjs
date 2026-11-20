@@ -15,9 +15,10 @@
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-import { loadChangelogEntries, renderEntryBullet } from "./_changelog-render.mjs";
-import { ENTRIES_PATH, entryIdsAt, previousReleaseTag } from "./_release-tags.mjs";
+import { PORTABLE_PRIMARY_ORIGIN } from "../src/portable/manifest.mjs";
 import { compareReleaseTags, isReleaseTag } from "../src/portable/release-tags.mjs";
+import { loadChangelogEntries } from "./_changelog-render.mjs";
+import { ENTRIES_PATH, entryIdsAt, previousReleaseTag } from "./_release-tags.mjs";
 
 const { values } = parseArgs({
     options: {
@@ -55,24 +56,26 @@ if (previousTag) {
 const entries = await loadChangelogEntries();
 const fresh = entries.filter((entry) => !previousIds.has(entry.id));
 
-const lines = [];
-if (fresh.length > 0) {
-    lines.push("## What's new", "", ...fresh.map(renderEntryBullet));
-} else {
-    lines.push("No changelog entries for this release.");
-}
-lines.push("");
+const repoUrl = `https://github.com/${repo || "everydashcam/everydashcam"}`;
+const historyLinks = [`[Changelog](${repoUrl}/blob/${tag}/CHANGELOG.md)`];
 if (previousTag && repo) {
-    lines.push(
-        `**Full changelog:** [${previousTag}...${tag}](https://github.com/${repo}/compare/${previousTag}...${tag})`,
-    );
-} else {
-    lines.push(
-        `**Full changelog:** [CHANGELOG.md](https://github.com/${repo || "everydashcam/everydashcam"}/blob/${tag}/CHANGELOG.md)`,
-    );
+    historyLinks.push(`[Compare changes](${repoUrl}/compare/${previousTag}...${tag})`);
 }
 
-const notes = `${lines.join("\n").trimEnd()}\n`;
+const sections = [];
+if (fresh.length > 0) {
+    sections.push(["## What's new", "", ...fresh.map((entry) => `- ${entry.text.en}`)].join("\n"));
+}
+sections.push(
+    historyLinks.join(" · "),
+    `**Use the latest web version** at [everydashcam.app](${PORTABLE_PRIMARY_ORIGIN}/).`,
+    "**Or use the portable edition.** Download the `.html` file for your language from **Assets** below. " +
+        "Open it in a desktop browser and select your recordings folder.",
+    `[Latest portable downloads](${repoUrl}/releases/latest) · ` +
+        `[Portable guide](${repoUrl}/blob/main/docs/self-hosting.md#open-the-portable-html)`,
+);
+
+const notes = `${sections.join("\n\n")}\n`;
 const out = values.out;
 if (out) {
     writeFileSync(out, notes);

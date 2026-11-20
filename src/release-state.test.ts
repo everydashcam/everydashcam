@@ -186,9 +186,17 @@ describe("published changelog baseline", () => {
         git("-c", "commit.gpgsign=false", "commit", "-m", "feat: visible feature");
         const result = generateNotes();
         expect(result.status, result.stderr).toBe(0);
-        expect(result.stdout).toContain("No changelog entries for this release.");
-        expect(result.stdout).toContain(`https://github.com/example/everydashcam/compare/${previousTag}...${tag}`);
-        expect(result.stdout).not.toContain("no user-facing changes");
+        const [history, web, portable, portableLinks] = result.stdout.trimEnd().split("\n\n");
+        expect(history).toBe(
+            `[Changelog](https://github.com/example/everydashcam/blob/${tag}/CHANGELOG.md) · ` +
+                `[Compare changes](https://github.com/example/everydashcam/compare/${previousTag}...${tag})`,
+        );
+        expect(web).toContain("[everydashcam.app](https://everydashcam.app/)");
+        expect(portable).toContain("Download the `.html` file for your language from **Assets** below.");
+        expect(portableLinks).toContain(
+            "[Latest portable downloads](https://github.com/example/everydashcam/releases/latest)",
+        );
+        expect(portableLinks).toContain("/blob/main/docs/self-hosting.md#open-the-portable-html");
     });
 
     it("preserves entries added on an abandoned tag for the next published release", () => {
@@ -204,7 +212,10 @@ describe("published changelog baseline", () => {
         git("-c", "tag.gpgsign=false", "tag", "v2026.10.06");
         const result = generateNotes();
         expect(result.status, result.stderr).toBe(0);
-        expect(result.stdout).toContain(CHANGELOG_ENTRIES[0]!.text.en);
+        expect(result.stdout.split("\n\n").slice(0, 2)).toEqual([
+            "## What's new",
+            `- ${CHANGELOG_ENTRIES[0]!.text.en}`,
+        ]);
         expect(result.stdout).not.toContain(CHANGELOG_ENTRIES[1]!.text.en);
     });
 });
