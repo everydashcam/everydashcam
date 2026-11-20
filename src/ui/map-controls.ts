@@ -152,7 +152,7 @@ export class MapScaleControl implements IControl {
         this.update(true);
     };
 
-    private update(force: boolean): void {
+    private update(isForced: boolean): void {
         const map = this.map;
         const root = this.root;
         if (!map || !root) return;
@@ -164,7 +164,7 @@ export class MapScaleControl implements IControl {
         const center = map.getCenter();
         const pitch = map.getPitch();
         if (
-            !force &&
+            !isForced &&
             Math.abs(zoom - this.lastZoom) < SCALE_ZOOM_EPS &&
             Math.abs(center.lat - this.lastLat) < SCALE_LAT_EPS &&
             Math.abs(pitch - this.lastPitch) < SCALE_PITCH_EPS
@@ -329,12 +329,12 @@ export class MapNavigationControl implements IControl {
         this.syncCompass(true);
     }
 
-    /** Updates compass availability; refreshLabel rewrites the label even if unchanged. */
-    syncCompass(refreshLabel = false): void {
+    /** Updates compass availability; shouldRefreshLabel rewrites the label even if unchanged. */
+    syncCompass(shouldRefreshLabel = false): void {
         const button = this.compassBtn;
         if (!button) return;
         const isDisabled = !this.canResetBearing();
-        if (!refreshLabel && this.isCompassDisabled === isDisabled) return;
+        if (!shouldRefreshLabel && this.isCompassDisabled === isDisabled) return;
         this.isCompassDisabled = isDisabled;
         button.disabled = isDisabled;
         button.setAttribute("aria-disabled", String(isDisabled));
@@ -360,17 +360,17 @@ export class MapNavigationControl implements IControl {
         const map = this.map;
         if (!map || !this.zoomInBtn || !this.zoomOutBtn) return;
         const zoom = map.getZoom();
-        const atMax = zoom >= map.getMaxZoom();
-        const atMin = zoom <= this.constrainedMinZoom + ZOOM_LIMIT_EPS;
-        if (atMax !== this.isZoomInDisabled) {
-            this.isZoomInDisabled = atMax;
-            this.zoomInBtn.disabled = atMax;
-            this.zoomInBtn.setAttribute("aria-disabled", String(atMax));
+        const isAtMax = zoom >= map.getMaxZoom();
+        const isAtMin = zoom <= this.constrainedMinZoom + ZOOM_LIMIT_EPS;
+        if (isAtMax !== this.isZoomInDisabled) {
+            this.isZoomInDisabled = isAtMax;
+            this.zoomInBtn.disabled = isAtMax;
+            this.zoomInBtn.setAttribute("aria-disabled", String(isAtMax));
         }
-        if (atMin !== this.isZoomOutDisabled) {
-            this.isZoomOutDisabled = atMin;
-            this.zoomOutBtn.disabled = atMin;
-            this.zoomOutBtn.setAttribute("aria-disabled", String(atMin));
+        if (isAtMin !== this.isZoomOutDisabled) {
+            this.isZoomOutDisabled = isAtMin;
+            this.zoomOutBtn.disabled = isAtMin;
+            this.zoomOutBtn.setAttribute("aria-disabled", String(isAtMin));
         }
     };
 

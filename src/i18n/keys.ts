@@ -622,9 +622,8 @@ export type I18nKey =
     | "webglEnable.check"
     | "webglEnable.gotIt"
     | "webglEnable.howTo"
-    // MapLibre built-in controls (NavigationControl). MapLibre 4 has no public
-    // setLocale, so we overwrite title/aria-label on their DOM buttons via
-    // querySelector. Keys mirror the default "NavigationControl.*" keys.
+    // Labels of the map's own controls (map-controls.ts and
+    // map-attribution-control.ts), set as title/aria-label.
     | "map.ctrl.zoomIn"
     | "map.ctrl.zoomOut"
     | "map.ctrl.resetBearing"

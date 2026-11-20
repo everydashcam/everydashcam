@@ -513,7 +513,7 @@ export function ensureMap(): maplibregl.Map | null {
         });
     });
 
-    // Manual zoom (wheel, trackpad pinch, double-click, NavigationControl +/-) is
+    // Manual zoom (wheel, trackpad pinch, double-click, the +/- buttons) is
     // a user interaction too: pause auto-follow for the grace window, just like
     // pan/rotate/pitch. It does NOT disable chase speed-adaptive zoom anymore -
     // adaptive re-applies on resume, so the toggle stays the user's deliberate
@@ -530,7 +530,7 @@ export function ensureMap(): maplibregl.Map | null {
         const points = (e as { points?: unknown[] }).points;
         if (points && points.length >= 2) noteUserMapInteraction();
     });
-    // The NavigationControl +/- buttons call zoomIn/Out({}, {originalEvent}) -
+    // The +/- buttons (MapNavigationControl) call zoomIn/Out({}, {originalEvent}) -
     // an easeTo whose per-frame 'zoom' events fire only from the ease's FIRST
     // render callback. The per-frame follow jumpTo calls stop() and would
     // cancel that ease before its first frame, so a 'zoom' listener never sees
@@ -3215,8 +3215,8 @@ function canResetMapBearing(map: maplibregl.Map): boolean {
     return state.followMode !== "chase" && map.getPitch() <= 1;
 }
 
-function syncMapCompassAvailability(shouldRefreshLabel = false): void {
-    mapNavControl?.syncCompass(shouldRefreshLabel);
+function syncMapCompassAvailability(): void {
+    mapNavControl?.syncCompass();
 }
 
 /**
