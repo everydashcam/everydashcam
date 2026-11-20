@@ -13,6 +13,7 @@ import {
     MOBILE,
     REPO_ROOT,
     SAMPLE_70MAI,
+    SAMPLE_CUT_MID_GOP,
     SAMPLE_GOPRO,
     SAMPLE_NOGPS,
     expect,
@@ -1102,6 +1103,20 @@ test.describe("progressive ingest", () => {
             .poll(() => page.evaluate(() => (window as typeof window & { __ingestDone?: boolean }).__ingestDone))
             .toBe(true);
         expect(await previewExtracts(), "kept previews paint without a decode").toBe(0);
+    });
+
+    test("previews a clip that starts inside a GOP from its first key frame", async ({ page }) => {
+        // The clip's first packets are not decodable on their own: a lookup at
+        // the first timestamp finds no key frame and must not leave the trip
+        // without a picture.
+        const directory = makeTemporaryDirectory("everydashcam-preview-mid-gop-");
+        copyFileSync(path.join(SAMPLE_CUT_MID_GOP, "clip-cut-mid-gop.mp4"), path.join(directory, "clip.mp4"));
+        const shownPreviews = () =>
+            page.evaluate(() => window.__everydashcam.state.trips.filter((trip) => trip.previewDataUrl).length);
+
+        await page.locator("#folder-input").setInputFiles(directory);
+        await expect(page.locator("li.trip:not(.unindexed-note)")).toHaveCount(1);
+        await expect.poll(shownPreviews, { timeout: 20_000 }).toBe(1);
     });
 
     test("regrouping from settings preserves the active ingest lifecycle", async ({ page }) => {

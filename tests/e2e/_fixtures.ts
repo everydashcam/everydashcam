@@ -60,6 +60,9 @@ export const SAMPLE_HEVC = path.join(REPO_ROOT, "tests/testdata/hevc-hev1");
 // GPS-dependent export gate: every other public sample carries a track. H.264
 // (not HEVC) so the gate assertions run on CI Chrome, not only on macOS.
 export const SAMPLE_NOGPS = path.join(REPO_ROOT, "tests/testdata/no-gps-h264");
+// Synthetic H.264 clip whose track starts inside a GOP: the first packets are
+// not key frames, so nothing decodes at the track's first timestamp.
+export const SAMPLE_CUT_MID_GOP = path.join(REPO_ROOT, "tests/testdata/cut-mid-gop-h264");
 // Synthetic H.264 + AAC Matroska (.mkv), no GPS. Browsers do not play .mkv via
 // <video>.src, so this forces the MSE-remux path (like TS/HEVC) - but H.264
 // decodes everywhere, so playback + stream-copy export assertions run on CI

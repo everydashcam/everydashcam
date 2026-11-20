@@ -10,7 +10,7 @@
 
 import type { PreviewWorkerContract } from "./preview-protocol.js";
 
-import { CanvasSink, Input, InputDisposedError, UnsupportedInputFormatError } from "mediabunny";
+import { CanvasSink, Input, InputDisposedError, UnsupportedInputFormatError, type WrappedCanvas } from "mediabunny";
 
 import { PREVIEW_HEIGHT_PX, PREVIEW_JPEG_QUALITY, PREVIEW_WIDTH_PX } from "../preview-config.js";
 import { createBlobSource } from "../blob-source.js";
@@ -55,7 +55,7 @@ async function extractFirstFrameDataUrl(file: File): Promise<string | null> {
         // remuxes with a small pre-roll), where `getCanvas(0)` returns null.
         // A pre-roll before 0 stays hidden, as in playback.
         const firstTimestamp = Math.max(0, await track.getFirstTimestamp());
-        const first = await sink.getCanvas(firstTimestamp);
+        const first = (await sink.getCanvas(firstTimestamp)) ?? (await firstDecodableCanvas(sink));
         if (!first) return null;
 
         // In a worker the sink yields an OffscreenCanvas; convertToBlob is
@@ -80,6 +80,20 @@ async function extractFirstFrameDataUrl(file: File): Promise<string | null> {
             /* ignore */
         }
     }
+}
+
+/**
+ * The first frame the decoder can produce, read through the iterator. Covers
+ * a track whose first packet is not a key frame (a clip cut inside a GOP):
+ * getCanvas() finds no key frame at or before that packet and returns null,
+ * while the iterator starts at the first key frame. Such clips are rare, so
+ * the iterator's readahead is paid only here.
+ */
+async function firstDecodableCanvas(sink: CanvasSink): Promise<WrappedCanvas | null> {
+    const frames = sink.canvases();
+    const first = await frames.next();
+    await frames.return?.(undefined);
+    return first.done ? null : first.value;
 }
 
 /**
