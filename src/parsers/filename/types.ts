@@ -43,10 +43,16 @@ export type FilenameTimeTechnique = FilenameTechnique<Date>;
  *             grid layout / grouping, but the UI shows a positional "Channel N"
  *             label instead of "Rear camera" to avoid asserting a mount we are
  *             only guessing.
+ *
+ * `confidentInChannelSet` lifts a guess to trusted for a trip whose channels
+ * are exactly this set. It is for index letters that are ambiguous across a
+ * family's models but fixed for one camera layout: Vantrue writes the rear
+ * camera as B on two-camera models and as C on three-camera ones.
  */
 export interface ChannelMatch {
     channel: Channel;
     confident: boolean;
+    confidentInChannelSet?: readonly Channel[];
 }
 
 export type FilenameChannelTechnique = FilenameTechnique<ChannelMatch>;

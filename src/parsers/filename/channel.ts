@@ -11,7 +11,8 @@
 //     name pattern, or a spelled-out path/folder, or a single-channel model
 //     -> confident (UI shows "Rear camera").
 //   - index letters whose mapping is a pure vendor convention (CarCam A/B/C/D,
-//     Vantrue A/B/C where B=cabin) -> not confident (UI shows "Channel N").
+//     Vantrue A/B/C where B=cabin) -> not confident (UI shows "Channel N"),
+//     unless the trip's channels pin the layout (confidentInChannelSet).
 
 import type { Channel, VendorFile } from "../types.js";
 import { matchDailyCsvVideoPath } from "../internal/daily-csv-path.js";
@@ -548,6 +549,15 @@ const novatekSingleChannel: FilenameChannelTechnique = {
     },
 };
 
+// Vantrue three-camera models (the N4 confirmed by an owner's report) write
+// front, cabin and rear as A, B and C. Two-camera models reuse B for either
+// the cabin or the rear (S1 Pro Max), so only a trip with all three is sure.
+const VANTRUE_THREE_CAMERA_CHANNELS: readonly Channel[] = ["front", "interior", "rear"];
+
+function vantrueThreeCameraGuess(channel: Channel): ChannelMatch {
+    return { ...guess(channel), confidentInChannelSet: VANTRUE_THREE_CAMERA_CHANNELS };
+}
+
 const novatekVantrueChannel: FilenameChannelTechnique = {
     id: "novatek-vantrue-channel",
     extract(file: VendorFile): ChannelMatch | null {
@@ -555,9 +565,9 @@ const novatekVantrueChannel: FilenameChannelTechnique = {
         if (!vantrue) return null;
         // A/B/C are index letters (B=cabin is not a mnemonic) - guess the mount.
         const ch = vantrue.channelLetter.toUpperCase();
-        if (ch === "A") return guess("front");
-        if (ch === "B") return guess("interior"); // Vantrue B = cabin
-        if (ch === "C") return guess("rear");
+        if (ch === "A") return vantrueThreeCameraGuess("front");
+        if (ch === "B") return vantrueThreeCameraGuess("interior");
+        if (ch === "C") return vantrueThreeCameraGuess("rear");
         return guess("side");
     },
 };

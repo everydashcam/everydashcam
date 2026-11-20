@@ -206,10 +206,14 @@ describe("matchFilenameChannel", () => {
         expect(matchFilenameChannel(vf("20260618_130336F.ts")).matchedId).toBe("juscar-channel");
     });
 
-    it("Vantrue B -> interior but NOT confident (B=cabin, index letter)", () => {
+    it("Vantrue B -> interior, trusted only in a three-camera trip (B is the rear on two-camera models)", () => {
         const r = matchFilenameChannel(vf("20250607_180617_0001_N_B.mp4"));
         expect(r.matchedId).toBe("novatek-vantrue-channel");
-        expect(r.value).toEqual({ channel: "interior", confident: false });
+        expect(r.value).toEqual({
+            channel: "interior",
+            confident: false,
+            confidentInChannelSet: ["front", "interior", "rear"],
+        });
     });
 
     it("Vantrue split-date spelling resolves through the Vantrue techniques, not the generic clock", () => {
