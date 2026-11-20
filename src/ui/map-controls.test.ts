@@ -30,26 +30,59 @@ class FakeStyle {
 
 interface FakePointer {
     pointerId?: number;
+    pointerType?: "mouse" | "touch";
     clientX: number;
     clientY: number;
 }
 
-class FakeElement {
+class FakeEventTarget {
+    listeners = new Map<string, Array<(event: unknown) => void>>();
+
+    addEventListener(type: string, handler: (event: unknown) => void): void {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+    }
+
+    removeEventListener(type: string, handler: (event: unknown) => void): void {
+        const list = this.listeners.get(type) ?? [];
+        this.listeners.set(
+            type,
+            list.filter((entry) => entry !== handler),
+        );
+    }
+
+    dispatch(type: string, event: unknown): void {
+        for (const handler of [...(this.listeners.get(type) ?? [])]) handler(event);
+    }
+}
+
+// The window and document a drag listens on while its pointer is down.
+let fakeWindow = new FakeEventTarget();
+let fakeOwnerDocument = Object.assign(new FakeEventTarget(), { defaultView: fakeWindow });
+
+class FakeElement extends FakeEventTarget {
     className = "";
     type = "";
     title = "";
     disabled = false;
+    isConnected = true;
     clientWidth = 800;
     clientHeight = 600;
     children: FakeElement[] = [];
     attributes = new Map<string, string>();
-    listeners = new Map<string, Array<(event: unknown) => void>>();
     textWrites = 0;
     attrWrites = 0;
     readonly style = new FakeStyle();
     private textValue = "";
 
-    constructor(public readonly tagName: string) {}
+    constructor(public readonly tagName: string) {
+        super();
+    }
+
+    get ownerDocument(): typeof fakeOwnerDocument {
+        return fakeOwnerDocument;
+    }
 
     get textContent(): string {
         return this.textValue;
@@ -75,29 +108,28 @@ class FakeElement {
         return this.attributes.get(name) ?? null;
     }
 
-    addEventListener(type: string, handler: (event: unknown) => void): void {
-        const list = this.listeners.get(type) ?? [];
-        list.push(handler);
-        this.listeners.set(type, list);
-    }
-
     getBoundingClientRect(): { left: number; top: number; width: number; height: number } {
         return { left: 0, top: 0, width: 30, height: 30 };
     }
 
     setPointerCapture(_pointerId: number): void {}
 
-    dispatch(type: string, event: unknown): void {
-        for (const handler of this.listeners.get(type) ?? []) handler(event);
+    hasPointerCapture(_pointerId: number): boolean {
+        return true;
     }
+
+    releasePointerCapture(_pointerId: number): void {}
 
     /** A pointer click has detail >= 1; keyboard activation has detail 0. */
     click(detail = 1): void {
         this.dispatch("click", { detail });
     }
 
-    pointer(type: "pointerdown" | "pointermove" | "pointerup", { pointerId = 1, ...position }: FakePointer): void {
-        this.dispatch(type, { pointerId, isPrimary: true, pointerType: "mouse", button: 0, ...position });
+    pointer(
+        type: "pointerdown" | "pointermove" | "pointerup",
+        { pointerId = 1, pointerType = "mouse", ...position }: FakePointer,
+    ): void {
+        this.dispatch(type, { pointerId, isPrimary: true, pointerType, button: 0, ...position });
     }
 }
 
@@ -204,6 +236,8 @@ function addNavigationControl(options: ConstructorParameters<typeof MapNavigatio
 
 // Both suites replace the global document, so they cannot run concurrently.
 beforeEach(() => {
+    fakeWindow = new FakeEventTarget();
+    fakeOwnerDocument = Object.assign(new FakeEventTarget(), { defaultView: fakeWindow });
     vi.stubGlobal("document", {
         createElement: (tag: string) => new FakeElement(tag),
     });
@@ -325,8 +359,11 @@ describe("MapNavigationControl", () => {
             canDragRotate: () => true,
         });
 
-        // Quarter turn clockwise around the button center (15, 15).
-        compass.pointer("pointerdown", { clientX: 25, clientY: 15 });
+        // Leaving the press tolerance starts the rotation; then a quarter turn
+        // clockwise around the button center (15, 15).
+        compass.pointer("pointerdown", { clientX: 25, clientY: 12 });
+        compass.pointer("pointermove", { clientX: 25, clientY: 15 });
+        expect(fake.bearing, "the move that starts the drag does not rotate").toBe(0);
         compass.pointer("pointermove", { clientX: 15, clientY: 25 });
         compass.pointer("pointerup", { clientX: 15, clientY: 25 });
         compass.click();
@@ -344,13 +381,71 @@ describe("MapNavigationControl", () => {
         control.onRemove();
     });
 
+    it("starts a compass drag from the button center without a jump", () => {
+        const { fake, control, compass } = addNavigationControl({
+            canResetBearing: () => true,
+            canDragRotate: () => true,
+        });
+
+        // The center (15, 15) has no angle: leaving it must not count as a turn.
+        compass.pointer("pointerdown", { clientX: 15, clientY: 15 });
+        compass.pointer("pointermove", { clientX: 15, clientY: 11 });
+        expect(fake.bearing).toBe(0);
+        compass.pointer("pointermove", { clientX: 19, clientY: 11 });
+        expect(fake.bearing, "an eighth of a turn clockwise from straight up").toBeCloseTo(-45, 6);
+        compass.pointer("pointerup", { clientX: 19, clientY: 11 });
+        compass.click();
+        expect(fake.resetNorthCalls, "the click closing a drag is swallowed").toBe(0);
+        control.onRemove();
+    });
+
+    it("keeps a finger tap that slides a little a north reset", () => {
+        const { fake, control, compass } = addNavigationControl({
+            canResetBearing: () => true,
+            canDragRotate: () => true,
+        });
+
+        // 6 px would start a mouse drag; a finger moves that much during a tap.
+        compass.pointer("pointerdown", { pointerType: "touch", clientX: 25, clientY: 12 });
+        compass.pointer("pointermove", { pointerType: "touch", clientX: 25, clientY: 18 });
+        compass.pointer("pointerup", { pointerType: "touch", clientX: 25, clientY: 18 });
+        compass.click();
+        expect(fake.bearing).toBe(0);
+        expect(fake.resetNorthCalls).toBe(1);
+
+        compass.pointer("pointerdown", { pointerType: "touch", clientX: 25, clientY: 5 });
+        compass.pointer("pointermove", { pointerType: "touch", clientX: 25, clientY: 15 });
+        compass.pointer("pointermove", { pointerType: "touch", clientX: 15, clientY: 25 });
+        compass.pointer("pointerup", { pointerType: "touch", clientX: 15, clientY: 25 });
+        expect(fake.bearing, "a longer slide rotates").toBeCloseTo(-90, 6);
+        control.onRemove();
+    });
+
+    it("ends a compass drag when the window loses focus", () => {
+        const { fake, control, compass } = addNavigationControl({
+            canResetBearing: () => true,
+            canDragRotate: () => true,
+        });
+
+        compass.pointer("pointerdown", { clientX: 25, clientY: 12 });
+        compass.pointer("pointermove", { clientX: 25, clientY: 15 });
+        fakeWindow.dispatch("blur", {});
+        // The release never arrived: later moves must not keep turning the map.
+        compass.pointer("pointermove", { clientX: 15, clientY: 25 });
+        expect(fake.bearing).toBe(0);
+        compass.click();
+        expect(fake.resetNorthCalls, "the next click is not swallowed").toBe(1);
+        control.onRemove();
+    });
+
     it("ignores compass drags where manual rotation is unavailable", () => {
         const { fake, control, compass } = addNavigationControl({
             canResetBearing: () => true,
             canDragRotate: () => false,
         });
 
-        compass.pointer("pointerdown", { clientX: 25, clientY: 15 });
+        compass.pointer("pointerdown", { clientX: 25, clientY: 12 });
+        compass.pointer("pointermove", { clientX: 25, clientY: 15 });
         compass.pointer("pointermove", { clientX: 15, clientY: 25 });
         compass.pointer("pointerup", { clientX: 15, clientY: 25 });
         compass.click();

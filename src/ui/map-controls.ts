@@ -11,6 +11,7 @@ import type { IControl, Map as MapLibreMap } from "maplibre-gl";
 import { t } from "../i18n/index.js";
 import type { Units } from "../units-pref.js";
 import { FEET_PER_METER, FEET_PER_MILE, formatNumber } from "./format.js";
+import { attachPointerDrag, type PointerDragController } from "./pointer-drag.js";
 
 export interface MapScaleControlOptions {
     maxWidth?: number;
@@ -204,18 +205,22 @@ export interface MapNavigationControlOptions {
 
 // 0.5 deg quantization avoids sub-degree style recalcs on gentle bearing drift.
 const COMPASS_STEP_DEG = 0.5;
-// Pointer travel before a compass press turns into a rotation drag, matching
-// MapLibre's compass, so a slightly shaky press still resets north.
+// Pointer travel before a compass press turns into a rotation drag, so a
+// slightly shaky press still resets north. A finger slides further during a
+// tap than a mouse does; both distances are the ones MapLibre's compass uses.
 const COMPASS_DRAG_TOLERANCE_PX = 3;
+const COMPASS_TOUCH_DRAG_TOLERANCE_PX = 10;
 // Float noise between the constrained minimum and the zoom MapLibre clamps to.
 const ZOOM_LIMIT_EPS = 1e-6;
 
 interface CompassDrag {
-    readonly pointerId: number;
     readonly centerX: number;
     readonly centerY: number;
     readonly startX: number;
     readonly startY: number;
+    readonly tolerancePx: number;
+    /** Pointer angle around the button center at the previous rotation step;
+     *  meaningful only while isRotating. */
     lastAngleRad: number;
     isRotating: boolean;
 }
@@ -236,6 +241,7 @@ export class MapNavigationControl implements IControl {
     private lastCompassDeg = Number.NaN;
     private constrainedMinZoom = Number.NEGATIVE_INFINITY;
     private compassDrag: CompassDrag | null = null;
+    private compassDragController: PointerDragController | null = null;
     private shouldSuppressCompassClick = false;
 
     constructor(options: MapNavigationControlOptions = {}) {
@@ -269,11 +275,11 @@ export class MapNavigationControl implements IControl {
             if (!this.map || this.isCompassDisabled || !this.canResetBearing()) return;
             this.map.resetNorth({}, { originalEvent: event });
         });
-        compass.button.addEventListener("pointerdown", this.onCompassPointerDown);
-        compass.button.addEventListener("pointermove", this.onCompassPointerMove);
-        compass.button.addEventListener("pointerup", this.onCompassPointerUp);
-        compass.button.addEventListener("pointercancel", this.onCompassPointerCancel);
-        compass.button.addEventListener("lostpointercapture", this.onCompassPointerCancel);
+        this.compassDragController = attachPointerDrag(compass.button, {
+            onStart: this.onCompassDragStart,
+            onMove: this.onCompassDragMove,
+            onEnd: this.onCompassDragEnd,
+        });
 
         root.append(zoomIn.button, zoomOut.button, compass.button);
         this.root = root;
@@ -310,6 +316,8 @@ export class MapNavigationControl implements IControl {
         this.isCompassDisabled = null;
         this.lastCompassDeg = Number.NaN;
         this.constrainedMinZoom = Number.NEGATIVE_INFINITY;
+        this.compassDragController?.cancel();
+        this.compassDragController = null;
         this.compassDrag = null;
         this.shouldSuppressCompassClick = false;
     }
@@ -378,37 +386,39 @@ export class MapNavigationControl implements IControl {
         icon.style.transform = `rotate(${deg}deg)`;
     };
 
-    private onCompassPointerDown = (event: PointerEvent): void => {
+    private onCompassDragStart = (event: PointerEvent): boolean => {
+        // A drag released away from the button leaves no click to consume this.
         this.shouldSuppressCompassClick = false;
         const button = this.compassBtn;
-        if (!button || !this.map || this.compassDrag || !event.isPrimary) return;
-        if (event.pointerType === "mouse" && event.button !== 0) return;
-        if (!this.canDragRotate()) return;
+        if (!button || !this.map || !event.isPrimary || !this.canDragRotate()) return false;
         const rect = button.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
         this.compassDrag = {
-            pointerId: event.pointerId,
-            centerX,
-            centerY,
+            centerX: rect.left + rect.width / 2,
+            centerY: rect.top + rect.height / 2,
             startX: event.clientX,
             startY: event.clientY,
-            lastAngleRad: Math.atan2(event.clientY - centerY, event.clientX - centerX),
+            tolerancePx: event.pointerType === "touch" ? COMPASS_TOUCH_DRAG_TOLERANCE_PX : COMPASS_DRAG_TOLERANCE_PX,
+            lastAngleRad: 0,
             isRotating: false,
         };
-        button.setPointerCapture(event.pointerId);
+        return true;
     };
 
-    private onCompassPointerMove = (event: PointerEvent): void => {
+    private onCompassDragMove = (event: PointerEvent): void => {
         const drag = this.compassDrag;
         const map = this.map;
-        if (!drag || !map || event.pointerId !== drag.pointerId) return;
+        if (!drag || !map) return;
+        const angleRad = Math.atan2(event.clientY - drag.centerY, event.clientX - drag.centerX);
         if (!drag.isRotating) {
             const travelPx = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-            if (travelPx < COMPASS_DRAG_TOLERANCE_PX) return;
+            if (travelPx < drag.tolerancePx) return;
             drag.isRotating = true;
+            // Rotation is measured from here, not from the press: a press next
+            // to the button center has no meaningful angle, so the few pixels
+            // of tolerance would otherwise turn the map by up to half a turn.
+            drag.lastAngleRad = angleRad;
+            return;
         }
-        const angleRad = Math.atan2(event.clientY - drag.centerY, event.clientX - drag.centerX);
         const sweptDeg = ((angleRad - drag.lastAngleRad) * 180) / Math.PI;
         drag.lastAngleRad = angleRad;
         // Screen angles grow clockwise; turning the north arrow clockwise lowers
@@ -420,15 +430,11 @@ export class MapNavigationControl implements IControl {
         map.setBearing(map.getBearing() - deltaDeg, { originalEvent: event });
     };
 
-    private onCompassPointerUp = (event: PointerEvent): void => {
-        const drag = this.compassDrag;
-        if (!drag || event.pointerId !== drag.pointerId) return;
+    private onCompassDragEnd = (_event: PointerEvent, reason: "up" | "cancel"): void => {
+        const wasRotating = this.compassDrag?.isRotating === true;
         this.compassDrag = null;
-        this.shouldSuppressCompassClick = drag.isRotating;
-    };
-
-    private onCompassPointerCancel = (event: PointerEvent): void => {
-        if (this.compassDrag?.pointerId === event.pointerId) this.compassDrag = null;
+        // Only a release can be followed by the click that must not reset north.
+        this.shouldSuppressCompassClick = reason === "up" && wasRotating;
     };
 }
 
