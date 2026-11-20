@@ -2,7 +2,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import {
     _resetForTests,
+    clampClockCorrectionMin,
     getClockCorrectionMin,
+    parseClockCorrectionText,
     setClockCorrectionMin,
     subscribeClockCorrectionChange,
 } from "./clock-correction-pref.js";
@@ -66,4 +68,24 @@ it("notifies subscribers once per accepted change", () => {
     setClockCorrectionMin(30);
     setClockCorrectionMin(1.5);
     expect(listener).toHaveBeenCalledTimes(1);
+});
+
+it("reads typed and pasted corrections with either sign", () => {
+    expect(parseClockCorrectionText("+30")).toBe(30);
+    expect(parseClockCorrectionText(" 30\n")).toBe(30);
+    expect(parseClockCorrectionText("-30")).toBe(-30);
+    expect(parseClockCorrectionText("\u221230"), "typographic minus").toBe(-30);
+    expect(Object.is(parseClockCorrectionText("-0"), 0), "no negative zero").toBe(true);
+    for (const text of ["", "+", "1.5", "30 min", "--30", "1e3"]) {
+        expect(parseClockCorrectionText(text), JSON.stringify(text)).toBeNull();
+    }
+});
+
+it("clamps a correction to whole minutes within a day", () => {
+    expect(clampClockCorrectionMin(1500)).toBe(1440);
+    expect(clampClockCorrectionMin(-1500)).toBe(-1440);
+    expect(clampClockCorrectionMin(29.6)).toBe(30);
+    expect(Object.is(clampClockCorrectionMin(-0.2), 0), "no negative zero").toBe(true);
+    expect(clampClockCorrectionMin(Number.NaN)).toBeNull();
+    expect(clampClockCorrectionMin(Number.POSITIVE_INFINITY)).toBeNull();
 });

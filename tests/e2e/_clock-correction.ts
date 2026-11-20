@@ -2,8 +2,8 @@ import type { Page } from "@playwright/test";
 import { expect, loadTrip, openExport, pausePlayback } from "./_fixtures.js";
 
 /** Edits the clock correction on a paused frame: the GPS readout, the trip
- *  header and the clock overlay follow it, the position does not move, and the
- *  value survives a reload. */
+ *  header and the clock overlay follow it, the position does not move, the
+ *  field accepts typed and pasted signs, and the value survives a reload. */
 export async function checkClockCorrection(page: Page): Promise<void> {
     await loadTrip(page);
     await pausePlayback(page);
@@ -56,6 +56,39 @@ export async function checkClockCorrection(page: Page): Promise<void> {
     expect(overlayByMinutes.get(30) === overlayByMinutes.get(-30), "opposite corrections draw different clocks").toBe(
         false,
     );
+
+    // The field reads what the hint tells the user to type, in every engine.
+    const typeCorrection = async (text: string): Promise<void> => {
+        await input.fill("");
+        await input.pressSequentially(text);
+        await input.press("Tab");
+    };
+    await typeCorrection("+45");
+    await expect(input, "a leading plus is a positive correction").toHaveValue("45");
+    await typeCorrection("1500");
+    await expect(input, "an out-of-range value clamps to the limit").toHaveValue("1440");
+    await typeCorrection("");
+    await expect(input, "a cleared field removes the correction").toHaveValue("0");
+    await expect(clock).toHaveText(originalClock);
+    await input.evaluate((element) => {
+        const text = "\u221230";
+        const clipboardData = new DataTransfer();
+        clipboardData.setData("text", text);
+        // Firefox builds a synthetic paste from its own `data`/`dataType`
+        // members and ignores `clipboardData`; other engines do the reverse.
+        const init: ClipboardEventInit & { data: string; dataType: string } = {
+            clipboardData,
+            data: text,
+            dataType: "text/plain",
+            bubbles: true,
+            cancelable: true,
+        };
+        element.dispatchEvent(new ClipboardEvent("paste", init));
+    });
+    await expect(input, "a pasted typographic minus keeps its sign").toHaveValue("-30");
+    await expect(clock).toHaveText(new Date(base - 30 * 60_000).toISOString().slice(11, 19));
+    await typeCorrection("30");
+
     await page.reload();
     await page.locator("#settings-btn").click();
     await expect(input).toHaveValue("30");

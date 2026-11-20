@@ -32,7 +32,13 @@ import {
 } from "../persist/cache-limit.js";
 import { clearIndexCache, getIndexCacheStats, pruneIndexCacheToLimit } from "../persist/index-cache.js";
 import { getUnits, setUnits, type Units } from "../units-pref.js";
-import { getClockCorrectionMin, MAX_CLOCK_CORRECTION_MIN, setClockCorrectionMin } from "../clock-correction-pref.js";
+import {
+    clampClockCorrectionMin,
+    getClockCorrectionMin,
+    MAX_CLOCK_CORRECTION_MIN,
+    parseClockCorrectionText,
+    setClockCorrectionMin,
+} from "../clock-correction-pref.js";
 import { APP_VERSION } from "../version.js";
 import { rebuildChartFromTrip } from "./chart.js";
 import { type DateFormat, formatDate, getDateFormat, isDateFormat, setDateFormat } from "./date-format.js";
@@ -482,9 +488,31 @@ export function initSettingsModal(): void {
         clockInput.min = String(-MAX_CLOCK_CORRECTION_MIN);
         clockInput.max = String(MAX_CLOCK_CORRECTION_MIN);
         clockInput.value = String(getClockCorrectionMin());
-        clockInput.addEventListener("change", () => {
-            setClockCorrectionMin(clockInput.valueAsNumber);
+        // Stores the nearest valid correction and shows what was stored, so the
+        // field never keeps a value the clocks do not use.
+        const commit = (minutes: number): void => {
+            const clamped = clampClockCorrectionMin(minutes);
+            if (clamped !== null) setClockCorrectionMin(clamped);
             clockInput.value = String(getClockCorrectionMin());
+        };
+        clockInput.addEventListener("change", () => {
+            // Text the browser cannot read reports an empty value too; only a
+            // field the user really cleared means "no correction".
+            if (clockInput.validity.badInput) commit(Number.NaN);
+            else commit(clockInput.value === "" ? 0 : clockInput.valueAsNumber);
+        });
+        // The hint writes a positive correction as "+30". Chromium and WebKit
+        // drop a typed plus; Firefox would reject the whole value instead.
+        clockInput.addEventListener("beforeinput", (event) => {
+            if (event.inputType === "insertText" && event.data === "+") event.preventDefault();
+        });
+        // Pasted text skips that guard and can carry a typographic minus, which
+        // Chromium drops, flipping the sign. Read the number here instead.
+        clockInput.addEventListener("paste", (event) => {
+            const minutes = parseClockCorrectionText(event.clipboardData?.getData("text") ?? "");
+            if (minutes === null) return;
+            event.preventDefault();
+            commit(minutes);
         });
     }
 
