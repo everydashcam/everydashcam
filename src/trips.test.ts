@@ -64,7 +64,6 @@ function makeCandidate(opts: {
     durationSec?: number;
     channel?: Channel | null;
     channelConfident?: boolean;
-    channelConfidentInSet?: readonly Channel[];
     sequence?: number | null;
     fingerprint?: string;
     bytes?: number;
@@ -88,7 +87,6 @@ function makeCandidate(opts: {
         classifierMatches: { time: null, channel: null, mode: null, sequence: null },
         channel: opts.channel ?? null,
         channelConfident: opts.channelConfident ?? true,
-        channelConfidentInSet: opts.channelConfidentInSet,
         sequence: opts.sequence ?? null,
         recordingMode: opts.recordingMode ?? null,
         isTimelapse: opts.isTimelapse ?? false,
@@ -1552,50 +1550,6 @@ describe("groupTrips: confidentChannels aggregation", () => {
         });
         const trip = groupTrips([f1, f2])[0]!;
         expect(trip.confidentChannels.has("front")).toBe(false);
-    });
-
-    // Vantrue A/B/C: front/cabin/rear on three-camera models, while a
-    // two-camera model writes its rear as B.
-    const threeCameraLayout: readonly Channel[] = ["front", "interior", "rear"];
-    const layoutGuess = (name: string, channel: Channel) =>
-        makeCandidate({
-            name,
-            startUtc: 1000,
-            channel,
-            channelConfident: false,
-            channelConfidentInSet: threeCameraLayout,
-            sequence: 1,
-        });
-
-    it("trusts layout guesses when the trip's channels are exactly that layout", () => {
-        const trip = groupTrips([
-            layoutGuess("a.mp4", "front"),
-            layoutGuess("b.mp4", "interior"),
-            layoutGuess("c.mp4", "rear"),
-        ])[0]!;
-        expect([...trip.confidentChannels].sort()).toEqual(["front", "interior", "rear"]);
-    });
-
-    it("keeps layout guesses positional when the trip lacks a layout channel", () => {
-        const trip = groupTrips([layoutGuess("a.mp4", "front"), layoutGuess("b.mp4", "interior")])[0]!;
-        expect(trip.confidentChannels.size).toBe(0);
-    });
-
-    it("keeps layout guesses positional when the trip has a channel outside the layout", () => {
-        const side = makeCandidate({
-            name: "d.mp4",
-            startUtc: 1000,
-            channel: "side",
-            channelConfident: false,
-            sequence: 1,
-        });
-        const trip = groupTrips([
-            layoutGuess("a.mp4", "front"),
-            layoutGuess("b.mp4", "interior"),
-            layoutGuess("c.mp4", "rear"),
-            side,
-        ])[0]!;
-        expect(trip.confidentChannels.size).toBe(0);
     });
 });
 

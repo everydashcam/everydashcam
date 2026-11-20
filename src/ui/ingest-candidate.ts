@@ -93,7 +93,6 @@ export interface FilenameClassifierFields {
     classifierMatches: VideoCandidate["classifierMatches"];
     channel: VideoCandidate["channel"];
     channelConfident: boolean;
-    channelConfidentInSet: VideoCandidate["channelConfidentInSet"];
     sequence: VideoCandidate["sequence"];
     recordingMode: VideoCandidate["recordingMode"];
     isTimelapse: boolean;
@@ -114,7 +113,6 @@ export function filenameClassifierFields(file: VendorFile): FilenameClassifierFi
         },
         channel: channelMatch.value?.channel ?? null,
         channelConfident: channelMatch.value?.confident ?? false,
-        channelConfidentInSet: channelMatch.value?.confidentInChannelSet,
         sequence: sequenceMatch.value,
         recordingMode: modeMatch.value,
         isTimelapse: classifyFilenameTimelapse(file),

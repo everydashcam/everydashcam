@@ -360,21 +360,14 @@ describe("collected recording filenames", () => {
         expect(classifyFilenameTime(front)?.toISOString()).toBe("2026-11-16T16:01:29.000Z");
         expect(classifyFilenameMode(front)).toBe("event");
         expect(classifyFilenameSequence(front)).toBeNull();
-        const threeCameraLayout = ["front", "interior", "rear"];
-        expect(classifyFilenameChannel(front)).toEqual({
-            channel: "front",
-            confident: false,
-            confidentInChannelSet: threeCameraLayout,
-        });
+        expect(classifyFilenameChannel(front)).toEqual({ channel: "front", confident: false });
         expect(classifyFilenameChannel(vf("card/2026_11_16_160129_E_B.MP4"))).toEqual({
             channel: "interior",
             confident: false,
-            confidentInChannelSet: threeCameraLayout,
         });
         expect(classifyFilenameChannel(vf("card/2026_11_16_160129_E_C.MP4"))).toEqual({
             channel: "rear",
             confident: false,
-            confidentInChannelSet: threeCameraLayout,
         });
         expect(classifyFilenameMode(vf("card/2026_11_16_155830_N_A.MP4"))).toBe("normal");
         expect(classifyFilenameMode(vf("card/2026_11_16_155830_P_A.MP4"))).toBe("parking");
@@ -407,8 +400,6 @@ describe("collected recording filenames", () => {
             trip.frames.map(() => ["front", "interior", "rear"]),
         );
         expect(trip.frames.map(frameRecordingMode)).toEqual(["normal", "event", "normal", "normal", "normal"]);
-        // The owner confirmed A/B/C as front/cabin/rear, so the drive names its cameras.
-        expect([...trip.confidentChannels].sort()).toEqual(["front", "interior", "rear"]);
     });
 
     it("keeps Vantrue event and parking clips on the loop clips' camera key", () => {

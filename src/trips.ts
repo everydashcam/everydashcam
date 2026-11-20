@@ -94,9 +94,6 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     // false when channel is null. Drives whether the UI shows the semantic
     // label ("Rear camera") or a positional one ("Channel N"). See ChannelMatch.
     channelConfident: boolean;
-    // A guessed channel is trusted in a trip whose channels are exactly this
-    // set (ChannelMatch.confidentInChannelSet). Absent means no such layout.
-    channelConfidentInSet?: readonly Channel[];
     // Sequence number from filename - tiebreaker in groupTrips when startUtc
     // values are equal. null means stable sort by startUtc only.
     sequence: number | null;
@@ -1559,40 +1556,6 @@ export function contentToFrame(timeline: TripTimeline, contentSec: number): { in
  */
 export { finalizeTrip as finalizeTripFromFrames };
 
-/**
- * Channels whose mount the trip can name. A file is trusted when its
- * technique was confident, or when the trip's channels are exactly the layout
- * its guess needs (VideoCandidate.channelConfidentInSet). A channel is trusted
- * only if every file on it is: one untrusted file demotes the whole channel to
- * a positional label, so the UI never mixes "Rear camera" and "Camera 2" for
- * the same mount.
- */
-function tripConfidentChannels(frames: readonly TripFrame[]): Set<Channel> {
-    const tripChannelSet = new Set<Channel>();
-    for (const frame of frames) {
-        for (const ch of Object.keys(frame.channels) as Channel[]) tripChannelSet.add(ch);
-    }
-    const isTrusted = (candidate: VideoCandidate): boolean => {
-        if (candidate.channelConfident) return true;
-        const layout = candidate.channelConfidentInSet;
-        return (
-            layout !== undefined &&
-            layout.length === tripChannelSet.size &&
-            layout.every((ch) => tripChannelSet.has(ch))
-        );
-    };
-    const confidentChannels = new Set<Channel>();
-    const untrustedChannels = new Set<Channel>();
-    for (const frame of frames) {
-        for (const [ch, candidate] of Object.entries(frame.channels) as Array<[Channel, VideoCandidate]>) {
-            if (isTrusted(candidate)) confidentChannels.add(ch);
-            else untrustedChannels.add(ch);
-        }
-    }
-    for (const ch of untrustedChannels) confidentChannels.delete(ch);
-    return confidentChannels;
-}
-
 function finalizeTrip(frames: TripFrame[]): Trip {
     const first = frames[0]!;
     const last = frames[frames.length - 1]!;
@@ -1619,7 +1582,18 @@ function finalizeTrip(frames: TripFrame[]): Trip {
     }
     const timeline = buildTripTimeline(frames);
 
-    const confidentChannels = tripConfidentChannels(frames);
+    // A channel is trusted only if every file on it was confidently classified.
+    // One guessed file demotes the whole channel to a positional label, so the
+    // UI never mixes "Rear camera" and "Camera 2" for the same mount.
+    const confidentChannels = new Set<Channel>();
+    const guessedChannels = new Set<Channel>();
+    for (const frame of frames) {
+        for (const [ch, c] of Object.entries(frame.channels) as Array<[Channel, VideoCandidate]>) {
+            if (c.channelConfident) confidentChannels.add(ch);
+            else guessedChannels.add(ch);
+        }
+    }
+    for (const ch of guessedChannels) confidentChannels.delete(ch);
 
     // The mode-class split keeps parking-class and driving-class frames in
     // separate trips, so one parking-class frame marks the whole trip.

@@ -11,8 +11,7 @@
 //     name pattern, or a spelled-out path/folder, or a single-channel model
 //     -> confident (UI shows "Rear camera").
 //   - index letters whose mapping is a pure vendor convention (CarCam A/B/C/D,
-//     Vantrue A/B/C where B=cabin) -> not confident (UI shows "Channel N"),
-//     unless the trip's channels pin the layout (confidentInChannelSet).
+//     Vantrue A/B/C where B=cabin) -> not confident (UI shows "Channel N").
 
 import type { Channel, VendorFile } from "../types.js";
 import { matchDailyCsvVideoPath } from "../internal/daily-csv-path.js";
@@ -549,25 +548,21 @@ const novatekSingleChannel: FilenameChannelTechnique = {
     },
 };
 
-// Vantrue three-camera models (the N4 confirmed by an owner's report) write
-// front, cabin and rear as A, B and C. Two-camera models reuse B for either
-// the cabin or the rear (S1 Pro Max), so only a trip with all three is sure.
-const VANTRUE_THREE_CAMERA_CHANNELS: readonly Channel[] = ["front", "interior", "rear"];
-
-function vantrueThreeCameraGuess(channel: Channel): ChannelMatch {
-    return { ...guess(channel), confidentInChannelSet: VANTRUE_THREE_CAMERA_CHANNELS };
-}
-
 const novatekVantrueChannel: FilenameChannelTechnique = {
     id: "novatek-vantrue-channel",
     extract(file: VendorFile): ChannelMatch | null {
         const vantrue = matchVantrueFilename(file.file.name);
         if (!vantrue) return null;
-        // A/B/C are index letters (B=cabin is not a mnemonic) - guess the mount.
+        // A/B/C/D are index letters whose mount depends on the model: B is the
+        // cabin on the N4 and the rear on the two-camera S1 Pro Max; C is the
+        // rear on the N4 and the rear cabin camera on the four-camera N5, whose
+        // rear is D (N5 manual). File names do not tell the models apart, and an
+        // N5 import without its D files looks like an N4, so every mount is a
+        // guess.
         const ch = vantrue.channelLetter.toUpperCase();
-        if (ch === "A") return vantrueThreeCameraGuess("front");
-        if (ch === "B") return vantrueThreeCameraGuess("interior");
-        if (ch === "C") return vantrueThreeCameraGuess("rear");
+        if (ch === "A") return guess("front");
+        if (ch === "B") return guess("interior"); // Vantrue B = cabin
+        if (ch === "C") return guess("rear");
         return guess("side");
     },
 };
