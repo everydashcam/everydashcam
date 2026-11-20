@@ -5,6 +5,7 @@ import {
     applyWheelZoom,
     computeEffectiveMinViewSpan,
     computeFollowPan,
+    firstRulerTickSec,
     resizeZoomViewEdge,
     wheelZoomScaleFactor,
     type ZoomViewState,
@@ -241,5 +242,30 @@ describe("computeFollowPan", () => {
 
     it("returns null for a full-overview (non-zoomed) view", () => {
         expect(computeFollowPan(0, 1, 0.9)).toBeNull();
+    });
+});
+
+describe("firstRulerTickSec", () => {
+    const clock = (hours: number, minutes: number, seconds = 0) => hours * 3600 + minutes * 60 + seconds;
+
+    it("starts on the trip start when its clock is already round", () => {
+        expect(firstRulerTickSec(0, 300, clock(17, 30))).toBe(0);
+    });
+
+    it("waits for the next round clock time", () => {
+        // 17:32:10 with 5-minute ticks: the first label reads 17:35:00.
+        expect(firstRulerTickSec(0, 300, clock(17, 32, 10))).toBe(170);
+        expect(firstRulerTickSec(171, 300, clock(17, 32, 10)), "scrolled past the first tick").toBe(470);
+    });
+
+    it("keeps labels round under a clock correction that is not a multiple of the interval", () => {
+        // A 17:30 start corrected by +7 minutes shows 17:37; labels stay on 17:40, 17:45.
+        expect(firstRulerTickSec(0, 300, clock(17, 37))).toBe(180);
+        // Half-hour zones and corrections with hourly ticks land on the hour.
+        expect(firstRulerTickSec(0, 3600, clock(17, 30))).toBe(1800);
+    });
+
+    it("handles a clock before the epoch", () => {
+        expect(firstRulerTickSec(0, 60, -90)).toBe(30);
     });
 });

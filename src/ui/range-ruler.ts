@@ -6,11 +6,11 @@
 // elements are created so the ruler fits in a single line without consuming
 // vertical space.
 
-import { contentToWallUtc, displayClockDate, type Trip } from "../trips.js";
+import { contentToWallUtc, displayClockDate, displayTzSec, type Trip } from "../trips.js";
 
 import { formatClock } from "./date-format.js";
 import { formatTime } from "./format.js";
-import { pickRulerInterval } from "./strip-zoom.js";
+import { firstRulerTickSec, pickRulerInterval } from "./strip-zoom.js";
 
 /** Display clock (camera clock when known) - see displayClockDate contract. */
 function formatAbsoluteClock(unixSec: number, withSeconds: boolean, cameraTzSec: number | null): string {
@@ -20,8 +20,8 @@ function formatAbsoluteClock(unixSec: number, withSeconds: boolean, cameraTzSec:
 /**
  * Fills host with .range-ruler-label elements. Each label shows relative +
  * absolute time via " | " so the ruler fits in a single line. Ticks land on
- * multiples of intervalSec aligned to the trip's wall-clock start (predictable
- * ticks: "0:00 | 17:30:00, 0:05 | 17:30:05").
+ * multiples of intervalSec aligned to the trip's start on the display clock
+ * (predictable ticks: "0:00 | 17:30:00, 0:05 | 17:30:05").
  *
  * leftFrac/rightFrac are the timeline gutters (getTimelineView) as fractions
  * of the host width. They are baked into each label's left:% here because the
@@ -70,18 +70,18 @@ export function renderRangeRuler(
     // Larger text fits fewer labels: measure the row in default-size labels.
     const intervalSec = pickRulerInterval(visDur, (hostWidth * contentFrac) / fontScale);
     const withSeconds = intervalSec < 60;
-    // Aligned to the trip's wall-clock START: on the first content segment the
-    // absolute labels land on round times (17:30:00, 17:30:05, ...). Relative
-    // offsets on the same ticks are uneven from the trip start - the price of
-    // round absolute, still readable.
+    // Aligned to the trip's START on the display clock: on the first content
+    // segment the absolute labels land on round times (17:30:00, 17:30:05,
+    // ...). Relative offsets on the same ticks are uneven from the trip start -
+    // the price of round absolute, still readable.
     //
     // Known limitation: after a recording pause the labels drift off the round
     // grid by the accumulated pause durations (contentToWallUtc adds them) -
     // e.g. 17:42:18, 17:42:23. The values stay correct, only the roundness is
     // lost; per-segment re-alignment would make tick SPACING uneven inside one
     // ruler, which reads worse than off-grid labels.
-    const wallOffset = Math.floor(trip.startUtc) % intervalSec;
-    const firstTick = Math.ceil((visStart + wallOffset) / intervalSec) * intervalSec - wallOffset;
+    const startClockSec = trip.startUtc + displayTzSec(trip.startUtc, trip.cameraTzSec);
+    const firstTick = firstRulerTickSec(visStart, intervalSec, startClockSec);
     type Tick = { t: number; xPct: number; edgeR: boolean };
     const ticks: Tick[] = [];
     for (let t = firstTick; t <= visEnd + 0.5; t += intervalSec) {

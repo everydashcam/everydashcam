@@ -83,6 +83,17 @@ export function pickRulerInterval(visibleDurSec: number, containerWidthPx?: numb
     return last;
 }
 
+/**
+ * Footage second of the first ruler tick at or after `visibleStartSec`. Ticks
+ * repeat every `intervalSec` and land where the clock label is round, so they
+ * are aligned to `startClockSec`: the trip's start on the clock the labels
+ * show (camera zone and the user's clock correction included), not on UTC.
+ */
+export function firstRulerTickSec(visibleStartSec: number, intervalSec: number, startClockSec: number): number {
+    const phaseSec = ((Math.floor(startClockSec) % intervalSec) + intervalSec) % intervalSec;
+    return Math.ceil((visibleStartSec + phaseSec) / intervalSec) * intervalSec - phaseSec;
+}
+
 export interface ZoomViewState {
     viewStartPct: number;
     viewEndPct: number;
