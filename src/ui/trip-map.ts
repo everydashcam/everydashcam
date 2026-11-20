@@ -37,7 +37,9 @@ import {
     type WorldBounds,
 } from "../trip-map/world.js";
 import { getUnits, subscribeUnitsChange } from "../units-pref.js";
+import { subscribeClockCorrectionChange } from "../clock-correction-pref.js";
 import { markersWithTrips, subscribeMarkers } from "./annotations.js";
+import { subscribeDateFormatChange } from "./date-format.js";
 import { dom } from "./dom.js";
 import { subscribeExportState } from "./export-state.js";
 import { formatMarkerMoment, formatShortDistance } from "./format.js";
@@ -189,6 +191,8 @@ interface TripMapView {
     markerPopup: maplibregl.Popup | null;
     /** The marker whose card is open. */
     markerPopupId: string | null;
+    /** Rewrites the open card's text from the marker's current trip and the display clock. */
+    refreshMarkerCard: (() => void) | null;
     placeHandle: maplibregl.Marker | null;
     isDraggingHandle: boolean;
     /** The camera has shown the library at least once since following started. */
@@ -484,6 +488,7 @@ async function createView(): Promise<void> {
         lastMarkersAt: 0,
         markerPopup: null,
         markerPopupId: null,
+        refreshMarkerCard: null,
         placeHandle: null,
         isDraggingHandle: false,
         hasFramed: false,
@@ -1127,24 +1132,31 @@ function renderUserMarkers(current: TripMapView): void {
         item.element.title = next.title;
         item.element.setAttribute("aria-label", next.title);
     }
+    // The open card shows the same marker text and times as the pins.
+    current.refreshMarkerCard?.();
 }
 
 /** A marker's card: its text, its moment in the trip, and a button that opens the trip there. */
 function openMarkerCard(current: TripMapView, markerId: string, lngLat: [number, number], opener: HTMLElement): void {
-    const located = markersWithTrips().find((item) => item.marker.id === markerId);
-    if (!located) return;
-    const { marker, trip } = located;
-    const moment = formatMarkerMoment(trip, marker.utc / 1000);
+    if (!markersWithTrips().some((item) => item.marker.id === markerId)) return;
     const card = document.createElement("div");
     card.className = "trip-map-marker-card";
     const title = document.createElement("strong");
-    title.textContent = marker.text || t("marker.untitled");
     const detail = document.createElement("p");
-    detail.textContent = moment.detail;
     const open = document.createElement("button");
     open.type = "button";
     open.className = "dc-btn dc-btn--primary";
-    open.textContent = t("tripMap.marker.open", { time: moment.clock });
+    // The text can change under an open card: the marker is renamed, a regroup
+    // moves it to another trip, or the display clock settings change.
+    const fillCard = (): void => {
+        const located = markersWithTrips().find((item) => item.marker.id === markerId);
+        if (!located) return;
+        const moment = formatMarkerMoment(located.trip, located.marker.utc / 1000);
+        title.textContent = located.marker.text || t("marker.untitled");
+        detail.textContent = moment.detail;
+        open.textContent = t("tripMap.marker.open", { time: moment.clock });
+    };
+    fillCard();
     card.append(title, detail, open);
     current.markerPopup?.remove();
     const popup = new current.maplibre.Popup({
@@ -1160,11 +1172,13 @@ function openMarkerCard(current: TripMapView, markerId: string, lngLat: [number,
         .addTo(current.map);
     current.markerPopup = popup;
     current.markerPopupId = markerId;
+    current.refreshMarkerCard = fillCard;
     hideProbe(current);
     popup.on("close", () => {
         if (current.markerPopup !== popup) return;
         current.markerPopup = null;
         current.markerPopupId = null;
+        current.refreshMarkerCard = null;
     });
     open.addEventListener("click", () => {
         popup.remove();
@@ -1533,6 +1547,12 @@ export function initTripMap(cb: TripMapCallbacks): void {
     subscribeMarkers(() => {
         if (view) renderUserMarkers(view);
     });
+    // Marker tooltips and the open card carry dates and times on the display clock.
+    const refreshMarkerTimes = (): void => {
+        if (view) renderUserMarkers(view);
+    };
+    subscribeClockCorrectionChange(refreshMarkerTimes);
+    subscribeDateFormatChange(refreshMarkerTimes);
     window.matchMedia?.(MOBILE_LAYOUT_QUERY).addEventListener("change", () => {
         syncTripMap();
         callbacks.onSurfaceChange();
