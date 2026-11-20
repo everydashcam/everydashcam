@@ -373,6 +373,7 @@ export function hydrateCandidate(
         startUtc: derived.startUtc,
         startSource: derived.source,
         cameraTzSec: null,
+        hasCameraClockOnly: derived.isCameraClockOnly === true,
         durationSec: entry.metadata.indexed.durationSec,
         records,
         appliedExtractors,

@@ -351,6 +351,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
         cameraKey: string;
         startUtc: number;
         source: VideoCandidate["startSource"];
+        hasCameraClockOnly: boolean;
         records: VideoCandidate["records"];
         classifierFields: ReturnType<typeof filenameClassifierFields>;
     }> = [];
@@ -360,7 +361,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
         const classifierFields = filenameClassifierFields(cf.file);
         const logTiming = ctx.videoTimingByFileKey.get(vendorFileKey(cf.file));
         const records = state.gpsLog ? recordsForVideo(state.gpsLog, cf.file, ctx.videoAssociation) : [];
-        const { startUtc, source } = deriveStartUtc({
+        const { startUtc, source, isCameraClockOnly } = deriveStartUtc({
             file: cf.file,
             fingerprint,
             createdUtc: null,
@@ -383,7 +384,16 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
             isTimelapse: classifierFields.isTimelapse,
             wallDurationSec: null,
         });
-        derived.push({ cf, fingerprint, cameraKey, startUtc, source, records, classifierFields });
+        derived.push({
+            cf,
+            fingerprint,
+            cameraKey,
+            startUtc,
+            source,
+            hasCameraClockOnly: isCameraClockOnly === true,
+            records,
+            classifierFields,
+        });
     }
 
     // Provisional per-fingerprint duration from the inter-clip spacing of BOTH
@@ -414,6 +424,7 @@ export async function startProgressiveIngest(ctx: ProgressiveIngestContext): Pro
             startUtc: d.startUtc,
             startSource: d.source,
             cameraTzSec: ctx.tzByFingerprint.get(d.cameraKey)?.filenameTzSec ?? null,
+            hasCameraClockOnly: d.hasCameraClockOnly,
             durationSec: provisionalDuration.get(d.cameraKey) ?? NOMINAL_DERIVE_DURATION_SEC,
             records: d.records,
             appliedExtractors: [],

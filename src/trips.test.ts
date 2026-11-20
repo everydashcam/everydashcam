@@ -5,7 +5,8 @@
 //   - orphan files (rear or interior only) - frame without front, trip stays valid.
 // Also: a mixed folder (1ch + 2ch files) does not crash and trips stay separate.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
+import { _resetForTests as resetClockCorrectionForTests, setClockCorrectionMin } from "./clock-correction-pref.js";
 import { UNKNOWN_FILE_MTIME } from "./file-mtime.js";
 import { matchesTripFilters, tripFilterFacts } from "./trip-filters.js";
 import {
@@ -3615,6 +3616,39 @@ describe("rederiveStartUtcForCandidates: camera-clock zone snapshot", () => {
         const c = makeCandidate({ name: "clip.mp4", startUtc: 0, records: [makeRecord(1_700_000_000)] });
         rederiveStartUtcForCandidates([c], classifyFilenameTime);
         expect(c.cameraTzSec).toBeNull();
+        expect(c.hasCameraClockOnly, "GPS time is not the camera's clock").toBe(false);
+        expect(groupTrips([c])[0]!.cameraTzSec).toBeNull();
+    });
+});
+
+describe("clock correction on a camera clock without GPS", () => {
+    afterEach(() => resetClockCorrectionForTests());
+
+    it("shifts a trip dated by its file names alone", () => {
+        // The setting's own example: the camera shows 09:56:34, the real time is 10:26:34.
+        const c = makeCandidate({ name: "NO20261120-095634-000001F.MP4", startUtc: 0 });
+        rederiveStartUtcForCandidates([c], classifyFilenameTime);
+        expect(c.cameraTzSec, "no GPS, so no zone estimate").toBeNull();
+        expect(c.hasCameraClockOnly).toBe(true);
+        const trip = groupTrips([c])[0]!;
+        expect(trip.cameraTzSec, "the trip carries the viewer's zone").not.toBeNull();
+        expect(displayClockDate(trip.startUtc, trip.cameraTzSec).toISOString()).toBe("2026-11-20T09:56:34.000Z");
+
+        setClockCorrectionMin(30);
+        expect(displayClockDate(trip.startUtc, trip.cameraTzSec).toISOString()).toBe("2026-11-20T10:26:34.000Z");
+    });
+
+    it("leaves a file name calibrated by a GPS sibling to the camera zone estimate", () => {
+        const nameNaive = Date.UTC(2026, 10, 20, 9, 56, 34) / 1000;
+        const withGps = makeCandidate({
+            name: "NO20261120-095634-000001F.MP4",
+            startUtc: 0,
+            records: [makeRecord(nameNaive - 10_800), makeRecord(nameNaive - 10_800 + 40)],
+        });
+        const withoutGps = makeCandidate({ name: "NO20261120-105634-000002F.MP4", startUtc: 0 });
+        rederiveStartUtcForCandidates([withGps, withoutGps], classifyFilenameTime);
+        expect(withoutGps.hasCameraClockOnly).toBe(false);
+        expect(withoutGps.cameraTzSec).toBe(10_800);
     });
 });
 
@@ -3687,7 +3721,7 @@ describe("explicit camera timezone", () => {
             cameraTimezoneOverrideSec: 20700,
         });
 
-        expect(derived).toEqual({ startUtc: nameNaive, source: "mp4" });
+        expect(derived).toEqual({ startUtc: nameNaive, source: "mp4", isCameraClockOnly: true });
     });
 
     it.each([0.375, 60.375])(
@@ -3893,6 +3927,20 @@ describe("groupTrips: cameraTzSec lift", () => {
         const a = makeCandidate({ name: "a.mp4", startUtc: 1000 });
         const trips = groupTrips([a]);
         expect(trips[0]!.cameraTzSec).toBeNull();
+    });
+
+    it("pins the viewer's zone when every file reads the camera's clock alone", () => {
+        const a = makeCandidate({ name: "a.mp4", startUtc: 1000, sequence: 1 });
+        const b = makeCandidate({ name: "b.mp4", startUtc: 1060, sequence: 2 });
+        a.hasCameraClockOnly = true;
+        b.hasCameraClockOnly = true;
+        const trips = groupTrips([a, b]);
+        expect(trips).toHaveLength(1);
+        // toBeCloseTo, not toBe: -offset*60 yields -0 under the TZ=UTC pin.
+        expect(trips[0]!.cameraTzSec).toBeCloseTo(0);
+
+        b.hasCameraClockOnly = false;
+        expect(groupTrips([a, b])[0]!.cameraTzSec, "one file on GPS time keeps the trip unshifted").toBeNull();
     });
 });
 
@@ -4472,7 +4520,11 @@ describe("deriveStartUtc: file time fallback", () => {
 
     it("ends a recording at its file time", () => {
         const file = new File([], "a.mp4", { lastModified: 1_700_000_060_000 });
-        expect(deriveStartUtc(withoutOtherTime(file))).toEqual({ startUtc: 1_700_000_000, source: "mtime" });
+        expect(deriveStartUtc(withoutOtherTime(file))).toEqual({
+            startUtc: 1_700_000_000,
+            source: "mtime",
+            isCameraClockOnly: true,
+        });
     });
 
     it("starts a recording without any time at the epoch so derived times stay non-negative", () => {

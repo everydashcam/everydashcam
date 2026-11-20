@@ -155,6 +155,10 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     hasStaleGps?: boolean;
     // A filename clock recovered without corroborating UTC from nearby footage.
     hasUncalibratedClock?: boolean;
+    // startUtc reads the camera's own clock alone (file name, container stamp
+    // or file time) with no GPS to calibrate it, so the time on screen is what
+    // that clock showed. See StartAnchor.isCameraClockOnly.
+    hasCameraClockOnly?: boolean;
     // codec of primary video track (from indexer). null if undetermined;
     // canPlay is then optimistically true.
     codec: VideoCodec | null;
@@ -403,8 +407,10 @@ export interface Trip {
     confidentChannels: Set<Channel>;
     // Camera-clock zone for DISPLAY, lifted from the trip's candidates (one
     // fingerprint per trip - the grouping key - so any non-null value is THE
-    // camera's). Plain data on purpose: rides through structuredClone to the
-    // transcode worker for the burned-in overlay clock. See displayTzSec.
+    // camera's). A trip that reads its camera's clock alone carries the viewer's
+    // zone at its start instead, the zone that clock was read in. Null means
+    // GPS time shown in the viewer's zone. Feed it to displayTzSec on the main
+    // thread only: the user's clock correction is not available in workers.
     cameraTzSec: number | null;
     // First-frame preview of the first MP4 in the trip (JPEG dataURL).
     // Filled in background during ingest (see ui/trip-preview.ts) - does not
@@ -1602,15 +1608,24 @@ function finalizeTrip(frames: TripFrame[]): Trip {
     // One fingerprint per trip (the grouping key), so the first non-null
     // estimate is the camera's - no cross-camera disagreement to arbitrate.
     let cameraTzSec: number | null = null;
+    let hasCameraClockOnly = true;
     outer: for (const frame of frames) {
         for (const ch of frameChannels(frame)) {
             const c = frame.channels[ch];
-            if (c && c.cameraTzSec !== null) {
+            if (!c) continue;
+            if (c.cameraTzSec !== null) {
                 cameraTzSec = c.cameraTzSec;
                 break outer;
             }
+            hasCameraClockOnly &&= c.hasCameraClockOnly === true;
         }
     }
+    // No zone estimate, and every file reads the camera's clock alone: the trip
+    // shows that clock as read in the viewer's zone. Pinning the zone makes it
+    // a camera clock for displayTzSec, so the user's correction moves it. One
+    // offset per trip: a trip across the viewer's own clock change keeps the
+    // offset of its start.
+    if (cameraTzSec === null && hasCameraClockOnly) cameraTzSec = viewerTzSec(startUtc);
 
     return {
         isParking,
@@ -1957,6 +1972,11 @@ export type MvhdStamp = "start" | "finalize";
  *  them by 15 minutes. */
 const TZ_SNAP_SEC = 900;
 
+/** The viewer's zone offset at `unixSec`, in seconds east of UTC. */
+function viewerTzSec(unixSec: number): number {
+    return -new Date(unixSec * 1000).getTimezoneOffset() * 60;
+}
+
 /**
  * Seconds to ADD to a stored UTC timestamp so that rendering the sum via UTC
  * accessors (Intl with timeZone:"UTC", getUTC*) shows the wall clock the UI
@@ -1975,11 +1995,17 @@ const TZ_SNAP_SEC = 900;
  * shifted by that hour - same exposure the no-GPS anchors already have.
  *
  * The user's clock correction (clock-correction-pref.ts) shifts only the
- * camera clock: the browser-zone fallback already shows real local time.
+ * camera clock. A trip without a zone holds GPS time, which the browser-zone
+ * fallback already shows as real local time; a trip that reads its camera's
+ * clock alone carries a zone for this reason (see Trip.cameraTzSec).
+ *
+ * Main thread only: the correction lives in localStorage, which a worker
+ * lacks, so a worker would silently get no correction. Hand workers a resolved
+ * offset instead (OverlayPipelineArgs.tzOffsetMin).
  */
 export function displayTzSec(unixSec: number, cameraTzSec: number | null): number {
     // Nullish, not just null: hand-built trips may omit the field.
-    if (cameraTzSec == null) return -new Date(unixSec * 1000).getTimezoneOffset() * 60;
+    if (cameraTzSec == null) return viewerTzSec(unixSec);
     return cameraTzSec + getClockCorrectionMin() * 60;
 }
 
@@ -2657,6 +2683,21 @@ function* mvhdStartCandidates(
     yield { startUtc: mvhdNaive - tzFinalize - durationSec, source: "mp4" };
 }
 
+/** Where a recording starts on the UTC axis, and what the estimate rests on. */
+export interface StartAnchor {
+    startUtc: number;
+    source: StartSource;
+    /** Every reading of the container stamp missed the file's GPS window. */
+    mvhdRejected?: boolean;
+    /**
+     * The anchor is the camera's own clock with nothing to calibrate it: a
+     * file name, container stamp or file time read in the viewer's zone (the
+     * container stamp as UTC), with no GPS in the file or its siblings. The
+     * time on screen is then exactly what that clock showed.
+     */
+    isCameraClockOnly?: boolean;
+}
+
 export function deriveStartUtc({
     file,
     fingerprint: _fingerprint,
@@ -2670,7 +2711,7 @@ export function deriveStartUtc({
     isTimelapse,
     wallDurationSec,
     cameraTimezoneOverrideSec,
-}: DeriveStartUtcArgs): { startUtc: number; source: StartSource; mvhdRejected?: boolean } {
+}: DeriveStartUtcArgs): StartAnchor {
     // Window span the clip's GPS may legitimately cover: the wall span for a
     // time-lapse clip, the video duration otherwise.
     const windowSpanSec = wallDurationSec ?? durationSec;
@@ -2810,22 +2851,24 @@ export function deriveStartUtc({
                 wallDurationSec,
             );
             if (clock) {
-                return { startUtc: localUnixFromNaiveClock(clock.naiveStartSec), source: clock.source };
+                return {
+                    startUtc: localUnixFromNaiveClock(clock.naiveStartSec),
+                    source: clock.source,
+                    isCameraClockOnly: true,
+                };
             }
         }
         // Without corroboration, the container stamp still outranks filename
         // guesses, even though local-as-UTC firmware may be off by hours.
-        return { startUtc: createdNaiveSec, source: "mp4" };
+        return { startUtc: createdNaiveSec, source: "mp4", isCameraClockOnly: true };
     }
     if (filenameLocalDate !== null) {
         const filenameNaiveSec = filenameLocalDate.getTime() / 1000;
         // A GPS-less channel must use its GPS sibling's precise run offset;
         // rounding it to the camera zone would separate synchronized frames.
         const offsetSec = preciseFilenameOffsetSec ?? fingerprintTz?.filenameTzSec;
-        return {
-            startUtc: offsetSec != null ? filenameNaiveSec - offsetSec : localUnixFromNaiveClock(filenameNaiveSec),
-            source: "name",
-        };
+        if (offsetSec != null) return { startUtc: filenameNaiveSec - offsetSec, source: "name" };
+        return { startUtc: localUnixFromNaiveClock(filenameNaiveSec), source: "name", isCameraClockOnly: true };
     }
     // Last resort - mtime minus duration. On 70mai x800 mtime can be off by hours;
     //    the UI marks this source as unreliable.
@@ -2834,7 +2877,8 @@ export function deriveStartUtc({
     // stable across rebuilds, and its note anchors and markers stay within the
     // non-negative times that persisted annotations accept.
     if (mtimeMs === null) return { startUtc: 0, source: "mtime" };
-    return { startUtc: mtimeMs / 1000 - durationSec, source: "mtime" };
+    // A card's file times are the camera's clock, read in the viewer's zone.
+    return { startUtc: mtimeMs / 1000 - durationSec, source: "mtime", isCameraClockOnly: true };
 }
 
 /**
@@ -3225,7 +3269,7 @@ export function rederiveStartUtcForCandidates(
     // Per-fingerprint tally of clips whose mvhd could not be reconciled with
     // their own GPS window (see the tripwire log after the loop).
     const mvhdRejects = new Map<string, number[]>();
-    const anchors = new Map<VideoCandidate, ReturnType<typeof deriveStartUtc>>();
+    const anchors = new Map<VideoCandidate, StartAnchor>();
     const recoverySamples = new Map<string, TzSample>();
     for (const c of candidates) {
         const vendorFile = { file: c.file, relativePath: c.relativePath };
@@ -3306,10 +3350,10 @@ export function rederiveStartUtcForCandidates(
                 const offset = resolvePreciseClockOffsetForFile(recoveryRuns, scope, c, memoizedFilenameTime);
                 hasRecoveryOffset = offset !== null;
                 const naive = name.getTime() / 1000;
-                derived = {
-                    startUtc: offset !== null ? naive - offset : localUnixFromNaiveClock(naive),
-                    source: "name",
-                };
+                derived =
+                    offset !== null
+                        ? { startUtc: naive - offset, source: "name" }
+                        : { startUtc: localUnixFromNaiveClock(naive), source: "name", isCameraClockOnly: true };
             }
         }
         if (!derived) throw new Error("recording has no clock anchor");
@@ -3317,6 +3361,7 @@ export function rederiveStartUtcForCandidates(
         c.startUtc = startUtc;
         c.startSource = source;
         c.hasUncalibratedClock = c.hasStaleGps === true && !hasRecoveryOffset;
+        c.hasCameraClockOnly = derived.isCameraClockOnly === true;
         // Display-layer snapshot, not an anchor input: the UI renders
         // startUtc + this (see displayTzSec). An explicit zone wins; automatic
         // inference uses filenameTzSec because mvhd may have a different zone.

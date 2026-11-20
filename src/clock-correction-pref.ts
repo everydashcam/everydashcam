@@ -1,8 +1,8 @@
 // User preference: a manual shift of the camera clock, in whole minutes.
 // For cameras set to the wrong zone or a missed DST change. displayTzSec
 // (trips.ts) applies it, so every surface that shows the camera clock agrees.
-// Times shown in the viewer's own zone (no camera estimate) are left alone:
-// they are already real local time.
+// GPS time shown in the viewer's own zone (a trip without a camera zone) is
+// left alone: it is already real local time.
 //
 // Storage: localStorage["everydashcam:clock-correction-minutes"]. Subscribers
 // re-render views that keep camera-clock times on screen.

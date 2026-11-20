@@ -138,6 +138,8 @@ export interface ProvisionalCandidateParams {
     startSource: StartSource;
     /** Display-clock zone snapshot (per-fingerprint filenameTzSec), null when unknown. */
     cameraTzSec: number | null;
+    /** StartAnchor.isCameraClockOnly of the anchor behind startUtc; absent means false. */
+    hasCameraClockOnly?: boolean;
     /** Per-fingerprint provisional duration (estimateProvisionalDurationByFingerprint). */
     durationSec: number;
     records: GpsRecord[];
@@ -168,6 +170,7 @@ export function buildProvisionalCandidate(params: ProvisionalCandidateParams): V
         driftLeadSec: null,
         startSource: params.startSource,
         cameraTzSec: params.cameraTzSec,
+        hasCameraClockOnly: params.hasCameraClockOnly === true,
         records: params.records,
         createdUtc: null,
         codec: null,
