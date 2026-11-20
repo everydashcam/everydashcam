@@ -54,6 +54,7 @@ import {
 import type { Trip, TripGap, VideoCandidate } from "../trips.js";
 import type { RecordingMode } from "../parsers/types.js";
 import { formatSpeedFromMs, subscribeUnitsChange } from "../units-pref.js";
+import { subscribeClockCorrectionChange } from "../clock-correction-pref.js";
 
 import { gapAwareDecimationPlugin } from "./chart-decimation.js";
 import { dom } from "./dom.js";
@@ -1211,6 +1212,10 @@ export function initChart(cb: ChartCallbacks): void {
             if (trip) rebuildChartFromTrip(trip);
         }
     });
+
+    // Ruler ticks and the zoom status show the camera clock; hover tooltips
+    // read it when they open.
+    subscribeClockCorrectionChange(syncTimelineAfterViewChange);
 
     // Resize sync: ruler ticks and navigator viewport rect depend on
     // chartArea.width; redraw on resize. Observes the host row, not the

@@ -106,8 +106,9 @@ export interface OverlayPipelineArgs {
     rangeEndUtcSec: number;
     /** User units snapshot resolved at modal open. */
     units: "metric" | "imperial";
-    /** Browser-local offset (minutes) for the clock widget, matching the chart's
-     *  absolute ruler (Intl with no timeZone = browser local), not raw UTC.
+    /** Display-clock offset (minutes) for the clock widget, matching the
+     *  on-screen chart/map: displayTzSec at the range start, so the camera
+     *  clock with the user's correction when known, browser zone otherwise.
      *  0 = UTC. Set by the caller, see export-flow.ts. */
     tzOffsetMin: number;
     /** Localized unit suffixes for the speed and distance readouts ("km/h" vs

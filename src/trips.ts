@@ -5,6 +5,7 @@
 // and derives only from the candidates, so regrouping is idempotent.
 
 import { readLocalStorage, writeLocalStorage } from "./local-storage.js";
+import { getClockCorrectionMin } from "./clock-correction-pref.js";
 import { applyChannelDriftLead } from "./channel-drift.js";
 import { detectEvents, type TripEvent } from "./events.js";
 import { detectInferredSegments, type InferredSegment } from "./inferred-events.js";
@@ -1972,9 +1973,14 @@ const TZ_SNAP_SEC = 900;
  * Known limit: the estimate is one median per fingerprint, so a dump spanning
  * the camera's own clock change (DST re-sync) displays the minority cluster
  * shifted by that hour - same exposure the no-GPS anchors already have.
+ *
+ * The user's clock correction (clock-correction-pref.ts) shifts only the
+ * camera clock: the browser-zone fallback already shows real local time.
  */
 export function displayTzSec(unixSec: number, cameraTzSec: number | null): number {
-    return cameraTzSec ?? -new Date(unixSec * 1000).getTimezoneOffset() * 60;
+    // Nullish, not just null: hand-built trips may omit the field.
+    if (cameraTzSec == null) return -new Date(unixSec * 1000).getTimezoneOffset() * 60;
+    return cameraTzSec + getClockCorrectionMin() * 60;
 }
 
 /**

@@ -10,6 +10,7 @@ import { isValidGpsFix } from "../parser.js";
 import { contentToFrame, contentToWallUtc, displayClockDate, type Trip } from "../trips.js";
 import type { GpsRecord } from "../parser.js";
 import { formatDistanceFromKm, formatSpeedFromMs, getUnits, subscribeUnitsChange, toggleUnits } from "../units-pref.js";
+import { subscribeClockCorrectionChange } from "../clock-correction-pref.js";
 import { formatClock } from "./date-format.js";
 import { dom } from "./dom.js";
 import { formatNumber } from "./format.js";
@@ -200,7 +201,7 @@ function currentClipIsTimelapse(trip: Trip, tripCurrentSec: number): boolean {
 
 // Last-applied flag: timeupdate calls this several times a second - skip the DOM writes
 // and the t() lookup when nothing changed. No one else touches the class/title.
-let timelapseClockShown = false;
+let timelapseClockShown: boolean | null = null;
 
 /** Flags the metrics clock as time-lapse: its time runs at playback speed, not
  *  real elapsed time. Tooltip + a dotted-underline style (see player-bar.css). */
@@ -208,8 +209,13 @@ function markTimelapseClock(isTimelapse: boolean): void {
     if (isTimelapse === timelapseClockShown) return;
     timelapseClockShown = isTimelapse;
     dom.metrics.time.classList.toggle("is-timelapse", isTimelapse);
-    if (isTimelapse) dom.metrics.time.title = t("trip.fileChip.timelapseHint");
-    else dom.metrics.time.removeAttribute("title");
+    const path = [
+        t("settings.modal.title"),
+        t("settings.playback.section"),
+        t("settings.playback.clockCorrection.label"),
+    ].join(" → ");
+    const hint = t("readout.clock.hint", { path });
+    dom.metrics.time.title = isTimelapse ? `${t("trip.fileChip.timelapseHint")}\n${hint}` : hint;
 }
 
 // Set by initPlayerMetrics. Reading the playhead through a getter keeps the
@@ -289,6 +295,11 @@ export function initPlayerMetrics(getTripCurrentSec: () => number): void {
     dom.metrics.file.addEventListener("click", () => {
         const text = dom.metrics.file.textContent;
         if (text) void copyFromElement(dom.metrics.file, text);
+    });
+    subscribeClockCorrectionChange(() => {
+        // The readout skips unchanged records; the correction is not part of that key.
+        shownRecord = undefined;
+        refreshMetricsFromActiveFrame(getTripCurrentSec());
     });
     subscribeUnitsChange(() => {
         refreshMetricsFromActiveFrame(getTripCurrentSec());

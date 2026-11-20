@@ -9,6 +9,7 @@ import { recordingAnalysisPercent } from "../recording-analysis-progress.js";
 import { hasTripFilters, matchesTripFilters, tripFilterFacts, withoutTripMapFilters } from "../trip-filters.js";
 import type { TripFilterFacts } from "../trip-filters.js";
 import { subscribeUnitsChange } from "../units-pref.js";
+import { subscribeClockCorrectionChange } from "../clock-correction-pref.js";
 import type { Channel } from "../parsers/types.js";
 import type { Trip, VideoCandidate } from "../trips.js";
 import { frameChannels, tripAllCandidates, tripNeedsRecordingMetadata } from "../trips.js";
@@ -1687,6 +1688,10 @@ export function initSidebar(cb: SidebarCallbacks): void {
     });
     // Titles, day and month headings carry dates.
     subscribeDateFormatChange(() => {
+        renderTrips();
+    });
+    // The same dates and times, plus day grouping, follow the camera clock.
+    subscribeClockCorrectionChange(() => {
         renderTrips();
     });
 }

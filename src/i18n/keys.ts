@@ -388,6 +388,7 @@ export type I18nKey =
     | "readout.gps.ok"
     | "readout.gps.lost"
     | "readout.gps.none"
+    | "readout.clock.hint"
     | "readout.coords.copy"
     | "readout.copied"
     | "readout.note.aria"
@@ -1252,6 +1253,9 @@ export type I18nKey =
     | "settings.playback.dateFormat.label"
     | "settings.playback.dateFormat.locale"
     | "settings.playback.dateFormat.iso"
+    | "settings.playback.clockCorrection.label"
+    | "settings.playback.clockCorrection.hint"
+    | "settings.playback.clockCorrection.example"
     // Arrow-key seek step. Two separate inputs - plain Arrow and Shift+Arrow.
     // Defaults 5s / 30s. Stored in localStorage["everydashcam:hotkeys:seekStepSec"]
     // and "...seekStepShiftSec".

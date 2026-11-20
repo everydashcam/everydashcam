@@ -32,6 +32,7 @@ import {
 } from "../persist/cache-limit.js";
 import { clearIndexCache, getIndexCacheStats, pruneIndexCacheToLimit } from "../persist/index-cache.js";
 import { getUnits, setUnits, type Units } from "../units-pref.js";
+import { getClockCorrectionMin, MAX_CLOCK_CORRECTION_MIN, setClockCorrectionMin } from "../clock-correction-pref.js";
 import { APP_VERSION } from "../version.js";
 import { rebuildChartFromTrip } from "./chart.js";
 import { type DateFormat, formatDate, getDateFormat, isDateFormat, setDateFormat } from "./date-format.js";
@@ -475,6 +476,17 @@ export function initSettingsModal(): void {
         const value = (ev.target as HTMLSelectElement).value;
         if (isDateFormat(value)) setDateFormat(value);
     });
+
+    const clockInput = document.querySelector<HTMLInputElement>("#settings-clock-correction");
+    if (clockInput) {
+        clockInput.min = String(-MAX_CLOCK_CORRECTION_MIN);
+        clockInput.max = String(MAX_CLOCK_CORRECTION_MIN);
+        clockInput.value = String(getClockCorrectionMin());
+        clockInput.addEventListener("change", () => {
+            setClockCorrectionMin(clockInput.valueAsNumber);
+            clockInput.value = String(getClockCorrectionMin());
+        });
+    }
 
     document.getElementById("settings-encoder-select")?.addEventListener("change", (ev) => {
         const value = (ev.target as HTMLSelectElement).value;

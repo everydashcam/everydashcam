@@ -2,6 +2,7 @@
 // with the trip card is hidden. Camera controls live in the View menu in
 // the player bar (cameras-menu.ts) for both viewing and export.
 
+import { subscribeClockCorrectionChange } from "../clock-correction-pref.js";
 import { displayClockDate } from "../trips.js";
 import type { Trip } from "../trips.js";
 import { formatDateTime, subscribeDateFormatChange } from "./date-format.js";
@@ -16,6 +17,7 @@ import { activeTrip, state } from "./state.js";
 export function initTopPanel(): void {
     subscribeExportState(syncTopPanel);
     subscribeDateFormatChange(syncTopPanel);
+    subscribeClockCorrectionChange(syncTopPanel);
     syncTopPanel();
 }
 

@@ -25,6 +25,7 @@ import type { OverlayPipelineArgs, WatermarkAnchor } from "../transcode/types.js
 import { contentToWallUtc, frameMediaOffset } from "../trips.js";
 import type { Trip } from "../trips.js";
 import { getUnits } from "../units-pref.js";
+import { getClockCorrectionMin, subscribeClockCorrectionChange } from "../clock-correction-pref.js";
 
 import { dom, effectiveMasterChannel, onActivePlayerEvent } from "./dom.js";
 import { createExportMapSnapshotter, type ExportMapSnapshotter } from "./export-map-snapshot.js";
@@ -83,6 +84,7 @@ let watermarkResizeObserver: ResizeObserver | null = null;
 
 export function initPlayerOverlays(): void {
     subscribeExportState(syncPlayerOverlays);
+    subscribeClockCorrectionChange(syncPlayerOverlays);
     registerGpsSyncRefreshListener(resyncPlayerOverlaysForGpsSync);
     // One PERMANENT subscription across all 8 video slots, self-filtered to
     // the active element (onActivePlayerEvent). A listener attached to the
@@ -254,7 +256,9 @@ function previewSignature(trip: Trip): string {
     const r = exportPanelState.range
         ? `${exportPanelState.range.startTripSec}|${exportPanelState.range.endTripSec}`
         : "full";
-    return `${trip.startUtc}|${trip.records.length}|${trip.gpsOffsetSec ?? 0}|${trip.gpsTrimToVideo ? 1 : 0}|${flags}|${r}`;
+    // The clock correction enters tzOffsetMin through buildOverlayPipelineArgs.
+    const clock = getClockCorrectionMin();
+    return `${trip.startUtc}|${trip.records.length}|${trip.gpsOffsetSec ?? 0}|${trip.gpsTrimToVideo ? 1 : 0}|${flags}|${r}|${clock}`;
 }
 
 /** Rebuilds the cached args only when the signature changed; otherwise patches

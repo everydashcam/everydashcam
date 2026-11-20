@@ -2723,6 +2723,18 @@
                         </label>
                     </div>
                     <div class="settings-row">
+                        <label class="settings-select-row">
+                            <span class="settings-select-label" data-i18n="settings.playback.clockCorrection.label">Clock correction</span>
+                            <span class="settings-numeric-row">
+                                <input id="settings-clock-correction" type="number" step="1" class="settings-number-input"
+                                       aria-describedby="settings-clock-correction-hint settings-clock-correction-example">
+                                <span class="settings-numeric-unit" data-i18n="units.m">min</span>
+                            </span>
+                        </label>
+                        <p id="settings-clock-correction-hint" class="settings-toggle-desc" data-i18n="settings.playback.clockCorrection.hint">If the camera uses the wrong time zone or misses a daylight saving change, adjust the camera time for all recordings.</p>
+                        <p id="settings-clock-correction-example" class="settings-toggle-desc" data-i18n="settings.playback.clockCorrection.example">If the camera shows 09:56:34 and the actual time is 10:26:34, enter +30. If the camera is 30 minutes fast, enter -30.</p>
+                    </div>
+                    <div class="settings-row">
                         <span class="settings-select-label" data-i18n="settings.playback.seekStep.label">Arrow key seek step</span>
                         <label class="settings-select-row">
                             <span class="settings-select-label" data-i18n="settings.playback.seekStep.arrow">Arrow</span>
