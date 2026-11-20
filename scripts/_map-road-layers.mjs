@@ -157,7 +157,7 @@ const ALL_MIN_ZOOM = [
 ];
 const DASHED_MIN_ZOOM = ["match", CLASS, "rail", 13, 14];
 
-export function roadWidth(kind, scale = 1, includeDashed = false) {
+export function roadWidth(kind, scale = 1, hasDashedClasses = false) {
     if (kind === "dashed") {
         const stops = WIDTHS.filter((row) => row[0] >= 12).flatMap((row) => {
             const pathW = row[6] * scale;
@@ -166,7 +166,7 @@ export function roadWidth(kind, scale = 1, includeDashed = false) {
         });
         return ["interpolate", ["exponential", 1.2], ["zoom"], ...stops];
     }
-    const widthCount = includeDashed ? 7 : 5;
+    const widthCount = hasDashedClasses ? 7 : 5;
     const stops = WIDTHS.flatMap((row) => {
         const width = [
             "*",
@@ -179,16 +179,26 @@ export function roadWidth(kind, scale = 1, includeDashed = false) {
     return [
         "let",
         "width_index",
-        includeDashed ? ALL_WIDTH_INDEX : SOLID_WIDTH_INDEX,
+        hasDashedClasses ? ALL_WIDTH_INDEX : SOLID_WIDTH_INDEX,
         ["interpolate", ["exponential", 1.2], ["zoom"], ...stops],
     ];
 }
 
 function roadLayer(level, crossing, kind, filter) {
-    // Only explicit bridge casings outline path/rail/transit; other casings
-    // omit those classes instead of drawing zero-width lines.
-    const includeDashed = kind === "casing" && crossing === "bridge";
-    const classes = includeDashed ? ALL_CLASSES : SOLID_CLASSES;
+    // Casings outline path/rail/transit only on bridges: the bridge passes of
+    // the explicit levels hold nothing else, and the shared passes of the
+    // extreme levels pick their bridges by filter. Other casings omit those
+    // classes instead of drawing zero-width lines.
+    const hasDashedClasses = kind === "casing" && (crossing === "bridge" || crossing === "all");
+    const classFilter = !hasDashedClasses
+        ? ["in", CLASS, ["literal", SOLID_CLASSES]]
+        : crossing === "bridge"
+          ? ["in", CLASS, ["literal", ALL_CLASSES]]
+          : [
+                "any",
+                ["in", CLASS, ["literal", SOLID_CLASSES]],
+                ["all", ["in", CLASS, ["literal", DASHED_CLASSES]], IS_BRIDGE],
+            ];
     return {
         id: `road-level-${level}-${crossing}-${kind}`,
         type: "line",
@@ -204,24 +214,24 @@ function roadLayer(level, crossing, kind, filter) {
         filter: [
             "all",
             ["==", ["geometry-type"], "LineString"],
-            ["in", CLASS, ["literal", classes]],
-            [">=", ["zoom"], includeDashed ? ALL_MIN_ZOOM : SOLID_MIN_ZOOM],
+            classFilter,
+            [">=", ["zoom"], hasDashedClasses ? ALL_MIN_ZOOM : SOLID_MIN_ZOOM],
             filter,
         ],
         layout: { "line-cap": "round", "line-join": "round", "line-sort-key": SORT_KEY },
         paint: {
             "line-color": roadColorExpression(LIGHT, kind),
-            "line-width": roadWidth(kind, 1, includeDashed),
+            "line-width": roadWidth(kind, 1, hasDashedClasses),
             "line-opacity": ["case", IS_TUNNEL, 0.65, 1],
         },
     };
 }
 
 // Each dashed group paints between the casing and the fill of its anchor pair,
-// so trails and rail stay above road casings and below road fills, as they did
-// when they shared the road layers. Every bridge group paints after the casing
-// pass of its highest bridge level, otherwise a dashed bridge would lose its
-// fill under its own casing. The groups cover every level exactly once.
+// so trails and rail stay above road casings and below road fills. Every bridge
+// group paints after the casing pass of its highest bridge level, otherwise a
+// dashed bridge would lose its fill under its own casing. The groups cover
+// every level exactly once.
 const DASHED_GROUPS = [
     { name: "tunnel", level: -1, crossing: "tunnel", filter: ["all", ["!", IS_BRIDGE], ["<", ROUNDED_LEVEL, 0]] },
     { name: "surface", level: 0, crossing: "surface", filter: ["all", ["!", IS_BRIDGE], ["==", ROUNDED_LEVEL, 0]] },
@@ -233,7 +243,11 @@ const DASHED_GROUPS = [
         crossing: "bridge",
         filter: ["all", ["<=", ROUNDED_LEVEL, 1], ["any", IS_BRIDGE, ["==", ROUNDED_LEVEL, 1]]],
     },
-    { name: "upper", level: MAX_LEVEL, crossing: "bridge", filter: [">=", ROUNDED_LEVEL, MAX_LEVEL] },
+    { name: "upper", level: MAX_LEVEL, crossing: "bridge", filter: ["==", ROUNDED_LEVEL, MAX_LEVEL] },
+    // Levels above the explicit pairs paint inside the shared "above" pass:
+    // anchored at MAX_LEVEL, a level 3 rail bridge would sit under the fill of
+    // the level 2 road bridges it crosses.
+    { name: "above", level: "above", crossing: "all", filter: [">", ROUNDED_LEVEL, MAX_LEVEL] },
 ];
 
 function dashedRoadLayer(name, levelFilter) {
@@ -265,12 +279,21 @@ function dashedRoadLayer(name, levelFilter) {
     };
 }
 
+// One casing/fill pair, with the dashed group anchored to it in between.
+function roadLayerPair(level, crossing, filter) {
+    const dashed = DASHED_GROUPS.find((group) => group.level === level && group.crossing === crossing);
+    return [
+        roadLayer(level, crossing, "casing", filter),
+        ...(dashed ? [dashedRoadLayer(dashed.name, dashed.filter)] : []),
+        roadLayer(level, crossing, "fill", filter),
+    ];
+}
+
 export function createOpenMapTilesRoadLayers() {
     // Extreme levels share one casing pass and one fill pass, each sorted by
     // level. Where two extreme levels cross, the lower fill covers the upper
     // casing; everywhere else they keep the outline of the explicit levels.
-    const extremeLayers = (level, filter) => ["casing", "fill"].map((kind) => roadLayer(level, "all", kind, filter));
-    const layers = extremeLayers("below", ["<", ROUNDED_LEVEL, MIN_LEVEL]);
+    const layers = roadLayerPair("below", "all", ["<", ROUNDED_LEVEL, MIN_LEVEL]);
     for (let level = MIN_LEVEL; level <= MAX_LEVEL; level++) {
         for (const crossing of ["tunnel", "surface", "bridge"]) {
             const crossingFilter =
@@ -280,13 +303,10 @@ export function createOpenMapTilesRoadLayers() {
                       ? IS_BRIDGE
                       : ["all", ["!", IS_TUNNEL], ["!", IS_BRIDGE]];
             const filter = ["all", ["==", ROUNDED_LEVEL, level], crossingFilter];
-            const dashed = DASHED_GROUPS.find((group) => group.level === level && group.crossing === crossing);
-            layers.push(roadLayer(level, crossing, "casing", filter));
-            if (dashed) layers.push(dashedRoadLayer(dashed.name, dashed.filter));
-            layers.push(roadLayer(level, crossing, "fill", filter));
+            layers.push(...roadLayerPair(level, crossing, filter));
         }
     }
-    layers.push(...extremeLayers("above", [">", ROUNDED_LEVEL, MAX_LEVEL]));
+    layers.push(...roadLayerPair("above", "all", [">", ROUNDED_LEVEL, MAX_LEVEL]));
     return layers;
 }
 

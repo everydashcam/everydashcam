@@ -334,12 +334,28 @@ describe("shared OpenMapTiles cartography", () => {
         expect(index("road-dashed-tunnel-fill")).toBeLessThan(index("road-level--1-tunnel-fill"));
         // A rail bridge stays under a flyover one level above it.
         expect(index("road-dashed-bridge-fill")).toBeLessThan(index("road-level-2-bridge-casing"));
+        // A rail bridge above the explicit levels stays over the level 2 flyovers it crosses.
+        expect(dashed({ brunnel: "bridge", layer: 3 })).toEqual(["road-dashed-above-fill"]);
+        expect(index("road-level-2-bridge-fill")).toBeLessThan(index("road-dashed-above-fill"));
+        expect(index("road-level-above-all-casing")).toBeLessThan(index("road-dashed-above-fill"));
+        expect(index("road-dashed-above-fill")).toBeLessThan(index("road-level-above-all-fill"));
         // Every dashed bridge paints after its own casing.
         for (const layer of [-1, 0, 1, 2]) {
             const ids = matchingRoads(style, { class: "rail", brunnel: "bridge", layer }, 15);
             expect(ids, String(layer)).toHaveLength(2);
             expect(ids[0], String(layer)).toBe(`road-level-${layer}-bridge-casing`);
         }
+        // Bridges outside the explicit levels keep their outline in the shared passes.
+        expect(matchingRoads(style, { class: "rail", brunnel: "bridge", layer: 3 }, 15)).toEqual([
+            "road-level-above-all-casing",
+            "road-dashed-above-fill",
+        ]);
+        expect(matchingRoads(style, { class: "rail", brunnel: "bridge", layer: -3 }, 15)).toEqual([
+            "road-level-below-all-casing",
+            "road-dashed-bridge-fill",
+        ]);
+        // Off a bridge they stay bare dashes, as on the explicit levels.
+        expect(matchingRoads(style, { class: "rail", layer: 3 }, 15)).toEqual(["road-dashed-above-fill"]);
         // Each dashed feature belongs to exactly one dashed group at any level.
         for (const layer of [-6, -3, -2, -1, 0, 1, 2, 3, 6]) {
             for (const brunnel of ["tunnel", "bridge", "none"]) {

@@ -273,25 +273,54 @@
           "LineString"
         ],
         [
-          "in",
+          "any",
           [
-            "get",
-            "class"
+            "in",
+            [
+              "get",
+              "class"
+            ],
+            [
+              "literal",
+              [
+                "motorway",
+                "trunk",
+                "primary",
+                "secondary",
+                "tertiary",
+                "minor",
+                "raceway",
+                "busway",
+                "bus_guideway",
+                "service",
+                "track"
+              ]
+            ]
           ],
           [
-            "literal",
+            "all",
             [
-              "motorway",
-              "trunk",
-              "primary",
-              "secondary",
-              "tertiary",
-              "minor",
-              "raceway",
-              "busway",
-              "bus_guideway",
-              "service",
-              "track"
+              "in",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "literal",
+                [
+                  "path",
+                  "rail",
+                  "transit"
+                ]
+              ]
+            ],
+            [
+              "==",
+              [
+                "get",
+                "brunnel"
+              ],
+              "bridge"
             ]
           ]
         ],
@@ -345,6 +374,13 @@
                 "track"
               ],
               15,
+              [
+                "path",
+                "transit"
+              ],
+              14,
+              "rail",
+              13,
               12
             ]
           ]
@@ -575,6 +611,13 @@
               "track"
             ],
             4,
+            "path",
+            5,
+            [
+              "rail",
+              "transit"
+            ],
+            6,
             3
           ],
           [
@@ -615,6 +658,8 @@
                     [
                       0.6,
                       0.4,
+                      0,
+                      0,
                       0,
                       0,
                       0
@@ -667,6 +712,8 @@
                       1.1,
                       0.6,
                       0,
+                      0,
+                      0,
                       0
                     ]
                   ]
@@ -717,6 +764,8 @@
                       3.2,
                       2.2,
                       0.6,
+                      0,
+                      0,
                       0
                     ]
                   ]
@@ -767,7 +816,9 @@
                       4.5,
                       3.6,
                       2.5,
-                      1
+                      1,
+                      1,
+                      0.7
                     ]
                   ]
                 ]
@@ -817,7 +868,9 @@
                       6.8,
                       5.7,
                       5.9,
-                      2
+                      2,
+                      3,
+                      1.1
                     ]
                   ]
                 ]
@@ -867,7 +920,9 @@
                       17,
                       13,
                       18,
-                      7.5
+                      7.5,
+                      10,
+                      2
                     ]
                   ]
                 ]
@@ -21127,7 +21182,7 @@
           ]
         ],
         [
-          ">=",
+          "==",
           [
             "round",
             [
@@ -22034,25 +22089,54 @@
           "LineString"
         ],
         [
-          "in",
+          "any",
           [
-            "get",
-            "class"
+            "in",
+            [
+              "get",
+              "class"
+            ],
+            [
+              "literal",
+              [
+                "motorway",
+                "trunk",
+                "primary",
+                "secondary",
+                "tertiary",
+                "minor",
+                "raceway",
+                "busway",
+                "bus_guideway",
+                "service",
+                "track"
+              ]
+            ]
           ],
           [
-            "literal",
+            "all",
             [
-              "motorway",
-              "trunk",
-              "primary",
-              "secondary",
-              "tertiary",
-              "minor",
-              "raceway",
-              "busway",
-              "bus_guideway",
-              "service",
-              "track"
+              "in",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "literal",
+                [
+                  "path",
+                  "rail",
+                  "transit"
+                ]
+              ]
+            ],
+            [
+              "==",
+              [
+                "get",
+                "brunnel"
+              ],
+              "bridge"
             ]
           ]
         ],
@@ -22106,6 +22190,13 @@
                 "track"
               ],
               15,
+              [
+                "path",
+                "transit"
+              ],
+              14,
+              "rail",
+              13,
               12
             ]
           ]
@@ -22336,6 +22427,13 @@
               "track"
             ],
             4,
+            "path",
+            5,
+            [
+              "rail",
+              "transit"
+            ],
+            6,
             3
           ],
           [
@@ -22376,6 +22474,8 @@
                     [
                       0.6,
                       0.4,
+                      0,
+                      0,
                       0,
                       0,
                       0
@@ -22428,6 +22528,8 @@
                       1.1,
                       0.6,
                       0,
+                      0,
+                      0,
                       0
                     ]
                   ]
@@ -22478,6 +22580,8 @@
                       3.2,
                       2.2,
                       0.6,
+                      0,
+                      0,
                       0
                     ]
                   ]
@@ -22528,7 +22632,9 @@
                       4.5,
                       3.6,
                       2.5,
-                      1
+                      1,
+                      1,
+                      0.7
                     ]
                   ]
                 ]
@@ -22578,7 +22684,9 @@
                       6.8,
                       5.7,
                       5.9,
-                      2
+                      2,
+                      3,
+                      1.1
                     ]
                   ]
                 ]
@@ -22628,7 +22736,9 @@
                       17,
                       13,
                       18,
-                      7.5
+                      7.5,
+                      10,
+                      2
                     ]
                   ]
                 ]
@@ -22661,6 +22771,357 @@
           ],
           0.65,
           1
+        ]
+      }
+    },
+    {
+      "id": "road-dashed-above-fill",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 13,
+      "metadata": {
+        "everydashcam:role": "transport",
+        "everydashcam:road-kind": "dashed",
+        "everydashcam:road-crossing": "above"
+      },
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "geometry-type"
+          ],
+          "LineString"
+        ],
+        [
+          "in",
+          [
+            "get",
+            "class"
+          ],
+          [
+            "literal",
+            [
+              "path",
+              "rail",
+              "transit"
+            ]
+          ]
+        ],
+        [
+          ">=",
+          [
+            "zoom"
+          ],
+          [
+            "match",
+            [
+              "get",
+              "class"
+            ],
+            "rail",
+            13,
+            14
+          ]
+        ],
+        [
+          ">",
+          [
+            "round",
+            [
+              "to-number",
+              [
+                "coalesce",
+                [
+                  "get",
+                  "layer"
+                ],
+                [
+                  "case",
+                  [
+                    "==",
+                    [
+                      "get",
+                      "brunnel"
+                    ],
+                    "tunnel"
+                  ],
+                  -1,
+                  [
+                    "==",
+                    [
+                      "get",
+                      "brunnel"
+                    ],
+                    "bridge"
+                  ],
+                  1,
+                  0
+                ]
+              ],
+              [
+                "case",
+                [
+                  "==",
+                  [
+                    "get",
+                    "brunnel"
+                  ],
+                  "tunnel"
+                ],
+                -1,
+                [
+                  "==",
+                  [
+                    "get",
+                    "brunnel"
+                  ],
+                  "bridge"
+                ],
+                1,
+                0
+              ]
+            ]
+          ],
+          2
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round",
+        "line-sort-key": [
+          "+",
+          [
+            "*",
+            [
+              "to-number",
+              [
+                "coalesce",
+                [
+                  "get",
+                  "layer"
+                ],
+                [
+                  "case",
+                  [
+                    "==",
+                    [
+                      "get",
+                      "brunnel"
+                    ],
+                    "tunnel"
+                  ],
+                  -1,
+                  [
+                    "==",
+                    [
+                      "get",
+                      "brunnel"
+                    ],
+                    "bridge"
+                  ],
+                  1,
+                  0
+                ]
+              ],
+              [
+                "case",
+                [
+                  "==",
+                  [
+                    "get",
+                    "brunnel"
+                  ],
+                  "tunnel"
+                ],
+                -1,
+                [
+                  "==",
+                  [
+                    "get",
+                    "brunnel"
+                  ],
+                  "bridge"
+                ],
+                1,
+                0
+              ]
+            ],
+            100
+          ],
+          [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "brunnel"
+              ],
+              "tunnel"
+            ],
+            0,
+            [
+              "==",
+              [
+                "get",
+                "brunnel"
+              ],
+              "bridge"
+            ],
+            20,
+            10
+          ],
+          [
+            "match",
+            [
+              "get",
+              "class"
+            ],
+            "motorway",
+            6,
+            [
+              "trunk",
+              "primary"
+            ],
+            5,
+            [
+              "secondary",
+              "tertiary"
+            ],
+            4,
+            [
+              "minor",
+              "raceway",
+              "busway",
+              "bus_guideway"
+            ],
+            3,
+            [
+              "service",
+              "track"
+            ],
+            2,
+            [
+              "rail",
+              "transit"
+            ],
+            1,
+            0
+          ]
+        ]
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          "path",
+          "#936125",
+          "#8a6337"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.2
+          ],
+          [
+            "zoom"
+          ],
+          12,
+          [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "class"
+              ],
+              "path"
+            ],
+            0,
+            0
+          ],
+          14,
+          [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "class"
+              ],
+              "path"
+            ],
+            1,
+            0.7
+          ],
+          16,
+          [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "class"
+              ],
+              "path"
+            ],
+            3,
+            1.1
+          ],
+          20,
+          [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "class"
+              ],
+              "path"
+            ],
+            10,
+            2
+          ]
+        ],
+        "line-opacity": [
+          "case",
+          [
+            "==",
+            [
+              "get",
+              "brunnel"
+            ],
+            "tunnel"
+          ],
+          0.65,
+          1
+        ],
+        "line-dasharray": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          "path",
+          [
+            "literal",
+            [
+              1,
+              0.7
+            ]
+          ],
+          [
+            "literal",
+            [
+              3,
+              2
+            ]
+          ]
         ]
       }
     },
