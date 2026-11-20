@@ -1,6 +1,6 @@
 import { getVersion } from "maplibre-gl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installMapRenderCadence } from "./map-render-cadence.js";
+import { installMapRenderCadence, isFollowFrameTooSoon } from "./map-render-cadence.js";
 
 function renderTarget(version = getVersion()) {
     const listeners = new Map<string, Set<() => void>>();
@@ -191,5 +191,43 @@ describe("map render cadence", () => {
         target.paint();
         expect(target.paints).toBe(1);
         expect(callbacks.size).toBe(0);
+    });
+});
+
+describe("follow frame cadence cap", () => {
+    const clip = new File([], "clip.mp4");
+    const at = (mediaTime: number, src = "blob:clip", file = clip) => ({ file, src, mediaTime });
+    /** Indexes of the frames a camera applies out of `count` consecutive ones. */
+    const appliedFrames = (fps: number, count: number, playbackRate = 1): number[] => {
+        const applied = [0];
+        let last = at(0);
+        for (let index = 1; index < count; index++) {
+            const frame = at(index / fps);
+            if (isFollowFrameTooSoon(last, frame, playbackRate)) continue;
+            applied.push(index);
+            last = frame;
+        }
+        return applied;
+    };
+
+    it.each([50, 60])("applies every other frame of %i fps footage", (fps) => {
+        expect(appliedFrames(fps, 9)).toEqual([0, 2, 4, 6, 8]);
+    });
+
+    it.each([25, 30])("applies every frame of %i fps footage", (fps) => {
+        expect(appliedFrames(fps, 5)).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it("measures the spacing in playback time", () => {
+        expect(appliedFrames(30, 5, 2), "30 fps at double speed presents like 60 fps").toEqual([0, 2, 4]);
+        expect(appliedFrames(60, 5, 0.5), "60 fps at half speed presents like 30 fps").toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it("always applies the first frame, another source and a frame that is not ahead", () => {
+        expect(isFollowFrameTooSoon(null, at(0.01), 1)).toBe(false);
+        expect(isFollowFrameTooSoon(at(0), at(0.01, "blob:next"), 1)).toBe(false);
+        expect(isFollowFrameTooSoon(at(0), at(0.01, "blob:clip", new File([], "next.mp4")), 1)).toBe(false);
+        expect(isFollowFrameTooSoon(at(1), at(0.99), 1), "a seek back").toBe(false);
+        expect(isFollowFrameTooSoon(at(1), at(1), 1), "the same frame observed again").toBe(false);
     });
 });

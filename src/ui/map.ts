@@ -54,7 +54,7 @@ import { formatNumber, formatTime } from "./format.js";
 import { attachPointerDrag } from "./pointer-drag.js";
 import { activeTrip, state } from "./state.js";
 import { subscribePlayerFrames, videoPresentedFrame, type PlayerFrameObservation } from "./player-frame-time.js";
-import { installMapRenderCadence, type MapRenderCadence } from "./map-render-cadence.js";
+import { installMapRenderCadence, isFollowFrameTooSoon, type MapRenderCadence } from "./map-render-cadence.js";
 import type { FollowMode, LngLatTuple, MiniMapData } from "./state.js";
 import { formatSpeedFromMs, getUnits, subscribeUnitsChange } from "../units-pref.js";
 import radarPalettes from "./map-radar-palettes.json";
@@ -2170,10 +2170,6 @@ let slowLaneLastMs = 0;
 // Previous fast-lane timestamp, for the filter's frame dt.
 let lastFrameMs = 0;
 
-// Minimum interval between video-paced follow frames. 28 ms lets 25/30 fps
-// dashcams (33-40 ms) paint every frame even under slight rVFC jitter while
-// halving 50/60 fps footage (16.7-20 ms) to 25-30 fps map renders.
-const FOLLOW_MIN_FRAME_INTERVAL_MS = 28;
 // Fallback watchdog while parked waiting for subscribePlayerFrames(), matching
 // followVideoFrame's 250 ms staleness window if the decoder stalls.
 const FOLLOW_FRAME_WAIT_TIMEOUT_MS = 250;
@@ -2181,7 +2177,6 @@ const FOLLOW_FRAME_WAIT_TIMEOUT_MS = 250;
 let followRenderCadence: MapRenderCadence | null = null;
 let followAppliedFrame: PlayerFrameObservation | null = null;
 let followAppliedVideo: HTMLVideoElement | null = null;
-let followLastAppliedAtMs = 0;
 
 function followVideoFrame(now: number): PlayerFrameObservation | null {
     const map = state.map;
@@ -2684,15 +2679,12 @@ export function startMarkerLoop(): void {
             waitForVideoFrame(FOLLOW_FRAME_WAIT_TIMEOUT_MS);
             return;
         }
-        if (frame && now - followLastAppliedAtMs < FOLLOW_MIN_FRAME_INTERVAL_MS) {
-            // The new frame is already presented; only the cadence cap delays
-            // it, so further frame callbacks must not wake this timer.
-            const waitMs = Math.max(1, Math.ceil(FOLLOW_MIN_FRAME_INTERVAL_MS - (now - followLastAppliedAtMs)));
-            markerTimerHandle = setTimeout(tick, waitMs);
+        if (frame && isFollowFrameTooSoon(markerFrame, frame, dom.player.playbackRate)) {
+            // The cadence cap drops this frame; the next presented one applies.
+            waitForVideoFrame(FOLLOW_FRAME_WAIT_TIMEOUT_MS);
             return;
         }
         markerFrame = frame;
-        if (frame) followLastAppliedAtMs = now;
         // Publish before markerTick so map.jumpTo()'s synchronous triggerRepaint
         // sees the new frame immediately instead of queuing and immediately
         // cancelling an extra waiting rAF inside installMapRenderCadence.
@@ -2705,6 +2697,11 @@ export function startMarkerLoop(): void {
         else scheduleTick(isAnimating);
     };
     markerTickHandler = tick;
+    // A fresh start owes nothing to the run before it: a frame delta left over
+    // from an abandoned wait would speed up the first glide step, and the old
+    // frame would hold back the first camera update.
+    markerFrame = null;
+    pendingFrameDtMs = 0;
     lastFrameMs = performance.now();
     markerRafHandle = requestAnimationFrame(tick);
 }
@@ -3049,7 +3046,12 @@ export function initMap(cb: MapCallbacks): void {
     // frame instead of polling rAF at 60/120 Hz. The idle slow lane keeps its
     // own cadence: a hidden map must not tick at the video frame rate.
     subscribePlayerFrames(() => {
-        if (isMarkerWaitingForVideoFrame && videoPresentedFrame(dom.player) !== markerFrame) ensureMarkerLoop();
+        if (!isMarkerWaitingForVideoFrame) return;
+        const frame = videoPresentedFrame(dom.player);
+        if (frame === markerFrame) return;
+        // A frame the cadence cap drops must not wake the loop either.
+        if (frame && isFollowFrameTooSoon(markerFrame, frame, dom.player.playbackRate)) return;
+        ensureMarkerLoop();
     });
     state.mapExpanded = getPreferredMapMode() === "large";
     subscribeMapMarkerAppearance(refreshLiveMapMarkerAppearance);
