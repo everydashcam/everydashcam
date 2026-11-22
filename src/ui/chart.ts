@@ -40,6 +40,7 @@ import {
     type InferredLaneLabels,
 } from "./inferred-event-layer.js";
 import { escapeHtml } from "../escape.js";
+import { createLogger } from "../log.js";
 import { getDateLocale, t } from "../i18n/index.js";
 import { emitLifecycle } from "../perf.js";
 import { findNearestIndex, isValidGpsFix } from "../parser.js";
@@ -82,6 +83,8 @@ import {
 import { eventColors, themeColors } from "./theme.js";
 import { isPanelShown, subscribeViewPanels } from "./view-menu.js";
 import { withShortcutHint } from "./shortcut-hint.js";
+
+const log = createLogger("chart");
 
 interface ChartCallbacks {
     /** Current player position in seconds from trip start. Needed by cursorPlugin. */
@@ -2652,9 +2655,9 @@ function ensureChartTooltipElement(): HTMLDivElement {
     // 200×112 canvas would stretch to 400×224 device pixels via bitmap upscale,
     // producing a blurry result. Downscaling from native source resolution gives
     // a crisp preview.
-    const dpr = window.devicePixelRatio || 1;
-    thumb.width = Math.round(TOOLTIP_THUMB_W * dpr);
-    thumb.height = Math.round(TOOLTIP_THUMB_H * dpr);
+    const thumbSize = tooltipThumbPixelSize();
+    thumb.width = thumbSize.width;
+    thumb.height = thumbSize.height;
     thumb.hidden = true;
     el.appendChild(thumb);
     // Skeleton placeholder: same box as the canvas, shimmer animation. Shown
@@ -2683,9 +2686,10 @@ function ensureChartTooltipElement(): HTMLDivElement {
 const TOOLTIP_THUMB_W = 200;
 const TOOLTIP_THUMB_H = 112;
 const TOOLTIP_THUMB_CACHE_MAX = 64;
-// LRU cache of decoded ImageBitmaps. Key = file.name + time rounded to 0.5 s
+// LRU cache of hover thumbnails. Key = file.name + time rounded to 0.5 s
 // (1 Hz GPS at 30+ fps = ~15 frames per bucket; hovering over adjacent pixels
-// of the same record must not trigger re-decode).
+// of the same record must not trigger re-decode). Entries are shrunk to the
+// tooltip canvas: a full 960 px decode per entry would hold ~130 MB at the cap.
 const tooltipThumbCache = new Map<string, ImageBitmap>();
 // Race protection: increment before each fetch, compare in the resolve callback.
 // If the key changed while waiting, discard the stale frame.
@@ -2707,6 +2711,57 @@ function showTooltipThumbSkeleton(): void {
     if (skel) skel.hidden = false;
 }
 
+/** Physical (DPR-scaled) size of the tooltip thumbnail canvas. */
+function tooltipThumbPixelSize(): { width: number; height: number } {
+    const dpr = window.devicePixelRatio || 1;
+    return { width: Math.round(TOOLTIP_THUMB_W * dpr), height: Math.round(TOOLTIP_THUMB_H * dpr) };
+}
+
+interface CropRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Centered source rectangle that fills a destination of the given aspect
+ * without letterboxing. For source aspect != 16:9 (4:3, vertical, etc.) this
+ * crops - it is a preview; the full image is one seek away in the player.
+ */
+function coverCropRect(sourceWidth: number, sourceHeight: number, destinationAspect: number): CropRect {
+    if (sourceWidth / sourceHeight > destinationAspect) {
+        const width = Math.round(sourceHeight * destinationAspect);
+        return { x: Math.round((sourceWidth - width) / 2), y: 0, width, height: sourceHeight };
+    }
+    const height = Math.round(sourceWidth / destinationAspect);
+    return { x: 0, y: Math.round((sourceHeight - height) / 2), width: sourceWidth, height };
+}
+
+/**
+ * Crops a decoded frame to the tooltip aspect and downscales it to the tooltip
+ * canvas, consuming the frame. Returns the frame itself when it is already no
+ * larger than the canvas or when the browser fails the resize: then the cache
+ * only costs more memory, the preview still draws.
+ */
+async function shrinkToTooltipThumb(frame: ImageBitmap): Promise<ImageBitmap> {
+    const size = tooltipThumbPixelSize();
+    const crop = coverCropRect(frame.width, frame.height, size.width / size.height);
+    if (crop.width <= size.width && crop.height <= size.height) return frame;
+    try {
+        const thumb = await createImageBitmap(frame, crop.x, crop.y, crop.width, crop.height, {
+            resizeWidth: size.width,
+            resizeHeight: size.height,
+            resizeQuality: "high",
+        });
+        frame.close();
+        return thumb;
+    } catch (err) {
+        log.debug("tooltip thumb resize failed", { err: String(err) });
+        return frame;
+    }
+}
+
 function drawTooltipThumb(bitmap: ImageBitmap): void {
     if (!state.chartTooltipEl) return;
     const canvas = state.chartTooltipEl.querySelector<HTMLCanvasElement>(".track-popup-thumb");
@@ -2715,29 +2770,13 @@ function drawTooltipThumb(bitmap: ImageBitmap): void {
     if (!ctx) return;
     const skel = state.chartTooltipEl.querySelector<HTMLDivElement>(".track-popup-thumb-skeleton");
     if (skel) skel.hidden = true;
-    // Cover-fit: fill the 16:9 canvas without letterboxing. For source aspect != 16:9
-    // (4:3, vertical, etc.) crop from center - this is a preview; full image available
-    // by seeking the player.
-    const sw = bitmap.width;
-    const sh = bitmap.height;
-    const dstAspect = TOOLTIP_THUMB_W / TOOLTIP_THUMB_H;
-    const srcAspect = sw / sh;
-    let sx = 0;
-    let sy = 0;
-    let cw = sw;
-    let ch = sh;
-    if (srcAspect > dstAspect) {
-        cw = Math.round(sh * dstAspect);
-        sx = Math.round((sw - cw) / 2);
-    } else {
-        ch = Math.round(sw / dstAspect);
-        sy = Math.round((sh - ch) / 2);
-    }
+    // Cached thumbs are already cropped; this still covers an unshrunk frame.
+    const crop = coverCropRect(bitmap.width, bitmap.height, canvas.width / canvas.height);
     // canvas.width/height are in physical pixels (DPR-scaled); browser compresses
     // to CSS size 200×112. Drawing to TOOLTIP_THUMB_W/H directly would leave
     // the canvas blurry on retina displays.
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, sx, sy, cw, ch, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
     canvas.hidden = false;
 }
 
@@ -2865,11 +2904,18 @@ function loadTooltipThumb(trip: Trip, relSec: number): void {
             tooltipThumbDrawnKey = cacheKey;
             return;
         }
-        extractFrameAt(file, bucket).then((bm) => {
-            if (!bm) return;
-            if (myToken !== tooltipThumbToken || tooltipThumbLastKey !== cacheKey) {
+        const isStale = (): boolean => myToken !== tooltipThumbToken || tooltipThumbLastKey !== cacheKey;
+        extractFrameAt(file, bucket).then(async (frame) => {
+            if (!frame) return;
+            if (isStale()) {
                 // User moved off this record; close the bitmap to release the GPU
                 // buffer (mediabunny warns about leaks).
+                frame.close();
+                return;
+            }
+            const bm = await shrinkToTooltipThumb(frame);
+            // The resize yields, so the hover or the trip may have moved on.
+            if (isStale()) {
                 bm.close();
                 return;
             }

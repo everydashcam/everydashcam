@@ -2570,6 +2570,43 @@ test.describe("chart hover preview", () => {
             hoverCursorShown: true,
         });
     });
+
+    test("fills the frame preview and redraws a revisited moment from the cache", async ({ page }) => {
+        await pausePlayback(page);
+        const hoverAt = (fraction: number) =>
+            page.evaluate(async (fraction) => {
+                const canvas = document.getElementById("player-chart-canvas")!;
+                const rect = canvas.getBoundingClientRect();
+                const at = {
+                    clientX: rect.left + rect.width * fraction,
+                    clientY: rect.top + rect.height / 2,
+                    bubbles: true,
+                };
+                canvas.dispatchEvent(new PointerEvent("pointermove", { ...at, pointerType: "mouse", isPrimary: true }));
+                canvas.dispatchEvent(new MouseEvent("mousemove", at));
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            }, fraction);
+        // Opaque corners mean the cover-cropped frame fills the whole canvas.
+        const previewCornerAlphas = () =>
+            page.evaluate(() => {
+                const thumb = document.querySelector<HTMLCanvasElement>(".track-popup-thumb");
+                if (!thumb || thumb.hidden) return null;
+                const context = thumb.getContext("2d")!;
+                return [
+                    context.getImageData(0, 0, 1, 1).data[3],
+                    context.getImageData(thumb.width - 1, thumb.height - 1, 1, 1).data[3],
+                ];
+            });
+
+        await hoverAt(0.3);
+        await expect
+            .poll(previewCornerAlphas, { message: "the decoded frame fills the preview", timeout: 15_000 })
+            .toEqual([255, 255]);
+        await hoverAt(0.7);
+        expect(await previewCornerAlphas(), "a new moment waits for its own frame").toBeNull();
+        await hoverAt(0.3);
+        expect(await previewCornerAlphas(), "a revisited moment draws at once from the cache").toEqual([255, 255]);
+    });
 });
 
 test("the capture button saves at once when saving is the only choice", async ({ page }) => {
