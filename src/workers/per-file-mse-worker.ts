@@ -20,8 +20,8 @@ import {
     EncodedVideoPacketSource,
     Input,
     Mp4OutputFormat,
+    NullTarget,
     Output,
-    StreamTarget,
     type AudioCodec,
     type EncodedPacket,
     type InputAudioTrack,
@@ -630,16 +630,9 @@ async function startNewFeedCycle(cycleId: number, armSeekDone: boolean): Promise
         }
     };
 
-    // Output uses a no-op WritableStream; fragments arrive via the
-    // onFtyp/onMoov/onMoof/onMdat callbacks.
-    const noopWritable = new WritableStream<{ type: "write"; data: Uint8Array; position: number }>({
-        write() {
-            /* no-op: data goes through callbacks */
-        },
-        close() {
-            /* no-op */
-        },
-    });
+    // Fragments arrive through the onFtyp/onMoov/onMoof/onMdat callbacks. A
+    // NullTarget writes nowhere; a StreamTarget would also copy every sample
+    // and merge each fragment into a buffer no one reads.
     cycle.output = new Output({
         format: new Mp4OutputFormat({
             fastStart: "fragmented",
@@ -661,7 +654,7 @@ async function startNewFeedCycle(cycleId: number, armSeekDone: boolean): Promise
             },
             onMdat: flushAsMedia,
         }),
-        target: new StreamTarget(noopWritable),
+        target: new NullTarget(),
     });
     cycle.output.addVideoTrack(cycle.videoSource, { transformationMatrix: videoTransformationMatrix });
     if (cycle.audioSource) {
