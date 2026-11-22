@@ -166,7 +166,19 @@ export async function probeEncoder(config: EncoderProbeConfig, signal: AbortSign
     standard.measurement.psnr = await measureQuality(standard, config, signal);
     standard.packets.length = 0;
     if (!hasPoorEncoderQuality(standard.measurement)) return result;
-    const software = await encodeScene(config, "prefer-software", signal);
+    let software: Awaited<ReturnType<typeof encodeScene>>;
+    try {
+        software = await encodeScene(config, "prefer-software", signal);
+    } catch (err) {
+        signal.throwIfAborted();
+        if (err instanceof Error && err.name === "AbortError") throw err;
+        // No usable software encoder leaves the standard choice; keep its measurement.
+        log.warn("software encoder trial unavailable", {
+            ...config,
+            err: err instanceof Error ? err.message : String(err),
+        });
+        return result;
+    }
     result.software = software.measurement;
     software.measurement.psnr = await measureQuality(software, config, signal);
     software.packets.length = 0;
