@@ -16,6 +16,7 @@ import {
     Mp4OutputFormat,
     Output,
     StreamTarget,
+    type StreamTargetChunk,
     VideoSampleSource,
     type AudioCodec,
 } from "../mediabunny.js";
@@ -974,15 +975,11 @@ export function createMp4StreamOutput(
     // post-process can skip re-reading the finished file.
     onMoov?: (bytes: Uint8Array, position: number) => void,
 ): Output {
-    const targetWritable = new WritableStream<{ type: "write"; position: number; data: Uint8Array }>({
+    const targetWritable = new WritableStream<StreamTargetChunk>({
         async write(chunk) {
             throwIfCancelled(signal);
             const sizeBytes = chunk.data.byteLength;
-            await writable.write({
-                type: "write",
-                position: chunk.position,
-                data: chunk.data as Uint8Array<ArrayBuffer>,
-            });
+            await writable.write(chunk);
             onBytesWritten(sizeBytes, chunk.position);
         },
         async close() {

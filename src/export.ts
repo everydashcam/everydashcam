@@ -39,6 +39,7 @@ import {
     Output,
     Mp4OutputFormat,
     StreamTarget,
+    type StreamTargetChunk,
     EncodedVideoPacketSource,
     EncodedAudioPacketSource,
     AudioSampleSource,
@@ -213,18 +214,10 @@ export async function exportClip({
     // .write({type, position, data}). Wrap it 1-to-1, also tracking total
     // bytes written for the "saving to disk" progress stage.
     let isDiscardingOutput = false;
-    const targetWritable = new WritableStream<{ type: "write"; position: number; data: Uint8Array }>({
+    const targetWritable = new WritableStream<StreamTargetChunk>({
         async write(chunk) {
             throwIfCancelled(signal);
-            // TS5 distinguishes Uint8Array<ArrayBuffer> from Uint8Array<ArrayBufferLike>;
-            // FSA write expects the former, mediabunny yields the latter. Cast is safe -
-            // mediabunny's writer allocates plain ArrayBuffers, even when isolation
-            // makes SharedArrayBuffer available.
-            await mp4Writable.write({
-                type: "write",
-                position: chunk.position,
-                data: chunk.data as Uint8Array<ArrayBuffer>,
-            });
+            await mp4Writable.write(chunk);
             totalBytesWritten += chunk.data.byteLength;
         },
         async close() {

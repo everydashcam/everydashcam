@@ -239,10 +239,11 @@ export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Pro
             if (vt) {
                 codec = await vt.getCodec();
                 videoCodecString = await vt.getCodecParameterString();
-                // Display dims are cached getters once the track is resolved.
-                if (vt.displayWidth > 0 && vt.displayHeight > 0) {
-                    width = vt.displayWidth;
-                    height = vt.displayHeight;
+                const displayWidth = await vt.getDisplayWidth();
+                const displayHeight = await vt.getDisplayHeight();
+                if (displayWidth > 0 && displayHeight > 0) {
+                    width = displayWidth;
+                    height = displayHeight;
                 }
                 // Infer the intended frame rate from timestamp spacing rather
                 // than averaging observed packets: a dropped frame must not turn
@@ -285,8 +286,8 @@ export async function indexNonIsobmffFile(file: File, signal?: AbortSignal): Pro
                 }
                 audio = {
                     codec: audioCodec ?? (isIsobmffImaAdpcm ? internalCodecId : null),
-                    channels: at.numberOfChannels,
-                    sampleRate: at.sampleRate,
+                    channels: await at.getNumberOfChannels(),
+                    sampleRate: await at.getSampleRate(),
                 };
             }
         } catch {

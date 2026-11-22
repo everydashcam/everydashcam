@@ -72,8 +72,8 @@ export async function openMatroskaAdpcmAudio(file: File): Promise<AdpcmAudioRead
         if ((await at.getCodec()) !== null) return null; // recognised codec - not our ADPCM
         if ((await at.getInternalCodecId()) !== MATROSKA_ACM_CODEC_ID) return null;
         if (await isOtherAcmCodec(file)) return null;
-        channels = at.numberOfChannels;
-        sampleRate = at.sampleRate;
+        channels = await at.getNumberOfChannels();
+        sampleRate = await at.getSampleRate();
         if (channels < 1 || sampleRate < 1) return null;
         trackEndSec = await at.computeDuration();
     } catch (err) {
