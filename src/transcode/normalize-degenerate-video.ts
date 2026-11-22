@@ -30,7 +30,8 @@ export const DEGENERATE_VIDEO_PACKET_MAX_BYTES = 4;
  * Whether a video packet is an empty access unit to drop. Only H.264/HEVC: a
  * VP9 or AV1 packet this small can be a real show-existing-frame command that
  * displays an earlier decoded frame, so dropping it would lose that frame.
- * Single source of truth for the stream-copy loop (export.ts) and this remux.
+ * Single source of truth for the stream-copy loop (export.ts), this remux and
+ * the per-file MSE playback feed.
  */
 export function isDegenerateVideoPacket(codec: VideoCodec, byteLength: number): boolean {
     return (codec === "avc" || codec === "hevc") && byteLength <= DEGENERATE_VIDEO_PACKET_MAX_BYTES;

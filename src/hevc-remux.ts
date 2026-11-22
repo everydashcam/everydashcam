@@ -17,10 +17,7 @@
 // They are kept separate from the per-file MSE pipeline so:
 //   - indexer.ts can use them at ingest time for needsHevcRemux detection
 //     without pulling in the full playback pipeline;
-//   - cleanHvccDescription and hasVideoContent stay reusable if the remux
-//     strategy changes.
-
-import type { EncodedPacket } from "mediabunny";
+//   - cleanHvccDescription stays reusable if the remux strategy changes.
 
 /**
  * Returns true if this HEVC NAL type must not appear in hvcC and will crash
@@ -114,32 +111,6 @@ export function cleanHvccDescription(desc: AllowSharedBufferSource | undefined):
         }
     }
     return out;
-}
-
-/**
- * Returns true if the packet contains at least one valid NAL unit (length > 0).
- * Parses the AVC/HEVC length-prefixed format (4-byte BE length before each NAL).
- *
- * Used in the per-file MSE feed loop to skip empty/stub packets. iBOX iCON
- * MOV firmware writes zero packets at ~2 s (4-byte length prefix = 0, no NAL
- * data); feeding these to SourceBuffer breaks Chrome ChunkDemuxer with
- * CHUNK_DEMUXER_ERROR_APPEND_FAILED.
- */
-export function hasVideoContent(pkt: EncodedPacket): boolean {
-    const data = pkt.data;
-    if (data.byteLength < 5) return false;
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    let p = 0;
-    while (p + 4 <= data.byteLength) {
-        const len = view.getUint32(p);
-        if (len === 0) {
-            p += 4;
-            continue;
-        }
-        if (p + 4 + len > data.byteLength) return false;
-        return true;
-    }
-    return false;
 }
 
 /**

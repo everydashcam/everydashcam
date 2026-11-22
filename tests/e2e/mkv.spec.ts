@@ -5,13 +5,18 @@
 // every runner including CI Chrome - so both assertions run unconditionally (no
 // self-skip, unlike hevc.spec.ts).
 //
+// A VP9 re-export plays through the same backend: the empty-packet filter for
+// H.264/HEVC must not touch its packets.
+//
 // Covers playback of an .mkv and export from one. The sample carries no GPS, so
 // export is a plain stream-copy with no gpmd track; the AAC audio must survive
 // the remux into the output.
 
+import type { Page } from "@playwright/test";
 import {
     DESKTOP,
     SAMPLE_MKV,
+    SAMPLE_MKV_VP9,
     canEncodeHighProfileH264,
     expect,
     gotoApp,
@@ -33,39 +38,14 @@ test.describe("mkv (matroska) container", () => {
         await gotoApp(page, "en");
     });
 
-    test("plays back through the MSE remux backend", async ({ page }) => {
-        await loadTrip(page, SAMPLE_MKV);
-        // loadTrip resolves on the chart/duration, which can precede the async
-        // MSE backend attach. Wait for a decoded frame, then pause the autoplay
-        // before clicking Play so the click cannot toggle playback back off.
-        await expect
-            .poll(
-                () =>
-                    page.evaluate(() => {
-                        const v = document.getElementById("player") as HTMLVideoElement | null;
-                        return v?.src.startsWith("blob:") ? v.readyState : 0;
-                    }),
-                { timeout: 15_000 },
-            )
-            .toBeGreaterThanOrEqual(2);
-        await pausePlayback(page);
-        await page.evaluate(() => {
-            (document.getElementById("player") as HTMLVideoElement).currentTime = 0;
+    for (const { codec, sample, shotName } of [
+        { codec: "H.264", sample: SAMPLE_MKV, shotName: "mkv-01-playing" },
+        { codec: "VP9", sample: SAMPLE_MKV_VP9, shotName: "mkv-01-playing-vp9" },
+    ]) {
+        test(`plays ${codec} back through the MSE remux backend`, async ({ page }) => {
+            await playsThroughMseRemux(page, sample, shotName);
         });
-        await expect
-            .poll(() => page.evaluate(() => !(document.getElementById("player") as HTMLVideoElement).seeking))
-            .toBe(true);
-        // Require real playback: currentTime advances only if the remuxed
-        // segments fed to MediaSource actually decode - i.e. mediabunny read the
-        // Matroska stream and the fMP4 output is valid.
-        await page.locator("#player-play").click();
-        await expect
-            .poll(() => page.evaluate(() => (document.getElementById("player") as HTMLVideoElement).currentTime), {
-                timeout: 8000,
-            })
-            .toBeGreaterThan(0.25);
-        await shot(page, "mkv-01-playing");
-    });
+    }
 
     test("zoom preview mirrors an MSE-backed video", async ({ page }) => {
         // A second <video> cannot attach the master's MediaSource; the canvas
@@ -187,3 +167,38 @@ test.describe("mkv (matroska) container", () => {
         await shot(page, "mkv-03-reencode-crop");
     });
 });
+
+/** Loads an .mkv and requires real playback through the per-file MSE remux. */
+async function playsThroughMseRemux(page: Page, sample: string, shotName: string): Promise<void> {
+    await loadTrip(page, sample);
+    // loadTrip resolves on the chart/duration, which can precede the async
+    // MSE backend attach. Wait for a decoded frame, then pause the autoplay
+    // before clicking Play so the click cannot toggle playback back off.
+    await expect
+        .poll(
+            () =>
+                page.evaluate(() => {
+                    const v = document.getElementById("player") as HTMLVideoElement | null;
+                    return v?.src.startsWith("blob:") ? v.readyState : 0;
+                }),
+            { timeout: 15_000 },
+        )
+        .toBeGreaterThanOrEqual(2);
+    await pausePlayback(page);
+    await page.evaluate(() => {
+        (document.getElementById("player") as HTMLVideoElement).currentTime = 0;
+    });
+    await expect
+        .poll(() => page.evaluate(() => !(document.getElementById("player") as HTMLVideoElement).seeking))
+        .toBe(true);
+    // Require real playback: currentTime advances only if the remuxed
+    // segments fed to MediaSource actually decode - i.e. mediabunny read the
+    // Matroska stream and the fMP4 output is valid.
+    await page.locator("#player-play").click();
+    await expect
+        .poll(() => page.evaluate(() => (document.getElementById("player") as HTMLVideoElement).currentTime), {
+            timeout: 8000,
+        })
+        .toBeGreaterThan(0.25);
+    await shot(page, shotName);
+}

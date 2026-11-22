@@ -68,6 +68,9 @@ export const SAMPLE_CUT_MID_GOP = path.join(REPO_ROOT, "tests/testdata/cut-mid-g
 // decodes everywhere, so playback + stream-copy export assertions run on CI
 // Chrome without a self-skip.
 export const SAMPLE_MKV = path.join(REPO_ROOT, "tests/testdata/mkv-h264");
+// Synthetic VP9 + AAC Matroska, no GPS: a tool re-export in a codec the
+// H.264/HEVC empty-packet filter must leave alone.
+export const SAMPLE_MKV_VP9 = path.join(REPO_ROOT, "tests/testdata/mkv-vp9");
 
 export const DESKTOP = { width: 1440, height: 900 };
 export const MOBILE = { width: 390, height: 844 }; // iPhone 14 portrait

@@ -1,10 +1,8 @@
-// Tests for the HEVC helpers cleanHvccDescription, hasVideoContent, and
-// needsHevcRemux. The MSE pipeline (per-file, future)
-// is verified manually in the browser per CLAUDE.md; only sync utilities here.
+// Tests for the HEVC helpers cleanHvccDescription and needsHevcRemux. The
+// per-file MSE pipeline is verified manually in the browser per CLAUDE.md; only sync utilities here.
 
 import { describe, it, expect } from "vitest";
-import { EncodedPacket } from "mediabunny";
-import { cleanHvccDescription, hasVideoContent, needsHevcRemux } from "./hevc-remux.js";
+import { cleanHvccDescription, needsHevcRemux } from "./hevc-remux.js";
 
 // ===== cleanHvccDescription =====
 // Regression: BlackVue ELITE 9 writes HEVCDecoderConfigurationRecord with a
@@ -81,42 +79,6 @@ describe("cleanHvccDescription", () => {
     it("hvcC shorter than 23 bytes - returned as-is", () => {
         const tiny = new Uint8Array(10);
         expect(cleanHvccDescription(tiny)).toBe(tiny);
-    });
-});
-
-// ===== hasVideoContent =====
-// Regression iBOX iCON: at ~2 s there is a packet with length-prefix=0
-// and no NAL units. ChunkDemuxer crashes on appendBuffer of such samples;
-// we skip them in the feed loop.
-
-function makePacket(bytes: Uint8Array, type: "key" | "delta" = "delta"): EncodedPacket {
-    return new EncodedPacket(bytes, type, 0, 0.033);
-}
-
-describe("hasVideoContent", () => {
-    it("packet with valid NAL: length-prefix > 0 + payload → true", () => {
-        const data = new Uint8Array([0, 0, 0, 5, 0x67, 0x42, 0x00, 0x1e, 0xff]);
-        expect(hasVideoContent(makePacket(data))).toBe(true);
-    });
-
-    it("iBOX-style empty packet: length-prefix = 0, no NAL → false", () => {
-        const data = new Uint8Array([0, 0, 0, 0]);
-        expect(hasVideoContent(makePacket(data))).toBe(false);
-    });
-
-    it("packet < 5 bytes → false", () => {
-        expect(hasVideoContent(makePacket(new Uint8Array(0)))).toBe(false);
-        expect(hasVideoContent(makePacket(new Uint8Array(4)))).toBe(false);
-    });
-
-    it("malformed length-prefix beyond data → false", () => {
-        const data = new Uint8Array([0, 0, 0x03, 0xe7, 0x67, 0x42, 0x00, 0x1e]);
-        expect(hasVideoContent(makePacket(data))).toBe(false);
-    });
-
-    it("zero-prefix followed by valid NAL → true", () => {
-        const data = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 5, 0x65, 0x88, 0x84, 0x00, 0x33]);
-        expect(hasVideoContent(makePacket(data))).toBe(true);
     });
 });
 

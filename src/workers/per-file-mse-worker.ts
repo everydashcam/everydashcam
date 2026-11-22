@@ -31,9 +31,10 @@ import {
 } from "mediabunny";
 import { createLogger } from "../log.js";
 import { getInputTimeOrigin } from "../media-time.js";
-import { cleanHvccDescription, hasVideoContent } from "../hevc-remux.js";
+import { cleanHvccDescription } from "../hevc-remux.js";
 import { type AdpcmAudioReader, openAdpcmAudioAuto } from "../transcode/adpcm-audio.js";
 import { createEncodeAudioSource, resolveEncodeAudioCodec } from "../transcode/capabilities.js";
+import { isDegenerateVideoPacket } from "../transcode/normalize-degenerate-video.js";
 import { createBlobSource } from "../blob-source.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 import {
@@ -869,7 +870,7 @@ async function runFeed(cycle: FeedCycle): Promise<void> {
             cycle.audioSource.close();
         }
 
-        promises.push(feedVideo(cycle, videoSink, startKey, videoDecoderConfig, framePtsOffset));
+        promises.push(feedVideo(cycle, videoSink, startKey, videoCodec, videoDecoderConfig, framePtsOffset));
         await Promise.all(promises);
         if (signal.aborted) return;
 
@@ -892,6 +893,7 @@ async function feedVideo(
     cycle: FeedCycle,
     sink: EncodedPacketSink,
     startKey: EncodedPacket,
+    codec: VideoCodec,
     vdc: VideoDecoderConfig,
     framePtsOffset: number,
 ): Promise<void> {
@@ -900,7 +902,10 @@ async function feedVideo(
     let pkt: EncodedPacket | null = startKey;
     while (pkt) {
         if (signal.aborted) return;
-        if (!hasVideoContent(pkt)) {
+        // Empty H.264/HEVC access units (iBOX iCON MOV writes them at ~2 s) make
+        // Chrome's ChunkDemuxer fail the append. The shared export policy also
+        // keeps tiny VP9/AV1 packets, which can be real show-existing-frame commands.
+        if (isDegenerateVideoPacket(codec, pkt.byteLength)) {
             pkt = await sink.getNextPacket(pkt, { verifyKeyPackets: true });
             continue;
         }
