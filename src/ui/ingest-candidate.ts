@@ -1,7 +1,5 @@
 // VideoCandidate construction and metadata application for progressive ingest.
 
-import type { VideoCodec } from "../mediabunny.js";
-
 import { createLogger } from "../log.js";
 import { type IndexerRepair } from "../indexer.js";
 import type { IndexedMp4 } from "../workers/indexer-protocol.js";
@@ -17,6 +15,7 @@ import {
 import { isMatroskaName, isTransportStreamName } from "../video-format-names.js";
 import type { StartSource, VideoCandidate } from "../trips.js";
 import { vendorFileKey } from "../vendor-file-key.js";
+import { canDecodeVideoStream, type VideoStreamDecodeQuery, videoStreamDecodeKey } from "../video-decode-support.js";
 
 const log = createLogger("ingest-candidate");
 
@@ -260,25 +259,21 @@ export function discardIndexedMetadata(candidate: VideoCandidate): void {
     if (sourceFile) candidate.file = sourceFile;
 }
 
-// Decoder support for a codec string cannot change within a session, and the
-// progressive fill asks once per trip. One probe per distinct codec keeps a
-// long card from paying a GPU-process round trip per trip. A rejected probe is
-// dropped so the next trip retries instead of inheriting a transient failure.
+// Decoder support for a codec string and frame size cannot change within a
+// session, and the progressive fill asks once per trip. One probe per distinct
+// key keeps a long card from paying a GPU-process round trip per trip. A
+// rejected probe is dropped so the next trip retries instead of inheriting a
+// transient failure.
 const decodableByCodecKey = new Map<string, Promise<boolean>>();
 
 export function _resetForTests(): void {
     decodableByCodecKey.clear();
 }
 
-function probeDecodable(key: string, codec: VideoCodec, codecString: string | null): Promise<boolean> {
+function probeDecodable(key: string, query: VideoStreamDecodeQuery): Promise<boolean> {
     const cached = decodableByCodecKey.get(key);
     if (cached) return cached;
-    const probe = (async () => {
-        // Keep codec capabilities out of the landing graph. The shared helper's
-        // named Mediabunny imports expose only the exports the application uses.
-        const { canDecodeVideoStream } = await import("../transcode/capabilities.js");
-        return canDecodeVideoStream(codec, codecString);
-    })();
+    const probe = canDecodeVideoStream(query);
     decodableByCodecKey.set(key, probe);
     probe.catch(() => {
         if (decodableByCodecKey.get(key) === probe) decodableByCodecKey.delete(key);
@@ -287,34 +282,42 @@ function probeDecodable(key: string, codec: VideoCodec, codecString: string | nu
 }
 
 /**
- * Sets each candidate's canPlay by probing codec decodability (mediabunny
- * canDecodeVideo, deduped by codec string). HEVC stays optimistic: Chromium
- * on Windows can decode it through the OS-backed native/MSE path while
- * WebCodecs reports it unsupported. The player classifies a real attach/decode failure.
- * A codec=null candidate and a thrown probe are optimistic for the same reason.
+ * Sets each candidate's canPlay by probing WebCodecs decode support for its
+ * indexed codec string and frame size, deduped by that pair. HEVC stays
+ * optimistic: Chromium on Windows can decode it through the OS-backed
+ * native/MSE path while WebCodecs reports it unsupported. The player
+ * classifies a real attach/decode failure. A codec=null candidate, a missing
+ * codec string and a thrown probe are optimistic for the same reason.
  */
 export async function checkCanPlay(candidates: VideoCandidate[]): Promise<void> {
-    // Key = videoCodecString when present, else the codec enum.
-    const checks = new Map<string, { codec: VideoCodec; codecString: string | null }>();
+    const keyByCandidate = new Map<VideoCandidate, string>();
+    const checks = new Map<string, VideoStreamDecodeQuery>();
     for (const c of candidates) {
         if (!c.codec) continue;
         if (c.codec === "hevc") {
             c.canPlay = true;
             continue;
         }
-        const key = c.videoCodecString ?? c.codec;
-        if (!checks.has(key)) checks.set(key, { codec: c.codec, codecString: c.videoCodecString });
+        const query: VideoStreamDecodeQuery = {
+            codec: c.codec,
+            codecString: c.videoCodecString,
+            width: c.width,
+            height: c.height,
+        };
+        const key = videoStreamDecodeKey(query);
+        keyByCandidate.set(c, key);
+        if (!checks.has(key)) checks.set(key, query);
     }
     if (checks.size === 0) return;
     const decodableByKey = new Map<string, boolean>();
     await Promise.all(
-        [...checks].map(async ([key, { codec, codecString }]) => {
+        [...checks].map(async ([key, query]) => {
             try {
-                decodableByKey.set(key, await probeDecodable(key, codec, codecString));
+                decodableByKey.set(key, await probeDecodable(key, query));
             } catch (err) {
                 log.warn("codec check threw, optimistically allowing playback", {
-                    codec,
-                    codecString,
+                    codec: query.codec,
+                    codecString: query.codecString,
                     err: err instanceof Error ? err.message : String(err),
                 });
                 decodableByKey.set(key, true);
@@ -322,8 +325,8 @@ export async function checkCanPlay(candidates: VideoCandidate[]): Promise<void> 
         }),
     );
     for (const c of candidates) {
-        if (c.codec !== "hevc") {
-            c.canPlay = c.codec ? (decodableByKey.get(c.videoCodecString ?? c.codec) ?? true) : true;
-        }
+        if (c.codec === "hevc") continue;
+        const key = keyByCandidate.get(c);
+        c.canPlay = key === undefined ? true : (decodableByKey.get(key) ?? true);
     }
 }

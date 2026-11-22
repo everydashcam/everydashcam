@@ -1,28 +1,41 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IndexedMp4, IndexerRepair } from "../workers/indexer-protocol.js";
 import {
+    _resetForTests,
     applyIndexedMetadata,
     buildProvisionalCandidate,
     checkCanPlay,
     discardIndexedMetadata,
 } from "./ingest-candidate.js";
 
+function buildIndexedCandidate(name: string): ReturnType<typeof buildProvisionalCandidate> {
+    return buildProvisionalCandidate({
+        file: {
+            file: new File([new Uint8Array(16)], name),
+            relativePath: `CARD/${name}`,
+        },
+        fingerprint: name,
+        startUtc: 0,
+        startSource: "name",
+        cameraTzSec: null,
+        durationSec: 60,
+        records: [],
+        appliedExtractors: [],
+    });
+}
+
 describe("checkCanPlay", () => {
+    beforeEach(() => {
+        _resetForTests();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
     it("keeps HEVC playable when the native path can outlive a WebCodecs rejection", async () => {
-        const candidate = buildProvisionalCandidate({
-            file: {
-                file: new File([new Uint8Array(16)], "clip.mp4"),
-                relativePath: "CARD/clip.mp4",
-            },
-            fingerprint: "hevc-camera",
-            startUtc: 0,
-            startSource: "name",
-            cameraTzSec: null,
-            durationSec: 60,
-            records: [],
-            appliedExtractors: [],
-        });
+        const candidate = buildIndexedCandidate("clip.mp4");
         candidate.codec = "hevc";
         candidate.codecParam = "hvc1";
         candidate.videoCodecString = "hev1.1.6.L150";
@@ -31,6 +44,36 @@ describe("checkCanPlay", () => {
         await checkCanPlay([candidate]);
 
         expect(candidate.canPlay).toBe(true);
+    });
+
+    it("rejects an H.264 profile the decoder lacks and probes each stream shape once", async () => {
+        const probedCodecs: string[] = [];
+        // Node has no WebCodecs; this decoder handles Main but not High 10.
+        vi.stubGlobal("VideoDecoder", {
+            isConfigSupported: async (config: VideoDecoderConfig) => {
+                probedCodecs.push(config.codec);
+                return { supported: config.codec === "avc1.4d401f", config };
+            },
+        });
+        const main = ["a.mp4", "b.mp4"].map((name) => {
+            const candidate = buildIndexedCandidate(name);
+            candidate.codec = "avc";
+            candidate.videoCodecString = "avc1.4d401f";
+            candidate.width = 1280;
+            candidate.height = 720;
+            return candidate;
+        });
+        const high10 = buildIndexedCandidate("c.mp4");
+        high10.codec = "avc";
+        high10.videoCodecString = "avc1.6e0028";
+        high10.width = 1920;
+        high10.height = 1080;
+
+        await checkCanPlay([...main, high10]);
+
+        expect(main.map((candidate) => candidate.canPlay)).toEqual([true, true]);
+        expect(high10.canPlay).toBe(false);
+        expect(probedCodecs.sort()).toEqual(["avc1.4d401f", "avc1.6e0028"]);
     });
 });
 

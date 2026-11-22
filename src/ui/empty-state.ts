@@ -83,7 +83,7 @@ export function syncEmptyState(): void {
 
 /**
  * Shows the "browser cannot play this codec" overlay.
- * Used when the selected VideoCandidate.canPlay === false (mediabunny canDecodeVideo returned false on ingest).
+ * Used when the selected VideoCandidate.canPlay === false (the decode-support probe rejected it on ingest).
  * Called in playFrame before setting <video>.src so the user sees the reason instead of a black frame.
  */
 export function showCodecUnsupportedOverlay(codec: VideoCodec | null): void {

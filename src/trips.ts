@@ -167,11 +167,11 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     // log, feedback report). The full RFC 6381 string with profile/level lives
     // in videoCodecString.
     codecParam: string | null;
-    // Full RFC 6381 codec string when derivable ("hev1.2.4.L153", from hvcC for
-    // HEVC MP4 / getCodecParameterString for TS). null for AVC MP4 or when
-    // undetermined. Feeds the config-aware canPlay check so HEVC Main10 / a
-    // too-high level the browser cannot decode is caught - the bare codec enum
-    // makes mediabunny assume a decodable generic Main profile.
+    // Full RFC 6381 codec string when derivable ("avc1.640028" / "hev1.2.4.L153",
+    // from avcC/hvcC for MP4 / getCodecParameterString for TS and MKV). null
+    // when undetermined. Feeds the config-aware canPlay check
+    // (video-decode-support.ts) so HEVC Main10 / a too-high level the browser
+    // cannot decode is caught; without a string the check stays optimistic.
     videoCodecString: string | null;
     // MP4 display-matrix rotation. Passed to export so the output MP4
     // opens in the correct orientation.
@@ -184,8 +184,8 @@ export interface VideoCandidate extends VideoWithRecordingCopies {
     fps: number | null;
     audio: { codec: string | null; channels: number; sampleRate: number } | null;
     // Whether the browser can decode this file's codec. Computed in batch
-    // after ingest via canDecodeVideo (mediabunny, memoized). false means
-    // playFile shows an overlay instead of a black <video>.
+    // after ingest by checkCanPlay (VideoDecoder.isConfigSupported, memoized).
+    // false means playFile shows an overlay instead of a black <video>.
     canPlay: boolean;
     // True if the file needs MSE remux before playback, i.e. native
     // <video>.src=URL.createObjectURL(File) produces a black screen. True for

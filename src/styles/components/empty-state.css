@@ -205,8 +205,8 @@
 }
 
 /* Codec-unsupported overlay - the same visual pattern as .empty-state, but
-   shown when state.active is set but video.canPlay=false (mediabunny's
-   .canDecodeVideo returned false). Then .empty-state doesn't fit (active is
+   shown when state.active is set but video.canPlay=false (the decode-support
+   probe rejected the codec). Then .empty-state doesn't fit (active is
    set), but neither does .player-wrap - hide it and show this card instead. */
 .codec-unsupported-state {
     flex: 1;

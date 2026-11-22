@@ -19,9 +19,11 @@ import { OPENPILOT_FRAME_RATE, OPENPILOT_SEGMENT_SEC } from "./openpilot.js";
 
 import {
     findBox,
+    findAvccInTrak,
     findHvccInTrak,
     findMoovInFile,
     fourCCToVideoCodec,
+    avcCodecStringFromAvcc,
     hevcCodecStringFromHvcc,
     isImaAdpcmSampleEntry,
     iterBoxes,
@@ -80,11 +82,10 @@ export async function indexMp4FileWithMoov(file: File, captureMoov: boolean): Pr
 
     let rotation: Mp4Rotation = 0;
     let needsRemux = false;
-    // RFC 6381 string only for HEVC (parsed from hvcC below). AVC stays
-    // codec-enum only: H.264 decode is near-universal where the browser claims
-    // avc support, so the false-positive that matters (HEVC Main10 / high level
-    // on a browser without 10-bit decode) is HEVC-specific. See the canPlay
-    // check in ingest.ts.
+    // RFC 6381 string from avcC/hvcC below, for the decode-support probe
+    // (video-decode-support.ts). HEVC needs the real profile and level to catch
+    // Main10 or a too-high level; AVC needs a string at all so the probe can
+    // ask VideoDecoder directly instead of loading mediabunny on the main thread.
     let videoCodecString: string | null = null;
     // Audio track is IMA ADPCM (Mio/Navman MiVue) - flagged so playback routes
     // through the MSE backend that decodes it to PCM and re-encodes it to an
@@ -117,7 +118,17 @@ export async function indexMp4FileWithMoov(file: File, captureMoov: boolean): Pr
                     height = dims.height;
                 }
                 fps = readVideoFrameRate(moovDv, child);
-                if (codec === "hevc") {
+                if (codec === "avc") {
+                    const avcc = findAvccInTrak(moovDv, child);
+                    if (avcc) {
+                        const description = new Uint8Array(
+                            moovDv.buffer,
+                            moovDv.byteOffset + avcc.payloadStart,
+                            avcc.payloadEnd - avcc.payloadStart,
+                        );
+                        videoCodecString = avcCodecStringFromAvcc(description, avcc.parent);
+                    }
+                } else if (codec === "hevc") {
                     const hvcc = findHvccInTrak(moovDv, child);
                     if (hvcc) {
                         const description = new Uint8Array(

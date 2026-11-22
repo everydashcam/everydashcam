@@ -60,6 +60,7 @@ import type { CameraArrangement } from "../transcode/camera-composition.js";
 import type { CropRect } from "../transcode/compose.js";
 import { contentToFrame, contentToWallUtc, displayTzSec, tripCandidatesByChannel } from "../trips.js";
 import type { Trip, VideoCandidate } from "../trips.js";
+import { canDecodeVideoStream, type VideoStreamDecodeQuery, videoStreamDecodeKey } from "../video-decode-support.js";
 import { getBrakeThresholdG } from "../events.js";
 import { computeCumulativeDistanceM, sampleSpeedAcross } from "../transcode/frame-pos.js";
 import { getUnits } from "../units-pref.js";
@@ -349,12 +350,24 @@ function needsWebCodecsProbe(candidate: VideoCandidate): boolean {
     return candidate.canPlay && candidate.codec === "hevc";
 }
 
+function webCodecsDecodeQuery(candidate: VideoCandidate): VideoStreamDecodeQuery | null {
+    if (!candidate.codec) return null;
+    return {
+        codec: candidate.codec,
+        codecString: candidate.videoCodecString,
+        width: candidate.width,
+        height: candidate.height,
+    };
+}
+
 function webCodecsDecodeKey(candidate: VideoCandidate): string {
-    return `${candidate.codec}:${candidate.videoCodecString ?? ""}`;
+    const query = webCodecsDecodeQuery(candidate);
+    return query ? videoStreamDecodeKey(query) : "unknown-codec";
 }
 
 /**
- * Whether WebCodecs can decode `candidate`, probed once per codec string. A
+ * Whether WebCodecs can decode `candidate`, probed once per codec string and
+ * frame size. A
  * probe that throws counts as decodable: the export then reports the decode
  * failure at run time, as it did before the probe existed. A negative verdict
  * wakes the export probe subscribers so the panel blocks Save.
@@ -363,10 +376,9 @@ function probeWebCodecsDecode(candidate: VideoCandidate): Promise<boolean> {
     const key = webCodecsDecodeKey(candidate);
     let probe = webCodecsDecodeProbes.get(key);
     if (!probe) {
-        const codec = candidate.codec;
+        const query = webCodecsDecodeQuery(candidate);
         const codecString = candidate.videoCodecString;
-        probe = import("../transcode/capabilities.js")
-            .then(({ canDecodeVideoStream }) => (codec ? canDecodeVideoStream(codec, codecString) : true))
+        probe = (query ? canDecodeVideoStream(query) : Promise.resolve(true))
             .catch((err: unknown) => {
                 log.warn("webcodecs decode probe failed", { codecString, err: String(err) });
                 return true;

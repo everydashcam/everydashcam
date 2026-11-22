@@ -13,12 +13,10 @@
 
 import {
     AudioSampleSource,
-    canDecodeVideo,
     canEncodeVideo,
     type EncodedPacket,
     getFirstEncodableAudioCodec,
     Quality,
-    type VideoCodec,
 } from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
@@ -26,11 +24,6 @@ import { AUDIO_TARGET_BITRATE, AUDIO_TARGET_CHANNELS, AUDIO_TARGET_SAMPLE_RATE }
 import { h264EncodingConfig } from "./h264-encoding.js";
 
 const log = createLogger("transcode:caps");
-
-/** Probes the indexed codec and profile; callers decide how a failed probe affects playback. */
-export function canDecodeVideoStream(codec: VideoCodec, codecString: string | null): Promise<boolean> {
-    return canDecodeVideo(codec, codecString ? { codec: codecString } : undefined);
-}
 
 /**
  * Picks the audio codec the re-encode export should emit when it has to encode

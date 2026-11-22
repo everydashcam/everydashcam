@@ -22,7 +22,7 @@ export interface IndexedMp4 {
     createdUtc: Date | null;
     /**
      * Codec of the primary video track. null if there is no video track or
-     * the FourCC is unrecognized. Used for the canDecodeVideo check before
+     * the FourCC is unrecognized. Used for the decode-support check before
      * playback and for the UI badge.
      */
     codec: VideoCodec | null;
@@ -34,10 +34,10 @@ export interface IndexedMp4 {
     codecParam: string | null;
     /**
      * Full RFC 6381 codec string of the primary video track when derivable
-     * ("hvc1.1.6.L150", "hev1.2.4.L153"): for HEVC MP4 parsed from hvcC, for
-     * MPEG-TS from mediabunny.getCodecParameterString. null for AVC MP4 and when
-     * undetermined - the canPlay check then falls back to the bare `codec` enum.
-     * Carries the HEVC profile/level so canDecodeVideo can reject Main10 /
+     * ("avc1.640028", "hvc1.1.6.L150"): for MP4 parsed from avcC/hvcC, for
+     * MPEG-TS and Matroska from mediabunny.getCodecParameterString. null when
+     * undetermined - the canPlay check then stays optimistic. Carries the
+     * profile/level so the decode-support probe can reject Main10 /
      * too-high-level streams the browser cannot decode.
      */
     videoCodecString: string | null;

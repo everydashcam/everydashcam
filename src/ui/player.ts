@@ -848,7 +848,7 @@ export function playFrame(
         smoothCameraToActiveFrameOffset(startOffsetSec);
     }
 
-    // Codec check for the active channel: if canPlay=false (mediabunny.canDecodeVideo returned
+    // Codec check for the active channel: if canPlay=false (the decode-support probe returned
     // false during ingest, typically HEVC in Firefox without HW acceleration), show the overlay
     // instead of a black <video>. Slave channels can also have canPlay=false - in split-view
     // their tile shows a black background with a channel label; others keep playing.
@@ -872,7 +872,7 @@ export function playFrame(
         forEachVideoSlot((v) => clearVideoSrc(v));
         for (const ch of ALL_CHANNELS) clearPrewarmedBackend(ch);
         // Lifecycle: trip activation finished without a playable frame
-        // (codec rejected by canDecodeVideo at ingest). Distinct from
+        // (codec rejected by the decode-support probe at ingest). Distinct from
         // player-first-frame to keep semantics honest - subscribers waiting
         // on first-frame should not see it here. Perf harness treats
         // either as terminal for trip-activation.

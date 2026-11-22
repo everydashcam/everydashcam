@@ -67,6 +67,41 @@ test.describe("ingest", () => {
         await shot(page, "ingest-01-multichannel-active");
     });
 
+    test("checks H.264 playback without loading the media library on the page", async ({ page }) => {
+        // Record the page's own decode-support probes; workers have their own globals.
+        await page.addInitScript(() => {
+            const probed: string[] = [];
+            (window as unknown as { __probedDecoderCodecs: string[] }).__probedDecoderCodecs = probed;
+            if (typeof VideoDecoder === "undefined") return;
+            const isConfigSupported = VideoDecoder.isConfigSupported.bind(VideoDecoder);
+            VideoDecoder.isConfigSupported = (config) => {
+                probed.push(config.codec);
+                return isConfigSupported(config);
+            };
+        });
+        await gotoApp(page, "en");
+        await loadTrip(page, SAMPLE_70MAI);
+
+        await expect
+            .poll(
+                () =>
+                    page.evaluate(() =>
+                        (window as unknown as { __probedDecoderCodecs: string[] }).__probedDecoderCodecs.filter(
+                            (codec) => codec.startsWith("avc1."),
+                        ),
+                    ),
+                { message: "the trip's H.264 streams were probed with their avcC codec strings" },
+            )
+            .toContain("avc1.640028");
+        const mediaLibraryRequests = await page.evaluate(() =>
+            performance
+                .getEntriesByType("resource")
+                .map((entry) => entry.name)
+                .filter((name) => /\/vendor-media-[^/]*\.js$/.test(name)),
+        );
+        expect(mediaLibraryRequests, "mediabunny stays out of the page").toEqual([]);
+    });
+
     test("gopro single-channel: no multichannel UI", { tag: "@golden-ingest" }, async ({ page }) => {
         await loadTrip(page, SAMPLE_GOPRO);
 

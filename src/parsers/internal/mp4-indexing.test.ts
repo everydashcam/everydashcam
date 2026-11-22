@@ -271,6 +271,32 @@ describe("indexMp4FileWithMoov: HEVC codec string matches mediabunny", () => {
     });
 });
 
+// The main-thread decode-support probe uses this string instead of loading
+// mediabunny, so it must equal mediabunny's own string for the same file,
+// constraint-flag byte included.
+describe("indexMp4FileWithMoov: AVC codec string matches mediabunny", () => {
+    it.each([
+        { path: "../__fixtures__/mivue-955wd/FILE260819-071804R.mp4", codecString: "avc1.42c028" },
+        { path: "../__fixtures__/ligogps-trailer/real-anonymized.mp4", codecString: "avc1.42c032" },
+        { path: "../__fixtures__/supported-gps/garmin57.mp4", codecString: "avc1.64000c" },
+    ])("agrees on $path", async ({ path, codecString }) => {
+        const file = new File([readFileSync(new URL(path, import.meta.url))], path.split("/").at(-1)!);
+        const input = new Input({ source: new BlobSource(file), formats: [new Mp4InputFormat()] });
+        try {
+            const track = await input.getPrimaryVideoTrack();
+            expect(track, "fixture has a video track").not.toBeNull();
+            const expected = await track!.getCodecParameterString();
+
+            const { indexed } = await indexMp4FileWithMoov(file, false);
+
+            expect(indexed?.videoCodecString).toBe(expected);
+            expect(expected).toBe(codecString);
+        } finally {
+            input.dispose();
+        }
+    });
+});
+
 describe("indexOneFile on a raw HEVC stream", () => {
     const name = "0123456789abcdef_00000001--0000000000--19--fcamera.hevc";
     const bytes = readFileSync(new URL(`../__fixtures__/openpilot/${name}`, import.meta.url));

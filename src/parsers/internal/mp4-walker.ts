@@ -354,44 +354,82 @@ export function readVideoFrameRate(dv: DataView, trak: Box): number | null {
     return (metadata.totalSamples * timescale) / metadata.totalTicks;
 }
 
-/**
- * Finds the hvcC payload inside a video trak. Returns absolute payload start/end
- * offsets in `dv` plus the parent sample-entry type ('hvc1' or 'hev1').
- *
- * Used by the indexer to detect HEVC parameter sets needed for needsHevcRemux
- * detection - replaces mediabunny `getDecoderConfig().description` which used
- * to open a separate Input per file.
- *
- * Returns null if the trak is not HEVC, has no hvcC, or stsd is corrupt.
- */
-export interface HvccLocation {
-    payloadStart: number;
-    payloadEnd: number;
-    parent: HevcSampleEntry;
-}
+/** AVC sample entries: avc1 keeps parameter sets out of band, avc3 may carry them in band. */
+export type AvcSampleEntry = "avc1" | "avc3";
 
 /** HEVC sample entries: hvc1 keeps parameter sets out of band, hev1 may carry them in band. */
 export type HevcSampleEntry = "hvc1" | "hev1";
 
+/**
+ * Absolute payload start/end offsets of a codec configuration box (avcC,
+ * hvcC) in the moov DataView, plus the sample-entry type that holds it.
+ */
+export interface CodecConfigLocation<SampleEntry extends string> {
+    payloadStart: number;
+    payloadEnd: number;
+    parent: SampleEntry;
+}
+
+export type HvccLocation = CodecConfigLocation<HevcSampleEntry>;
+export type AvccLocation = CodecConfigLocation<AvcSampleEntry>;
+
+const AVC_SAMPLE_ENTRIES: readonly AvcSampleEntry[] = ["avc1", "avc3"];
+const HEVC_SAMPLE_ENTRIES: readonly HevcSampleEntry[] = ["hvc1", "hev1"];
+
+/**
+ * Finds the hvcC payload inside a video trak. Used by the indexer for
+ * needsHevcRemux detection and the codec string without opening a mediabunny
+ * Input per file. Returns null if the trak is not HEVC, has no hvcC, or stsd
+ * is corrupt.
+ */
 export function findHvccInTrak(dv: DataView, trak: Box): HvccLocation | null {
+    return findCodecConfigInTrak(dv, trak, HEVC_SAMPLE_ENTRIES, "hvcC");
+}
+
+/**
+ * Finds the avcC payload inside a video trak, for the codec string. Returns
+ * null if the trak is not AVC, has no avcC, or stsd is corrupt.
+ */
+export function findAvccInTrak(dv: DataView, trak: Box): AvccLocation | null {
+    return findCodecConfigInTrak(dv, trak, AVC_SAMPLE_ENTRIES, "avcC");
+}
+
+function findCodecConfigInTrak<SampleEntry extends string>(
+    dv: DataView,
+    trak: Box,
+    sampleEntries: readonly SampleEntry[],
+    configBoxType: string,
+): CodecConfigLocation<SampleEntry> | null {
     const stsd = walkPath(dv, trak, "mdia", "minf", "stbl", "stsd");
     if (!stsd) return null;
     if (stsd.payloadStart + 8 > stsd.end) return null;
     const entryStart = stsd.payloadStart + 8;
     for (const entry of iterBoxes(dv, entryStart, stsd.end)) {
-        if (entry.type !== "hvc1" && entry.type !== "hev1") continue;
+        const sampleEntry = sampleEntries.find((candidate) => candidate === entry.type);
+        if (!sampleEntry) continue;
         // VisualSampleEntry: 8 box header + 78 fixed prefix → child boxes.
         const childStart = entry.start + 8 + 78;
         if (childStart >= entry.end) continue;
-        const hvcC = findBox(dv, childStart, entry.end, "hvcC");
-        if (!hvcC) continue;
-        return {
-            payloadStart: hvcC.payloadStart,
-            payloadEnd: hvcC.end,
-            parent: entry.type,
-        };
+        const config = findBox(dv, childStart, entry.end, configBoxType);
+        if (!config) continue;
+        return { payloadStart: config.payloadStart, payloadEnd: config.end, parent: sampleEntry };
     }
     return null;
+}
+
+/**
+ * Builds the RFC 6381 codec string ("avc1.640028") from the avcC payload
+ * (AVCDecoderConfigurationRecord, ISO/IEC 14496-15 5.3.3.1): the sample entry,
+ * then profile, constraint flags and level as hex bytes. Gives the main
+ * thread's decode-support probe the real profile and level without loading
+ * mediabunny; mp4-indexing.test.ts pins it to mediabunny's own string.
+ *
+ * Returns null when the record is shorter than those first four bytes.
+ */
+export function avcCodecStringFromAvcc(description: Uint8Array, sampleEntry: AvcSampleEntry): string | null {
+    if (description.byteLength < 4) return null;
+    const hex = Array.from(description.subarray(1, 4), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${sampleEntry}.${hex}`;
 }
 
 /**
@@ -412,10 +450,10 @@ function reverseBitsU32(value: number): number {
  * Builds the RFC 6381 codec string ("hvc1.1.6.L150", "hev1.2.4.L153") from the
  * hvcC payload (HEVCDecoderConfigurationRecord, ISO/IEC 14496-15 8.3.3.1).
  *
- * Why: a config-aware canDecodeVideo needs the real profile_idc/tier/level to
- * tell Main from Main10 and to catch a too-high level. The bare "hevc" codec
- * enum makes mediabunny assume a generic Main profile, so a browser without
- * 10-bit HEVC decode is told (wrongly) that a Main10 clip is playable. We parse
+ * Why: the decode-support probe needs the real profile_idc/tier/level to tell
+ * Main from Main10 and to catch a too-high level; a generic Main profile
+ * would tell a browser without 10-bit HEVC decode (wrongly) that a Main10
+ * clip is playable. We parse
  * the record here rather than open a mediabunny Input per MP4 - the indexer's
  * MP4 path is a direct moov walk with no Input. The prefix is the file's
  * sample entry, as mediabunny reports it for ISOBMFF; the native player
