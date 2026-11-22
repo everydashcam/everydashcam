@@ -1,15 +1,13 @@
 // WebCodecs capability probes for playback and re-encode export.
 //
 // The split / crop / overlay / speed-up export decodes, composites, and
-// RE-ENCODES via WebCodecs. mediabunny configures a VideoEncoder for codec "avc"
-// as High profile (its buildVideoCodecString hardcodes profile 0x64; only the
-// LEVEL is derived, from resolution, bitrate and frame rate) and gates on a single
-// VideoEncoder.isConfigSupported with the hardwareAcceleration we pass. On a
-// machine with no hardware H.264 encoder and only a Constrained-Baseline software
-// one (e.g. Chrome's bundled OpenH264 on a GPU-less Linux box), that High-profile
-// config is unsupported and the encode throws mid-export. This probe lets the
-// export UI detect that up front and keep the user on stream-copy instead of
-// failing with a raw codec error.
+// RE-ENCODES via WebCodecs. For codec "avc" mediabunny picks the profile itself
+// (High; Constrained Baseline on WebKit), derives the level from resolution,
+// bitrate and frame rate, and gates on a single VideoEncoder.isConfigSupported
+// with the hardwareAcceleration we pass. An encoder that rejects that config -
+// a size or bitrate past its limits, or no H.264 encoder at all - would throw
+// mid-export. This probe lets the export UI detect that up front and keep the
+// user on stream-copy instead of failing with a raw codec error.
 
 import {
     AudioSampleSource,
@@ -100,8 +98,8 @@ export function createEncodeAudioSource(
 /**
  * Whether the browser can encode the H.264 stream the re-encode export emits at
  * the given output size, bitrate and frame rate. Mirrors the pipeline's encoder config:
- * codec "avc" (mediabunny hardcodes High profile 0x64 and derives only the H.264
- * level from resolution, bitrate and frame rate), with the selected acceleration preference.
+ * codec "avc" (mediabunny picks the profile and derives the H.264 level from
+ * resolution, bitrate and frame rate), with the selected acceleration preference.
  *
  * We ask mediabunny's own canEncodeVideo rather than a bare isConfigSupported:
  * it builds the same encoder config the pipeline uses AND, on Firefox (where
@@ -110,8 +108,8 @@ export function createEncodeAudioSource(
  *
  * The bitrate matters: mediabunny passes it to isConfigSupported, and a mobile
  * encoder rejects a config whose bitrate (and/or the level it implies) exceeds
- * what its hardware supports at that resolution - the same High-profile config
- * it accepts at a lower bitrate. resolveEncodableH264 exploits exactly this.
+ * what its hardware supports at that resolution - the same config it accepts
+ * at a lower bitrate. resolveEncodableH264 exploits exactly this.
  *
  * width/height must be even (H.264 requirement; the export path already rounds
  * to even via ensureEven). bitrate is in bits per second. Never throws -
@@ -171,8 +169,8 @@ const MAX_SEARCH_PROBES = 12;
  * fractions would (a fixed step can leave most of the device's real headroom
  * unused - see the test for a worked example).
  *
- * Why a search over bitrates and not profiles: mediabunny hardcodes High
- * profile (we never override via fullCodecString), but the bitrate is an
+ * Why a search over bitrates and not profiles: mediabunny picks the profile
+ * (we never override via fullCodecString), but the bitrate is an
  * independent axis the device's encoder checks - lowering it (which also
  * lowers the auto-selected level at smaller resolutions) is what flips
  * isConfigSupported from false to true on a mobile or software encoder. No

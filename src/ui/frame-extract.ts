@@ -94,7 +94,7 @@ async function workerExtractFrames(
     }
 }
 
-/** Closes all decoders inside the worker. Call on active trip change and modal close. */
+/** Releases every file the worker keeps open. Call on active trip change and modal close. */
 export function disposeAllFrameDecoders(): void {
     if (!client || client.disposed) return;
     client.notify(FRAME_NOTIFY_DISPOSE_ALL);

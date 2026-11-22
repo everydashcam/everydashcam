@@ -1106,8 +1106,8 @@ async function runExportFlowInner(hooks: ExportFlowHooks): Promise<void> {
     const downloadName = mp4Handle?.name ?? fileName;
 
     // Re-encode preflight: split / crop / overlays / speed-up all decode and
-    // RE-ENCODE via WebCodecs, and the pipeline emits a High-profile H.264
-    // stream. A mobile (or GPU-less) encoder may reject that config at the
+    // RE-ENCODE via WebCodecs, and the pipeline emits an H.264 stream. A
+    // mobile (or GPU-less) encoder may reject that config at the
     // requested bitrate/resolution and the worker would throw a raw codec error
     // mid-export. resolveEncodableH264 finds the highest bitrate this device
     // CAN encode at the chosen size: full request when it fits, a lower rung

@@ -9,8 +9,9 @@
 // (mvhd duration/creation_time, stsd FourCC for codec, tkhd rotation,
 // hvcC for HEVC remux probe).
 //
-// MPEG-TS: mediabunny.computeDuration + getCodec - TS has no moov, so
-// the worker pays the mediabunny bundle cost only on the TS branch.
+// MPEG-TS and Matroska: mediabunny computeDuration + getCodec, since they
+// have no moov. The library is bundled into this worker either way; only
+// those branches run it.
 
 import { throwIfCancelled } from "../abort-signals.js";
 import type { IndexerWorkerContract } from "./indexer-protocol.js";

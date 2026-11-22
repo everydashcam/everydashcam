@@ -22,14 +22,9 @@
 // The MP4 edit list hides this decoder preroll and preserves the selected start.
 // End references may extend past the selection to keep B-frames decodable.
 //
-// We intentionally do NOT use the sink.packets(startPacket) async iterator
-// (reverted in the same commit as seamless.ts): in seamless the regression was
-// obvious - "Media segment did not contain any coded frames for track 1" in
-// Chrome MSE and stalling video. The export path cannot trigger that
-// (fastStart: false, moov-at-end, not fragmented), but we keep the manual loop
-// for consistency and to avoid a separate AV skew on large clips. Returning to
-// the iterator would require an interleaved feed (V/A packets in ascending pts
-// order), not "all video first, then all audio".
+// Video packets are pulled one at a time with getNextPacket: per packet the
+// loop feeds audio up to that timestamp, drops empty access units, stops on
+// the inclusive end packet and detects a truncated source.
 
 import { throwIfCancelled } from "./abort-signals.js";
 import {

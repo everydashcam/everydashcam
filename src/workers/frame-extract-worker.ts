@@ -1,13 +1,14 @@
-// Worker for chart-strip thumbnails and chart-hover tooltip previews. Owns
-// mediabunny Input + CanvasSink + the LRU decoder cache so that the
-// main thread is never blocked on demux/decode work - critical for MPEG-TS
-// where opening a new Input does a PMT scan (~80 ms on a 1 GB file) and
-// long-GOP decode-forward to a keyframe can be hundreds of ms per thumb.
+// Worker for the chart-hover and scrubber frame previews, keeping demux and
+// decode work off the main thread. An LRU of opened files keeps each Input
+// with its CanvasSink, so a repeat request skips demux setup - for MPEG-TS a
+// PMT scan (~80 ms on a 1 GB file). CanvasSink keeps no decoder between
+// calls: every request creates a VideoDecoder and decodes forward from the
+// preceding keyframe, which on a long-GOP file takes hundreds of ms.
 //
 // Protocol: one "extract" request carries one file + N timestamps; reply
-// has N ImageBitmaps (transferable, nulls for failed slots). Caller batches
-// timestamps belonging to the same file to amortise PMT scan / decoder
-// init across all thumbs in a strip build.
+// has N ImageBitmaps (transferable, nulls for failed slots). The app's
+// previews send one timestamp per request; the frame extraction harness
+// exercises the batch path.
 //
 // Cancellation: AbortSignal forwarded by createWorkerClient lands in
 // ctx.signal on the handler. The serialize() gate inside still queues
@@ -46,10 +47,9 @@ interface DecoderEntry {
 // a full 4K frame would cost. Sources smaller than this are not upscaled.
 const THUMB_DECODE_MAX_W = 960;
 
-/** Headroom for Juscar-style 3-channel (F/R/I) trips: 3 current + 3 buffer
- * for adjacent segments still leaves slack against Chromium's global
- * VideoDecoder limit (~10-16). At 6 a strip scroll across a channel boundary
- * evicts the decoder we are about to need next; 10 keeps that window cached. */
+/** Opened files kept for repeat previews. An entry holds an Input (demux
+ * index, source read cache) and one preview canvas, not a VideoDecoder. 10
+ * covers the current and adjacent segments of a 3-channel (F/R/I) trip. */
 const DECODER_CACHE_MAX = 10;
 const decoderCache = new Map<string, DecoderEntry>();
 
@@ -130,10 +130,9 @@ async function canvasToImageBitmap(wrapped: WrappedCanvas): Promise<ImageBitmap 
 }
 
 /**
- * Batched extraction. For each timestamp tries up to 2 attempts; on
- * EncodingError the VideoDecoder is in a poisoned state and subsequent
- * samples come back failing too, so we evict + reopen the decoder before
- * the next timestamp. Caps the visible damage of one bad GOP to one slot.
+ * Batched extraction. For each timestamp tries up to 2 attempts; a failed
+ * attempt reopens the file before the retry, so one bad GOP costs at most
+ * its own slot.
  */
 async function extractFrames(file: File, timestamps: number[], signal: AbortSignal): Promise<(ImageBitmap | null)[]> {
     const bitmaps: (ImageBitmap | null)[] = new Array(timestamps.length).fill(null);
