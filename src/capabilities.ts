@@ -499,11 +499,13 @@ export function identifyBrowser(ua?: string): BrowserInfo {
     // OS first - it drives part of the advice (e.g. iOS folder gap, Linux codecs).
     let os: BrowserInfo["os"] = "unknown";
     if (
-        /iphone|ipad|ipod/.test(s) ||
+        /iphone|ipad|ipod|crios|fxios|edgios/.test(s) ||
         (/macintosh/.test(s) && typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 1)
     ) {
         // iPadOS 13+ reports a desktop "Macintosh" UA; maxTouchPoints>1 tells it
-        // apart from a real Mac.
+        // apart from a real Mac. WorkerNavigator has no maxTouchPoints, but the
+        // iOS-only CriOS/FxiOS/EdgiOS tokens survive desktop mode, so workers
+        // still see those browsers as iOS WebKit.
         os = "ios";
     } else if (/android/.test(s)) {
         os = "android";

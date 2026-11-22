@@ -371,6 +371,10 @@ describe("classifyWebglRecovery", () => {
 });
 
 describe("identifyBrowser", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
     it("Chrome on Windows", () => {
         const b = identifyBrowser(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
@@ -414,6 +418,18 @@ describe("identifyBrowser", () => {
         const b = identifyBrowser(
             `Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) ${token} Mobile/15E148 Safari/605.1.15`,
         );
+        expect(b).toEqual({ engine: "webkit", name, os: "ios", isMobile: true });
+    });
+
+    it.each([
+        ["Firefox", "FxiOS/130.0"],
+        ["Edge", "EdgiOS/130.0"],
+        ["Chrome", "CriOS/130.0.0.0"],
+    ])("recognizes desktop-mode %s on iPadOS without a touch-points probe", (name, token) => {
+        const ua = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) ${token} Version/17.0 Safari/605.1.15`;
+        // A worker's navigator has no maxTouchPoints to tell an iPad from a Mac.
+        vi.stubGlobal("navigator", { userAgent: ua });
+        const b = identifyBrowser();
         expect(b).toEqual({ engine: "webkit", name, os: "ios", isMobile: true });
     });
 
