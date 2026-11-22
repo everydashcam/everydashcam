@@ -6,7 +6,7 @@
 // dependency-light - no mediabunny value imports, no transcode imports (types
 // are fine). See vite-plugins/lazy-boundaries.ts for the build-time guard.
 
-import type { AudioCodec } from "mediabunny";
+import type { AudioCodec } from "./mediabunny.js";
 
 import { isValidGpsFix } from "./parser.js";
 import type { Channel, GpsRecord } from "./parsers/types.js";

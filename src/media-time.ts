@@ -1,4 +1,4 @@
-import { type Input, MPEG_TS } from "mediabunny";
+import { type Input, MPEG_TS } from "./mediabunny.js";
 
 /**
  * TS timestamps come from a transport clock, not the start of the recording.

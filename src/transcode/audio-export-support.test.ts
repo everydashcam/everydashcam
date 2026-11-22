@@ -1,4 +1,4 @@
-import { EncodedPacket } from "mediabunny";
+import { EncodedPacket } from "../mediabunny.js";
 import { describe, expect, it } from "vitest";
 import {
     clonePcmPiece,

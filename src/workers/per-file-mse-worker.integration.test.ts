@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { BlobSource, BufferSource, EncodedPacketSink, Input, type EncodedPacket } from "mediabunny";
+import { BlobSource, BufferSource, EncodedPacketSink, Input, type EncodedPacket } from "../mediabunny.js";
 import { rolldown } from "rolldown";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createMseFixture } from "../../tests/helpers/mse-fixtures.js";

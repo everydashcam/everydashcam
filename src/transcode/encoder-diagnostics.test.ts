@@ -1,4 +1,4 @@
-import { EncodedPacket } from "mediabunny";
+import { EncodedPacket } from "../mediabunny.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetForTests, getLogBuffer } from "../log.js";
 import { createVideoEncodingDiagnostics } from "./encoder-diagnostics.js";

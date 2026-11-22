@@ -15,7 +15,7 @@ import { createSerialQueue } from "../serial-queue.js";
 import { throwIfCancelled } from "../abort-signals.js";
 import type { TrackerWorkerContract } from "./tracker-protocol.js";
 
-import { EncodedPacketSink, Input, type InputVideoTrack, type VideoSample, VideoSampleSink } from "mediabunny";
+import { EncodedPacketSink, Input, type InputVideoTrack, type VideoSample, VideoSampleSink } from "../mediabunny.js";
 import { getInputTimeOrigin } from "../media-time.js";
 
 import { boxToRect, visibleBoxRect } from "../tracking/box-geometry.js";

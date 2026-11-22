@@ -18,7 +18,7 @@ import {
     totalDistanceKm,
 } from "./parser.js";
 import type { GpsRecord, Channel, RecordingMode, VendorFile, VideoWithRecordingCopies } from "./parsers/types.js";
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "./mediabunny.js";
 import type { Mp4Rotation } from "./indexer.js";
 import { createLogger } from "./log.js";
 import { knownFileMtime } from "./file-mtime.js";

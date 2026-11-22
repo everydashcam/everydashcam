@@ -1,4 +1,4 @@
-import { AudioSample, type AudioSampleSource } from "mediabunny";
+import { AudioSample, type AudioSampleSource } from "../mediabunny.js";
 import { describe, expect, it, vi } from "vitest";
 import { decodeImaAdpcmBlocks } from "./ima-adpcm.js";
 import { openAdpcmAudio } from "./adpcm-audio.js";

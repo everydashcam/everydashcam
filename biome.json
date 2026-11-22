@@ -1,69 +1,86 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
-	"vcs": {
-		"enabled": true,
-		"clientKind": "git",
-		"useIgnoreFile": true
-	},
-	"files": {
-		"includes": [
-			"src/**",
-			"scripts/**",
-			"vite-plugins/**",
-			"tests/**",
-			"playwright.perf.config.ts",
-			"vitest.bench.config.ts",
-			"!**/dist/**",
-			"!**/node_modules/**",
-			"!**/__snapshots__/**",
-			"!**/__fixtures__/**"
-		]
-	},
-	"formatter": {
-		"enabled": true,
-		"indentStyle": "space",
-		"indentWidth": 4,
-		"lineWidth": 120
-	},
-	"overrides": [
-		{
-			"includes": ["src/i18n/*.ts", "!src/i18n/keys.ts", "!src/i18n/index.ts", "!src/i18n/index.test.ts"],
-			"formatter": {
-				"lineWidth": 320
-			}
-		}
-	],
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"recommended": true,
-			"suspicious": {
-				"noExplicitAny": "off"
-			},
-			"style": {
-				"useImportType": "off",
-				"noNonNullAssertion": "off",
-				"noDescendingSpecificity": "off",
-				"useFilenamingConvention": "off"
-			},
-			"complexity": {
-				"noImportantStyles": "off"
-			}
-		}
-	},
-	"javascript": {
-		"formatter": {
-			"quoteStyle": "double",
-			"semicolons": "always",
-			"trailingCommas": "all"
-		}
-	},
-	"assist": {
-		"enabled": true,
-		"actions": {
-			"source": {
-				"organizeImports": "off"
-			}
-		}
-	}
+    "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "includes": [
+            "src/**",
+            "scripts/**",
+            "vite-plugins/**",
+            "tests/**",
+            "playwright.perf.config.ts",
+            "vitest.bench.config.ts",
+            "!**/dist",
+            "!**/node_modules",
+            "!**/__snapshots__",
+            "!**/__fixtures__"
+        ]
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 120
+    },
+    "overrides": [
+        {
+            "includes": ["src/i18n/*.ts", "!src/i18n/keys.ts", "!src/i18n/index.ts", "!src/i18n/index.test.ts"],
+            "formatter": {
+                "lineWidth": 320
+            }
+        },
+        {
+            "includes": ["src/**", "!src/mediabunny.ts"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "paths": {
+                                    "mediabunny": "Import from src/mediabunny.ts, which routes the library's logs into src/log.ts."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "suspicious": {
+                "noExplicitAny": "off"
+            },
+            "style": {
+                "useImportType": "off",
+                "noNonNullAssertion": "off",
+                "noDescendingSpecificity": "off",
+                "useFilenamingConvention": "off"
+            },
+            "complexity": {
+                "noImportantStyles": "off"
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "double",
+            "semicolons": "always",
+            "trailingCommas": "all"
+        }
+    },
+    "assist": {
+        "enabled": true,
+        "actions": {
+            "source": {
+                "organizeImports": "off"
+            }
+        }
+    }
 }

@@ -9,7 +9,7 @@
 // use output pixels (outputW × outputH).
 
 import { type CameraFlip, applyCanvasFlip, flipCropRect, flipPixelRect } from "../camera-flip.js";
-import type { VideoSample } from "mediabunny";
+import type { VideoSample } from "../mediabunny.js";
 
 import type { ResolvedRegionBlur } from "../blur-regions.js";
 import type { CameraTileLayout, LayoutRect } from "../camera-layout.js";

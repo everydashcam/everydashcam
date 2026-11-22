@@ -26,7 +26,7 @@ import { cameraFlipForChannel } from "./camera-flip-pref.js";
 // export-mode/export-panel), so they are pulled via dynamic import() at their
 // run-time call sites to keep that graph out of the landing entry chunk
 // (guarded by vite-plugins/lazy-boundaries.ts). Type-only imports stay static.
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../mediabunny.js";
 
 import type { ExportClipResult } from "../export.js";
 import { resolveOutputFps } from "../transcode/frame-rate.js";

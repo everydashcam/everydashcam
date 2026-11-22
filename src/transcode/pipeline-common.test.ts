@@ -9,7 +9,7 @@ import {
     Input,
     MovOutputFormat,
     Output,
-} from "mediabunny";
+} from "../mediabunny.js";
 
 import {
     createMp4StreamOutput,

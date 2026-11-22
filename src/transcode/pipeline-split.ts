@@ -15,7 +15,7 @@ import { throwIfCancelled } from "../abort-signals.js";
 import { resolveOutputFps } from "./frame-rate.js";
 import { createVideoEncodingDiagnostics } from "./encoder-diagnostics.js";
 import type { CameraFlip } from "../camera-flip.js";
-import { Input, type VideoSample, VideoSampleSink } from "mediabunny";
+import { Input, type VideoSample, VideoSampleSink } from "../mediabunny.js";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
 import { getInputTimeOrigin } from "../media-time.js";
 

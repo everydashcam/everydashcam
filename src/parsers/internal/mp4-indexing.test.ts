@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { BlobSource, Input, Mp4InputFormat } from "mediabunny";
+import { BlobSource, Input, Mp4InputFormat } from "../../mediabunny.js";
 import { describe, expect, it } from "vitest";
 import { repairBrokenHvcC } from "../../repair/hvcc.js";
 import { indexMp4FileWithMoov, indexOneFile } from "./mp4-indexing.js";

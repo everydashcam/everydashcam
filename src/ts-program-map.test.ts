@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { BlobSource, Input, type Source } from "mediabunny";
+import { BlobSource, Input, type Source } from "./mediabunny.js";
 import { describe, expect, it } from "vitest";
 
 import { createBlobSource, demuxView } from "./blob-source.js";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { Input, InputDisposedError } from "mediabunny";
+import { Input, InputDisposedError } from "./mediabunny.js";
 
 import {
     createReaderPool,

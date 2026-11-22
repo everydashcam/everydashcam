@@ -19,7 +19,7 @@
 import { createSerialQueue } from "../serial-queue.js";
 import type { FrameExtractWorkerContract } from "./frame-extract-protocol.js";
 
-import { CanvasSink, Input, InputDisposedError, type InputVideoTrack, type WrappedCanvas } from "mediabunny";
+import { CanvasSink, Input, InputDisposedError, type InputVideoTrack, type WrappedCanvas } from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
 import { getInputTimeOrigin } from "../media-time.js";

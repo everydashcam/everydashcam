@@ -1,6 +1,6 @@
 // VideoCandidate construction and metadata application for progressive ingest.
 
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
 import { type IndexerRepair } from "../indexer.js";

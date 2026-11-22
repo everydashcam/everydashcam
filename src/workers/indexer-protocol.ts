@@ -9,7 +9,7 @@
 
 import type { WorkerContract, WorkerRequest } from "./_protocol/worker-contract.js";
 
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../mediabunny.js";
 
 import type { Mp4Rotation } from "../parsers/internal/mp4-walker.js";
 import type { HvcCRepairReason } from "../repair/hvcc-reason.js";

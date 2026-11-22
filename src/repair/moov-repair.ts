@@ -11,7 +11,7 @@
 // and stays unit-testable. The File construction (zero-copy Blob splice) lives
 // on the main thread - see src/ui/ingest.ts applyMoovRepair.
 
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
 import { needsHevcRemux } from "../hevc-remux.js";

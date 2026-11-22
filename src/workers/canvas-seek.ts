@@ -2,7 +2,7 @@
 // mediabunny CanvasSink (e.g. frame-extract thumbnails). No logging - callers
 // own their diagnostics.
 
-import type { CanvasSink, WrappedCanvas } from "mediabunny";
+import type { CanvasSink, WrappedCanvas } from "../mediabunny.js";
 
 /**
  * Three-route fallback to a canvas at `t`:

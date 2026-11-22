@@ -11,7 +11,7 @@ import {
     Mp4OutputFormat,
     Output,
     type VideoCodec,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { createLogger } from "../log.js";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
 import { isSourceReadError } from "../source-read-error.js";

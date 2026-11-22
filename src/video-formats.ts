@@ -17,6 +17,6 @@
 // video-format-names.ts so the main-thread ingest path can detect these
 // containers WITHOUT importing mediabunny - keeping the ~240KB lib off the
 // landing critical path (T9). Worker bundles import VIDEO_INPUT_FORMATS directly.
-import { MATROSKA, MP4, MPEG_TS, QTFF } from "mediabunny";
+import { MATROSKA, MP4, MPEG_TS, QTFF } from "./mediabunny.js";
 
 export const VIDEO_INPUT_FORMATS = [MP4, QTFF, MPEG_TS, MATROSKA];

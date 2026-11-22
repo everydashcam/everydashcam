@@ -3,8 +3,8 @@
 // node, and we still want unit coverage of the TS branch since nothing else
 // in the test suite hits mediabunny.MpegTsInputFormat).
 
-import { Input, InputDisposedError, UnsupportedInputFormatError } from "mediabunny";
-import type { VideoCodec } from "mediabunny";
+import { Input, InputDisposedError, UnsupportedInputFormatError } from "../../mediabunny.js";
+import type { VideoCodec } from "../../mediabunny.js";
 
 import { createLogger } from "../../log.js";
 import { getInputTimeOrigin } from "../../media-time.js";

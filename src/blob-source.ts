@@ -1,4 +1,4 @@
-import { BlobSource } from "mediabunny";
+import { BlobSource } from "./mediabunny.js";
 
 import { createLogger } from "./log.js";
 import { OPENPILOT_FRAME_RATE } from "./parsers/internal/openpilot.js";

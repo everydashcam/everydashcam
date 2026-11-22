@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { BlobSource, EncodedPacketSink, EncodedVideoPacketSource, Input, MATROSKA } from "mediabunny";
+import { BlobSource, EncodedPacketSink, EncodedVideoPacketSource, Input, MATROSKA } from "../mediabunny.js";
 import { describe, expect, it } from "vitest";
 import { createMp4StreamOutput } from "../transcode/pipeline-common.js";
 import { servePortWritable, wrapPortAsFsaWritable } from "./port-writable.js";

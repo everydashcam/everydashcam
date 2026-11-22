@@ -18,7 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 
-import { BlobSource, EncodedPacketSink, Input, type Source } from "mediabunny";
+import { BlobSource, EncodedPacketSink, Input, type Source } from "./mediabunny.js";
 
 import { createRetryingBlobSource } from "./retrying-blob-source.js";
 import { VIDEO_INPUT_FORMATS } from "./video-formats.js";

@@ -1,4 +1,4 @@
-import { CanvasSource, Mp4OutputFormat, NullTarget, Output } from "mediabunny";
+import { CanvasSource, Mp4OutputFormat, NullTarget, Output } from "../mediabunny.js";
 import { createLogger } from "../log.js";
 import { h264EncodingConfig } from "./h264-encoding.js";
 import { createEncoderProbeScene } from "./encoder-probe-scene.js";

@@ -1,4 +1,4 @@
-import type { VideoEncodingConfig } from "mediabunny";
+import type { VideoEncodingConfig } from "../mediabunny.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("transcode:encoder");

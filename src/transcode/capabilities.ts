@@ -19,7 +19,7 @@ import {
     getFirstEncodableAudioCodec,
     Quality,
     type VideoCodec,
-} from "mediabunny";
+} from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
 import { AUDIO_TARGET_BITRATE, AUDIO_TARGET_CHANNELS, AUDIO_TARGET_SAMPLE_RATE } from "./types.js";

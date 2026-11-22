@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
 import { beforeEach, describe, expect, it } from "vitest";
-import { EncodedPacketSink, Input, MP4, type Source } from "mediabunny";
+import { EncodedPacketSink, Input, MP4, type Source } from "./mediabunny.js";
 
 import { createBlobSource } from "./blob-source.js";
 import { _resetForTests, getLogBuffer } from "./log.js";

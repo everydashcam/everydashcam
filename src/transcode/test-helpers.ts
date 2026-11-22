@@ -2,7 +2,7 @@
 // beside the transcode code so the ADPCM readers and the segment cursors are
 // checked with one sink and one continuity check.
 
-import type { AudioSample, AudioSampleSource } from "mediabunny";
+import type { AudioSample, AudioSampleSource } from "../mediabunny.js";
 import { expect } from "vitest";
 
 export type CapturedPcmFormat = "s16" | "f32";

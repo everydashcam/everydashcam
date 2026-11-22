@@ -18,7 +18,7 @@ import {
     StreamTarget,
     VideoSampleSource,
     type AudioCodec,
-} from "mediabunny";
+} from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
 import type { VideoEncodingDiagnostics } from "./encoder-diagnostics.js";

@@ -11,7 +11,7 @@ import {
     Output,
     type EncodedPacket,
     type InputTrack,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { describe, expect, it } from "vitest";
 import { concat } from "../bytes.js";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";

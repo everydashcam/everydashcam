@@ -1,4 +1,4 @@
-import { Quality, type VideoEncodingConfig } from "mediabunny";
+import { Quality, type VideoEncodingConfig } from "../mediabunny.js";
 
 /** Keep support checks, the trial encode and both export sources in agreement. */
 export function h264EncodingConfig(

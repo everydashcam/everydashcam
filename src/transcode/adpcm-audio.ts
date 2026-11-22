@@ -35,7 +35,7 @@ import { upperBoundBy } from "../sorted-search.js";
 // adpcm-audio.test.ts (this reader, on a hand-built synthetic MOV); the live
 // MSE playback was verified manually against the real Navman sample.
 
-import { AudioSample, type AudioSampleSource } from "mediabunny";
+import { AudioSample, type AudioSampleSource } from "../mediabunny.js";
 import { isMatroskaName } from "../video-format-names.js";
 import type { AudioRangeCursor } from "./audio-export-support.js";
 import { openMatroskaAdpcmAudio } from "./adpcm-audio-matroska.js";

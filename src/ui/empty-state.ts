@@ -1,7 +1,7 @@
 // Viewer placeholders for missing selection, unsupported video and playback failure.
 
 import { t } from "../i18n/index.js";
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../mediabunny.js";
 
 import { identifyBrowser } from "../capabilities.js";
 import { dom } from "./dom.js";

@@ -25,7 +25,7 @@ import {
     Mp4InputFormat,
     Mp4OutputFormat,
     Output,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { describe, expect, it } from "vitest";
 
 import { indexMp4FileWithMoov } from "../parsers/internal/mp4-indexing.js";

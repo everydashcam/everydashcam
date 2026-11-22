@@ -8,7 +8,7 @@ import {
     Input,
     Mp4OutputFormat,
     Output,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { describe, expect, it } from "vitest";
 import { VIDEO_INPUT_FORMATS } from "../video-formats.js";
 import { createMp4StreamOutput, feedSegmentAudioCopy, finalizeTranscodeOutput } from "./pipeline-common.js";

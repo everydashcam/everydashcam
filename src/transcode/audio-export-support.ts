@@ -11,7 +11,7 @@ import {
     type EncodedPacket,
     type Input,
     type InputAudioTrack,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { throwIfCancelled } from "../abort-signals.js";
 import { createLogger } from "../log.js";
 import { isSourceReadError } from "../source-read-error.js";

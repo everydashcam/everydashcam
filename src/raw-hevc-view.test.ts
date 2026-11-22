@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input, type Source } from "mediabunny";
+import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input, type Source } from "./mediabunny.js";
 import { describe, expect, it } from "vitest";
 
 import { createBlobSource, demuxView } from "./blob-source.js";

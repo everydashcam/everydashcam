@@ -21,7 +21,7 @@
 // All of this is namespace-local (`internal/`), not exposed outside primitives -
 // primitive tests verify behavior through the high-level Primitive API.
 
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../../mediabunny.js";
 
 import { readMp4BoxHeader } from "./mp4-box-header.js";
 

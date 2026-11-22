@@ -12,7 +12,7 @@ import {
     Output,
     type InputTrack,
     type VideoTrackMetadata,
-} from "mediabunny";
+} from "./mediabunny.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exportClip, probeAudioUniformity } from "./export.js";
 import { _resetForTests as resetLog, getLogBuffer } from "./log.js";

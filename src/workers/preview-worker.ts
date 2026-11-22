@@ -10,7 +10,13 @@
 
 import type { PreviewWorkerContract } from "./preview-protocol.js";
 
-import { CanvasSink, Input, InputDisposedError, UnsupportedInputFormatError, type WrappedCanvas } from "mediabunny";
+import {
+    CanvasSink,
+    Input,
+    InputDisposedError,
+    UnsupportedInputFormatError,
+    type WrappedCanvas,
+} from "../mediabunny.js";
 
 import { PREVIEW_HEIGHT_PX, PREVIEW_JPEG_QUALITY, PREVIEW_WIDTH_PX } from "../preview-config.js";
 import { createBlobSource } from "../blob-source.js";

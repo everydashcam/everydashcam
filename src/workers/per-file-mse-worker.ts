@@ -28,7 +28,7 @@ import {
     type InputVideoTrack,
     type TransformationMatrix,
     type VideoCodec,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { createLogger } from "../log.js";
 import { getInputTimeOrigin } from "../media-time.js";
 import { cleanHvccDescription } from "../hevc-remux.js";

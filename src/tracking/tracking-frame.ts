@@ -1,4 +1,4 @@
-import type { VideoSample } from "mediabunny";
+import type { VideoSample } from "../mediabunny.js";
 
 /** A borrowed decoded sample. The caller keeps it open until all tracking on
  * this frame has finished. Coordinates always refer to the displayed image. */

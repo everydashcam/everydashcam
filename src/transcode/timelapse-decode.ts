@@ -20,7 +20,7 @@ import {
     IsobmffInputFormat,
     type VideoSample,
     type VideoSampleSink,
-} from "mediabunny";
+} from "../mediabunny.js";
 import { throwIfCancelled } from "../abort-signals.js";
 
 /** Per-tick lookahead tolerance of the split slot runtime (pipeline-split.ts):

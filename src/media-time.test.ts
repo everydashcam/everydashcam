@@ -8,7 +8,7 @@ import {
     Input,
     Mp4OutputFormat,
     Output,
-} from "mediabunny";
+} from "./mediabunny.js";
 
 import { getInputTimeOrigin } from "./media-time.js";
 import { indexOneFile } from "./parsers/internal/mp4-indexing.js";

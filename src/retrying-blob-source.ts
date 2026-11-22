@@ -15,7 +15,7 @@
 // pooled reader is a tail slice (start to EOF) consumed across consecutive
 // ranges - the same mechanics BlobSource keeps per read worker internally.
 
-import { CustomSource } from "mediabunny";
+import { CustomSource } from "./mediabunny.js";
 
 import { throwIfCancelled, combineAbortSignals } from "./abort-signals.js";
 import { createBackgroundReadErrorHandler, demuxView } from "./blob-source.js";

@@ -46,7 +46,7 @@ import {
     type EncodedPacket,
     type AudioCodec,
     type InputVideoTrack,
-} from "mediabunny";
+} from "./mediabunny.js";
 
 import { VIDEO_INPUT_FORMATS } from "./video-formats.js";
 import { isDegenerateVideoPacket } from "./transcode/normalize-degenerate-video.js";

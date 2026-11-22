@@ -6,7 +6,7 @@
 // carve-out 4). Display-only: it reads VideoCandidate fields and never mutates
 // state or drives playback/export.
 
-import type { VideoCodec } from "mediabunny";
+import type { VideoCodec } from "../mediabunny.js";
 
 import { escapeHtml } from "../escape.js";
 import { getDateLocale, t } from "../i18n/index.js";

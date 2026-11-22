@@ -16,9 +16,9 @@
 // bound the range, and anchor the first emitted frame on the output timeline.
 
 import { throwIfCancelled } from "../abort-signals.js";
-import { type EncodedPacket, EncodedPacketSink, Input, MATROSKA } from "mediabunny";
+import { type EncodedPacket, EncodedPacketSink, Input, MATROSKA } from "../mediabunny.js";
 import { createRetryingBlobSource } from "../retrying-blob-source.js";
-import { AudioSample, type AudioSampleSource } from "mediabunny";
+import { AudioSample, type AudioSampleSource } from "../mediabunny.js";
 
 import { createLogger } from "../log.js";
 import type { AdpcmAudioReader, AdpcmRangeCursor } from "./adpcm-audio.js";
