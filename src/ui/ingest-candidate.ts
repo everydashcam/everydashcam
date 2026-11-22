@@ -15,7 +15,12 @@ import {
 import { isMatroskaName, isTransportStreamName } from "../video-format-names.js";
 import type { StartSource, VideoCandidate } from "../trips.js";
 import { vendorFileKey } from "../vendor-file-key.js";
-import { canDecodeVideoStream, type VideoStreamDecodeQuery, videoStreamDecodeKey } from "../video-decode-support.js";
+import {
+    canDecodeVideoStream,
+    hasWebCodecsVideoDecoder,
+    type VideoStreamDecodeQuery,
+    videoStreamDecodeKey,
+} from "../video-decode-support.js";
 
 const log = createLogger("ingest-candidate");
 
@@ -287,14 +292,17 @@ function probeDecodable(key: string, query: VideoStreamDecodeQuery): Promise<boo
  * optimistic: Chromium on Windows can decode it through the OS-backed
  * native/MSE path while WebCodecs reports it unsupported. The player
  * classifies a real attach/decode failure. A codec=null candidate, a missing
- * codec string and a thrown probe are optimistic for the same reason.
+ * codec string and a thrown probe are optimistic for the same reason. So is
+ * every codec where WebCodecs is absent (an insecure context): the native
+ * player does not need it, and the probe has no verdict to give.
  */
 export async function checkCanPlay(candidates: VideoCandidate[]): Promise<void> {
     const keyByCandidate = new Map<VideoCandidate, string>();
     const checks = new Map<string, VideoStreamDecodeQuery>();
+    const canProbe = hasWebCodecsVideoDecoder();
     for (const c of candidates) {
         if (!c.codec) continue;
-        if (c.codec === "hevc") {
+        if (c.codec === "hevc" || !canProbe) {
             c.canPlay = true;
             continue;
         }

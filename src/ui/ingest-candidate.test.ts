@@ -46,6 +46,21 @@ describe("checkCanPlay", () => {
         expect(candidate.canPlay).toBe(true);
     });
 
+    it("keeps H.264 playable where WebCodecs is absent", async () => {
+        // An insecure context, such as a plain-HTTP LAN address, has no VideoDecoder.
+        vi.stubGlobal("VideoDecoder", undefined);
+        const candidate = buildIndexedCandidate("clip.mp4");
+        candidate.codec = "avc";
+        candidate.videoCodecString = "avc1.640028";
+        candidate.width = 1920;
+        candidate.height = 1080;
+        candidate.canPlay = false;
+
+        await checkCanPlay([candidate]);
+
+        expect(candidate.canPlay).toBe(true);
+    });
+
     it("rejects an H.264 profile the decoder lacks and probes each stream shape once", async () => {
         const probedCodecs: string[] = [];
         // Node has no WebCodecs; this decoder handles Main but not High 10.

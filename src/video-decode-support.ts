@@ -16,6 +16,16 @@ export interface VideoStreamDecodeQuery {
 }
 
 /**
+ * Whether this context exposes WebCodecs video decoding. Browsers hide it
+ * outside secure contexts, such as a plain-HTTP address on the local network.
+ * A caller that plays through the native video element has no verdict to take
+ * from the probe then.
+ */
+export function hasWebCodecsVideoDecoder(): boolean {
+    return typeof VideoDecoder !== "undefined";
+}
+
+/**
  * Resolves whether this browser's WebCodecs can decode the stream. Without a
  * codec string the answer is optimistic (true), as for an unknown codec: the
  * player and export report a real decode failure where it happens. Resolves
@@ -24,7 +34,7 @@ export interface VideoStreamDecodeQuery {
  */
 export async function canDecodeVideoStream(query: VideoStreamDecodeQuery): Promise<boolean> {
     if (!query.codecString) return true;
-    if (typeof VideoDecoder === "undefined") return false;
+    if (!hasWebCodecsVideoDecoder()) return false;
     const config: VideoDecoderConfig = { codec: webCodecsCodecString(query.codecString) };
     if (isPositiveInteger(query.width) && isPositiveInteger(query.height)) {
         config.codedWidth = query.width;
