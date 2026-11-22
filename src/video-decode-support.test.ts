@@ -30,6 +30,18 @@ describe("canDecodeVideoStream", () => {
         expect(probed).toEqual([{ codec: "avc1.640028", codedWidth: 1920, codedHeight: 1080 }]);
     });
 
+    it("probes an avc3 sample entry as avc1, the only H.264 prefix WebKit accepts", async () => {
+        const probed = stubVideoDecoder(["avc1.640028"]);
+        const supported = await canDecodeVideoStream({
+            codec: "avc",
+            codecString: "avc3.640028",
+            width: 1920,
+            height: 1080,
+        });
+        expect(supported).toBe(true);
+        expect(probed).toEqual([{ codec: "avc1.640028", codedWidth: 1920, codedHeight: 1080 }]);
+    });
+
     it("reports a codec string the decoder rejects", async () => {
         stubVideoDecoder([]);
         expect(

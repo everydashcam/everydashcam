@@ -25,13 +25,21 @@ export interface VideoStreamDecodeQuery {
 export async function canDecodeVideoStream(query: VideoStreamDecodeQuery): Promise<boolean> {
     if (!query.codecString) return true;
     if (typeof VideoDecoder === "undefined") return false;
-    const config: VideoDecoderConfig = { codec: query.codecString };
+    const config: VideoDecoderConfig = { codec: webCodecsCodecString(query.codecString) };
     if (isPositiveInteger(query.width) && isPositiveInteger(query.height)) {
         config.codedWidth = query.width;
         config.codedHeight = query.height;
     }
     const support = await VideoDecoder.isConfigSupported(config);
     return support.supported === true;
+}
+
+// WebKit's VideoDecoder accepts H.264 only under the "avc1." prefix and
+// reports an "avc3." string as unsupported. The sample entry says where the
+// parameter sets live, not what the decoder must handle, so an avc3 stream is
+// probed as the same profile and level under "avc1.".
+function webCodecsCodecString(codecString: string): string {
+    return codecString.startsWith("avc3.") ? `avc1.${codecString.slice("avc3.".length)}` : codecString;
 }
 
 /** Cache key for a decode-support verdict; equal keys get equal answers. */
