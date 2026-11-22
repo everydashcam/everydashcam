@@ -162,7 +162,7 @@ function rowsForCandidate(candidate: VideoCandidate): DetailRow[] {
     }
 
     // Video codec: friendly name + the fullest identifier we have (RFC 6381
-    // string for HEVC/TS, else the sample-entry FourCC).
+    // string when the indexer derived one, else the sample-entry FourCC).
     const vName = videoCodecName(candidate.codec);
     const vDetail = candidate.videoCodecString ?? candidate.codecParam;
     if (vName || vDetail) {

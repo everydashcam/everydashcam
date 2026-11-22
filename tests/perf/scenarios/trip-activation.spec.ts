@@ -110,7 +110,7 @@ for (const vendor of vendors) {
                             };
                             const seen = new Set((w.__everydashcamPerf?.lifecycleEvents ?? []).map((e) => e.type));
                             // player-failed is a terminal alternative to
-                            // first-frame (canDecodeVideo rejected the codec).
+                            // first-frame (the decode probe rejected the codec).
                             // Treat either as "player done" so the harness does
                             // not hang on unplayable-but-otherwise-valid trips.
                             const playerDone =

@@ -354,7 +354,7 @@ async function settleProbe(run: () => Promise<string>): Promise<string> {
  * reports from the same user then show whether the browser itself changed its
  * answer, which no state snapshot reveals. An MP4 codec string already carries
  * the file's sample entry (hvc1 vs hev1), as the native player sees it. Returns
- * null when the recording has no full codec string (AVC MP4, undetermined codec).
+ * null when the indexer derived no full codec string for the recording.
  */
 export async function probePlayback(cand: VideoCandidate): Promise<PlaybackProbe | null> {
     const codecString = cand.videoCodecString;

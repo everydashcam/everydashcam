@@ -1,8 +1,8 @@
 // mediabunny writes its diagnostics straight to console, where the
-// downloadable log ring buffer never sees them: decoder-record and SPS parse
-// errors or unclosed-sample leaks were missing from bug reports. This module
-// decides how those messages enter the app logger; src/mediabunny.ts wires it
-// to the library.
+// downloadable log ring buffer never sees them; unforwarded, its
+// decoder-record and SPS parse errors or unclosed-sample leaks stay out of bug
+// reports. This module decides how those messages enter the app logger;
+// src/mediabunny.ts wires it to the library.
 
 import type { Logger } from "./log.js";
 import { IMA_ADPCM_SAMPLE_ENTRY } from "./parsers/internal/mp4-walker.js";
