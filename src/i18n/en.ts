@@ -400,6 +400,12 @@ export const enDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, one {# file} other {# files}}",
     "unsupported.modal.note": ".mp4, .mov, .ts, .m2ts and .mkv files open normally — continuing with those.",
     "unsupported.modal.close": "Got it",
+    "missing70maiGps.title": "No GPS data found for your 70mai",
+    "missing70maiGps.body": "Some 70mai cameras save GPS in GPSData*.txt files, sometimes in a hidden .GPS folder. Open the whole SD card to include those files. If the GPS files list clip names, you can add them separately.",
+    "missing70maiGps.openCard": "Open SD card",
+    "missing70maiGps.addFiles": "Add GPS files",
+    "missing70maiGps.dismiss": "Not now",
+
     "noRecordings.title": "Couldn't read this card",
     "noRecordings.intro": "Couldn't find supported recordings in this folder. Help me add your dashcam by sharing a report about the files.",
     "noRecordings.help": "Help me add your camera",

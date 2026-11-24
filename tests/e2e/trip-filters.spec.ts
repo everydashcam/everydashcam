@@ -26,6 +26,7 @@ async function addRecordings(page: Page, names: string[]): Promise<void> {
         mkdirSync(path.dirname(filename), { recursive: true });
         writeFileSync(filename, footage);
     }
+    writeFileSync(path.join(directory, "GPSData.txt"), "$V02\n");
     await page.locator("#folder-input").setInputFiles(directory);
     await expect.poll(() => page.evaluate(() => window.__everydashcam.state.ingestController === null)).toBe(true);
     await expect(page.locator("#trip-analysis-status")).toBeHidden({ timeout: 30_000 });

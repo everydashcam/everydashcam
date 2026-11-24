@@ -57,7 +57,7 @@ import { initLandingShot } from "./ui/landing-shot.js";
 import { initLandingTopbar } from "./ui/landing-topbar.js";
 import { dom } from "./ui/dom.js";
 import { syncEmptyState } from "./ui/empty-state.js";
-import { initFileSources } from "./ui/file-sources.js";
+import { initFileSources, openRecordingFiles, openRecordingFolder } from "./ui/file-sources.js";
 import { initFolderSources } from "./ui/folder-sources.js";
 import { initPersistentFolders } from "./ui/persistent-folders.js";
 import { initAnnotations, markersForTrip, registerMarkersRestampedHook } from "./ui/annotations.js";
@@ -83,6 +83,7 @@ import { isIntentionalNavigation } from "./ui/nav-intent.js";
 import { initSwitchLangModal } from "./ui/switch-lang-modal.js";
 import { initUnsupportedFormatsModal } from "./ui/unsupported-formats-modal.js";
 import { initIosFolderWarningModal } from "./ui/ios-folder-warning-modal.js";
+import { initMissing70maiGpsModal } from "./ui/missing-70mai-gps-modal.js";
 import { initUploadWarningModal } from "./ui/upload-warning-modal.js";
 import { initWebglEnableModal } from "./ui/webgl-enable-modal.js";
 import {
@@ -559,6 +560,7 @@ initMobileDrawer();
 initOnboarding();
 if (!__PORTABLE__) initSupportPrompt();
 initFileSources();
+initMissing70maiGpsModal(openRecordingFiles, () => void openRecordingFolder());
 // The folder rows above the trip list: where the loaded trips came from and
 // whether that folder is remembered. Wired before the first ingest can
 // register a source into it.

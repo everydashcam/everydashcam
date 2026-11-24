@@ -120,7 +120,7 @@ export function writeTripLibrary(options: TripLibraryOptions): string {
     for (let k = 0; k < (options.withoutGps ?? 0); k++) {
         const day = String(k + 1).padStart(2, "0");
         writeFileSync(
-            path.join(directory, `NO202001${day}-120000-000001F.MP4`),
+            path.join(directory, `clip-no-gps-${day}.mp4`),
             withMvhdCreationTime(noGpsClip, `2020-01-${day}T12:00:00.000Z`),
         );
     }

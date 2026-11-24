@@ -397,6 +397,12 @@ export const zhDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, other {# 个文件}}",
     "unsupported.modal.note": ".mp4、.mov、.ts、.m2ts、.mkv 正常打开 — 继续处理这些。",
     "unsupported.modal.close": "明白",
+    "missing70maiGps.title": "未找到这批 70mai 录像的 GPS 数据",
+    "missing70maiGps.body": "部分 70mai 行车记录仪会将 GPS 数据保存在 GPSData*.txt 文件中，有时这些文件位于隐藏的 .GPS 文件夹中。打开整张 SD 卡即可读入这些文件。如果 GPS 文件中记录了片段名称，也可以单独添加这些文件。",
+    "missing70maiGps.openCard": "打开 SD 卡",
+    "missing70maiGps.addFiles": "添加 GPS 文件",
+    "missing70maiGps.dismiss": "以后再说",
+
     "noRecordings.title": "无法读取这张卡",
     "noRecordings.intro": "这个文件夹中没有找到支持的录像。欢迎分享文件信息报告，帮助我添加对你的行车记录仪的支持。",
     "noRecordings.help": "帮我添加你的行车记录仪",

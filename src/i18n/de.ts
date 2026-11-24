@@ -397,6 +397,12 @@ export const deDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, one {# Datei} other {# Dateien}}",
     "unsupported.modal.note": ".mp4-, .mov-, .ts-, .m2ts- und .mkv-Dateien öffnen sich normal — mit denen geht es weiter.",
     "unsupported.modal.close": "Verstanden",
+    "missing70maiGps.title": "Keine GPS-Daten für deine 70mai gefunden",
+    "missing70maiGps.body": "Einige 70mai-Kameras speichern GPS-Daten in GPSData*.txt-Dateien, manchmal im versteckten Ordner .GPS. Öffne die ganze SD-Karte, um diese Dateien mit einzulesen. Wenn die GPS-Dateien die Clipnamen enthalten, kannst du sie auch separat hinzufügen.",
+    "missing70maiGps.openCard": "SD-Karte öffnen",
+    "missing70maiGps.addFiles": "GPS-Dateien hinzufügen",
+    "missing70maiGps.dismiss": "Nicht jetzt",
+
     "noRecordings.title": "Diese Karte konnte nicht gelesen werden",
     "noRecordings.intro": "In diesem Ordner wurden keine unterstützten Aufnahmen gefunden. Hilf mir, deine Dashcam zu unterstützen, indem du mir einen Bericht über die Dateien schickst.",
     "noRecordings.help": "Hilf mir, deine Dashcam hinzuzufügen",

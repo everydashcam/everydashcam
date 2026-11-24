@@ -2,12 +2,29 @@ import {
     check70maiDatedGps,
     check70maiDatedGpsIncremental,
     check70maiHiddenGps,
+    check70maiMissingGpsOpenCard,
+    check70maiMissingGpsPicker,
     check70maiSessionGps,
 } from "../e2e/_70mai-session-gps.js";
 import { presetLocalStorage } from "../e2e/_fixtures.js";
 import { openPortable, test } from "./_fixtures.js";
 
 test.use({ timezoneId: "Europe/Moscow" });
+
+test("file-origin viewer adds a GPS log to the already opened 70mai clips", async ({ page }, info) => {
+    await presetLocalStorage(page);
+    await openPortable(page, info.outputPath("viewer"));
+    await check70maiMissingGpsPicker(page);
+});
+
+test("file-origin viewer can reopen the whole 70mai card from the missing-log prompt", async ({ page }, info) => {
+    await presetLocalStorage(page);
+    await page.addInitScript(() => {
+        Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: undefined });
+    });
+    await openPortable(page, info.outputPath("viewer"));
+    await check70maiMissingGpsOpenCard(page, info.outputPath("card"));
+});
 
 test("file-origin import reads a 70mai log from the supported .GPS layout", async ({ page }, info) => {
     await presetLocalStorage(page);

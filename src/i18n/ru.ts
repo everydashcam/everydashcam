@@ -404,6 +404,12 @@ export const ruDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, one {# файл} few {# файла} other {# файлов}}",
     "unsupported.modal.note": "Видео в .mp4, .mov, .ts, .m2ts и .mkv открываются как обычно — их обработка продолжается.",
     "unsupported.modal.close": "Понятно",
+    "missing70maiGps.title": "GPS для записей 70mai не найден",
+    "missing70maiGps.body": "Некоторые камеры 70mai сохраняют GPS в файлах GPSData*.txt, иногда в скрытой папке .GPS. Открой всю SD-карту, чтобы everydashcam прочитал и видео, и GPS. GPS-файлы с именами клипов можно добавить отдельно.",
+    "missing70maiGps.openCard": "Открыть SD-карту",
+    "missing70maiGps.addFiles": "Добавить GPS-файлы",
+    "missing70maiGps.dismiss": "Не сейчас",
+
     "noRecordings.title": "Не удалось прочитать эту карту",
     "noRecordings.intro": "В этой папке не нашлось поддерживаемых записей. Помоги добавить свой регистратор — отправь отчёт о файлах.",
     "noRecordings.help": "Помочь добавить",

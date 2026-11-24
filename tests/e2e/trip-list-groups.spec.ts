@@ -24,6 +24,7 @@ async function addRecordings(page: Page, names: readonly string[] = filenames): 
         mkdirSync(path.dirname(filename), { recursive: true });
         writeFileSync(filename, footage);
     }
+    writeFileSync(path.join(directory, "GPSData.txt"), "$V02\n");
     await page.locator("#folder-input").setInputFiles(directory);
     await expect.poll(() => page.evaluate(() => window.__everydashcam.state.ingestController === null)).toBe(true);
     await expect(page.locator("#trip-analysis-status")).toBeHidden({ timeout: 30_000 });
@@ -219,8 +220,9 @@ test("switches to compact rows and keeps the choice after a reload", async ({ pa
     const october = page.locator(".trip-month").first();
     await expect(october.locator("li.trip .trip-title")).toHaveText("09:00 → 09:00");
     await expect(october.locator("li.trip .trip-thumb")).toHaveCount(1);
-    const box = await october.locator("li.trip").boundingBox();
-    expect(box?.height ?? 0).toBeLessThan(60);
+    await expect
+        .poll(async () => (await october.locator("li.trip").boundingBox())?.height ?? Infinity)
+        .toBeLessThan(60);
 
     // The run belongs to Sep 14, but its after-midnight rows must retain Sep 15.
     const run = page.locator(".trip-parking-run");

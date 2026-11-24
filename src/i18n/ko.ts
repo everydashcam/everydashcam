@@ -408,6 +408,12 @@ export const koDict = {
     "unsupported.modal.entry": "{ext} — {n} 개 파일",
     "unsupported.modal.note": ".mp4, .mov, .ts, .m2ts, .mkv 는 정상적으로 열려요 — 그 파일들의 처리는 계속돼요.",
     "unsupported.modal.close": "확인",
+    "missing70maiGps.title": "70mai 녹화의 GPS 데이터를 찾을 수 없음",
+    "missing70maiGps.body": "일부 70mai 카메라는 GPS 데이터를 GPSData*.txt 파일로 저장해요. 숨겨진 .GPS 폴더에 들어 있을 수도 있어요. 이 파일까지 읽으려면 SD 카드 전체를 여세요. GPS 파일에 클립 이름이 들어 있다면 파일만 따로 추가할 수 있어요.",
+    "missing70maiGps.openCard": "SD 카드 열기",
+    "missing70maiGps.addFiles": "GPS 파일 추가",
+    "missing70maiGps.dismiss": "나중에",
+
     "noRecordings.title": "이 카드를 읽지 못했어요",
     "noRecordings.intro": "이 폴더에서 지원되는 녹화를 찾지 못했어요. 파일 정보가 담긴 보고서를 보내 블랙박스 지원을 추가할 수 있게 도와주세요.",
     "noRecordings.help": "내 블랙박스 지원 추가 돕기",

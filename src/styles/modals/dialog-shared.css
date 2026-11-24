@@ -112,6 +112,16 @@
     justify-content: flex-end;
 }
 
+#missing-70mai-gps-modal .export-modal-actions {
+    flex-wrap: wrap;
+}
+
+@media (max-width: 450px) {
+    #missing-70mai-gps-modal .export-modal-actions {
+        flex-direction: column-reverse;
+    }
+}
+
 /* Short landscape: the on-screen keyboard eats the bottom half of the screen,
    but it does NOT shrink vh/svh/dvh - so a center-anchored fixed card keeps its
    lower half (textarea tail + Send) behind the keyboard. Pin the card to the top

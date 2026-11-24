@@ -2241,6 +2241,18 @@
         </div>
     </div>
 
+    <div data-nosnippet id="missing-70mai-gps-modal" class="export-modal modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="missing-70mai-gps-title" aria-describedby="missing-70mai-gps-body">
+        <div class="export-modal-card modal-card">
+            <div class="export-modal-title" id="missing-70mai-gps-title" data-i18n="missing70maiGps.title">No GPS data found for your 70mai</div>
+            <p id="missing-70mai-gps-body" class="export-modal-summary" data-i18n="missing70maiGps.body">Some 70mai cameras save GPS in GPSData*.txt files, sometimes in a hidden .GPS folder. Open the whole SD card to include those files. If the GPS files list clip names, you can add them separately.</p>
+            <div class="export-modal-actions">
+                <button id="missing-70mai-gps-dismiss" type="button" class="dc-btn dc-btn--ghost" data-i18n="missing70maiGps.dismiss">Not now</button>
+                <button id="missing-70mai-gps-add-files" type="button" class="dc-btn dc-btn--secondary" data-i18n="missing70maiGps.addFiles">Add GPS files</button>
+                <button id="missing-70mai-gps-open-card" type="button" class="dc-btn dc-btn--primary" data-i18n="missing70maiGps.openCard">Open SD card</button>
+            </div>
+        </div>
+    </div>
+
     <!-- "Open in a Chromium browser" modal. Opened from the export panel's
          non-Chromium banner (Firefox / Safari / iOS WebKit). The chips are
          external download links; on iOS every engine is WebKit, so the copy

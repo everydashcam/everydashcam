@@ -52,6 +52,7 @@ test("Save keeps an adopted detection pass when playback switches trips", async 
     ]);
     const trips = page.locator("li.trip:not(.unindexed-note)");
     await expect(trips).toHaveCount(2);
+    await page.locator("#missing-70mai-gps-dismiss").click();
     await trips.first().locator(".trip-header").click();
     await setCameraFlip(page, "front", "horizontal", true);
     await openExport(page);

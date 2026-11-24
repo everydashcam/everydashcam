@@ -399,6 +399,12 @@ export const plDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, one {# plik} few {# pliki} many {# plików} other {# pliku}}",
     "unsupported.modal.note": "Pliki .mp4, .mov, .ts, .m2ts i .mkv otwierają się normalnie — ich przetwarzanie jest kontynuowane.",
     "unsupported.modal.close": "Jasne",
+    "missing70maiGps.title": "Brak danych GPS dla nagrań z 70mai",
+    "missing70maiGps.body": "Niektóre kamery 70mai zapisują dane GPS w plikach GPSData*.txt, czasem w ukrytym folderze .GPS. Otwórz całą kartę SD, aby wczytać również te pliki. Jeśli pliki GPS zawierają nazwy klipów, możesz dodać je osobno.",
+    "missing70maiGps.openCard": "Otwórz kartę SD",
+    "missing70maiGps.addFiles": "Dodaj pliki GPS",
+    "missing70maiGps.dismiss": "Nie teraz",
+
     "noRecordings.title": "Nie udało się odczytać tej karty",
     "noRecordings.intro": "W tym folderze nie znaleziono obsługiwanych nagrań. Pomóż mi dodać obsługę twojego wideorejestratora, udostępniając raport o plikach.",
     "noRecordings.help": "Pomóż mi dodać twój wideorejestrator",

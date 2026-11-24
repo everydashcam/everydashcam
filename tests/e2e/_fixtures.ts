@@ -373,8 +373,13 @@ export async function waitForMetadata(page: Page): Promise<void> {
  * the chart - the total-time readout has advanced past 0:00). Fails loudly
  * within the timeouts rather than racing on a fixed sleep.
  */
-export async function loadTrip(page: Page, sampleDir: string = SAMPLE_70MAI): Promise<void> {
+export async function loadTrip(
+    page: Page,
+    sampleDir: string = SAMPLE_70MAI,
+    opts: { dismissMissing70maiGps?: boolean } = {},
+): Promise<void> {
     await page.locator("#folder-input").setInputFiles(sampleDir);
+    if (opts.dismissMissing70maiGps) await page.locator("#missing-70mai-gps-dismiss").click();
     const firstTrip = page.locator("li.trip:not(.unindexed-note)").first();
     await expect(firstTrip, "a trip card must appear after ingest").toBeVisible({ timeout: 30_000 });
     // Metadata updates replace provisional cards and can interrupt a click.

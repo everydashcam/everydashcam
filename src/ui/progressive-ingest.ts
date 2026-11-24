@@ -83,6 +83,7 @@ import {
 import { loadDeferredGpsForTrip } from "./deferred-gps.js";
 import { hideTripPreparation, showTripPreparation, updateTripPreparationProgress } from "./trip-preparation.js";
 import { showNoRecordingsModal } from "./no-recordings-modal.js";
+import { maybeShowMissing70maiGps } from "./missing-70mai-gps-modal.js";
 import { notify } from "./notifications.js";
 import { maybeRunIngestTour, maybeRunSourcesTour } from "./onboarding.js";
 import { maybeShowSupportPrompt, recordSuccessfulLoadForSupportPrompt } from "./support-prompt.js";
@@ -228,6 +229,7 @@ export interface ProgressiveIngestContext {
     preciseOffsetRuns: ReturnType<typeof estimatePreciseClockOffsetByFingerprint>;
     ingestStart: number;
     sourceFiles: VendorFile[];
+    mai70GpsLogs: VendorFile[];
     videosNewCount: number;
     hasUnsupportedFormats: boolean;
     signal: AbortSignal;
@@ -1494,8 +1496,16 @@ async function completeProgressiveRun(run: ProgressiveIngestRun, generation: num
     });
 
     if (state.trips.length > 0) {
-        maybeRunIngestTour();
-        maybeRunSourcesTour();
+        const runIngestTours = (): void => {
+            maybeRunIngestTour();
+            maybeRunSourcesTour();
+        };
+        const offeredGpsHelp =
+            candidatePool !== null &&
+            !ctx.hasUnsupportedFormats &&
+            run.embeddedErrors.length === 0 &&
+            maybeShowMissing70maiGps(candidatePool, ctx.sourceFiles, ctx.mai70GpsLogs, runIngestTours);
+        if (!offeredGpsHelp) runIngestTours();
         const addedPlayableRecording = ctx.videosNewCount - run.metadataFailed > 0;
         if (!__PORTABLE__ && addedPlayableRecording && recordSuccessfulLoadForSupportPrompt()) {
             maybeShowSupportPrompt();

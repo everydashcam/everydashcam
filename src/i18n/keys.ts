@@ -517,6 +517,13 @@ export type I18nKey =
     | "unsupported.modal.entry"
     | "unsupported.modal.note"
     | "unsupported.modal.close"
+    // Missing 70mai GPS log prompt: shown once after an ingest whose 70mai
+    // front clips have no GPS and no sibling GPSData*.txt log in the batch.
+    | "missing70maiGps.title"
+    | "missing70maiGps.body"
+    | "missing70maiGps.openCard"
+    | "missing70maiGps.addFiles"
+    | "missing70maiGps.dismiss"
     // "Couldn't read this card" modal - shown after a zero-trips ingest that
     // still contained recording-like files (the unrecognised-camera case). Its
     // primary CTA routes into the feedback form (which auto-attaches the byte-free

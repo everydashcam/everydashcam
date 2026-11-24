@@ -56,6 +56,7 @@ test.beforeAll(async () => {
         await mkdir(directory, { recursive: true });
         await writeFile(join(directory, `NO20260101-120000-000001${suffix}.MP4`), native);
     }
+    await writeFile(join(fixtureDirectory, "multiple", "GPSData.txt"), "$V02\n");
 });
 
 test.afterAll(async () => {

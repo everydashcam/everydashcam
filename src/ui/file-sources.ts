@@ -67,6 +67,49 @@ function hideDropOverlay(): void {
     }, 160);
 }
 
+export function openRecordingFiles(): void {
+    if (!claimImportGesture()) return;
+    beginPreIngestReading();
+    dom.fileInput.click();
+}
+
+function openFolderPicker(): void {
+    // Show the reading overlay before the classic picker: the browser
+    // enumerates the selected tree before it can dispatch "change".
+    if (canUseDirectoryPicker()) {
+        void openViaDirectoryPicker();
+        return;
+    }
+    beginPreIngestReading();
+    dom.folderInput.click();
+}
+
+let pickerGateInFlight = false;
+
+export async function openRecordingFolder(): Promise<void> {
+    if (!claimImportGesture() || pickerGateInFlight) return;
+
+    // iOS copies the entire folder before dispatching "change". Warn each
+    // time and offer the individual-file picker as well.
+    const isIos = identifyBrowser().os === "ios";
+    if (!isIos && !shouldShowUploadWarning()) {
+        openFolderPicker();
+        return;
+    }
+    pickerGateInFlight = true;
+    try {
+        if (isIos) {
+            const choice = await showIosFolderWarning();
+            if (choice === "files") openRecordingFiles();
+            else if (choice === "folder") openFolderPicker();
+        } else if (await showUploadWarning()) {
+            openFolderPicker();
+        }
+    } finally {
+        pickerGateInFlight = false;
+    }
+}
+
 export function initFileSources(): void {
     // Every gesture below asks claimImportGesture() before anything else: an
     // import must not start while the app restarts, and once one has started
@@ -115,70 +158,13 @@ export function initFileSources(): void {
     });
     dom.fileInput.addEventListener("cancel", () => endPreIngestReading());
 
-    // Raises the pre-ingest overlay, THEN opens the OS folder picker. The
-    // overlay goes up before .click() on purpose: once the picker is open the
-    // page yields control, and after the user picks a folder the browser
-    // enumerates the whole tree before firing change - a window that runs no JS
-    // and can take seconds on a slow card. Showing the overlay first means the
-    // page is never blank across that window. Retracted by the change handler
-    // (a selection) or the cancel event (a dismissal).
-    const openFolderPicker = (): void => {
-        // On Chromium the FSA directory picker yields a persistable handle
-        // (remember + zero-click restore, see persistent-folders.ts); the
-        // classic input stays everywhere else AND as the in-flight fallback.
-        if (canUseDirectoryPicker()) {
-            void openViaDirectoryPicker();
-            return;
-        }
-        beginPreIngestReading();
-        dom.folderInput.click();
-    };
-
-    // On iOS/iPadOS the folder picker copies the entire chosen tree into the
-    // browser's temporary storage before firing change (see
-    // ios-folder-warning-modal.ts) - so the CTA routes through a warning that
-    // shows EVERY time and steers to picking individual files. It replaces the
-    // TTL-gated upload warning there: its body carries the same "nothing is
-    // uploaded" reassurance. Computed once - the UA does not change mid-session.
-    const isIos = identifyBrowser().os === "ios";
-
-    let pickerGateInFlight = false;
     for (const cta of [dom.landingDrop, dom.landingDock, dom.sidebarCta]) {
         if (!cta) continue;
-        cta.addEventListener("click", async (e) => {
+        cta.addEventListener("click", (e) => {
             // The sidebar label would also activate the input after this handler.
             if (cta === dom.sidebarCta) e.preventDefault();
             else cta.querySelector("button")?.focus({ preventScroll: true });
-            // Claimed before the warning dialogs: a cancelled picker still counts.
-            if (!claimImportGesture()) return;
-            if (isIos) {
-                if (pickerGateInFlight) return;
-                pickerGateInFlight = true;
-                try {
-                    const choice = await showIosFolderWarning();
-                    if (choice === "files") {
-                        beginPreIngestReading();
-                        dom.fileInput.click();
-                    } else if (choice === "folder") {
-                        openFolderPicker();
-                    }
-                } finally {
-                    pickerGateInFlight = false;
-                }
-                return;
-            }
-            if (!shouldShowUploadWarning()) {
-                openFolderPicker();
-                return;
-            }
-            if (pickerGateInFlight) return;
-            pickerGateInFlight = true;
-            try {
-                const continued = await showUploadWarning();
-                if (continued) openFolderPicker();
-            } finally {
-                pickerGateInFlight = false;
-            }
+            void openRecordingFolder();
         });
     }
 

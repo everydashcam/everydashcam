@@ -90,7 +90,7 @@ for (const locale of ["en", "ru"] as const)
                 computeTrackerAssets("build").urls,
             );
             await gotoApp(page, locale);
-            await loadTrip(page, resolve(SAMPLE_70MAI, "Normal/Front"));
+            await loadTrip(page, resolve(SAMPLE_70MAI, "Normal/Front"), { dismissMissing70maiGps: true });
             await pausePlayback(page);
             // Observe real compositor submissions on both physical video slots,
             // including promotion when review crosses a source-file boundary.

@@ -10,6 +10,7 @@ import {
     openTripWithRecording,
     pausePlayback,
     REPO_ROOT,
+    SAMPLE_70MAI,
     SAMPLE_GOPRO,
     SAMPLE_NOGPS,
 } from "./_fixtures.js";
@@ -69,6 +70,72 @@ async function openRecordingTrip(page: Page, name: string): Promise<void> {
     await openTripWithRecording(page, name);
     await pausePlayback(page);
     await expect(page.locator("#trip-analysis-status")).toBeHidden();
+}
+
+async function dismissMissingGpsPrompt(page: Page): Promise<void> {
+    const modal = page.locator("#missing-70mai-gps-modal");
+    await expect(modal).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(modal).toBeHidden();
+}
+
+/** The modal keeps its focus and actions after a dismissed picker. A later
+ * selection can still add a log to the existing video through normal ingest. */
+export async function check70maiMissingGpsPicker(page: Page, screenshot?: string): Promise<void> {
+    const recording = "NO20260101-120000-000001F.MP4";
+    await page.locator("#file-input").setInputFiles(join(SAMPLE_70MAI, "Normal", "Front", recording));
+    const modal = page.locator("#missing-70mai-gps-modal");
+    const addFiles = page.locator("#missing-70mai-gps-add-files");
+    const openCard = page.locator("#missing-70mai-gps-open-card");
+    const overlay = page.locator("#ingest-overlay");
+    await expect(modal).toBeVisible();
+    await expect(modal.locator(".modal-card")).toBeInViewport({ ratio: 1 });
+    await expect(openCard).toBeFocused();
+    await expect(addFiles).toBeInViewport({ ratio: 1 });
+    if (screenshot) await page.screenshot({ path: screenshot });
+    await page.keyboard.press("Tab");
+    await expect(page.locator("#missing-70mai-gps-dismiss")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(openCard).toBeFocused();
+
+    const [cancelled] = await Promise.all([page.waitForEvent("filechooser"), addFiles.click()]);
+    await expect(overlay).toBeVisible();
+    await cancelled.element().dispatchEvent("cancel");
+    await expect(overlay).toBeHidden();
+    await expect(addFiles).toBeFocused();
+
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), addFiles.click()]);
+    await expect(overlay).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(overlay).toBeHidden();
+    await expect(addFiles).toBeFocused();
+    await chooser.setFiles(join(SAMPLE_70MAI, "GPSData000001.txt"));
+
+    await expect(modal).toBeHidden();
+    await expect
+        .poll(() => recordingGps(page, "front"))
+        .toEqual([{ name: recording, points: 3, extractors: ["csv-70mai"] }]);
+    await openTripWithRecording(page, recording);
+    await expect(page.locator(".player-no-gps")).toBeHidden();
+    await expect(page.locator("#player-chart-canvas")).toBeVisible();
+}
+
+/** Reopening the whole card is useful when the log has no clip names. */
+export async function check70maiMissingGpsOpenCard(page: Page, directory: string): Promise<void> {
+    writeSessionFolder(directory, true);
+    const card = join(directory, "A500S");
+    await page.locator("#folder-input").setInputFiles(join(card, "Normal", "Front"));
+    const modal = page.locator("#missing-70mai-gps-modal");
+    await expect(modal).toBeVisible();
+    const [chooser] = await Promise.all([
+        page.waitForEvent("filechooser"),
+        page.locator("#missing-70mai-gps-open-card").click(),
+    ]);
+    await chooser.setFiles(card);
+    await expect(modal).toBeHidden();
+    await expect
+        .poll(() => sessionRecordingState(page))
+        .toEqual([{ name: RECORDING_NAME, ready: true, start: START_UTC, seconds: [START_UTC + 1, START_UTC + 2] }]);
 }
 
 function recordingGps(page: Page, channel: Channel) {
@@ -185,6 +252,8 @@ export async function check70maiSessionGps(page: Page, directory: string, withGp
             timeout: 30_000,
         })
         .toEqual(expected);
+    // The sibling card has no log even when the A500S card includes one.
+    await dismissMissingGpsPrompt(page);
 
     await openRecordingTrip(page, RECORDING_NAME);
     if (withGps) {
@@ -291,6 +360,7 @@ export async function check70maiCameraTimezone(
 
     await page.locator("#folder-input").setInputFiles(directory);
     await expectRecordingZone(18000, false);
+    await dismissMissingGpsPrompt(page);
     await openRecordingTrip(page, RECORDING_NAME);
     await expect(page.locator(".player-no-gps")).toBeVisible();
     await expect(page.locator("#gps-sync-pill")).toBeVisible();
@@ -381,6 +451,7 @@ export async function check70maiCameraTimezone(
     await page.reload();
     await page.locator("#folder-input").setInputFiles(directory);
     await expectRecordingZone(10800, true);
+    await dismissMissingGpsPrompt(page);
     await openRecordingTrip(page, RECORDING_NAME);
     await expectEffectiveShift();
     await page.locator("#gps-sync-pill").click();

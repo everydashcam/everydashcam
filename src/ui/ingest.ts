@@ -68,6 +68,7 @@ import { reportParseErrors } from "./ingest-diagnostics.js";
 import { adoptDuplicatedDropSources, scopeIngestFiles } from "./ingest-source-key.js";
 import { reanchorRecordingCandidates } from "./ingest-regroup.js";
 import { resolveLooseGpxFiles } from "./loose-gpx-ingest.js";
+import { hideMissing70maiGpsModal, is70maiGpsLog } from "./missing-70mai-gps-modal.js";
 
 const log = createLogger("ingest");
 
@@ -141,6 +142,7 @@ export async function ingestFiles(
     // full-list passes. Excluded-only selections need no classification phase.
     const hasEligibleFiles = vfiles.some((vf) => !isIgnoredPath(vf.relativePath));
     if (hasEligibleFiles) {
+        hideMissing70maiGpsModal();
         showIngestOverlay();
         setIngestStage(t("ingestOverlay.stage.classifying"));
         showIngestProgress();
@@ -704,6 +706,7 @@ async function ingestFilesInternal(
         preciseOffsetRuns,
         ingestStart,
         sourceFiles: vfiles,
+        mai70GpsLogs: classified.filter(is70maiGpsLog).map((entry) => entry.file),
         videosNewCount: newVideos.length,
         hasUnsupportedFormats: unplayableByExt.size > 0,
         signal,

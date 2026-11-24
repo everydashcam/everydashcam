@@ -399,6 +399,12 @@ export const ptDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, one {# arquivo} other {# arquivos}}",
     "unsupported.modal.note": "Os .mp4, .mov, .ts, .m2ts e .mkv abrem normal — o processamento continua com eles.",
     "unsupported.modal.close": "Entendi",
+    "missing70maiGps.title": "Dados de GPS da sua 70mai não encontrados",
+    "missing70maiGps.body": "Algumas câmeras 70mai salvam os dados de GPS em arquivos GPSData*.txt, às vezes em uma pasta oculta chamada .GPS. Abra o cartão SD inteiro para incluir esses arquivos. Se os arquivos de GPS tiverem os nomes dos clipes, você pode adicioná-los separadamente.",
+    "missing70maiGps.openCard": "Abrir cartão SD",
+    "missing70maiGps.addFiles": "Adicionar arquivos GPS",
+    "missing70maiGps.dismiss": "Agora não",
+
     "noRecordings.title": "Não foi possível ler este cartão",
     "noRecordings.intro": "Não foram encontradas gravações compatíveis nesta pasta. Me ajude a adicionar suporte à sua câmera compartilhando um relatório sobre os arquivos.",
     "noRecordings.help": "Ajude a adicionar sua câmera",

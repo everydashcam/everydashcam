@@ -399,6 +399,12 @@ export const esDict = {
     "unsupported.modal.entry": "{ext} — {n, plural, one {# archivo} other {# archivos}}",
     "unsupported.modal.note": "Los .mp4, .mov, .ts, .m2ts y .mkv se abren con normalidad — se continúa con esos archivos.",
     "unsupported.modal.close": "Entendido",
+    "missing70maiGps.title": "No se encontraron datos GPS para tu 70mai",
+    "missing70maiGps.body": "Algunas cámaras 70mai guardan los datos GPS en archivos GPSData*.txt, a veces en una carpeta oculta llamada .GPS. Abre toda la tarjeta SD para incluirlos. Si los archivos GPS contienen los nombres de los clips, puedes añadirlos por separado.",
+    "missing70maiGps.openCard": "Abrir tarjeta SD",
+    "missing70maiGps.addFiles": "Añadir archivos GPS",
+    "missing70maiGps.dismiss": "Ahora no",
+
     "noRecordings.title": "No se pudo leer esta tarjeta",
     "noRecordings.intro": "No se encontraron grabaciones compatibles en esta carpeta. Ayúdame a añadir tu dashcam enviándome un informe sobre los archivos.",
     "noRecordings.help": "Ayúdame a añadir tu cámara de coche",

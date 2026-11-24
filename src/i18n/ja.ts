@@ -409,6 +409,12 @@ export const jaDict = {
     "unsupported.modal.entry": "{ext} — {n} 件のファイル",
     "unsupported.modal.note": ".mp4、.mov、.ts、.m2ts、.mkv は通常どおり開きます — そちらは続行します。",
     "unsupported.modal.close": "OK",
+    "missing70maiGps.title": "70mai の GPS データが見つかりません",
+    "missing70maiGps.body": "一部の 70mai カメラでは、GPS データは GPSData*.txt ファイルに保存されます。隠しフォルダー .GPS に入っていることもあります。これらのファイルも読み込むには、SD カード全体を開いてください。GPS ファイルにクリップ名が記録されていれば、ファイルだけを追加することもできます。",
+    "missing70maiGps.openCard": "SD カードを開く",
+    "missing70maiGps.addFiles": "GPS ファイルを追加",
+    "missing70maiGps.dismiss": "今はしない",
+
     "noRecordings.title": "このカードを読み取れませんでした",
     "noRecordings.intro": "このフォルダーには、対応している録画が見つかりませんでした。お使いのドラレコへの対応を追加できるよう、ファイル情報のレポートをお送りください。",
     "noRecordings.help": "カメラの追加を手伝う",
