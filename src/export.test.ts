@@ -22,6 +22,7 @@ import { groupTrips, type VideoCandidate } from "./trips.js";
 import { createInMemoryFileHandle } from "./ui/in-memory-file.js";
 import { VIDEO_INPUT_FORMATS } from "./video-formats.js";
 import { buildMp4Index } from "./parsers/internal/mp4-index.js";
+import { indexMp4FileWithMoov } from "./parsers/internal/mp4-indexing.js";
 import { findGpmdTrack } from "./parsers/internal/gpmf-extract.js";
 import { findBox, readMediaTimescale, readSampleDurationsInTicks } from "./parsers/internal/mp4-walker.js";
 import { withRepairedPhantomAudio } from "./repair/test-helpers.js";
@@ -51,7 +52,10 @@ async function tripOf(files: File[]) {
     for (const file of files) {
         const input = open(file);
         try {
-            const durationSec = (await input.computeDuration()) - (await getInputTimeOrigin(input));
+            const durationFromPackets = (await input.computeDuration()) - (await getInputTimeOrigin(input));
+            // The viewer can still index an MP4 from its header when the final packet is missing.
+            const durationSec =
+                durationFromPackets || (await indexMp4FileWithMoov(file, false)).indexed?.durationSec || 0;
             candidates.push({
                 file,
                 relativePath: file.name,
@@ -584,15 +588,11 @@ describe("stream-copy export", () => {
     it("reports a file whose data ends before its index", async () => {
         const whole = await remuxFixture(fixture(H264_FIXTURE), false, undefined, "in-memory");
         const cut = new File([whole.slice(0, Math.floor(whole.size * 0.6))], whole.name);
-        const source = open(cut);
-        try {
-            const track = (await source.getPrimaryVideoTrack())!;
-            expect(await track.computeDuration(), "the index still covers the whole clip").toBeCloseTo(2, 1);
-        } finally {
-            source.dispose();
-        }
+        const trip = await tripOf([cut]);
+        expect(trip.timeline.contentDurationSec, "the index still covers the whole clip").toBeCloseTo(2, 1);
 
         expect((await save([whole])).result.decodeTruncated, "an intact file is not reported").toBe(false);
+        expect((await save([cut], { end: 0.5 })).result.decodeTruncated, "the selected footage exists").toBe(false);
         const saved = await save([cut]);
         expect(saved.result.decodeTruncated).toBe(true);
         const output = open(saved.file);
@@ -603,6 +603,7 @@ describe("stream-copy export", () => {
         } finally {
             output.dispose();
         }
+        await expect(save([cut], { start: 1.6 })).rejects.toThrow("no video packets in selected range in file");
     });
 
     it("rejects incompatible video before committing any output", async () => {
