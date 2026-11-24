@@ -7,6 +7,16 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-11-24
+
+- **New:** Added help finding missing GPS data for 70mai recordings.
+
+## 2026-11-22
+
+- **Fixed:** Restored playback on self-hosted sites served over HTTP.
+- **Fixed:** Fixed playback for some H.264 recordings in Safari and on iOS.
+- **Fixed:** Fixed playback for MKV files with VP9 video.
+
 ## 2026-11-20
 
 - **New:** Added camera clock correction in playback settings.
