@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { DESKTOP, SAMPLE_NOGPS, expect, gotoApp, presetLocalStorage, test } from "./_fixtures.js";
+import { withMvhdCreationTime } from "./_trip-library.js";
 
 test.use({ viewerMap: "route-only" });
 
@@ -17,9 +18,9 @@ test("the calendar keeps its focused day or month button when the trip list refr
     await gotoApp(page, "en");
     const directory = info.outputPath("card");
     mkdirSync(directory, { recursive: true });
-    const footage = readFileSync(path.join(SAMPLE_NOGPS, "clip-no-gps.mp4"));
-    for (const day of ["20260914", "20260915", "20261001"]) {
-        writeFileSync(path.join(directory, `NO${day}-080000-000001F.MP4`), footage);
+    const footage = path.join(SAMPLE_NOGPS, "clip-no-gps.mp4");
+    for (const day of ["2026-09-14", "2026-09-15", "2026-10-01"]) {
+        writeFileSync(path.join(directory, `clip-${day}.mp4`), withMvhdCreationTime(footage, `${day}T08:00:00Z`));
     }
     await page.locator("#folder-input").setInputFiles(directory);
     await expect(page.locator("#trip-list li.trip")).toHaveCount(3);

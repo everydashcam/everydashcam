@@ -79,7 +79,7 @@ function nmeaFor(road: Road, startMs: number): string {
     return `${lines.join("\r\n")}\r\n`;
 }
 
-function withMvhdCreationTime(source: string, iso: string): Buffer {
+export function withMvhdCreationTime(source: string, iso: string): Buffer {
     const bytes = readFileSync(source);
     const marker = bytes.indexOf("mvhd", 0, "ascii");
     if (marker < 0 || bytes[marker + 4] !== 0) throw new Error("fixture needs a version-0 mvhd box");
