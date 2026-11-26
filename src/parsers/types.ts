@@ -25,6 +25,10 @@ export interface GpsRecord extends SpeedSample {
     /** Continuity ID within a record collection: source-local when parsed,
      * remapped across files and channels when the trip is assembled. */
     trackSegment?: number;
+    /** True when trackSegment was split internally by speed estimation inside
+     * one source segment (e.g. a teleport inside a single GPX <trkseg>), as
+     * opposed to an explicit source boundary (<wpt> or separate <trkseg>). */
+    trackSegmentSplitBySpeed?: true;
     /** Log collection owning trackSegment's local counter. Adjacent daily
      * files can continue one video while restarting their segment numbering. */
     trackSegmentSource?: string;

@@ -37,6 +37,7 @@ import {
     formatTripClockTitle,
     formatTripRowMeta,
     formatFileMeta,
+    indexTripFilteredFixes,
     formatTripMeta,
     formatTripDistance,
     formatTripStartTitle,
@@ -993,6 +994,7 @@ function buildTripFileList(trip: Trip, tripIdx: number): HTMLUListElement {
     });
     const filesList = document.createElement("ul");
     filesList.className = "trip-files";
+    const tripFilteredFixes = indexTripFilteredFixes(trip);
     fileRows.forEach(({ frame, frameIdx, picked }, rowIndex) => {
         const primary = picked.candidate;
         const endFrameIdx = (fileRows[rowIndex + 1]?.frameIdx ?? trip.frames.length) - 1;
@@ -1051,7 +1053,7 @@ function buildTripFileList(trip: Trip, tripIdx: number): HTMLUListElement {
         const primaryKey = vendorFileKey(primary);
         const primaryGpsPending =
             state.pendingHeavyEmbeddedGps.has(primaryKey) || state.inflightEmbeddedGps.has(primaryKey);
-        fmetaText.textContent = formatFileMeta(primary, trip.startUtc, primaryGpsPending);
+        fmetaText.textContent = formatFileMeta(primary, trip.startUtc, primaryGpsPending, tripFilteredFixes);
         fmeta.appendChild(fmetaText);
         // Right-side chips, grouped in one wrapper so a frame carrying both keeps
         // them together instead of .file-meta's space-between spreading them apart.

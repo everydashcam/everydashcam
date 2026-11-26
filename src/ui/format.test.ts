@@ -8,6 +8,7 @@ import {
     formatDayHeading,
     formatEventSeverity,
     formatFileMeta,
+    indexTripFilteredFixes,
     formatRateBytes,
     formatStartDate,
     formatTimeRange,
@@ -20,7 +21,7 @@ import {
 import { setUnits, getUnits } from "../units-pref.js";
 import { _resetForTests as resetDateFormat, setDateFormat } from "./date-format.js";
 import { t } from "../i18n/index.js";
-import { buildTripTimeline, type Trip, type TripFrame, type VideoCandidate } from "../trips.js";
+import { buildTripTimeline, groupTrips, type Trip, type TripFrame, type VideoCandidate } from "../trips.js";
 
 describe("event formatting", () => {
     it("formats the only EventKind without unreachable fallbacks", () => {
@@ -277,6 +278,161 @@ describe("formatFileMeta", () => {
         const failed = { ...video, metadataReady: false, metadataFailed: true } as VideoCandidate;
         const meta = formatFileMeta(failed, 100, false);
         expect(meta).toBe(`${t("trip.chip.readFailed")} · 10.0 ${t("units.mb")}`);
+    });
+
+    it("excludes transient teleport outliers from per-file distance", () => {
+        const previous = getUnits();
+        setUnits("metric");
+        const base = {
+            active: true,
+            bearingDeg: 0,
+            speedMs: 15,
+            accelXg: 0,
+            accelYg: 0,
+            accelZg: 0,
+            mp4Filename: "clip.mp4",
+        };
+        // ~1.1 km clip (~28 m/s) with a 760 km lon=0 glitch mid-clip;
+        // unfiltered distance would exceed 1,500 km, matching the Viofo bug.
+        const records = [
+            { ...base, unixSeconds: 100, lat: 44.94, lon: 9.63 },
+            { ...base, unixSeconds: 120, lat: 44.945, lon: 9.63 },
+            { ...base, unixSeconds: 121, lat: 44.948, lon: 0 },
+            { ...base, unixSeconds: 140, lat: 44.95, lon: 9.63 },
+        ];
+        const snapshot = [...records];
+        const meta = formatFileMeta({ ...video, records } as unknown as VideoCandidate, 100, false);
+        expect(meta).toContain(`1.1 ${t("units.km")}`);
+        expect(records).toEqual(snapshot);
+        setUnits(previous);
+    });
+
+    it("matches trip-filtered distance when groupTrips drops a teleport inside a single file", () => {
+        const previous = getUnits();
+        setUnits("metric");
+        const t0 = Date.UTC(2026, 10, 25, 16, 17, 20) / 1000;
+        const base = {
+            active: true,
+            bearingDeg: 0,
+            speedMs: 15,
+            accelXg: 0,
+            accelYg: 0,
+            accelZg: 0,
+            mp4Filename: "2026_1125_161720_000373F.MP4",
+        };
+        // 3 fixes in one file: two real fixes ~1.1 km apart and one lon=0
+        // teleport between them. Through real groupTrips + indexTripFilteredFixes,
+        // the file row must show only the distance between the two kept fixes.
+        const rawRecords = [
+            { ...base, unixSeconds: t0, lat: 44.94, lon: 9.63 },
+            { ...base, unixSeconds: t0 + 20, lat: 44.945, lon: 0 },
+            { ...base, unixSeconds: t0 + 40, lat: 44.95, lon: 9.63 },
+        ];
+        const candidate = {
+            file: new File([new Uint8Array(1024)], base.mp4Filename),
+            relativePath: base.mp4Filename,
+            fingerprint: "viofo",
+            channel: "front",
+            durationSec: 60,
+            startUtc: t0,
+            startSource: "gps",
+            records: rawRecords,
+            metadataReady: true,
+            metadataFailed: false,
+            codec: "avc",
+            width: 1920,
+            height: 1080,
+            fps: 30,
+        } as unknown as VideoCandidate;
+
+        const trips = groupTrips([candidate]);
+        expect(trips).toHaveLength(1);
+        const trip = trips[0]!;
+        expect(trip.records).toHaveLength(2);
+
+        const tripFixes = indexTripFilteredFixes(trip);
+        const meta = formatFileMeta(candidate, trip.startUtc, false, tripFixes);
+        expect(meta).toContain(`1.1 ${t("units.km")}`);
+        setUnits(previous);
+    });
+
+    it("uses trip-level filtered fixes when provided so a transition continued by the next file is preserved", () => {
+        const previous = getUnits();
+        setUnits("metric");
+        const base = {
+            active: true,
+            bearingDeg: 0,
+            speedMs: 0,
+            accelXg: 0,
+            accelYg: 0,
+            accelZg: 0,
+            mp4Filename: "clip1.mp4",
+        };
+        // 5 stationary fixes at A, then 2 fixes at B (~450 m away). Alone, the
+        // 2 trailing points at B look like a trailing spike cluster; inside a
+        // trip whose next file continues at B, trip.records keeps them.
+        const file1Records = [
+            ...Array.from({ length: 5 }, (_, i) => ({ ...base, unixSeconds: 100 + i, lat: 44.94, lon: 9.63 })),
+            { ...base, unixSeconds: 105, lat: 44.94405, lon: 9.63 },
+            { ...base, unixSeconds: 106, lat: 44.94405, lon: 9.63 },
+        ];
+        const file2Records = Array.from({ length: 5 }, (_, i) => ({
+            ...base,
+            mp4Filename: "clip2.mp4",
+            unixSeconds: 107 + i,
+            lat: 44.94405,
+            lon: 9.63,
+        }));
+        const tripFixes = indexTripFilteredFixes({ records: [...file1Records, ...file2Records] });
+
+        const meta = formatFileMeta(
+            { ...video, records: file1Records } as unknown as VideoCandidate,
+            100,
+            false,
+            tripFixes,
+        );
+        expect(meta).toContain(`0.5 ${t("units.km")}`);
+        setUnits(previous);
+    });
+
+    it("omits distance for timeUnsynced records trimmed out of trip.records after GPS sync offset", () => {
+        const previous = getUnits();
+        setUnits("metric");
+        const base = {
+            active: true,
+            timeUnsynced: true,
+            bearingDeg: 0,
+            speedMs: 15,
+            accelXg: 0,
+            accelYg: 0,
+            accelZg: 0,
+            mp4Filename: "70mai.mp4",
+        };
+        const unsyncedRecords = [
+            { ...base, unixSeconds: 100, lat: 44.94, lon: 9.63 },
+            { ...base, unixSeconds: 120, lat: 44.945, lon: 9.63 },
+            { ...base, unixSeconds: 140, lat: 44.95, lon: 9.63 },
+        ];
+        // Trip was trimmed after shifting GPS past the clip -> trip.records is empty.
+        const trimmedTripFixes = indexTripFilteredFixes({ records: [], gpsOffsetSec: 500 });
+        const trimmedMeta = formatFileMeta(
+            { ...video, records: unsyncedRecords } as unknown as VideoCandidate,
+            100,
+            false,
+            trimmedTripFixes,
+        );
+        expect(trimmedMeta).not.toContain(t("units.km"));
+
+        // Without trimming, surviving timeUnsynced fixes still report distance.
+        const keptTripFixes = indexTripFilteredFixes({ records: unsyncedRecords, gpsOffsetSec: 0 });
+        const keptMeta = formatFileMeta(
+            { ...video, records: unsyncedRecords } as unknown as VideoCandidate,
+            100,
+            false,
+            keptTripFixes,
+        );
+        expect(keptMeta).toContain(`1.1 ${t("units.km")}`);
+        setUnits(previous);
     });
 });
 

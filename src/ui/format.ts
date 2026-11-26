@@ -3,7 +3,7 @@
 
 import type { EventKind, TripEvent } from "../events.js";
 import { getDateLocale, t } from "../i18n/index.js";
-import { totalDistanceKm } from "../parser.js";
+import { dropTeleportOutliers, isValidGpsFix, totalDistanceKm } from "../parser.js";
 import type { Channel, RecordingMode } from "../parsers/types.js";
 import {
     displayClockDate,
@@ -162,7 +162,33 @@ export function formatTripMeta(trip: Trip, loading: TripLoadingState = "loaded")
     return `${dur} · ${filesPart}${pausesPart}\n${sizePart}${distStr}`;
 }
 
-export function formatFileMeta(video: VideoCandidate, tripStartUtc: number, gpsPending = false): string {
+/**
+ * Valid fixes that survived trip-level teleport filtering and GPS-sync
+ * trimming (`trip.records`). Passed into `formatFileMeta` so per-file sidebar
+ * distances share the trip's cross-file filter and trim decisions instead of
+ * re-filtering one clip in isolation.
+ */
+export interface TripFilteredFixIndex {
+    readonly keys: ReadonlySet<string>;
+    readonly gpsOffsetSec: number;
+}
+
+export function indexTripFilteredFixes(trip: Pick<Trip, "records" | "gpsOffsetSec">): TripFilteredFixIndex {
+    const keys = new Set<string>();
+    for (const r of trip.records) {
+        if (isValidGpsFix(r)) {
+            keys.add(`${r.unixSeconds}:${r.lat}:${r.lon}`);
+        }
+    }
+    return { keys, gpsOffsetSec: trip.gpsOffsetSec ?? 0 };
+}
+
+export function formatFileMeta(
+    video: VideoCandidate,
+    tripStartUtc: number,
+    gpsPending = false,
+    tripFixes?: TripFilteredFixIndex,
+): string {
     const sizeMb = formatNumber(video.file.size / (1024 * 1024), 1);
     if (video.metadataFailed === true) {
         return `${t("trip.chip.readFailed")} · ${sizeMb} ${t("units.mb")}`;
@@ -173,7 +199,16 @@ export function formatFileMeta(video: VideoCandidate, tripStartUtc: number, gpsP
     const offsetSec = Math.max(0, video.startUtc - tripStartUtc);
     const offsetStr = formatTime(offsetSec); // mm:ss or h:mm:ss - same format as the player scrubber
     const dur = formatDuration(video.durationSec);
-    const distKm = totalDistanceKm(video.records);
+    // Match finalizeTrip: drop transient teleport glitches before summing so a
+    // single bogus fix does not show a 1,500 km file row inside a 30 km trip.
+    const recordsForDistance = tripFixes
+        ? video.records.filter(
+              (r) =>
+                  !isValidGpsFix(r) ||
+                  tripFixes.keys.has(`${r.unixSeconds + tripFixes.gpsOffsetSec}:${r.lat}:${r.lon}`),
+          )
+        : dropTeleportOutliers(video.records);
+    const distKm = totalDistanceKm(recordsForDistance);
     let distStr = "";
     if (distKm > 0) {
         const d = formatDistanceFromKm(distKm);

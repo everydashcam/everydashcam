@@ -132,8 +132,13 @@ function parseGpx(text: string, mp4Filename: string): ParsedGpxTrack {
             if (!parsed.hasExplicitTimezone) hasExplicitTimezone = false;
             return parsed;
         });
-        for (const segment of estimateSpeedSegments(parsedPoints)) {
-            for (const record of segment) record.trackSegment = nextSegment;
+        const speedSegments = estimateSpeedSegments(parsedPoints);
+        for (let s = 0; s < speedSegments.length; s++) {
+            const segment = speedSegments[s]!;
+            for (const record of segment) {
+                record.trackSegment = nextSegment;
+                if (s > 0) record.trackSegmentSplitBySpeed = true;
+            }
             nextSegment++;
             forwardFillBearingsIfAllZero(segment);
             for (const record of segment) records.push(record);

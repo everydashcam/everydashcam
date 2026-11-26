@@ -1,7 +1,7 @@
 import { DOMParser } from "@xmldom/xmldom";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { detectInferredSegments } from "../../inferred-events.js";
-import { interpolatePosition, totalDistanceKm } from "../../parser.js";
+import { dropTeleportOutliers, interpolatePosition, totalDistanceKm } from "../../parser.js";
 import { deriveGLat, deriveGLong, resolveFramePos, sampleSpeedAcross } from "../../transcode/frame-pos.js";
 import { formatSpeedValue } from "../../transcode/text-overlay.js";
 import { makeVendorFile } from "../__fixtures__/helpers.js";
@@ -196,5 +196,21 @@ describe("GPX speed estimates", () => {
     it("does not interpret unavailable speed as a sustained stop", async () => {
         const records = await parse(...Array.from({ length: 10 }, (_, i) => point(i, 0)));
         expect(detectInferredSegments(records, START)).toEqual([]);
+    });
+
+    it("drops a trailing 5 km teleport inside a single trkseg while keeping an explicit trailing waypoint", async () => {
+        const singleSegmentWithSpike = await parse(point(0, 0) + point(1, 10) + point(2, 20) + point(3, 5020));
+        expect(singleSegmentWithSpike).toHaveLength(4);
+        expect(singleSegmentWithSpike[3]!.trackSegmentSplitBySpeed).toBe(true);
+        expect(dropTeleportOutliers(singleSegmentWithSpike).map((r) => r.unixSeconds - START)).toEqual([0, 1, 2]);
+
+        const trackPlusWaypointXml =
+            `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">` +
+            `<trk><trkseg>${point(0, 0) + point(1, 10) + point(2, 20)}</trkseg></trk>` +
+            `${point(3, 5020).replaceAll("trkpt", "wpt")}</gpx>`;
+        const withTrailingWaypoint = (await parseGpxTrack(makeVendorFile("trip.gpx", trackPlusWaypointXml), "trip.mp4"))
+            .records;
+        expect(withTrailingWaypoint[3]!.trackSegmentSplitBySpeed).toBeUndefined();
+        expect(dropTeleportOutliers(withTrailingWaypoint).map((r) => r.unixSeconds - START)).toEqual([0, 1, 2, 3]);
     });
 });

@@ -111,6 +111,7 @@ describe("packGpsRecordColumns / unpackGpsRecordColumns", () => {
             speedMs: 4,
             speedSource: "measured",
             trackSegment: 0,
+            trackSegmentSplitBySpeed: true,
             trackSegmentSource: "gpsdata.txt",
             accelXg: 0,
             accelYg: 0,

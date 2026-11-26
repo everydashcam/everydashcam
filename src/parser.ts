@@ -443,9 +443,20 @@ export interface TeleportFilterOptions {
      * this bound.
      */
     minJumpMeters: number;
+    /**
+     * Max consecutive eligible teleport records to look past when confirming
+     * whether the track returns to the anchor (or outvoting a leading/trailing
+     * glitch cluster). Defaults to 5.
+     */
+    maxClusterSize?: number;
 }
 
-const DEFAULT_TELEPORT_FILTER: TeleportFilterOptions = { maxImpliedSpeedMs: 100, minJumpMeters: 200 };
+const DEFAULT_MAX_TELEPORT_CLUSTER = 5;
+const DEFAULT_TELEPORT_FILTER: TeleportFilterOptions = {
+    maxImpliedSpeedMs: 100,
+    minJumpMeters: 200,
+    maxClusterSize: DEFAULT_MAX_TELEPORT_CLUSTER,
+};
 
 /**
  * Trip-level teleport/spike filter: drops records whose position jump from the
@@ -461,13 +472,19 @@ const DEFAULT_TELEPORT_FILTER: TeleportFilterOptions = { maxImpliedSpeedMs: 100,
  * records and state.gpsLog keep the raw parser output and re-grouping stays
  * reversible.
  *
- * Algorithm - anchor chain walk:
+ * Algorithm - anchor chain walk with bounded cluster lookahead:
  *   - Only valid, time-synced fixes participate. Missing/invalid fixes and
  *     timeUnsynced rows (cold-start placeholders re-anchored onto the video
  *     window later) are ALWAYS kept with their telemetry, never become anchors,
  *     and are skipped by the lookahead.
  *     Consequence: fully-timeUnsynced formats (70mai freegps / gps-box,
  *     Wolfbox variant A) are entirely exempt from this filter.
+ *   - Initial anchor validation: before locking onto the first eligible record
+ *     (`anchor === null`), check a bounded leading window (up to
+ *     `maxClusterSize` leading records). If a short prefix teleports relative
+ *     to an immediately following strictly longer continuous run and never
+ *     reconnects within the window, drop the leading spike(s) instead of
+ *     anchoring on a cold-start glitch (e.g. a torn first fix at lon=0).
  *   - A record is a drop candidate only when BOTH gates trip: displacement
  *     from the anchor > minJumpMeters AND implied speed > maxImpliedSpeedMs.
  *     Legit driving cannot trip both (>200 m jump AND >360 km/h); a recording
@@ -476,18 +493,19 @@ const DEFAULT_TELEPORT_FILTER: TeleportFilterOptions = { maxImpliedSpeedMs: 100,
  *     such records do NOT replace the anchor: a same-second teleported
  *     duplicate that became anchor could wrongly drop a legitimate LAST
  *     record through the trailing-spike branch below.
- *   - Candidate confirmation via the next ELIGIBLE record (not literally
- *     records[i+1] - an escort-map or unsynced row adjacent to a spike must
- *     not corrupt the decision): drop only if skipping the candidate restores
- *     continuity anchor -> next, or there is no next (trailing spike). If the
- *     next eligible record also disagrees with the anchor, the candidate is a
- *     genuine new anchor (recording resumed elsewhere, constant
- *     super-threshold motion) and is kept.
+ *   - Candidate confirmation via a bounded lookahead of up to `maxClusterSize`
+ *     eligible records (skipping inactive/unsynced rows): drop if any record in
+ *     the lookahead restores continuity with `anchor` (catches 1..maxClusterSize
+ *     consecutive glitches, e.g. 2-second firmware bursts to lon=0), or if the
+ *     track ends in a trailing spike / short trailing cluster strictly shorter
+ *     than the established track. If no record in the full lookahead agrees
+ *     with `anchor`, the candidate is a genuine new anchor (recording resumed
+ *     elsewhere, constant super-threshold motion) and is kept.
  *   - Trailing-spike exception: when the anchor itself was accepted through
  *     the new-anchor branch, motion is already in a super-threshold regime
  *     (e.g. constant 250 m/s synthetic), so a follower-less candidate
  *     continues that motion and is kept - only a candidate that breaks a
- *     NORMAL regime with no follower to confirm it is a trailing spike.
+ *     NORMAL regime is dropped as a trailing spike.
  *   - Accel transplant on drop: accel lives ON the GpsRecord, and a hard
  *     impact can plausibly coincide with the very GPS glitch this filter
  *     drops - deleting the record whole would erase the auto-detected impact
@@ -496,10 +514,6 @@ const DEFAULT_TELEPORT_FILTER: TeleportFilterOptions = { maxImpliedSpeedMs: 100,
  *     neighbor's, that neighbor is replaced by a clone carrying the dropped
  *     accel triple (max-|G|-wins; position/time of the neighbor untouched,
  *     input array never mutated).
- *
- * Known accepted limitation: a 2-point spike cluster survives (the continuity
- * check anchors on the first spike point). viofosync's median-of-5 window
- * would catch it but was rejected as a heavier policy.
  *
  * Diagnostics: trip-level drops intentionally bypass SkippedLine reporting -
  * the caller logs a debug count instead (finalizeTrip in trips.ts). The
@@ -511,69 +525,188 @@ export function dropTeleportOutliers(
     records: GpsRecord[],
     opts: TeleportFilterOptions = DEFAULT_TELEPORT_FILTER,
 ): GpsRecord[] {
+    const maxCluster = Math.max(1, opts.maxClusterSize ?? DEFAULT_MAX_TELEPORT_CLUSTER);
     const isEligible = (r: GpsRecord): boolean => isValidGpsFix(r) && !r.timeUnsynced;
     // Thin record-shaped adapter over the shared accelMagnitude helper.
     const accelMag = (r: GpsRecord): number => accelMagnitude(r.accelXg, r.accelYg, r.accelZg);
     const out: GpsRecord[] = [];
+    // Output indices of kept eligible fixes (for phase-2 accel transplant onto
+    // the nearest surviving eligible fix by timestamp).
+    const keptEligibleOutIndices: number[] = [];
+    // Dropped eligible fixes carrying non-zero accel, transplanted after all
+    // keep/drop decisions settle so a peak is never routed onto a fix that is
+    // itself dropped later or skips a same-second sibling camera fix.
+    const droppedWithAccel: GpsRecord[] = [];
     let anchor: GpsRecord | null = null;
-    // Index of the current anchor inside `out` - the accel transplant
-    // replaces it with a clone in place.
-    let anchorOutIndex = -1;
+    let keptEligibleCount = 0;
     // True when the current anchor was accepted via the new-anchor branch -
     // i.e. motion is already super-threshold (see the trailing-spike exception).
     let anchorWasCandidate = false;
-    // Accel transplant deferred onto a not-yet-pushed record (the dropped
-    // spike's nearest kept neighbor is the upcoming confirmer). Applied when
-    // that record is pushed; max-|G| donor wins across multiple drops.
-    type PendingTransplant = { target: GpsRecord; donor: GpsRecord } | null;
-    let pendingTransplant: PendingTransplant = null;
+    // Active confirmed-cluster drop state: once lookahead confirms an interior
+    // glitch cluster returning at `confirmedClusterEnd` (or a short trailing
+    // cluster via `droppingTrailingCluster`), drop the entire cluster
+    // atomically without re-testing later points against `anchor`, so growing
+    // `dt` cannot dilute `dist / dt` below `maxImpliedSpeedMs` mid-cluster.
+    let confirmedClusterEnd: GpsRecord | null = null;
+    let droppingTrailingCluster = false;
 
-    const nextEligibleAfter = (idx: number): GpsRecord | null => {
-        for (let j = idx + 1; j < records.length; j++) {
-            if (isEligible(records[j]!)) return records[j]!;
-        }
-        return null;
+    const recordDropped = (rec: GpsRecord): void => {
+        if (accelMag(rec) > 0) droppedWithAccel.push(rec);
     };
+
+    const collectEligibleFrom = (startIdx: number, limit: number): GpsRecord[] => {
+        const res: GpsRecord[] = [];
+        for (let j = startIdx; j < records.length && res.length < limit; j++) {
+            const candidate = records[j]!;
+            if (isEligible(candidate)) res.push(candidate);
+        }
+        return res;
+    };
+
+    const jumpMetersBetween = (a: GpsRecord, b: GpsRecord): number => haversineKm(a.lat, a.lon, b.lat, b.lon) * 1000;
 
     // True when `rec` trips BOTH gates relative to `from` - the only
     // combination treated as a teleport. Requires dt > 0 to be judgeable.
     const isTeleportFrom = (from: GpsRecord, rec: GpsRecord, dt: number): boolean => {
         if (dt <= 0) return false;
-        const jumpMeters = haversineKm(from.lat, from.lon, rec.lat, rec.lon) * 1000;
+        const jumpMeters = jumpMetersBetween(from, rec);
         return jumpMeters > opts.minJumpMeters && jumpMeters / dt > opts.maxImpliedSpeedMs;
     };
 
-    // Keep-max-|G| transplant for a dropped record (see the contract above).
-    // `next` is the upcoming confirmer (eligible, kept when it confirms
-    // continuity) or null for a trailing spike. Returns the new pending
-    // transplant (assigned at the call site - TS does not track narrowing
-    // through closure assignments).
-    const transplantAccelOfDropped = (
-        dropped: GpsRecord,
-        theAnchor: GpsRecord,
-        next: GpsRecord | null,
-        pending: PendingTransplant,
-    ): PendingTransplant => {
-        const donorG = accelMag(dropped);
-        if (donorG === 0) return pending; // nothing to preserve
-        const anchorDt = dropped.unixSeconds - theAnchor.unixSeconds;
-        const nextDt = next ? next.unixSeconds - dropped.unixSeconds : Number.POSITIVE_INFINITY;
-        if (next !== null && nextDt < anchorDt) {
-            // Nearest kept neighbor is ahead - defer until it is pushed.
-            if (donorG <= accelMag(next)) return pending;
-            if (pending && pending.target === next && accelMag(pending.donor) >= donorG) return pending;
-            return { target: next, donor: dropped };
+    // Checks whether any record in `followers` genuinely reconnects to `origin`
+    // after `clusterStart` teleported away from it. A continuous run sitting at
+    // `clusterStart` (e.g. a 450 m step change followed by 5 stationary
+    // seconds, where 450 / 5 = 90 m/s <= maxImpliedSpeedMs) must NOT count as
+    // reconnecting merely because elapsed time diluted the implied speed:
+    // reconnection requires an explicit jump back on the entering step
+    // (`prev -> later`), landing back within `minJumpMeters` of `origin`
+    // closer to `origin` than to `prev`, or (when `isEstablishedAnchor` is set
+    // in the main loop) either a triangle detour > `minJumpMeters` showing
+    // `prev` was an out-and-back excursion from `origin -> later`, or arriving
+    // after a GPS dropout/pause when every prior cluster fix was unreachable.
+    //
+    // Explicit trackSegment boundaries stop the search so independent GPX
+    // <wpt>/<trkseg> entries cannot be bridged into a false cluster. The only
+    // cross-segment match allowed is an isolated 1-point teleport split into
+    // its own segment by speed estimation, where the immediate next point
+    // reconnects to `origin` and at least one side has multi-point context.
+    const findClusterReconnection = (
+        origin: GpsRecord,
+        clusterStart: GpsRecord,
+        followers: readonly GpsRecord[],
+        isEstablishedAnchor: boolean,
+        originHasSameSegmentHistory: boolean,
+    ): GpsRecord | null => {
+        const sameSegAsOrigin = isSameTrackSegment(origin, clusterStart);
+        if (!sameSegAsOrigin) {
+            const firstFollower = followers[0];
+            if (!firstFollower) return null;
+            const hasMultiPointContext =
+                originHasSameSegmentHistory ||
+                isSameTrackSegment(origin, firstFollower) ||
+                (followers.length > 1 && isSameTrackSegment(firstFollower, followers[1]!));
+            if (!hasMultiPointContext) return null;
         }
-        if (donorG > accelMag(theAnchor)) {
-            anchor = {
-                ...theAnchor,
-                accelXg: dropped.accelXg,
-                accelYg: dropped.accelYg,
-                accelZg: dropped.accelZg,
-            };
-            out[anchorOutIndex] = anchor;
+        const initialDt = clusterStart.unixSeconds - origin.unixSeconds;
+        let prev = clusterStart;
+        let allPriorUnreachable = true;
+        const maxChecks = sameSegAsOrigin ? followers.length : 1;
+        for (let fi = 0; fi < maxChecks; fi++) {
+            const later = followers[fi]!;
+            if (sameSegAsOrigin && !isSameTrackSegment(origin, later)) break;
+            const stepDt = later.unixSeconds - prev.unixSeconds;
+            let distFromPrev = Number.POSITIVE_INFINITY;
+            let stepJumped = false;
+            let afterPause = false;
+            let prevDistToOrigin = 0;
+            if (stepDt > 0) {
+                prevDistToOrigin = jumpMetersBetween(origin, prev);
+                distFromPrev = jumpMetersBetween(prev, later);
+                stepJumped = distFromPrev > opts.minJumpMeters && distFromPrev / stepDt > opts.maxImpliedSpeedMs;
+                afterPause =
+                    isEstablishedAnchor &&
+                    allPriorUnreachable &&
+                    stepDt > GPS_POSITION_TOLERANCE_SEC &&
+                    stepDt > initialDt * 3;
+                prev = later;
+            }
+            const laterDt = later.unixSeconds - origin.unixSeconds;
+            if (laterDt <= 0) continue;
+            const distToOrigin = jumpMetersBetween(origin, later);
+            const teleportToOrigin =
+                distToOrigin > opts.minJumpMeters && distToOrigin / laterDt > opts.maxImpliedSpeedMs;
+            if (teleportToOrigin) continue;
+            const significantDetour =
+                isEstablishedAnchor &&
+                stepDt > 0 &&
+                prevDistToOrigin + distFromPrev - distToOrigin > opts.minJumpMeters;
+            if (
+                stepJumped ||
+                afterPause ||
+                significantDetour ||
+                (distToOrigin <= opts.minJumpMeters && distToOrigin < distFromPrev)
+            ) {
+                return later;
+            }
+            allPriorUnreachable = false;
         }
-        return pending;
+        return null;
+    };
+
+    // When anchor is null, checks whether the leading eligible record at
+    // `startIdx` is part of a short leading glitch prefix (1..maxCluster)
+    // followed by a strictly longer continuous real track. Returns true when
+    // the leading record should be dropped, or false when it should be accepted
+    // as the anchor.
+    const isLeadingOutlier = (startIdx: number): boolean => {
+        const win = collectEligibleFrom(startIdx, 2 * maxCluster + 1);
+        if (win.length < 3) return false;
+        const first = win[0]!;
+        const maxSplit = Math.min(maxCluster, win.length - 1);
+        for (let split = 1; split <= maxSplit; split++) {
+            const candidate = win[split]!;
+            // Never cross an explicit trackSegment boundary at the start of a
+            // track (e.g. an independent GPX <wpt> followed 1 s later by a
+            // <trkseg>). Dashcam MP4 streams leave trackSegment undefined on
+            // every record, so isSameTrackSegment stays true for them.
+            if (!isSameTrackSegment(first, candidate)) continue;
+            const dtToCandidate = candidate.unixSeconds - first.unixSeconds;
+            if (dtToCandidate <= 0 || !isTeleportFrom(first, candidate, dtToCandidate)) continue;
+
+            // If `first` reconnects to any record after a cluster of up to
+            // maxCluster glitches (indices split..split+maxCluster-1, return at
+            // split+maxCluster), `first` is the real track and `candidate` is
+            // the start of an interior spike cluster that the main loop drops.
+            const reconnectEnd = Math.min(win.length, split + maxCluster + 1);
+            if (findClusterReconnection(first, candidate, win.slice(split + 1, reconnectEnd), false, false) !== null) {
+                return false;
+            }
+
+            // Measure the continuous run starting at `candidate`. Only positive
+            // dt advances the run so same-second duplicates cannot inflate it,
+            // stop at a trackSegment boundary so independent GPX <wpt> entries
+            // cannot gang up to drop the first waypoint, and break across a
+            // long GPS dropout/pause regardless of distance so a pre-pause
+            // glitch near the eventual post-pause position cannot borrow
+            // post-pause fixes to outvote valid leading fixes.
+            let runAnchor = candidate;
+            let runLen = 1;
+            for (let k = split + 1; k < win.length && runLen <= split; k++) {
+                const next = win[k]!;
+                if (!isSameTrackSegment(runAnchor, next)) break;
+                const stepDt = next.unixSeconds - runAnchor.unixSeconds;
+                if (stepDt <= 0) continue;
+                const stepDist = jumpMetersBetween(runAnchor, next);
+                if (stepDist > opts.minJumpMeters && stepDist / stepDt > opts.maxImpliedSpeedMs) break;
+                if (stepDt > GPS_POSITION_TOLERANCE_SEC && stepDt > dtToCandidate * 3) {
+                    break;
+                }
+                runAnchor = next;
+                runLen++;
+            }
+            if (runLen > split) return true;
+        }
+        return false;
     };
 
     for (let i = 0; i < records.length; i++) {
@@ -583,43 +716,124 @@ export function dropTeleportOutliers(
             continue;
         }
         if (anchor === null) {
+            if (isLeadingOutlier(i)) {
+                recordDropped(rec);
+                continue;
+            }
             out.push(rec);
+            keptEligibleOutIndices.push(out.length - 1);
             anchor = rec;
-            anchorOutIndex = out.length - 1;
+            keptEligibleCount = 1;
+            continue;
+        }
+        if (confirmedClusterEnd !== null) {
+            if (rec === confirmedClusterEnd) {
+                confirmedClusterEnd = null;
+            } else {
+                recordDropped(rec);
+                continue;
+            }
+        } else if (droppingTrailingCluster) {
+            recordDropped(rec);
             continue;
         }
         const dt = rec.unixSeconds - anchor.unixSeconds;
         if (dt <= 0) {
             out.push(rec); // kept, but never an anchor (see contract)
+            keptEligibleOutIndices.push(out.length - 1);
             continue;
         }
         const isCandidate = isTeleportFrom(anchor, rec, dt);
         if (isCandidate) {
-            const next = nextEligibleAfter(i);
-            const nextDt = next ? next.unixSeconds - anchor.unixSeconds : 0;
-            const nextContinuous = next !== null && nextDt > 0 && !isTeleportFrom(anchor, next, nextDt);
-            const isTrailingSpike = next === null && !anchorWasCandidate;
-            if (nextContinuous || isTrailingSpike) {
-                // drop: skipping restores continuity / trailing spike. The
-                // dropped position is garbage but its accel sample is real -
-                // keep the max |G| on the nearest surviving neighbor.
-                pendingTransplant = transplantAccelOfDropped(rec, anchor, next, pendingTransplant);
-                continue;
+            const lookahead = collectEligibleFrom(i + 1, maxCluster);
+            // A multi-point segment distinct from anchor's segment (e.g. an
+            // explicit GPX <trkseg> starting with 2+ points) is a separate
+            // route segment, not a teleport cluster inside anchor's segment.
+            // A 1-point distinct segment still goes through confirmation
+            // because speed estimation splits an isolated teleport into its
+            // own 1-point segment.
+            const startsDistinctMultiPointSegment =
+                !isSameTrackSegment(anchor, rec) && lookahead.length > 0 && isSameTrackSegment(rec, lookahead[0]!);
+            if (!startsDistinctMultiPointSegment) {
+                const confirmer = findClusterReconnection(anchor, rec, lookahead, true, keptEligibleCount >= 2);
+                const trailingClusterSize = 1 + lookahead.length;
+                // Only drop a multi-point trailing tail when every remaining
+                // point is also in anchor's source segment and unreachable from
+                // anchor; reachable trailing fixes (e.g. normal driving after a
+                // single jump) must not be wiped with the rest of the tail.
+                // A segment boundary introduced internally by speed estimation
+                // (trackSegmentSplitBySpeed) is still part of anchor's source
+                // segment, unlike an explicit GPX <wpt> or separate <trkseg>.
+                const inSameSourceSegment = (other: GpsRecord): boolean =>
+                    isSameTrackSegment(anchor!, other) || other.trackSegmentSplitBySpeed === true;
+                const allTrailingUnreachable = lookahead.every(
+                    (later) =>
+                        inSameSourceSegment(later) &&
+                        isTeleportFrom(anchor!, later, later.unixSeconds - anchor!.unixSeconds),
+                );
+                const isTrailingSpike =
+                    confirmer === null &&
+                    !anchorWasCandidate &&
+                    inSameSourceSegment(rec) &&
+                    (lookahead.length === 0 ||
+                        (trailingClusterSize <= maxCluster &&
+                            trailingClusterSize < keptEligibleCount &&
+                            allTrailingUnreachable));
+                if (confirmer !== null || isTrailingSpike) {
+                    // drop: skipping restores continuity / trailing spike. The
+                    // dropped position is garbage but its accel sample is real -
+                    // phase 2 below moves max |G| onto the nearest surviving fix.
+                    if (confirmer !== null) confirmedClusterEnd = confirmer;
+                    else droppingTrailingCluster = true;
+                    recordDropped(rec);
+                    continue;
+                }
             }
-            // Both this record and the next eligible disagree with the anchor
-            // (or super-threshold motion continues past the last record) -
-            // a genuine new reality; fall through and accept as the new anchor.
+            // No record in the lookahead agrees with the anchor (or
+            // super-threshold motion continues past the last record) - a
+            // genuine new reality; fall through and accept as the new anchor.
         }
-        let kept = rec;
-        if (pendingTransplant && pendingTransplant.target === rec) {
-            const donor = pendingTransplant.donor;
-            kept = { ...rec, accelXg: donor.accelXg, accelYg: donor.accelYg, accelZg: donor.accelZg };
-            pendingTransplant = null;
+        const sameSegment = isSameTrackSegment(anchor, rec);
+        out.push(rec);
+        keptEligibleOutIndices.push(out.length - 1);
+        anchor = rec;
+        keptEligibleCount = sameSegment ? keptEligibleCount + 1 : 1;
+        anchorWasCandidate = sameSegment ? isCandidate : false;
+    }
+
+    // Phase 2: transplant peak accel from each dropped fix onto the nearest
+    // finally-kept eligible fix by timestamp (same-second sibling camera fix
+    // has dt = 0 and wins over neighboring seconds; ties prefer the earlier
+    // fix; max |G| wins; input records are never mutated).
+    if (droppedWithAccel.length > 0 && keptEligibleOutIndices.length > 0) {
+        const transplants = new Map<number, GpsRecord>();
+        for (const dropped of droppedWithAccel) {
+            const pos = lowerBoundBy(keptEligibleOutIndices, dropped.unixSeconds, (outIdx) => out[outIdx]!.unixSeconds);
+            let targetOutIdx: number;
+            if (pos <= 0) {
+                targetOutIdx = keptEligibleOutIndices[0]!;
+            } else if (pos >= keptEligibleOutIndices.length) {
+                targetOutIdx = keptEligibleOutIndices[keptEligibleOutIndices.length - 1]!;
+            } else {
+                const leftIdx = keptEligibleOutIndices[pos - 1]!;
+                const rightIdx = keptEligibleOutIndices[pos]!;
+                const leftDt = Math.abs(dropped.unixSeconds - out[leftIdx]!.unixSeconds);
+                const rightDt = Math.abs(out[rightIdx]!.unixSeconds - dropped.unixSeconds);
+                targetOutIdx = rightDt < leftDt ? rightIdx : leftIdx;
+            }
+            const current = transplants.get(targetOutIdx) ?? out[targetOutIdx]!;
+            if (accelMag(dropped) > accelMag(current)) {
+                transplants.set(targetOutIdx, dropped);
+            }
         }
-        out.push(kept);
-        anchor = kept;
-        anchorOutIndex = out.length - 1;
-        anchorWasCandidate = isCandidate;
+        for (const [outIdx, donor] of transplants) {
+            out[outIdx] = {
+                ...out[outIdx]!,
+                accelXg: donor.accelXg,
+                accelYg: donor.accelYg,
+                accelZg: donor.accelZg,
+            };
+        }
     }
     return out;
 }

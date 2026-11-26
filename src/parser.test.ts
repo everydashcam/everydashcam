@@ -967,19 +967,286 @@ describe("dropTeleportOutliers", () => {
         expect(kept[kept.length - 1]!.lat).toBeCloseTo(LAT + 5 * 0.0001, 9);
     });
 
-    it("keeps a 2-point spike cluster (documented limitation - continuity anchors on the first spike)", () => {
-        // The confirm step sees the second spike agreeing with the first and
-        // accepts the cluster as a genuine new anchor. viofosync's median-of-5
-        // would catch this; rejected as a heavier policy. Assert the current
-        // behavior so a future change here is deliberate, not accidental.
-        const records = [
+    it("drops a 2-point and 3-point interior spike cluster that returns to the track", () => {
+        // Real VIOFO A229 Plus firmware bursts produce 2 consecutive lon=0
+        // blocks mid-drive (~760 km away) before resuming the real track.
+        const twoPoint = [
             ...track1Hz(4),
-            rec(1004, LAT + 0.05, LON, { speedMs: 11 }),
-            rec(1005, LAT + 0.0501, LON, { speedMs: 11 }),
+            rec(1004, LAT, 0, { speedMs: 0 }),
+            rec(1005, LAT - 0.015, 0, { speedMs: 0 }),
             rec(1006, LAT + 0.0006, LON, { speedMs: 11 }),
             rec(1007, LAT + 0.0007, LON, { speedMs: 11 }),
         ];
-        expect(dropTeleportOutliers(records)).toHaveLength(8);
+        const keptTwo = dropTeleportOutliers(twoPoint);
+        expect(keptTwo).toHaveLength(6);
+        expect(keptTwo.every((r) => r.lon === LON)).toBe(true);
+
+        const threePoint = [
+            ...track1Hz(4),
+            rec(1004, LAT + 0.05, LON, { speedMs: 11 }),
+            rec(1005, LAT + 0.0501, LON, { speedMs: 11 }),
+            rec(1006, LAT + 0.0502, LON, { speedMs: 11 }),
+            rec(1007, LAT + 0.0007, LON, { speedMs: 11 }),
+            rec(1008, LAT + 0.0008, LON, { speedMs: 11 }),
+        ];
+        const keptThree = dropTeleportOutliers(threePoint);
+        expect(keptThree).toHaveLength(6);
+        expect(keptThree.every((r) => r.lat < LAT + 0.01)).toBe(true);
+    });
+
+    it("drops a leading cold-start teleport spike instead of anchoring on it", () => {
+        // Real VIOFO A229 Plus pattern: first active fix has valid lat and
+        // lon=0, followed by the real track 760 km away.
+        const records = [rec(999, LAT, 0, { speedMs: 0 }), ...track1Hz(6, 1001)];
+        const kept = dropTeleportOutliers(records);
+        expect(kept).toHaveLength(6);
+        expect(kept.every((r) => r.lon === LON)).toBe(true);
+    });
+
+    it("drops a 2-point leading teleport prefix before a continuous track", () => {
+        const records = [rec(998, LAT, 0, { speedMs: 0 }), rec(999, LAT, 0, { speedMs: 0 }), ...track1Hz(5, 1000)];
+        const kept = dropTeleportOutliers(records);
+        expect(kept).toHaveLength(5);
+        expect(kept.every((r) => r.lon === LON)).toBe(true);
+    });
+
+    it("keeps a valid first fix when a 2-point spike cluster follows right after it", () => {
+        // [valid0, spike1, spike2, valid3, valid4] must anchor on valid0 and
+        // drop [spike1, spike2], not misclassify valid0 as a leading spike.
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 11 }),
+            rec(1001, LAT, 0, { speedMs: 0 }),
+            rec(1002, LAT, 0, { speedMs: 0 }),
+            rec(1003, LAT + 0.0003, LON, { speedMs: 11 }),
+            rec(1004, LAT + 0.0004, LON, { speedMs: 11 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept).toHaveLength(3);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1003, 1004]);
+    });
+
+    it("keeps a valid first fix when exactly maxClusterSize (5) spikes follow right after it", () => {
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 11 }),
+            rec(1001, LAT, 0, { speedMs: 0 }),
+            rec(1002, LAT, 0, { speedMs: 0 }),
+            rec(1003, LAT, 0, { speedMs: 0 }),
+            rec(1004, LAT, 0, { speedMs: 0 }),
+            rec(1005, LAT, 0, { speedMs: 0 }),
+            rec(1006, LAT + 0.0006, LON, { speedMs: 11 }),
+            rec(1007, LAT + 0.0007, LON, { speedMs: 11 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1006, 1007]);
+    });
+
+    it("drops a 450 m leading glitch instead of letting 450 m / 5 s = 90 m/s fake a reconnection", () => {
+        // ~450 m north of LAT (0.00405 deg * 111.195 km/deg ~= 450 m).
+        // With maxClusterSize=5, a naive !isTeleportFrom(first, later, 5) check
+        // sees 450/5 = 90 m/s <= 100 m/s, falsely keeps the bogus first point,
+        // and drops the first 4 stationary real points.
+        const records = [
+            rec(1000, LAT + 0.00405, LON, { speedMs: 0 }),
+            rec(1001, LAT, LON, { speedMs: 0 }),
+            rec(1002, LAT, LON, { speedMs: 0 }),
+            rec(1003, LAT, LON, { speedMs: 0 }),
+            rec(1004, LAT, LON, { speedMs: 0 }),
+            rec(1005, LAT, LON, { speedMs: 0 }),
+            rec(1006, LAT, LON, { speedMs: 0 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1001, 1002, 1003, 1004, 1005, 1006]);
+        expect(kept.every((r) => r.lat === LAT)).toBe(true);
+    });
+
+    it("keeps a genuine 450 m step change followed by stationary fixes instead of dropping 4 valid points", () => {
+        const before = Array.from({ length: 5 }, (_, i) => rec(1000 + i, LAT, LON, { speedMs: 0 }));
+        const after = Array.from({ length: 6 }, (_, i) => rec(1005 + i, LAT + 0.00405, LON, { speedMs: 0 }));
+        const kept = dropTeleportOutliers([...before, ...after]);
+        expect(kept).toHaveLength(11);
+    });
+
+    it("resets the anchor chain at trackSegment boundaries so a short trailing GPX segment survives", () => {
+        const seg0 = track1Hz(6).map((r) => ({ ...r, trackSegment: 0 }));
+        // Segment 1 starts 1 s later far away with only 2 points: must not be
+        // treated as a trailing teleport cluster of segment 0.
+        const seg1 = [
+            rec(1006, LAT + 0.5, LON + 0.5, { speedMs: 11, trackSegment: 1 }),
+            rec(1007, LAT + 0.5001, LON + 0.5, { speedMs: 11, trackSegment: 1 }),
+        ];
+        const kept = dropTeleportOutliers([...seg0, ...seg1]);
+        expect(kept).toHaveLength(8);
+        expect(kept.filter((r) => r.trackSegment === 1)).toHaveLength(2);
+    });
+
+    it("preserves a short middle GPX trackSegment even when the following segment returns near the first", () => {
+        const seg0 = track1Hz(6).map((r) => ({ ...r, trackSegment: 0 }));
+        const seg1 = [
+            rec(1006, LAT + 0.5, LON + 0.5, { speedMs: 11, trackSegment: 1 }),
+            rec(1007, LAT + 0.5001, LON + 0.5, { speedMs: 11, trackSegment: 1 }),
+        ];
+        const seg2 = [
+            rec(1008, LAT + 0.0008, LON, { speedMs: 11, trackSegment: 2 }),
+            rec(1009, LAT + 0.0009, LON, { speedMs: 11, trackSegment: 2 }),
+        ];
+        const kept = dropTeleportOutliers([...seg0, ...seg1, ...seg2]);
+        expect(kept).toHaveLength(10);
+        expect(kept.filter((r) => r.trackSegment === 1)).toHaveLength(2);
+    });
+
+    it("drops an entire confirmed 4-point 350 m glitch cluster atomically without letting the 4th point replace anchor", () => {
+        // ~350 m north of LAT (0.00315 deg * 111.195 km/deg ~= 350 m).
+        // On the 4th glitch point, 350 m / 4 s = 87.5 m/s <= 100 m/s; without
+        // dropping the confirmed cluster atomically, point 4 becomes the new
+        // anchor and the two real returning tail points get dropped instead.
+        const before = Array.from({ length: 6 }, (_, i) => rec(1000 + i, LAT, LON, { speedMs: 0 }));
+        const glitches = Array.from({ length: 4 }, (_, i) => rec(1006 + i, LAT + 0.00315, LON, { speedMs: 0 }));
+        const after = [rec(1010, LAT, LON, { speedMs: 0 }), rec(1011, LAT, LON, { speedMs: 0 })];
+
+        const kept = dropTeleportOutliers([...before, ...glitches, ...after]);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1010, 1011]);
+        expect(kept.every((r) => r.lat === LAT)).toBe(true);
+
+        // Same atomic-drop check for an unreachable trailing 4-point 600 m
+        // cluster (600 m / 4 s = 150 m/s > 100 m/s) with no return.
+        const unreachableGlitches = Array.from({ length: 4 }, (_, i) =>
+            rec(1006 + i, LAT + 0.0054, LON, { speedMs: 0 }),
+        );
+        const keptTrailing = dropTeleportOutliers([...before, ...unreachableGlitches]);
+        expect(keptTrailing.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003, 1004, 1005]);
+    });
+
+    it("drops an out-and-back late jump while keeping reachable trailing fixes and exact 240 m distance", () => {
+        // 6 stationary fixes at 0 m, then +350 m at +3 s (116.7 m/s > 100 m/s),
+        // +210 m at +7 s (30 m/s = 108 km/h), +240 m at +8 s (30 m/s = 108 km/h).
+        // The +350 m detour must be dropped while keeping +210 m and +240 m so
+        // distance stays ~240 m (not 520 m). Adding a post-pause fix 30 s later
+        // at +240 m must likewise keep both reachable fixes before the pause.
+        const before = Array.from({ length: 6 }, (_, i) => rec(1000 + i, LAT, LON, { speedMs: 0 }));
+        const tail = [
+            rec(1008, LAT + 350 / 111_195, LON, { speedMs: 30 }),
+            rec(1012, LAT + 210 / 111_195, LON, { speedMs: 30 }),
+            rec(1013, LAT + 240 / 111_195, LON, { speedMs: 30 }),
+        ];
+
+        const kept = dropTeleportOutliers([...before, ...tail]);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1012, 1013]);
+        expect(totalDistanceKm(kept)).toBeCloseTo(0.24, 3);
+
+        const withPause = [...before, ...tail, rec(1043, LAT + 240 / 111_195, LON, { speedMs: 0 })];
+        const keptWithPause = dropTeleportOutliers(withPause);
+        expect(keptWithPause.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1012, 1013, 1043]);
+        expect(totalDistanceKm(keptWithPause)).toBeCloseTo(0.24, 3);
+    });
+
+    it("stops cluster reconnection at explicit GPX trackSegment boundaries (A -> B -> C -> A waypoints)", () => {
+        const A = { lat: LAT, lon: LON };
+        const B = { lat: LAT + 0.02, lon: LON };
+        const C = { lat: LAT + 0.04, lon: LON };
+        const fourWaypoints = [
+            rec(1000, A.lat, A.lon, { trackSegment: 0 }),
+            rec(1001, B.lat, B.lon, { trackSegment: 1 }),
+            rec(1002, C.lat, C.lon, { trackSegment: 2 }),
+            rec(1003, A.lat, A.lon, { trackSegment: 3 }),
+        ];
+        expect(dropTeleportOutliers(fourWaypoints).map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003]);
+
+        const threeWaypoints = [
+            rec(1000, A.lat, A.lon, { trackSegment: 0 }),
+            rec(1001, B.lat, B.lon, { trackSegment: 1 }),
+            rec(1002, A.lat, A.lon, { trackSegment: 2 }),
+        ];
+        expect(dropTeleportOutliers(threeWaypoints).map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002]);
+    });
+
+    it("breaks leading confirmation across a long GPS pause even when pre- and post-pause coordinates match", () => {
+        // t=0,1 at A; t=2 glitches 350 m ahead to B; 58 s GPS dropout; t=60,61
+        // car genuinely reaches B. The pause breaks B's confirmation run so A
+        // stays intact and only the pre-pause glitch at t=2 is dropped.
+        const bLat = LAT + 350 / 111_195;
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 6 }),
+            rec(1001, LAT, LON, { speedMs: 6 }),
+            rec(1002, bLat, LON, { speedMs: 6 }),
+            rec(1060, bLat, LON, { speedMs: 6 }),
+            rec(1061, bLat, LON, { speedMs: 6 }),
+        ];
+
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1060, 1061]);
+    });
+
+    it("re-evaluates reachable post-pause fixes instead of swallowing them after a pre-pause glitch", () => {
+        // 6 stationary fixes, 1 glitch 300 m away, a 60 s GPS dropout, then 2
+        // real fixes 1 km away (1000 m / 61 s ~= 16.4 m/s, completely normal).
+        // Only the pre-pause glitch at t=1006 should be dropped.
+        const before = Array.from({ length: 6 }, (_, i) => rec(1000 + i, LAT, LON, { speedMs: 0 }));
+        const glitch = rec(1006, LAT + 0.0027, LON, { speedMs: 0 });
+        const afterPause = [
+            rec(1066, LAT + 0.009, LON, { speedMs: 16 }),
+            rec(1067, LAT + 0.0091, LON, { speedMs: 16 }),
+        ];
+
+        const kept = dropTeleportOutliers([...before, glitch, ...afterPause]);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1066, 1067]);
+    });
+
+    it("preserves a standalone GPX waypoint when a separate trackSegment starts 1 s later far away", () => {
+        // <wpt> in trackSegment 0 followed 1 s later by a 2-point <trkseg> in
+        // trackSegment 1 ~1 km away: explicit segment boundary must protect wpt.
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 0, trackSegment: 0 }),
+            rec(1001, LAT + 0.009, LON, { speedMs: 10, trackSegment: 1 }),
+            rec(1002, LAT + 0.0091, LON, { speedMs: 10, trackSegment: 1 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002]);
+    });
+
+    it("keeps a valid first fix when a single glitch precedes a 60 s GPS pause and a displaced continuation", () => {
+        // t=1000 is valid, t=1001 glitches 300 m away, then 60 s pause, then
+        // t=1061..1062 continue 1 km away (reachable from t=1000 at ~16 m/s).
+        // Must keep t=1000 and drop t=1001, not count t=1001->t=1061 as a run.
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 0 }),
+            rec(1001, LAT + 0.0027, LON, { speedMs: 0 }),
+            rec(1061, LAT + 0.009, LON, { speedMs: 16 }),
+            rec(1062, LAT + 0.0091, LON, { speedMs: 16 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1061, 1062]);
+    });
+
+    it("preserves all three independent GPX waypoints spaced 1 km apart at 1 s intervals", () => {
+        // Three <wpt> entries along a line, each with its own trackSegment:
+        // the trailing third waypoint must not be dropped as a trailing spike.
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 0, trackSegment: 0 }),
+            rec(1001, LAT + 0.009, LON, { speedMs: 0, trackSegment: 1 }),
+            rec(1002, LAT + 0.018, LON, { speedMs: 0, trackSegment: 2 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002]);
+    });
+
+    it("does not drop the first GPX waypoint when subsequent independent waypoints sit in separate trackSegments", () => {
+        // Each GPX <wpt> gets its own trackSegment. wpt1 is ~1 km from wpt0,
+        // wpt2 is ~10 m from wpt1; wpt1 and wpt2 must not form a 2-point run
+        // across their segment boundary to evict wpt0.
+        const records = [
+            rec(1000, LAT, LON, { speedMs: 0, trackSegment: 0 }),
+            rec(1001, LAT + 0.009, LON, { speedMs: 0, trackSegment: 1 }),
+            rec(1002, LAT + 0.00909, LON, { speedMs: 0, trackSegment: 2 }),
+        ];
+        const kept = dropTeleportOutliers(records);
+        expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1001, 1002]);
+    });
+
+    it("drops a 2-point trailing spike cluster at the end of an established track", () => {
+        const records = [...track1Hz(6), rec(1006, LAT, 0, { speedMs: 0 }), rec(1007, LAT, 0, { speedMs: 0 })];
+        const kept = dropTeleportOutliers(records);
+        expect(kept).toHaveLength(6);
+        expect(kept.every((r) => r.lon === LON)).toBe(true);
     });
 
     it("passes active:false records through and skips them in the confirm lookahead", () => {
@@ -1095,6 +1362,82 @@ describe("dropTeleportOutliers", () => {
             const kept = dropTeleportOutliers(records);
             expect(kept).toHaveLength(9);
             expect(kept.every((r) => r.accelXg === 0 && r.accelYg === 0 && r.accelZg === 0)).toBe(true);
+        });
+
+        it("transplants |G| from a dropped leading spike onto the first kept anchor", () => {
+            const records = [rec(999, LAT, 0, { speedMs: 0, accelXg: 1.1 }), ...track1Hz(4, 1000)];
+            const kept = dropTeleportOutliers(records);
+            expect(kept).toHaveLength(4);
+            expect(kept[0]!.unixSeconds).toBe(1000);
+            expect(kept[0]!.accelXg).toBe(1.1);
+            expect(records[1]!.accelXg).toBe(0); // input untouched
+        });
+
+        it("carries |G| across cascading leading-anchor drops (A -> B,B -> C,C,C,C)", () => {
+            // A defers its impact onto B1, then B1/B2 are themselves dropped in
+            // favor of C1..C4; A's impact peak must survive onto C1.
+            const records = [
+                rec(1000, LAT, 0, { speedMs: 0, accelXg: 1.2 }),
+                rec(1001, LAT + 2, 10, { speedMs: 0 }),
+                rec(1002, LAT + 2.0001, 10, { speedMs: 0 }),
+                ...track1Hz(4, 1003),
+            ];
+            const kept = dropTeleportOutliers(records);
+            expect(kept.map((r) => r.unixSeconds)).toEqual([1003, 1004, 1005, 1006]);
+            expect(kept[0]!.accelXg).toBe(1.2);
+        });
+
+        it("transplants |G| onto the final surviving fix even if an intermediate leading target is later dropped", () => {
+            // A(2g), B, C, C, C, B, B spaced kilometres apart: A is dropped as a
+            // leading outlier and C,C,C are later dropped as an interior spike
+            // cluster returning to B. Only B fixes survive, and A's 2 g peak
+            // must land on the first surviving B instead of vanishing with C.
+            const records = [
+                rec(1000, LAT, LON, { speedMs: 0, accelXg: 2.0 }),
+                rec(1001, LAT + 0.05, LON, { speedMs: 0 }),
+                rec(1002, LAT + 0.1, LON, { speedMs: 0 }),
+                rec(1003, LAT + 0.1, LON, { speedMs: 0 }),
+                rec(1004, LAT + 0.1, LON, { speedMs: 0 }),
+                rec(1005, LAT + 0.05, LON, { speedMs: 0 }),
+                rec(1006, LAT + 0.05, LON, { speedMs: 0 }),
+            ];
+            const kept = dropTeleportOutliers(records);
+            expect(kept.map((r) => r.unixSeconds)).toEqual([1001, 1005, 1006]);
+            expect(kept[0]!.accelXg).toBe(2.0);
+        });
+
+        it("prefers a same-second sibling camera fix over a later post-pause fix when transplanting |G|", () => {
+            // Front camera glitches at t=1000 with a 2 g impact; rear camera
+            // has the valid fix at the exact same second t=1000; then a 60 s
+            // dropout followed by 3 valid fixes at t=1060..1062. The impact
+            // marker must stay at t=1000 (on the rear fix), not shift +60 s.
+            const records = [
+                rec(1000, LAT, 0, { speedMs: 0, accelXg: 2.0, mp4Filename: "front.mp4" }),
+                rec(1000, LAT, LON, { speedMs: 0, mp4Filename: "rear.mp4" }),
+                rec(1060, LAT + 0.001, LON, { speedMs: 10, mp4Filename: "front.mp4" }),
+                rec(1061, LAT + 0.0011, LON, { speedMs: 10, mp4Filename: "front.mp4" }),
+                rec(1062, LAT + 0.0012, LON, { speedMs: 10, mp4Filename: "front.mp4" }),
+            ];
+            const kept = dropTeleportOutliers(records);
+            expect(kept.map((r) => r.unixSeconds)).toEqual([1000, 1060, 1061, 1062]);
+            expect(kept[0]!.mp4Filename).toBe("rear.mp4");
+            expect(kept[0]!.accelXg).toBe(2.0);
+            expect(kept[1]!.accelXg).toBe(0);
+        });
+
+        it("transplants max-|G| from a 2-point dropped cluster onto the nearest kept neighbors", () => {
+            const records = [
+                ...track1Hz(4),
+                rec(1004, LAT, 0, { speedMs: 0, accelXg: 0.9 }),
+                rec(1005, LAT, 0, { speedMs: 0, accelYg: 1.3 }),
+                rec(1006, LAT + 0.0006, LON, { speedMs: 11 }),
+                rec(1007, LAT + 0.0007, LON, { speedMs: 11 }),
+            ];
+            const kept = dropTeleportOutliers(records);
+            expect(kept).toHaveLength(6);
+            // t=1004 is closer to anchor t=1003; t=1005 is closer to confirmer t=1006.
+            expect(kept.find((r) => r.unixSeconds === 1003)!.accelXg).toBe(0.9);
+            expect(kept.find((r) => r.unixSeconds === 1006)!.accelYg).toBe(1.3);
         });
     });
 
