@@ -6,10 +6,12 @@
 // HERO11+" - those caveats still apply).
 
 import { extendArray } from "../../array-extend.js";
+import { classifyFilenameMayBeTimelapse } from "../filename/index.js";
 import type { GpsRecord, ParsedRecords, SkippedLine, VendorFile } from "../types.js";
 import { decodeNumeric, decodeString, iterTokens, parseGpsuTimestamp, type GpmfToken } from "./gpmf.js";
 import { readMediaTimescale, readSampleDurationsInTicks } from "./mp4-walker.js";
 import { findTrackBySampleFormat, loadTrackSampleBuffers, type Mp4Index, type TrackInfo } from "./mp4-index.js";
+import { dropIsolatedTimestampOutliers } from "./timestamp-outliers.js";
 
 const GPMF_FORMAT = "gpmd";
 
@@ -45,10 +47,15 @@ export async function extractFromGpmdTrack(
 
     const records: GpsRecord[] = [];
     const skipped: SkippedLine[] = [];
-    // Per-record source-stream kind, parallel to `records` (kept out of the
-    // public GpsRecord type on purpose). Feeds the per-file GPS9-over-GPS5
-    // preference below.
+    // Per-record source-stream kind and GPS5 clock-group id, parallel to
+    // `records` (kept out of the public GpsRecord type on purpose).
+    // `streamKinds` feeds the per-file GPS9-over-GPS5 preference; `clockGroupIds`
+    // lets timestamp-outlier filtering judge GPS5 by source GPSU block instead
+    // of expanded ~18 Hz sub-samples that all share one clock stamp.
     const streamKinds: GpmfGpsStreamKind[] = [];
+    const clockGroupIds: number[] = [];
+    const clockGroupCounter = { next: 0 };
+    let hasOwnDevice = false;
 
     for (let sampleIdx = 0; sampleIdx < sampleBuffers.length; sampleIdx++) {
         const buf = sampleBuffers[sampleIdx]!;
@@ -57,7 +64,19 @@ export async function extractFromGpmdTrack(
         // behavior so degraded mode is no worse than before.
         const sampleDurSec = sampleDurationsSec?.[sampleIdx] ?? 1;
         try {
-            extractGpsFromSample(sampleDv, vf.file.name, sampleDurSec, records, streamKinds);
+            if (
+                extractGpsFromSample(
+                    sampleDv,
+                    vf.file.name,
+                    sampleDurSec,
+                    records,
+                    streamKinds,
+                    clockGroupIds,
+                    clockGroupCounter,
+                )
+            ) {
+                hasOwnDevice = true;
+            }
         } catch (err) {
             skipped.push({
                 line: sampleIdx + 1,
@@ -75,7 +94,30 @@ export async function extractFromGpmdTrack(
     // The GPS5 discard runs per FILE, after the whole sample walk - never
     // inside extractGpsFromSample, whose ACCL merge indexes the records array
     // via sampleStartIdx/addedCount and assumes contiguous appends.
-    return { records: dropGps5WhenGps9Present(records, streamKinds), skipped };
+    const finalRecords = dropGps5WhenGps9Present(records, streamKinds);
+    const usesGps5Only =
+        finalRecords.length > 0 &&
+        clockGroupIds.length === finalRecords.length &&
+        !streamKinds.includes("gps9") &&
+        streamKinds.includes("gps5");
+    if (usesGps5Only) {
+        const unboundedWallSpan = hasOwnDevice || classifyFilenameMayBeTimelapse(vf);
+        const cleaned = dropIsolatedTimestampOutliers(finalRecords, skipped, {
+            durationSec: unboundedWallSpan ? null : index.durationSec,
+            clockGroupIds,
+        });
+        return {
+            records: cleaned,
+            skipped,
+            timestampOutliersFiltered: true,
+            ...(hasOwnDevice ? { wallSpanUnboundedByDuration: true } : {}),
+        };
+    }
+    return {
+        records: finalRecords,
+        skipped,
+        ...(hasOwnDevice ? { wallSpanUnboundedByDuration: true } : {}),
+    };
 }
 
 /** Source stream a GPS record was extracted from (internal to gpmf-extract). */
@@ -135,7 +177,10 @@ export function extractGpsFromSample(
     sampleDurationSec: number,
     out: GpsRecord[],
     kindsOut?: GpmfGpsStreamKind[],
-): void {
+    clockGroupIdsOut?: number[],
+    clockGroupCounter?: { next: number },
+): boolean {
+    let sawOwnDevice = false;
     for (const top of iterTokens(dv)) {
         if (top.fourCC !== "DEVC" || top.type !== 0) continue;
 
@@ -148,6 +193,7 @@ export function extractGpsFromSample(
                 break;
             }
         }
+        if (isOwnDevice) sawOwnDevice = true;
 
         const sampleStartIdx = out.length;
         const acclSamplesCollected: { x: number; y: number; z: number }[] = [];
@@ -156,7 +202,16 @@ export function extractGpsFromSample(
             if (strm.fourCC !== "STRM" || strm.type !== 0) continue;
             const tags = collectStrmTags(strm);
             if (tags.gps5 || tags.gps9) {
-                extractGpsFromStreamTags(tags, mp4Filename, sampleDurationSec, out, kindsOut, isOwnDevice);
+                extractGpsFromStreamTags(
+                    tags,
+                    mp4Filename,
+                    sampleDurationSec,
+                    out,
+                    kindsOut,
+                    isOwnDevice,
+                    clockGroupIdsOut,
+                    clockGroupCounter,
+                );
             } else if (tags.accl && isOwnDevice) {
                 // Only for our own DEVC blocks - see OWN_DEVICE_NAMES.
                 const samples = decodeAcclSamples(tags.accl, tags.scal);
@@ -174,6 +229,7 @@ export function extractGpsFromSample(
             mergeAcclIntoRecords(out, sampleStartIdx, addedCount, acclSamplesCollected);
         }
     }
+    return sawOwnDevice;
 }
 
 interface StrmTags {
@@ -241,6 +297,8 @@ function extractGpsFromStreamTags(
     out: GpsRecord[],
     kindsOut?: GpmfGpsStreamKind[],
     isOwnDevice = false,
+    clockGroupIdsOut?: number[],
+    clockGroupCounter?: { next: number },
 ): void {
     if (!tags.scal) return;
     const scalValues = decodeNumeric(tags.scal);
@@ -275,10 +333,15 @@ function extractGpsFromStreamTags(
             );
         }
     } finally {
-        // finally keeps kindsOut parallel to out even on a decode throw
-        // (extractFromGpmdTrack catches per sample and keeps going).
-        if (kindsOut) {
-            for (let i = before; i < out.length; i++) kindsOut.push(kind);
+        // finally keeps kindsOut and clockGroupIdsOut parallel to out even on a
+        // decode throw (extractFromGpmdTrack catches per sample and keeps going).
+        const groupId = clockGroupCounter ? clockGroupCounter.next++ : 0;
+        for (let i = before; i < out.length; i++) {
+            kindsOut?.push(kind);
+            if (clockGroupIdsOut) {
+                clockGroupIdsOut.push(kind === "gps5" ? groupId : (clockGroupCounter?.next ?? 0));
+                if (kind === "gps9" && clockGroupCounter) clockGroupCounter.next++;
+            }
         }
     }
 }

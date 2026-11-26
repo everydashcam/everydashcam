@@ -782,6 +782,37 @@ describe("createFreeGpsBlockParser: cold-start clock jump", () => {
         expect(parser(fixBlock(14, 22, 5), "a.mp4")).toHaveLength(1);
         expect(parser.coldStartClockJumpSec()).toBeNull();
     });
+
+    it("does not emit localClockOffsetHintSec when a glitched +1h first fix is dropped by outlier filtering", async () => {
+        // Pre-fix RTC and filename both say 10:00; the first active block has a
+        // corrupt +1h stamp (11:00:01) while the remaining blocks sit at 10:00.
+        // Dropping 11:00:01 must recompute the cold-start jump against the
+        // surviving 10:00:02 fix so no false +1h offset shifts every sibling.
+        const blocks = [
+            preFixBlock(10, 0, 0),
+            fixBlock(11, 0, 1),
+            fixBlock(10, 0, 2),
+            fixBlock(10, 0, 3),
+            fixBlock(10, 0, 4),
+        ];
+        const stride = 256;
+        const buf = new Uint8Array(blocks.length * stride);
+        blocks.forEach((dv, idx) => {
+            buf.set(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength), idx * stride);
+        });
+        const file = new File([buf], "2026_0406_100000_0001F.MP4", { type: "video/mp4" });
+        const fakeIndex = {
+            durationSec: 60,
+            hasFreeGpsMarker: true,
+            freeGpsSeedOffsets: [],
+            novatekGpsAtom: null,
+            moovView: null,
+        } as unknown as Mp4Index;
+        const parsed = await freegpsPrimitive.parse({ file, relativePath: file.name }, fakeIndex);
+        expect(parsed.records).toHaveLength(3);
+        expect(parsed.records[0]!.unixSeconds).toBe(Date.UTC(2026, 3, 6, 10, 0, 2) / 1000);
+        expect(parsed.localClockOffsetHintSec).toBeUndefined();
+    });
 });
 
 describe("createFreeGpsBlockParser: backward anchor-scan fallback", () => {
@@ -1947,6 +1978,18 @@ describe("ATC self-keying XOR records (Type 11)", () => {
         expect(parsed).not.toBeNull();
         expect(parsed!.records).toHaveLength(13);
         expect(parsed!.records.at(-1)!.unixSeconds).toBe(Date.UTC(2015, 4, 15, 19, 30, 29) / 1000);
+    });
+
+    it("keeps hasRingBufferRecords true when another variant also emits later in the same file", () => {
+        const parseBlock = createFreeGpsBlockParser();
+        const atcRecords = parseBlock(buildAtcBlock([REC_A, REC_B]), "mixed.mp4");
+        expect(atcRecords).toHaveLength(2);
+        expect(parseBlock.hasRingBufferRecords()).toBe(true);
+
+        const type3Records = parseBlock(buildCanonicalType3Block({ anchor: 68 }), "mixed.mp4");
+        expect(type3Records).toHaveLength(1);
+        expect(parseBlock.claimedVariantName()).toBeNull();
+        expect(parseBlock.hasRingBufferRecords()).toBe(true);
     });
 
     it("reads the whole ring buffer through a literal-pointing (legacy) table too", async () => {

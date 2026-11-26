@@ -30,7 +30,8 @@ import {
     tryStructuralPath,
 } from "../internal/freegps.js";
 import { removeGravityBaselineOrZero } from "../internal/accel-baseline.js";
-import { classifyFilenameTime } from "../filename/index.js";
+import { dropIsolatedTimestampOutliers } from "../internal/timestamp-outliers.js";
+import { classifyFilenameMayBeTimelapse, classifyFilenameTime } from "../filename/index.js";
 import type { Primitive } from "./types.js";
 
 export const freegpsPrimitive: Primitive = {
@@ -63,8 +64,7 @@ export const freegpsPrimitive: Primitive = {
         // Structural path first - cheap when it works.
         const structural = await tryStructuralPath(file.file, index, parseBlock, signal);
         if (structural) {
-            removeGravityIncludedAccelBaseline(structural.records, parseBlock);
-            attachLocalClockOffsetHint(structural, parseBlock, file);
+            finalizeFreeGpsResult(structural, parseBlock, file, index.durationSec);
             return structural;
         }
         // Streaming fallback. Can eat up to 4 GB IO on a long clip - the
@@ -82,11 +82,31 @@ export const freegpsPrimitive: Primitive = {
                 `found ${streamed.skipped.length} freeGPS markers but no variant matched - encrypted or unsupported firmware`,
             );
         }
-        removeGravityIncludedAccelBaseline(streamed.records, parseBlock);
-        attachLocalClockOffsetHint(streamed, parseBlock, file);
+        finalizeFreeGpsResult(streamed, parseBlock, file, index.durationSec);
         return streamed;
     },
 };
+
+function finalizeFreeGpsResult(
+    result: ParsedRecords,
+    parseBlock: FreeGpsFileBlockParser,
+    file: VendorFile,
+    durationSec: number | null,
+): void {
+    removeGravityIncludedAccelBaseline(result.records, parseBlock);
+    if (parseBlock.hasRingBufferRecords()) {
+        result.recordsOutOfOrder = true;
+    } else {
+        // Playback duration does not bound wall-clock span for time-lapse
+        // clips (deriveWallDurationSec relies on the full GPS span instead).
+        const mayBeTimelapse = classifyFilenameMayBeTimelapse(file);
+        result.records = dropIsolatedTimestampOutliers(result.records, result.skipped, {
+            durationSec: mayBeTimelapse ? null : durationSec,
+        });
+        result.timestampOutliersFiltered = true;
+    }
+    attachLocalClockOffsetHint(result, parseBlock, file);
+}
 
 /** Max |filename clock - first synced record| for the local-stamp verdict:
  *  covers a fix acquired minutes into the clip plus RTC drift, while staying
@@ -111,10 +131,6 @@ const LOCAL_STAMP_NAME_TOLERANCE_SEC = 450;
  * No-op (hint absent) when either piece is missing.
  */
 function attachLocalClockOffsetHint(result: ParsedRecords, parseBlock: FreeGpsFileBlockParser, file: VendorFile): void {
-    const jumpSec = parseBlock.coldStartClockJumpSec();
-    if (jumpSec === null) return;
-    const nameDate = classifyFilenameTime(file);
-    if (nameDate === null) return;
     let firstSyncedUnix: number | null = null;
     for (const record of result.records) {
         if (record.timeUnsynced !== true) {
@@ -123,6 +139,13 @@ function attachLocalClockOffsetHint(result: ParsedRecords, parseBlock: FreeGpsFi
         }
     }
     if (firstSyncedUnix === null) return;
+    // Measure the cold-start jump against the same surviving first synced
+    // record checked against the filename clock, so a dropped leading clock
+    // glitch cannot trigger a false fleet-wide offset.
+    const jumpSec = parseBlock.coldStartClockJumpSec(firstSyncedUnix);
+    if (jumpSec === null) return;
+    const nameDate = classifyFilenameTime(file);
+    if (nameDate === null) return;
     if (Math.abs(nameDate.getTime() / 1000 - firstSyncedUnix) > LOCAL_STAMP_NAME_TOLERANCE_SEC) return;
     result.localClockOffsetHintSec = jumpSec;
 }
@@ -151,4 +174,4 @@ function removeGravityIncludedAccelBaseline(records: GpsRecord[], parseBlock: Fr
 // Test-only: this baseline path (unlike the other four subtractAxisMean call
 // sites) has no other direct coverage. It owns the WHEN of the gravity removal
 // - variant gating, the >=2-sample rule, and the <2 zeroing.
-export const _internal = { removeGravityIncludedAccelBaseline };
+export const _internal = { removeGravityIncludedAccelBaseline, finalizeFreeGpsResult };

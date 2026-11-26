@@ -258,6 +258,115 @@ describe("DOD LS600W in MPEG-TS", () => {
         expect(parsed.records[23]!.lat).toBeCloseTo(52.33605, 5);
     });
 
+    it("unwraps a cyclic PES ring buffer into chronological order so recording-order filters keep all records", async () => {
+        // Wrapped cyclic list: [07:42:00, 07:32:00, 07:32:01, 07:32:02].
+        const wrappedTail = dodRecord(523359500, 66038683, 0);
+        wrappedTail[11] = 42; // minute 42 (+600s)
+        const r0 = dodRecord(523349500, 66038683, 0);
+        const r1 = dodRecord(523350500, 66038683, 1);
+        const r2 = dodRecord(523351500, 66038683, 2);
+
+        const stream = pesStream(dodBody(wrappedTail, r0, r1, r2));
+        const parsed = await extractTsPesGps(vendorFile(stream), stream);
+
+        expect(parsed.records).toHaveLength(4);
+        const base = Date.UTC(2021, 2, 18, 7, 32, 0) / 1000;
+        expect(parsed.records.map((r) => r.unixSeconds - base)).toEqual([0, 1, 2, 600]);
+    });
+
+    it("does not rotate an unwrapped PES packet onto an interior corrupted timestamp", async () => {
+        // Unwrapped packet with a -1 hour clock glitch in the middle:
+        // [07:32:00, 07:32:01, 06:32:02, 07:32:03, 07:32:04].
+        const r0 = dodRecord(523349500, 66038683, 0);
+        const r1 = dodRecord(523350500, 66038683, 1);
+        const glitch = dodRecord(523351500, 66038683, 2);
+        glitch[10] = 6; // hour 6 (-3600s)
+        const r3 = dodRecord(523352500, 66038683, 3);
+        const r4 = dodRecord(523353500, 66038683, 4);
+
+        const stream = pesStream(dodBody(r0, r1, glitch, r3, r4));
+        const parsed = await extractTsPesGps(vendorFile(stream), stream);
+        const base = Date.UTC(2021, 2, 18, 7, 32, 0) / 1000;
+        expect(parsed.records.map((r) => r.unixSeconds - base)).toEqual([0, 1, -3598, 3, 4]);
+
+        // Through real dispatch, the intact recording order lets the outlier filter drop the glitch.
+        const dispatched = await dispatchParseVideoEmbeddedGps([
+            {
+                file: { file: new File([stream as BlobPart], "dod.ts"), relativePath: "dod.ts" },
+                role: "video",
+                sidecarId: null,
+                sidecarMp4: null,
+                logExtractorId: null,
+            },
+        ]);
+        expect(dispatched.records.map((r) => r.unixSeconds - base)).toEqual([0, 1, 3, 4]);
+    });
+
+    it("marks a wrapped DOD PES packet with an extra clock glitch as out-of-order so valid wrapped records survive", async () => {
+        // Storage order: [07:42:00, 07:42:01, 07:32:00, 07:32:01, 06:32:02, 07:32:03, 07:32:04]
+        // Two descents -> ambiguous order -> must not drop valid +600/+601.
+        const w0 = dodRecord(523359500, 66038683, 0);
+        w0[11] = 42;
+        const w1 = dodRecord(523360500, 66038683, 1);
+        w1[11] = 42;
+        const r0 = dodRecord(523349500, 66038683, 0);
+        const r1 = dodRecord(523350500, 66038683, 1);
+        const glitch = dodRecord(523351500, 66038683, 2);
+        glitch[10] = 6; // -3600s
+        const r3 = dodRecord(523352500, 66038683, 3);
+        const r4 = dodRecord(523353500, 66038683, 4);
+
+        const stream = pesStream(dodBody(w0, w1, r0, r1, glitch, r3, r4));
+        const parsed = await extractTsPesGps(vendorFile(stream), stream);
+        expect(parsed.recordsOutOfOrder).toBe(true);
+
+        const dispatched = await dispatchParseVideoEmbeddedGps([
+            {
+                file: { file: new File([stream as BlobPart], "dod-wrapped-glitch.ts"), relativePath: "dod.ts" },
+                role: "video",
+                sidecarId: null,
+                sidecarMp4: null,
+                logExtractorId: null,
+            },
+        ]);
+        const base = Date.UTC(2021, 2, 18, 7, 32, 0) / 1000;
+        expect(dispatched.records.map((r) => r.unixSeconds - base)).toContain(600);
+        expect(dispatched.records.map((r) => r.unixSeconds - base)).toContain(601);
+    });
+
+    it("marks a wrapped DOD PES packet with a single descent and corrupted high tail as out-of-order", async () => {
+        // Storage order: [600, 601, 0, 1, 2, 3, 7204]. One descent (601 -> 0)
+        // with last > first skips rotation; must flag outOfOrder so valid
+        // wrapped records 600 and 601 are not dropped as leading glitches.
+        const w0 = dodRecord(523359500, 66038683, 0);
+        w0[11] = 42; // +600s
+        const w1 = dodRecord(523360500, 66038683, 1);
+        w1[11] = 42; // +601s
+        const r0 = dodRecord(523349500, 66038683, 0);
+        const r1 = dodRecord(523350500, 66038683, 1);
+        const r2 = dodRecord(523351500, 66038683, 2);
+        const r3 = dodRecord(523352500, 66038683, 3);
+        const badTail = dodRecord(523353500, 66038683, 4);
+        badTail[10] = 9; // +2 hours (+7204s)
+
+        const stream = pesStream(dodBody(w0, w1, r0, r1, r2, r3, badTail));
+        const parsed = await extractTsPesGps(vendorFile(stream), stream);
+        expect(parsed.recordsOutOfOrder).toBe(true);
+
+        const dispatched = await dispatchParseVideoEmbeddedGps([
+            {
+                file: { file: new File([stream as BlobPart], "dod-wrapped-bad-tail.ts"), relativePath: "dod.ts" },
+                role: "video",
+                sidecarId: null,
+                sidecarMp4: null,
+                logExtractorId: null,
+            },
+        ]);
+        const base = Date.UTC(2021, 2, 18, 7, 32, 0) / 1000;
+        expect(dispatched.records.map((r) => r.unixSeconds - base)).toContain(600);
+        expect(dispatched.records.map((r) => r.unixSeconds - base)).toContain(601);
+    });
+
     it("reads records that spill past the first TS packet", async () => {
         // 12 records = 416 bytes of body; a packet carries at most 184, so this
         // spans three of them and only reassembly can read the tail.

@@ -52,11 +52,13 @@ import { findGarminUuidBox } from "./internal/garmin-uuid.js";
 import { findKenwoodMoovUdta, hasKenwoodUdtaMarker, KENWOOD_TRAILER_PROBE_BYTES } from "./internal/kenwood.js";
 import { hasGkuMarker, hasLigoJsonMarker } from "./internal/ligo-json.js";
 import { needsGpsProbeEscalation } from "./filename/_patterns.js";
+import { classifyFilenameMayBeTimelapse } from "./filename/index.js";
 import { findNovatekTsGpsPid } from "./internal/novatek-ts-extract.js";
 import { findTsPesGpsStream } from "./internal/ts-pes-gps.js";
 import { hasNextbaseGdatHead } from "./internal/nextbase-gdat.js";
 import { hasTextGpsLogAtom } from "./internal/text-gpslog-atom.js";
 import { hasSeiDoubleGpsTrackShape } from "./internal/sei-double-gps.js";
+import { dropIsolatedTimestampOutliers } from "./internal/timestamp-outliers.js";
 import { LOG_SIDECAR_PRIMITIVES, VIDEO_EMBEDDED_PRIMITIVES } from "./primitives/index.js";
 import { blackvue3gfSidecar } from "./sidecars/blackvue-3gf.js";
 import { escortMapSidecar } from "./sidecars/escort-map.js";
@@ -539,13 +541,26 @@ export async function dispatchParseVideoEmbeddedGps(
                 // parse (sstar-ssmd phantom-track gate) that dropped fabricated
                 // fixes but kept the frame-0 clock anchor and skip diagnostics.
                 if (parsed.records.length === 0 && parsed.videoStartUtcHint === undefined) continue;
-                // Run before returning to the per-file merge - centralized
-                // forward-fill covers parsers that don't write course (PNDM,
-                // Navitel gps0, LigoGPS) without each parser having to remember.
-                forwardFillBearingsIfAllZero(parsed.records);
+                // Run before returning to the per-file merge (which sorts by
+                // unixSeconds): drop isolated clock glitches while recording
+                // order is still intact (skipping ring-buffer formats whose
+                // emission order is storage order), then forward-fill bearings
+                // for course-less formats.
+                const unboundedWallSpan =
+                    parsed.wallSpanUnboundedByDuration === true || classifyFilenameMayBeTimelapse(vf);
+                const cleanedRecords =
+                    parsed.recordsOutOfOrder === true || parsed.timestampOutliersFiltered === true
+                        ? parsed.records
+                        : dropIsolatedTimestampOutliers(parsed.records, parsed.skipped, {
+                              // Playback duration does not bound wall-clock span
+                              // on time-lapse clips or our own pause-spliced
+                              // GPMF exports.
+                              durationSec: unboundedWallSpan ? null : index.durationSec,
+                          });
+                forwardFillBearingsIfAllZero(cleanedRecords);
                 return {
                     extractorId: extractor.id,
-                    records: parsed.records,
+                    records: cleanedRecords,
                     skipped: parsed.skipped,
                     videoStartUtcHint: parsed.videoStartUtcHint,
                     localClockOffsetHintSec: parsed.localClockOffsetHintSec,

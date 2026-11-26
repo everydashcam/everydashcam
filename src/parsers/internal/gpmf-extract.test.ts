@@ -9,7 +9,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { GpsRecord } from "../types.js";
-import { dropGps5WhenGps9Present, extractGpsFromSample, type GpmfGpsStreamKind } from "./gpmf-extract.js";
+import {
+    dropGps5WhenGps9Present,
+    extractFromGpmdTrack,
+    extractGpsFromSample,
+    findGpmdTrack,
+    type GpmfGpsStreamKind,
+} from "./gpmf-extract.js";
+import { buildMp4Index } from "./mp4-index.js";
 
 /** Builds one KLV block (8-byte header + payload padded to a multiple of 4). */
 function klv(fourCC: string, type: number, sampleSize: number, repeat: number, payload: Uint8Array): Uint8Array {
@@ -401,5 +408,111 @@ describe("GPS9-over-GPS5 preference (HERO11 dual-stream)", () => {
         const records: GpsRecord[] = [];
         extractGpsFromSample(buildGps9Sample([GPS9_POINT]), "x.MP4", 1, records);
         expect(dropGps5WhenGps9Present(records, [])).toBe(records);
+    });
+});
+
+describe("extractFromGpmdTrack GPS5 clock-group outlier filtering", () => {
+    function mp4Box(type: string, payload: Uint8Array): Uint8Array {
+        const out = new Uint8Array(8 + payload.byteLength);
+        const dv = new DataView(out.buffer);
+        dv.setUint32(0, out.byteLength, false);
+        for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+        out.set(payload, 8);
+        return out;
+    }
+
+    function buildGpmdMp4(samples: Uint8Array[], durationSec: number): Uint8Array {
+        const mdatPayload = concat(...samples);
+        const mdat = mp4Box("mdat", mdatPayload);
+        const offsets: number[] = [];
+        let cursor = 8; // mdat starts at file offset 0, payload at 8
+        for (const s of samples) {
+            offsets.push(cursor);
+            cursor += s.byteLength;
+        }
+        const mvhdPayload = new Uint8Array(96);
+        const mvhdDv = new DataView(mvhdPayload.buffer);
+        mvhdDv.setUint32(12, 1000, false); // timescale
+        mvhdDv.setUint32(16, durationSec * 1000, false); // duration
+
+        const mdhdPayload = new Uint8Array(24);
+        const mdhdDv = new DataView(mdhdPayload.buffer);
+        mdhdDv.setUint32(12, 1000, false);
+        mdhdDv.setUint32(16, samples.length * 1000, false);
+
+        const stsdPayload = new Uint8Array(8 + 16);
+        const stsdDv = new DataView(stsdPayload.buffer);
+        stsdDv.setUint32(4, 1, false); // entry_count
+        stsdDv.setUint32(8, 16, false); // entry size
+        for (let i = 0; i < 4; i++) stsdPayload[12 + i] = "gpmd".charCodeAt(i);
+
+        const sttsPayload = new Uint8Array(8 + 8);
+        const sttsDv = new DataView(sttsPayload.buffer);
+        sttsDv.setUint32(4, 1, false);
+        sttsDv.setUint32(8, samples.length, false);
+        sttsDv.setUint32(12, 1000, false); // 1 s per sample
+
+        const stscPayload = new Uint8Array(8 + 12);
+        const stscDv = new DataView(stscPayload.buffer);
+        stscDv.setUint32(4, 1, false);
+        stscDv.setUint32(8, 1, false);
+        stscDv.setUint32(12, 1, false);
+        stscDv.setUint32(16, 1, false);
+
+        const stszPayload = new Uint8Array(12 + samples.length * 4);
+        const stszDv = new DataView(stszPayload.buffer);
+        stszDv.setUint32(8, samples.length, false);
+        for (let idx = 0; idx < samples.length; idx++) {
+            stszDv.setUint32(12 + idx * 4, samples[idx]!.byteLength, false);
+        }
+
+        const stcoPayload = new Uint8Array(8 + offsets.length * 4);
+        const stcoDv = new DataView(stcoPayload.buffer);
+        stcoDv.setUint32(4, offsets.length, false);
+        for (let idx = 0; idx < offsets.length; idx++) {
+            stcoDv.setUint32(8 + idx * 4, offsets[idx]!, false);
+        }
+
+        const stbl = mp4Box(
+            "stbl",
+            concat(
+                mp4Box("stsd", stsdPayload),
+                mp4Box("stts", sttsPayload),
+                mp4Box("stsc", stscPayload),
+                mp4Box("stsz", stszPayload),
+                mp4Box("stco", stcoPayload),
+            ),
+        );
+        const minf = mp4Box("minf", stbl);
+        const mdia = mp4Box("mdia", concat(mp4Box("mdhd", mdhdPayload), minf));
+        const trak = mp4Box("trak", mdia);
+        const moov = mp4Box("moov", concat(mp4Box("mvhd", mvhdPayload), trak));
+        return concat(mdat, moov);
+    }
+
+    it("judges GPS5 timestamp glitches per GPSU block so an 18-sample bad block does not erase a 2-sample valid block", async () => {
+        const eighteen = Array.from({ length: 18 }, (_, i) => ({
+            ...GPS5_POINT,
+            lonDeg: 2.35 + i * 0.00001,
+        }));
+        const s0 = nested("DEVC", gps5Strm(eighteen.slice(0, 2), "240101120000.000"));
+        const s1Bad = nested("DEVC", gps5Strm(eighteen, "240101110001.000")); // -1 hour GPSU glitch
+        const s2 = nested("DEVC", gps5Strm(eighteen, "240101120002.000"));
+        const s3 = nested("DEVC", gps5Strm(eighteen, "240101120003.000"));
+        const s4 = nested("DEVC", gps5Strm(eighteen, "240101120004.000"));
+
+        const mp4Bytes = buildGpmdMp4([s0, s1Bad, s2, s3, s4], 5);
+        const file = new File([mp4Bytes as BlobPart], "GH010005.MP4");
+        const index = await buildMp4Index(file);
+        const track = findGpmdTrack(index);
+        expect(track).not.toBeNull();
+
+        const parsed = await extractFromGpmdTrack({ file, relativePath: file.name }, index, track!);
+        expect(parsed).not.toBeNull();
+        expect(parsed!.timestampOutliersFiltered).toBe(true);
+        const t0 = Date.UTC(2024, 0, 1, 12, 0, 0) / 1000;
+        expect(parsed!.records).toHaveLength(2 + 3 * 18);
+        expect(parsed!.records[0]!.unixSeconds).toBeCloseTo(t0, 3);
+        expect(parsed!.records.every((r) => r.unixSeconds >= t0)).toBe(true);
     });
 });

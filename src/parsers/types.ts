@@ -243,6 +243,21 @@ export interface ParsedRecords {
     // candidate (embeddedStartUtcHint, logDurationSec) and recomputes it from
     // the log on every ingest; it is never persisted in the index cache.
     videoTimingHints?: VideoTimingHint[];
+    // Optional: set when records are emitted in non-chronological storage order
+    // (e.g. a repeating ring-buffer snapshot like ATC Type 11) rather than a
+    // recording-order stream, so the dispatcher skips recording-order timestamp
+    // outlier filtering.
+    recordsOutOfOrder?: boolean;
+    // Optional: set when the primitive already ran dropIsolatedTimestampOutliers
+    // internally (e.g. freegps, which needs the cleaned stream before computing
+    // localClockOffsetHintSec) so the dispatcher does not run a second pass.
+    timestampOutliersFiltered?: boolean;
+    // Optional: set when the container playback duration does not bound the
+    // wall-clock span of embedded GPS timestamps (e.g. everydashcam's own GPMF
+    // exports, which splice out pauses and may apply speed factors while
+    // keeping absolute UTC stamps). Disables the duration-based edge
+    // forward-gap cap in the timestamp outlier filter.
+    wallSpanUnboundedByDuration?: boolean;
 }
 
 /** Timing of one video as known from a log. */

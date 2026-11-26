@@ -1884,8 +1884,17 @@ function parseAtcRecord(payload: DataView, at: number, mp4Filename: string): Gps
     };
 }
 
+const ATC_VARIANT_NAME = "ATC Type 11";
+
+/**
+ * Variants whose blocks repeat a multi-record ring buffer in storage order
+ * rather than emitting a recording-order stream. Chronological timestamp
+ * outlier filtering must skip these and let downstream dedup/sort order them.
+ */
+export const RING_BUFFER_VARIANT_NAMES: ReadonlySet<string> = new Set([ATC_VARIANT_NAME]);
+
 const variantAtc: FreeGpsVariant = {
-    name: "ATC Type 11",
+    name: ATC_VARIANT_NAME,
     needsWholeAtom: true,
     matches(payload) {
         if (!matchesBytesAt(payload, 0, FREE_GPS_MAGIC_BYTES)) return false;
@@ -2179,16 +2188,25 @@ export interface FreeGpsFileBlockParser extends ParseFreeGpsBlock {
      */
     claimedVariantName(): string | null;
     /**
-     * Cold-start clock jump between the last pre-fix RTC block and the first
-     * emitted record, snapped to the 15-min zone grid - or null when the file
-     * did not start unsynced, no pre-fix block carried a readable datetime at
-     * the emitting layout's geometry, or the jump does not look like a zone
-     * (below one grid step, past the widest real UTC offset, or too far off
-     * the grid). A non-null value alone does NOT prove local-as-UTC records -
-     * the caller must pair it with the filename-clock gate (see
-     * primitives/freegps.ts).
+     * True when any ring-buffer variant (RING_BUFFER_VARIANT_NAMES, e.g. ATC
+     * Type 11) emitted records in this file - even if another variant or the
+     * fallback also emitted later, so mixed files still disable recording-order
+     * timestamp outlier drops.
      */
-    coldStartClockJumpSec(): number | null;
+    hasRingBufferRecords(): boolean;
+    /**
+     * Cold-start clock jump between the last pre-fix RTC block and the first
+     * satellite-synced record, snapped to the 15-min zone grid - or null when
+     * the file did not start unsynced, no pre-fix block carried a readable
+     * datetime at the emitting layout's geometry, or the jump does not look
+     * like a zone (below one grid step, past the widest real UTC offset, or
+     * too far off the grid). When `firstSyncedUnix` is passed (after post-parse
+     * timestamp outlier filtering), the jump is measured against that surviving
+     * record rather than a possibly dropped first emission. A non-null value
+     * alone does NOT prove local-as-UTC records - the caller must pair it with
+     * the filename-clock gate (see primitives/freegps.ts).
+     */
+    coldStartClockJumpSec(firstSyncedUnix?: number): number | null;
 }
 
 /** Zone grid for the cold-start jump: quarter-hour zones are real (Nepal
@@ -2239,6 +2257,7 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
     let claimedName: string | null = null;
     let mixedClaims = false;
     let fallbackEmitted = false;
+    let sawRingBuffer = false;
     // Cold-start clock-jump measurement. Pre-fix blocks on local-as-UTC
     // firmware (A119 Mini 2: status bytes ' 00'/'V00') fail every variant
     // signature but carry a valid RTC datetime at the fixed Type-3 offsets;
@@ -2251,7 +2270,8 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
     // already-synced clock and would poison a re-measure. The state survives
     // a jump-scan bail into the linear rerun by design (same closure).
     const lastPreFixUnixByLayout = new Map<FieldLayout, number>();
-    let rawClockJumpSec: number | null = null;
+    let coldStartPreFixUnix: number | null = null;
+    let coldStartFirstEmittedUnix: number | null = null;
     let sawEmit = false;
 
     const captureClockJump = (payload: DataView, first: GpsRecord): void => {
@@ -2261,7 +2281,8 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
         if (layout === null) return; // non-Type-3 variant (NMEA text, doubles)
         const preFixUnix = lastPreFixUnixByLayout.get(layout);
         if (preFixUnix === undefined) return;
-        rawClockJumpSec = first.unixSeconds - preFixUnix;
+        coldStartPreFixUnix = preFixUnix;
+        coldStartFirstEmittedUnix = first.unixSeconds;
     };
 
     const parseOneBlock = (payload: DataView, mp4Filename: string, boxSizeDword?: number): GpsRecord[] => {
@@ -2289,6 +2310,7 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
                 if (records.length > 0) {
                     if (claimedName === null) claimedName = variant.name;
                     else if (claimedName !== variant.name) mixedClaims = true;
+                    if (RING_BUFFER_VARIANT_NAMES.has(variant.name)) sawRingBuffer = true;
                     if (!sawEmit) {
                         sawEmit = true;
                         captureClockJump(payload, records[0]!);
@@ -2336,12 +2358,16 @@ export function createFreeGpsBlockParser(options: CreateFreeGpsBlockParserOption
     return Object.assign(parseOneBlock, {
         needsWholeAtom: registeredVariantNeedsWholeAtom,
         claimedVariantName: (): string | null => (mixedClaims || fallbackEmitted ? null : claimedName),
-        coldStartClockJumpSec: (): number | null => {
-            if (rawClockJumpSec === null) return null;
-            const snapped = Math.round(rawClockJumpSec / CLOCK_JUMP_SNAP_SEC) * CLOCK_JUMP_SNAP_SEC;
+        hasRingBufferRecords: (): boolean => sawRingBuffer,
+        coldStartClockJumpSec: (firstSyncedUnix?: number): number | null => {
+            if (coldStartPreFixUnix === null) return null;
+            const syncedUnix = firstSyncedUnix ?? coldStartFirstEmittedUnix;
+            if (syncedUnix === null) return null;
+            const raw = syncedUnix - coldStartPreFixUnix;
+            const snapped = Math.round(raw / CLOCK_JUMP_SNAP_SEC) * CLOCK_JUMP_SNAP_SEC;
             if (Math.abs(snapped) < CLOCK_JUMP_MIN_ABS_SEC) return null;
             if (Math.abs(snapped) > CLOCK_JUMP_MAX_ABS_SEC) return null;
-            if (Math.abs(rawClockJumpSec - snapped) > CLOCK_JUMP_RESIDUAL_MAX_SEC) return null;
+            if (Math.abs(raw - snapped) > CLOCK_JUMP_RESIDUAL_MAX_SEC) return null;
             return snapped;
         },
     });

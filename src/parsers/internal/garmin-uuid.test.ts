@@ -21,6 +21,7 @@ import { pndmPrimitive } from "../primitives/pndm.js";
 import { rvmiPrimitive } from "../primitives/rvmi.js";
 import type { VendorFile } from "../types.js";
 import { WrongFormatError } from "../types.js";
+import { dispatchParseVideoEmbeddedGps } from "../registry.js";
 import { GARMIN_GPS_UUID, findGarminUuidBox, parseGarminUuidBox } from "./garmin-uuid.js";
 import { buildMp4Index, type Mp4Index } from "./mp4-index.js";
 
@@ -352,5 +353,42 @@ describe("cross-claim isolation", () => {
         for (const primitive of others) {
             expect(await primitive.marker(candidate, index), primitive.id).toBe(false);
         }
+    });
+
+    it("preserves Garmin Travelapse span equally when opened from DCIM/104TLPSE or as a standalone file", async () => {
+        const mvhdPayload = new Uint8Array(96);
+        const mvhdDv = new DataView(mvhdPayload.buffer);
+        mvhdDv.setUint32(12, 1000, false); // timescale
+        mvhdDv.setUint32(16, 60_000, false); // 60 s playback duration
+
+        const t0 = DEFAULT_RECORD_UNIX;
+        const offsets = [0, 600, 601, 602, 603];
+        const fileBytes = moovBytes(
+            box("mvhd", mvhdPayload),
+            garminUuidBox(offsets.map((off) => packRecord({ unixSeconds: t0 + off, mph: 30 }))),
+        );
+
+        const openAt = async (relativePath: string, name = "GRMN0003.MP4") =>
+            dispatchParseVideoEmbeddedGps([
+                {
+                    file: { file: new File([fileBytes], name), relativePath },
+                    role: "video",
+                    sidecarId: null,
+                    sidecarMp4: null,
+                    logExtractorId: null,
+                },
+            ]);
+
+        const fromFolder = await openAt("DCIM/104TLPSE/GRMN0003.MP4");
+        const standalone = await openAt("GRMN0003.MP4");
+        const renamed = await openAt("holiday.mp4", "holiday.mp4");
+        const nonTimelapseFolder = await openAt("DCIM/105UNSVD/GRMN0003.MP4");
+
+        expect(fromFolder.records.map((r) => r.unixSeconds - t0)).toEqual(offsets);
+        expect(standalone.records.map((r) => r.unixSeconds - t0)).toEqual(offsets);
+        expect(renamed.records.map((r) => r.unixSeconds - t0)).toEqual(offsets);
+        // Inside an explicit non-timelapse Garmin folder, the 600 s gap on a
+        // 60 s clip still triggers the leading edge outlier drop.
+        expect(nonTimelapseFolder.records.map((r) => r.unixSeconds - t0)).toEqual([600, 601, 602, 603]);
     });
 });

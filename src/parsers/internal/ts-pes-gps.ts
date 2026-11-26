@@ -75,14 +75,17 @@ function hasDodPesBody(body: Uint8Array): boolean {
 /**
  * Decodes every DOD LS600W record in a PES body.
  *
- * Upstream first hunts for the earliest record because the PES holds a CYCLIC
- * list, then walks it with wraparound. That is skipped here: every record
- * carries a full UTC stamp, and the trip layer sorts globally, so reading them
- * in stored order and letting the sort undo the rotation reaches the same
- * result without transliterating a walk whose own `$S` check reads the wrong
- * index.
+ * The PES holds a cyclic list, so records can wrap around inside a packet
+ * (e.g. [600, 0, 1, 2]). Unwrap by rotating from the earliest timestamp so
+ * downstream recording-order passes (such as isolated timestamp outlier
+ * filtering) see chronological order rather than treating the wrapped tail as
+ * a leading backward jump.
  */
-function decodeDodBody(body: Uint8Array, mp4Filename: string, skipped: SkippedLine[]): GpsRecord[] {
+function decodeDodBody(
+    body: Uint8Array,
+    mp4Filename: string,
+    skipped: SkippedLine[],
+): { records: GpsRecord[]; outOfOrder: boolean } {
     const records: GpsRecord[] = [];
     for (let at = DOD_RECORD_START; at + DOD_RECORD_SIZE <= body.length; at += DOD_RECORD_SIZE) {
         if (u16be(body, at) !== DOD_MAGIC) break;
@@ -143,7 +146,45 @@ function decodeDodBody(body: Uint8Array, mp4Filename: string, skipped: SkippedLi
             mp4Filename,
         });
     }
-    return records;
+    if (records.length > 1) {
+        // The PES holds a cyclic buffer, so a wrapped packet is a cyclic
+        // rotation of a non-decreasing sequence: exactly one descent
+        // (records[i] < records[i - 1]) AND records[last] <= records[0].
+        // Checking both avoids rotating an unwrapped packet onto an interior
+        // corrupted timestamp (e.g. [0, 1, -3600, 3, 4], where last > first).
+        let wrapIdx = -1;
+        let descents = 0;
+        for (let i = 1; i < records.length; i++) {
+            if (records[i]!.unixSeconds < records[i - 1]!.unixSeconds) {
+                wrapIdx = i;
+                descents++;
+            }
+        }
+        if (descents === 1 && records[records.length - 1]!.unixSeconds <= records[0]!.unixSeconds) {
+            return { records: [...records.slice(wrapIdx), ...records.slice(0, wrapIdx)], outOfOrder: false };
+        }
+        // When a cyclic packet has a descent that is NOT a clean rotation, only
+        // trust its raw order when `descents === 1` looks like an isolated 1-2
+        // record interior backward dip bridged cleanly across `wrapIdx - 1`
+        // (e.g. [0, 1, -3600, 3, 4]). Otherwise the packet is ambiguous (e.g. a
+        // wrapped buffer with a corrupted high tail [600, 601, 0, 1, 2, 3, 7204]
+        // or multiple descents), so flag outOfOrder to keep valid wrapped fixes.
+        if (descents === 1) {
+            const beforeDip = records[wrapIdx - 1]!.unixSeconds;
+            let bridgedInteriorDip = false;
+            const maxBridgeEnd = Math.min(records.length - 1, wrapIdx + 2);
+            for (let k = wrapIdx + 1; k <= maxBridgeEnd; k++) {
+                const span = records[k]!.unixSeconds - beforeDip;
+                if (span >= 0 && span <= 300) {
+                    bridgedInteriorDip = true;
+                    break;
+                }
+            }
+            if (!bridgedInteriorDip) return { records, outOfOrder: true };
+        }
+        if (descents >= 2) return { records, outOfOrder: true };
+    }
+    return { records, outOfOrder: false };
 }
 
 function u16be(bytes: Uint8Array, off: number): number {
@@ -200,6 +241,7 @@ export async function extractTsPesGps(
 
     const records: GpsRecord[] = [];
     const skipped: SkippedLine[] = [];
+    let recordsOutOfOrder = false;
 
     // The planner serves the buffers: the marker probe first, linear chunks
     // until the PID is locked, then predicted windows around each next PES
@@ -255,7 +297,9 @@ export async function extractTsPesGps(
                 pid = packetPid;
                 planner.setPid(packetPid);
                 dialect = "dod";
-                records.push(...decodeDodBody(body, file.file.name, skipped));
+                const decoded = decodeDodBody(body, file.file.name, skipped);
+                records.push(...decoded.records);
+                if (decoded.outOfOrder) recordsOutOfOrder = true;
             } else if (matched === "viidure" && hasViidureBody(body)) {
                 pid = packetPid;
                 planner.setPid(packetPid);
@@ -284,5 +328,5 @@ export async function extractTsPesGps(
 
     // INNOVV carries no clock of any kind (parseInnovvRecord already flags
     // every record); DOD and Viidure stamp records with UTC.
-    return { records, skipped };
+    return { records, skipped, ...(recordsOutOfOrder ? { recordsOutOfOrder: true } : {}) };
 }

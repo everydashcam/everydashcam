@@ -22,6 +22,7 @@ import { createInMemoryFileHandle } from "../ui/in-memory-file.js";
 import { type GpmfClipTimeline, packGpmfSamples } from "../parsers/internal/gpmf-pack.js";
 import { buildMp4Index } from "../parsers/internal/mp4-index.js";
 import { extractFromGpmdTrack, findGpmdTrack } from "../parsers/internal/gpmf-extract.js";
+import { dispatchParseVideoEmbeddedGps } from "../parsers/registry.js";
 import { buildTripTimeline, type TripFrame } from "../trips.js";
 import type { GpsRecord } from "../parsers/types.js";
 
@@ -220,6 +221,47 @@ describe("injectGpmdTrack - end-to-end round-trip on real mp4 fixture", () => {
         expect(result!.records[1]!.speedMs).toBeCloseTo(11.119, 3);
         expect(result!.records[2]!.speedSource).toBe("unavailable");
         expect(result!.records.map((r) => r.trackSegment)).toEqual([0, 0, 1]);
+        expect(result!.wallSpanUnboundedByDuration).toBe(true);
+    });
+
+    it("keeps a leading fix across a spliced 5-minute pause when re-importing our own exported MP4", async () => {
+        // Two 1-s / 3-s frames separated by a 5-minute recording pause (cut out
+        // of the exported video while absolute UTC stamps are preserved).
+        const frameA: TripFrame = {
+            startUtc: baseUtc,
+            durationSec: 1,
+            wallDurationSec: 1,
+            channels: {},
+        };
+        const frameB: TripFrame = {
+            startUtc: baseUtc + 301,
+            durationSec: 3,
+            wallDurationSec: 3,
+            channels: {},
+        };
+        const timeline = buildTripTimeline([frameA, frameB]);
+        const track: GpsRecord[] = [
+            makeRecord({ unixSeconds: baseUtc, lat: 50, lon: 30 }),
+            makeRecord({ unixSeconds: baseUtc + 301, lat: 50.001, lon: 30 }),
+            makeRecord({ unixSeconds: baseUtc + 302, lat: 50.002, lon: 30 }),
+            makeRecord({ unixSeconds: baseUtc + 303, lat: 50.003, lon: 30 }),
+        ];
+        const samples = packGpmfSamples(track, timeline, realTimeClip(4), { includeAccel: false });
+
+        const handle = makeFakeHandle(new Uint8Array(readFileSync(FIXTURE_MP4)));
+        await injectGpmdTrack(handle, samples);
+        const file = await handle.getFile();
+
+        const dispatched = await dispatchParseVideoEmbeddedGps([
+            {
+                file: { file, relativePath: "exported.mp4" },
+                role: "video",
+                sidecarId: null,
+                sidecarMp4: null,
+                logExtractorId: null,
+            },
+        ]);
+        expect(dispatched.records.map((r) => Math.round(r.unixSeconds - baseUtc))).toEqual([0, 301, 302, 303]);
     });
 
     it("ACCL round-trip: pack with non-zero accel → extract gives same accel back", async () => {

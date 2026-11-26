@@ -3,6 +3,7 @@
 // subtitle-track format of the Garmin Dash Cam line (pndm.ts). Parsing lives
 // in internal/garmin-uuid.ts; see the foreign-source note there.
 
+import { RX_GRMN_MODE_PATH } from "../filename/_patterns.js";
 import { findGarminUuidBox, parseGarminUuidBox } from "../internal/garmin-uuid.js";
 import type { Mp4Index } from "../internal/mp4-index.js";
 import { type ParsedRecords, type VendorFile, WrongFormatError } from "../types.js";
@@ -29,6 +30,15 @@ export const garminUuidPrimitive: Primitive = {
         }
         // Empty records are a valid result here (camera never had a fix):
         // the exact UUID signature rules out a format false-positive.
-        return parseGarminUuidBox(index.moovView, box, file.file.name);
+        const parsed = parseGarminUuidBox(index.moovView, box, file.file.name);
+        // Garmin Travelapse clips carry their mode only in the parent folder
+        // (`DCIM/104TLPSE/`). When opened standalone or renamed (e.g.
+        // `holiday.mp4`), the folder is gone so playback duration does not
+        // reliably bound the GPS wall span unless a non-TLPSE folder proves it.
+        const folderMode = file.relativePath.match(RX_GRMN_MODE_PATH)?.[2]?.toLowerCase();
+        if (folderMode === undefined || folderMode === "tlpse") {
+            parsed.wallSpanUnboundedByDuration = true;
+        }
+        return parsed;
     },
 };

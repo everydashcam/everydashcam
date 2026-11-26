@@ -11,6 +11,7 @@
 // living in a per-field list rather than per-vendor file.
 
 import type { RecordingMode, VendorFile } from "../types.js";
+import { RX_GRMN_MODE_PATH, RX_GRMN_SEQUENCE } from "./_patterns.js";
 import { FILENAME_CAMERA_KEY } from "./camera-key.js";
 import { asOriginalDownload } from "./download-copy.js";
 import { FILENAME_CHANNEL } from "./channel.js";
@@ -81,6 +82,15 @@ export function classifyFilenameTimelapse(file: VendorFile): boolean {
  *  otherwise ambiguous clip is time-lapse. This is eligibility, not a verdict. */
 export function classifyFilenameClockTimelapse(file: VendorFile): boolean {
     return walk(FILENAME_CLOCK_TIMELAPSE, file).value ?? false;
+}
+/** Whether a clip's GPS wall-clock span may legitimately exceed its playback
+ *  duration: explicit time-lapse markers, clock-timelapse-eligible families,
+ *  or pathless Garmin GRMN clips (whose `DCIM/104TLPSE/` Travelapse folder is
+ *  not available when opened as a standalone file). */
+export function classifyFilenameMayBeTimelapse(file: VendorFile): boolean {
+    if (classifyFilenameTimelapse(file) || classifyFilenameClockTimelapse(file)) return true;
+    const original = asOriginalDownload(file);
+    return RX_GRMN_SEQUENCE.test(original.file.name) && !RX_GRMN_MODE_PATH.test(original.relativePath);
 }
 /**
  * Cross-channel camera key - first non-null technique match, or null when no
