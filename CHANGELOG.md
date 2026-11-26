@@ -7,6 +7,11 @@ User-facing changes, newest first. Dates are when the change landed on
 [beta](https://beta.everydashcam.app); production picks it up with the next
 release tag. Localized texts ship inside the app (the "What's new" panel).
 
+## 2026-11-27
+
+- **Fixed:** Space toggles playback in fullscreen again.
+- **Improved:** Improved handling of dashcam GPS glitches.
+
 ## 2026-11-24
 
 - **New:** Added help finding missing GPS data for 70mai recordings.

@@ -28,6 +28,38 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     {
+        id: "2026-11-27.2",
+        category: "fix",
+        text: {
+            en: "Space toggles playback in fullscreen again.",
+            ru: "Пробел снова переключает паузу в полноэкранном режиме.",
+            de: "Im Vollbild schaltet die Leertaste wieder zwischen Wiedergabe und Pause um.",
+            es: "En pantalla completa, la barra espaciadora vuelve a pausar y reanudar la reproducción.",
+            fr: "En plein écran, la barre d’espace permet de nouveau de mettre en pause et de reprendre la lecture.",
+            pl: "W trybie pełnoekranowym spacja znów wstrzymuje i wznawia odtwarzanie.",
+            pt: "Em tela cheia, a barra de espaço volta a pausar e retomar a reprodução.",
+            zh: "全屏时，空格键又能切换播放和暂停了。",
+            ja: "フルスクリーンでスペースキーによる再生と一時停止の切り替えが再び使えるようになりました。",
+            ko: "전체 화면에서 스페이스바로 다시 재생과 일시 정지를 전환할 수 있어요.",
+        },
+    },
+    {
+        id: "2026-11-27.1",
+        category: "improvement",
+        text: {
+            en: "Improved handling of dashcam GPS glitches.",
+            ru: "Улучшена обработка сбоев GPS в записях.",
+            de: "Fehlerhafte GPS-Daten von Dashcams werden besser verarbeitet.",
+            es: "Mejorada la gestión de errores en los datos GPS de las dashcams.",
+            fr: "Amélioration du traitement des anomalies dans les données GPS des dashcams.",
+            pl: "Usprawniono obsługę błędów w danych GPS z wideorejestratorów.",
+            pt: "Melhorado o tratamento de erros nos dados de GPS das câmeras veiculares.",
+            zh: "改进了对行车记录仪 GPS 数据异常的处理。",
+            ja: "ドラレコの GPS データに含まれる異常値の処理を改善しました。",
+            ko: "블랙박스 GPS 데이터 오류 처리를 개선했어요.",
+        },
+    },
+    {
         id: "2026-11-24.1",
         category: "feature",
         text: {
