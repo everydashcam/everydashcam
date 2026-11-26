@@ -21,7 +21,7 @@ Playwright configuration. Tags on the tests own membership; a scenario may belon
 to multiple areas and runs once in the combined golden set. Keep the set small:
 tag individual cases that exercise a distinct core flow, not whole suites or
 every regression. Choose the local verification scope using
-[CLAUDE.md](../../CLAUDE.md#verification). CI runs the full suite.
+[AGENTS.md](../../AGENTS.md#verification). CI runs the full suite.
 
 Append Playwright options after `--`, for example
 `npm run test:e2e:blur -- --headed` or `npm run test:e2e:blur -- --list`.

@@ -300,7 +300,7 @@ export default defineConfig(({ command }) => {
         cssMinify: true,
         // Our browser floor (current/previous major, 2025+) natively supports
         // <link rel=modulepreload>, so Vite's polyfill fallback is dead weight
-        // on the landing page's critical path (CLAUDE.md: we don't write
+        // on the landing page's critical path (AGENTS.md: we don't write
         // fallbacks for outdated APIs). Not needed for offline either - we load
         // from the SW cache.
         modulePreload: { polyfill: false },
@@ -308,7 +308,7 @@ export default defineConfig(({ command }) => {
         // console is NOT dropped: all logs go through the runtime-gated logger
         // (src/log.ts); prod default is warn, and the user can enable debug/info
         // via localStorage for bug reports (the primary diagnostic channel, since
-        // there's no backend - see CLAUDE.md "Logging"). Oxc keeps console calls
+        // there's no backend - see AGENTS.md "Logging"). Oxc keeps console calls
         // by default, which is exactly what we want.
         minify: "oxc",
         rolldownOptions: {

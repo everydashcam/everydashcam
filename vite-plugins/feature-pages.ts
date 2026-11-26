@@ -34,7 +34,7 @@ import { escapeText, stringifyJsonLd } from "./html-utils.js";
 import type { SeoBuildOptions } from "./seo-prerender.js";
 import { renderBreadcrumbs, renderSeoLanguageLinks } from "./seo-navigation.js";
 // Shared page chrome - reused from vendor-pages.ts rather than duplicated
-// (CLAUDE.md: abstractions against duplicates), exactly like alternative-pages.
+// (AGENTS.md: abstractions against duplicates), exactly like alternative-pages.
 import { BRAND_MARK_HTML, buildOgLocaleAlternatesHtml, pathPrefixFor } from "./vendor-pages.js";
 
 // Slugs of the use-case pages. The slug is intentionally general (not

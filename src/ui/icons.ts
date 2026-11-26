@@ -1,5 +1,5 @@
 // Runtime builder for inline Lucide-style SVG icons. Most icons in the app are
-// authored statically in HTML (see CLAUDE.md); these are the few built at
+// authored statically in HTML (see AGENTS.md); these are the few built at
 // runtime from path data, sharing one source of truth for the SVG attributes.
 
 export const SVG_NS = "http://www.w3.org/2000/svg";

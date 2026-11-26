@@ -587,7 +587,7 @@ function computeReport(): CapabilityReport {
 
     // Always record the full pass/fail signature: no backend means the ring
     // buffer is the only diagnostic channel for "broken for this user" reports
-    // (CLAUDE.md), and the signature is exactly what we'd read there. warn level
+    // (AGENTS.md), and the signature is exactly what we'd read there. warn level
     // when blocking so it stands out in a downloaded log.
     const line = { signature: capabilitySignature(report), blocking, degraded };
     if (blocking.length > 0) log.warn("capabilities", line);

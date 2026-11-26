@@ -1,6 +1,6 @@
 // Shared media-query predicates. One place for the matchMedia strings so the
 // reduced-motion and coarse-pointer checks don't drift across modules
-// (CLAUDE.md "abstractions against duplicates"). All live and SSR/no-matchMedia
+// (AGENTS.md "abstractions against duplicates"). All live and SSR/no-matchMedia
 // safe: a MediaQueryList's .matches tracks the environment on its own, so the
 // cached list below is as live as re-creating one per call.
 

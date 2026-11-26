@@ -1,5 +1,5 @@
 // Tests for the HEVC helpers cleanHvccDescription and needsHevcRemux. The
-// per-file MSE pipeline is verified manually in the browser per CLAUDE.md; only sync utilities here.
+// per-file MSE pipeline is verified manually in the browser per AGENTS.md; only sync utilities here.
 
 import { describe, it, expect } from "vitest";
 import { cleanHvccDescription, needsHevcRemux } from "./hevc-remux.js";

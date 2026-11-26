@@ -3,7 +3,7 @@
 //   - landing exit: the large hero CTA collapses into the compact sidebar CTA.
 //   - mobile browse->watch: the full-screen trip list collapses into the trips
 //     icon in the topbar, so the user sees where the list went.
-// One implementation keeps the two transitions from drifting apart (CLAUDE.md
+// One implementation keeps the two transitions from drifting apart (AGENTS.md
 // "abstractions against duplicates").
 
 import { prefersReducedMotion } from "./media-queries.js";

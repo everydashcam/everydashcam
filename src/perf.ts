@@ -13,7 +13,7 @@
 //  - Not a test-only API. Both APIs are valid observability primitives that
 //    any integration could subscribe to.
 //
-// Hot-path rules (matches CLAUDE.md Logging invariants):
+// Hot-path rules (matches AGENTS.md Logging invariants):
 //  - Never call markStage inside a rAF loop, packet loop, GPS-record loop,
 //    or timeupdate handler. mark/measure cost microseconds, but called
 //    10k times per scenario they pollute the buffer (default cap ~150

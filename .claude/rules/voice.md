@@ -17,7 +17,7 @@ paths:
 This file owns user-visible wording in the UI, errors, marketing pages and
 repository contribution guides.
 English owns meaning; localization mechanics and translation completeness
-follow [CLAUDE.md](../../CLAUDE.md#localization).
+follow [AGENTS.md](../../AGENTS.md#localization).
 
 ## Speaker
 
@@ -118,7 +118,7 @@ Adapt wording to each language while preserving the English facts, names,
 dates and comparison verdicts. Precise technical terms may be useful on
 these pages; the everyday UI simplification does not apply wholesale.
 Published locales and reviewed camera-specific copy follow
-[CLAUDE.md](../../CLAUDE.md#localization).
+[AGENTS.md](../../AGENTS.md#localization).
 
 Honest competitor comparisons are welcome. Frame unsupported cameras as an
 invitation to contribute a real sample rather than ending on a concession:
@@ -129,5 +129,5 @@ feedback@everydashcam.app — I add formats from real recordings.”
 
 Read changed English and Russian copy on the actual affected screens.
 Both must carry the same tone. Translation placeholders follow the
-[deferred-work rule](../../CLAUDE.md#deferred-work); key parity alone does
+[deferred-work rule](../../AGENTS.md#deferred-work); key parity alone does
 not prove a translation is complete.

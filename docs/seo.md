@@ -84,7 +84,7 @@ locale needs reviewed camera-specific copy; missing translations fail the build.
 Keep homepage examples bounded and local to the page language, linking to the
 full catalog. Catalog cards without a local landing explicitly link to English.
 
-Canonical URLs and `lastmod` follow [CLAUDE.md](../CLAUDE.md#seo).
+Canonical URLs and `lastmod` follow [AGENTS.md](../AGENTS.md#seo).
 Only independently trackable URL sources receive modification dates. Page
 families sharing monolithic content files omit dates rather than marking every
 page changed. [git-mtime.ts](../vite-plugins/git-mtime.ts) handles shallow history

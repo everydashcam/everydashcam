@@ -165,7 +165,7 @@ import { getThemeChoice, refreshThemeColors } from "./ui/theme.js";
 // Apply translations to static [data-i18n] nodes once, before other
 // handlers that may read button textContent etc. Also sync <html lang>
 // to the resolved locale - the HTML ships as "en" (English baseline for
-// search crawlers and social unfurl bots, see CLAUDE.md Localization).
+// search crawlers and social unfurl bots, see AGENTS.md Localization).
 applyStaticI18n();
 document.documentElement.lang = getCurrentLang();
 

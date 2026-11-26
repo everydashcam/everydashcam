@@ -7,7 +7,7 @@
 //     map tile servers. We abort every request to them.
 //     That removes network flakiness from CI AND doubles as a regression test
 //     for the documented invariant "if the tile server is down, the functional
-//     app keeps working" (CLAUDE.md / docs). Everything else (video, GPS, chart,
+//     app keeps working" (AGENTS.md / docs). Everything else (video, GPS, chart,
 //     export) is local files, so the suite is fully deterministic offline.
 //
 //  2. FAIL-LOUD on errors. Every test asserts, at teardown, that no uncaught
@@ -141,7 +141,7 @@ const UPLOAD_BODY_LIMIT = 256 * 1024;
  * same-origin (the preview server) or a map provider (which we abort anyway).
  * data:/blob: and any non-HTTP scheme are inert (not egress). Anything else -
  * a request to a third-party host - would mean bytes leaving the machine,
- * violating CLAUDE.md's "No backend. Video is never uploaded."
+ * violating AGENTS.md's "No backend. Video is never uploaded."
  */
 function isEgressAllowed(reqUrl: string, baseHost: string): boolean {
     let u: URL;

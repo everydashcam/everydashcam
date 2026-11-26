@@ -16,7 +16,7 @@ Keep the existing visual language; a different aesthetic is not itself a defect.
 - Use [modal-helper](../../../src/ui/modal-helper.ts) for dialog focus and
   keyboard ownership; retain each feature's show/hide and cancellation lifecycle.
 - Choose fixtures and browser setup from the [e2e guide](../../../tests/e2e/README.md).
-  Verification scope belongs in [CLAUDE.md](../../../CLAUDE.md#verification);
+  Verification scope belongs in [AGENTS.md](../../../AGENTS.md#verification);
   shared viewer changes also follow the [portable guide](../../rules/portable.md).
 
 ## Check the interaction, not just the screenshot

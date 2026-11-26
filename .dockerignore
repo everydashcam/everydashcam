@@ -1,6 +1,6 @@
 # Keep the image build context lean and free of local-only data. private/
 # holds real user recordings and internal docs (never leaves the machine,
-# CLAUDE.md), tests/ carries fixtures and reports the image build never
+# AGENTS.md), tests/ carries fixtures and reports the image build never
 # needs, and .env.local may carry a real analytics/Sentry id - a default
 # image must contact nothing.
 node_modules

@@ -84,7 +84,7 @@ export const STYLE_CHROME: Record<OverlayStyleId, StyleChrome> = {
     },
     card: {
         // The mock's backdrop blur is intentionally dropped: a canvas burn
-        // cannot backdrop-blur cheaply, and preview == burn must hold (CLAUDE.md).
+        // cannot backdrop-blur cheaply, and preview == burn must hold (AGENTS.md).
         // A slightly darker translucent plate carries the same legibility.
         plate: "rgba(10,10,10,0.62)",
         plateBorder: "rgba(255,255,255,0.13)",

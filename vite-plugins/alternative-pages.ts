@@ -38,7 +38,7 @@ import { renderHubCta } from "./hub-cta.js";
 import type { SeoBuildOptions } from "./seo-prerender.js";
 import { renderBreadcrumbs, renderSeoLanguageLinks } from "./seo-navigation.js";
 // Shared page chrome - one source, reused from vendor-pages.ts rather than
-// duplicated (CLAUDE.md: abstractions against duplicates).
+// duplicated (AGENTS.md: abstractions against duplicates).
 import { BRAND_MARK_HTML, buildOgLocaleAlternatesHtml, pathPrefixFor } from "./vendor-pages.js";
 
 // Slugs of the competitor pages. Drives VendorContent-style discrimination and

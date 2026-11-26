@@ -9,7 +9,7 @@ paths:
 # Testing
 
 Read this when changing behavior, tests, fixtures, or test configuration.
-Verification gates live in [CLAUDE.md](../../CLAUDE.md).
+Verification gates live in [AGENTS.md](../../AGENTS.md).
 
 ## Unit tests and fixtures
 
@@ -42,6 +42,9 @@ Verification gates live in [CLAUDE.md](../../CLAUDE.md).
 - Use the npm test script for focused runs, for example
   `npm test -- src/parsers/registry.test.ts`. It retains the timezone pin and
   `pretest` validation from `package.json`; direct Vitest calls bypass them.
+  For iterative edits, `npm test -- --sinceLastRun` re-runs only tests whose
+  recorded dependencies changed since the last run plus prior failures (without
+  relying on git state), and `npm test -- --lastFailed` re-runs only failures.
 - Coverage is an on-demand diagnostic (`npm run test:coverage`), not a gate.
   Its output under `tests/coverage/` stays gitignored. Plain `npm test` does
   not collect coverage.

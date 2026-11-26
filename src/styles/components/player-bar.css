@@ -400,7 +400,7 @@
        this only worked via `appearance: slider-vertical`, which is now
        deprecated and spams a warning in DevTools. At our minimum support bar
        (current/previous major Chromium/Firefox), writing-mode already
-       works - see CLAUDE.md "Browsers". */
+       works - see AGENTS.md "Browsers". */
     writing-mode: vertical-lr;
     direction: rtl;
     width: 16px;

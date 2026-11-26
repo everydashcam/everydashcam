@@ -6,7 +6,7 @@
    to them. The events item switches the lanes painted on the canvas. */
 /* When canvas is hidden via "View" - km/h and |G| axis labels are hidden
    too (they belong to the canvas datasets). :has() is supported in all
-   current browsers (see CLAUDE.md target). */
+   current browsers (see AGENTS.md target). */
 .player-chart:has(#player-chart-canvas[hidden]) > .chart-axis-label {
     display: none;
 }

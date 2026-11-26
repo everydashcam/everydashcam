@@ -6,7 +6,7 @@
  * here from src/styles/tokens.css; when the design system changes, this
  * file needs a manual sync (low frequency, acceptable cost).
  *
- * Dark-mode default (per CLAUDE.md product convention). prefers-color-scheme
+ * Dark-mode default (per AGENTS.md product convention). prefers-color-scheme
  * light override gives bone palette. No explicit toggle UI on vendor pages -
  * the user can switch theme on the main app, and we follow OS otherwise.
  */
