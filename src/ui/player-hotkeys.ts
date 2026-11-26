@@ -66,8 +66,13 @@ function isNativeActivationTarget(target: EventTarget | null): boolean {
     return role === "button" || role === "menuitem" || role === "tab" || role === "link";
 }
 
+// Fullscreen moves exit and pin into .player-fullscreen-actions outside #player-bar,
+// and entering fullscreen moves focus onto #player-fullscreen-exit. Treat them as
+// toolbar actions so Space still toggles playback while Enter keeps button activation.
+const PLAYER_TOOLBAR_BUTTON_SELECTOR = "#player-bar button, .player-fullscreen-actions button";
+
 function isPlayerToolbarButton(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLButtonElement) || !target.matches("#player-bar button")) return false;
+    if (!(target instanceof HTMLButtonElement) || !target.matches(PLAYER_TOOLBAR_BUTTON_SELECTOR)) return false;
     // Controls inside a bar popup (the View dialog, the capture menu) are its
     // content, not toolbar buttons: Space must activate them.
     if (target.closest('[role="menu"], [role="dialog"]')) return false;

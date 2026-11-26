@@ -241,6 +241,68 @@ for (const copy of [
     });
 }
 
+test("Space toggles playback in fullscreen after button or timeline+F entry while Enter still activates exit and pin", async ({
+    page,
+}) => {
+    await gotoApp(page);
+    await loadTrip(page, SAMPLE_70MAI);
+    await pausePlayback(page);
+    // Keep playback looping so the short 4 s sample cannot reach ended between
+    // Space toggles after clicking the middle of the timeline on a slow runner.
+    await page.keyboard.press("r");
+    await expect(page.locator("#player-loop")).toHaveAttribute("aria-label", "Loop on");
+    const player = page.locator("#player-wrap");
+    const play = page.locator("#player-play");
+    const exit = page.locator("#player-fullscreen-exit");
+    const pin = page.locator("#player-controls-pin");
+
+    // Enter fullscreen via the toolbar button: focus lands on #player-fullscreen-exit.
+    await enterFullscreen(page);
+    await expect(exit).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(player).toHaveClass(/player-expanded/);
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.id)).toBe("player-wrap");
+    await expect(play).toHaveAttribute("data-paused", "false");
+    await page.keyboard.press("Space");
+    await expect(player).toHaveClass(/player-expanded/);
+    await expect(play).toHaveAttribute("data-paused", "true");
+    await expect(exit).toBeFocused();
+
+    // Clicking the fullscreen pin button keeps Space as play/pause; Enter toggles pin.
+    await pin.click();
+    await expect(pin).toBeFocused();
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Space");
+    await expect(play).toHaveAttribute("data-paused", "false");
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Space");
+    await expect(play).toHaveAttribute("data-paused", "true");
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Enter");
+    await expect(pin).toHaveAttribute("aria-pressed", "false");
+    await expect(play).toHaveAttribute("data-paused", "true");
+
+    // Enter on #player-fullscreen-exit still exits fullscreen for keyboard users.
+    await exit.focus();
+    await page.keyboard.press("Enter");
+    await expect(player).not.toHaveClass(/player-expanded/);
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+
+    // Clicking the timeline chart drops focus onto body, so pressing F also
+    // moves focus onto #player-fullscreen-exit; Space must still toggle playback.
+    await page.locator("#player-chart-canvas").click();
+    await page.keyboard.press("f");
+    await expect(player).toHaveClass(/player-expanded/);
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.id)).toBe("player-wrap");
+    await expect(exit).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(player).toHaveClass(/player-expanded/);
+    await expect(play).toHaveAttribute("data-paused", "false");
+    await page.keyboard.press("Space");
+    await expect(player).toHaveClass(/player-expanded/);
+    await expect(play).toHaveAttribute("data-paused", "true");
+});
+
 test("fullscreen keeps a separate detail view and restores the paused recording", async ({ page }) => {
     await gotoApp(page);
     await loadTrip(page, SAMPLE_70MAI);
