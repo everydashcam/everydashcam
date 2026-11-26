@@ -80,7 +80,7 @@ let pinch: PinchState | null = null;
 let pinchClickSuppressTimer = 0;
 
 function clamp(v: number, lo: number, hi: number): number {
-    return v < lo ? lo : v > hi ? hi : v;
+    return Math.max(lo, Math.min(v, hi));
 }
 
 /** Zoom is a casual viewing aid: it needs an open trip, and export mode's crop

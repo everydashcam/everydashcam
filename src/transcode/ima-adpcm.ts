@@ -36,7 +36,7 @@ const INDEX_TABLE = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8] as 
 const STEP_TABLE_MAX_INDEX = STEP_TABLE.length - 1; // 88
 
 function clamp(value: number, min: number, max: number): number {
-    return value < min ? min : value > max ? max : value;
+    return Math.max(min, Math.min(value, max));
 }
 
 // Each nibble transition depends only on its step index. Keep the exact integer

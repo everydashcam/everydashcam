@@ -7,14 +7,14 @@ For a compact local golden set, run `npm run test:e2e:golden`. It selects
 representative individual scenarios with `@golden-<area>` tags. To focus on one
 area, use these shortcuts:
 
-| Command | Area |
-| --- | --- |
-| `npm run test:e2e:blur` | Region editing, exported masks, and inference assets |
-| `npm run test:e2e:export` | Stream copy, re-encoding, masks, and mobile export UI |
-| `npm run test:e2e:offline` | Cached boot, local playback/export, and asset recovery |
-| `npm run test:e2e:playback` | Play/pause, frame stepping, and mobile controls |
-| `npm run test:e2e:map` | Local route resilience and provider preferences |
-| `npm run test:e2e:ingest` | Single-channel and multichannel recording import |
+| Command                     | Area                                                   |
+| --------------------------- | ------------------------------------------------------ |
+| `npm run test:e2e:blur`     | Region editing, exported masks, and inference assets   |
+| `npm run test:e2e:export`   | Stream copy, re-encoding, masks, and mobile export UI  |
+| `npm run test:e2e:offline`  | Cached boot, local playback/export, and asset recovery |
+| `npm run test:e2e:playback` | Play/pause, frame stepping, and mobile controls        |
+| `npm run test:e2e:map`      | Local route resilience and provider preferences        |
+| `npm run test:e2e:ingest`   | Single-channel and multichannel recording import       |
 
 Each shortcut delegates to `test:e2e`, retaining its fresh build and shared
 Playwright configuration. Tags on the tests own membership; a scenario may belong

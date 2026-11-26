@@ -434,7 +434,7 @@ function extractFromGps9(token: GpmfToken, scal: number[], mp4Filename: string, 
     void scalSpeed3d;
 
     const dv = token.payload;
-    const stride = token.sampleSize >= GPS9_MIN_SAMPLE_SIZE ? token.sampleSize : GPS9_MIN_SAMPLE_SIZE;
+    const stride = Math.max(token.sampleSize, GPS9_MIN_SAMPLE_SIZE);
     const numSamples = token.repeat;
     if (numSamples < 1) return;
 

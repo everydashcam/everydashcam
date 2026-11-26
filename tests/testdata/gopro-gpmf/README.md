@@ -12,10 +12,10 @@ Fragments trimmed to 2 seconds from GoPro/gpmf-parser's official GPMF samples.
 
 ## What's inside
 
-| File | Model | What's in the gpmd track |
-|------|--------|------------------|
-| `hero5-trimmed.mp4` | HERO5 (2017-04-17) | GPS5 18Hz, full fix, real San Diego track |
-| `hero6-trimmed.mp4` | HERO6 (2018-01-24) | GPS5 18Hz, full fix, San Diego |
+| File                | Model              | What's in the gpmd track                                                                 |
+| ------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| `hero5-trimmed.mp4` | HERO5 (2017-04-17) | GPS5 18Hz, full fix, real San Diego track                                                |
+| `hero6-trimmed.mp4` | HERO6 (2018-01-24) | GPS5 18Hz, full fix, San Diego                                                           |
 | `hero8-trimmed.mp4` | HERO8 (2019-11-18) | GPS5 18Hz, **GPSF=0 on every sample (firmware quirk)** with otherwise valid coordinates. |
 
 `hero7.mp4` from the gpmf-parser samples is NOT included in our corpus - the
@@ -38,6 +38,7 @@ duration to 2 seconds via `scripts/trim-mp4.mjs --keep-data-tag gpmd`
 for compactness (4-11 MB originals -> ~700KB each).
 
 What's in the trim:
+
 - video (avc1) - 2 sec of the original H.264 (San Diego location, partly
   the GoPro lab, irrelevant by nature).
 - audio (aac) - 2 sec of the original audio.

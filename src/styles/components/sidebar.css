@@ -1643,8 +1643,9 @@ body.export-mode .sidebar-toggle,
     }
     /* The phone inset is the taller mobile topbar; this is the desktop one. */
     body:not(.map-unavailable):has(
-        .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
-    ) .drawer-scrim {
+            .viewer:not(.empty, .preparing, .codec-unsupported, .playback-failed) .player-wrap.map-expanded
+        )
+        .drawer-scrim {
         top: max(env(titlebar-area-height, 44px), var(--dc-topbar-h));
     }
 }

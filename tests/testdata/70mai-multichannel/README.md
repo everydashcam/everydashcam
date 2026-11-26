@@ -9,10 +9,10 @@ these models.
 ## Structure sources
 
 - 70mai S500 review (DashCamTalk): https://dashcamtalk.com/forum/threads/70mai-s500-rear-view-dash-camera-testing-review-rcg.50838/
-  - Folders `Normal/Front`, `Normal/Back`.
-  - Names `NO{YYYYMMDD}-{HHMMSS}-{counter}{F|B}.mp4`.
+    - Folders `Normal/Front`, `Normal/Back`.
+    - Names `NO{YYYYMMDD}-{HHMMSS}-{counter}{F|B}.mp4`.
 - 70mai T800 3CH review (DashCamTalk): https://dashcamtalk.com/forum/threads/70mai-t800-3ch-4k-front-4k-rear-1080p-cabin-dash-camera-testing-review-rcg.53323/
-  - Adds `Normal/Interior` + the `I` suffix.
+    - Adds `Normal/Interior` + the `I` suffix.
 
 ## What's inside
 

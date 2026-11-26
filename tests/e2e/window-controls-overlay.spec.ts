@@ -58,7 +58,7 @@ test("the installed window drags only by the title bar strip", async ({ page }) 
 
     const regions = await page.evaluate(() => {
         const appRegion = (style: CSSStyleDeclaration) => style.getPropertyValue("app-region");
-        const describe = (element: Element) =>
+        const describeElement = (element: Element) =>
             `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${[...element.classList].map((name) => `.${name}`).join("")}`;
         const topbar = document.querySelector(".topbar");
         if (!topbar) throw new Error("topbar missing");
@@ -70,7 +70,7 @@ test("the installed window drags only by the title bar strip", async ({ page }) 
                 const style = getComputedStyle(element, pseudo);
                 if (style.content === "none" || style.display === "none" || appRegion(style) !== "drag") continue;
                 const insets = [style.top, style.right, style.bottom, style.left];
-                pseudoRegions.push(`${describe(element)}${pseudo} ${style.position} ${insets.join(" ")}`);
+                pseudoRegions.push(`${describeElement(element)}${pseudo} ${style.position} ${insets.join(" ")}`);
             }
             const style = getComputedStyle(element);
             // Matches the boxes Chromium turns into regions.
@@ -84,7 +84,7 @@ test("the installed window drags only by the title bar strip", async ({ page }) 
                 box.right <= strip.right + 0.5;
             if (element.childElementCount > 0 || !isInsideStrip) {
                 leaks.push(
-                    `${describe(element)} children=${element.childElementCount} y=${Math.round(box.top)}..${Math.round(box.bottom)}`,
+                    `${describeElement(element)} children=${element.childElementCount} y=${Math.round(box.top)}..${Math.round(box.bottom)}`,
                 );
             }
         }
@@ -95,7 +95,7 @@ test("the installed window drags only by the title bar strip", async ({ page }) 
             '[role="button"], [role="link"], [role="menu"], [role="menuitem"], [role="dialog"]';
         const draggableControls = [...topbar.querySelectorAll(interactive)]
             .filter((control) => appRegion(getComputedStyle(control)) !== "no-drag")
-            .map(describe);
+            .map(describeElement);
         return { pseudoRegions, leaks, draggableControls };
     });
 
